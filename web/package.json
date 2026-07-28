@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "start": "sirv dist --single --host 0.0.0.0 --port ${PORT:-3000}"
   },
   "dependencies": {
     "@ionic/react": "^8.8.15",
@@ -16,7 +17,8 @@
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "react-router": "^5.3.4",
-    "react-router-dom": "^5.3.4"
+    "react-router-dom": "^5.3.4",
+    "sirv-cli": "^3.0.1"
   },
   "devDependencies": {
     "@types/node": "^24.13.2",
