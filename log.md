@@ -2,6 +2,8 @@
 
 A running set of findings, not a project log. Each entry is dated, has a short title, and free-text notes below — not heavily organized. Newest entries at the top, oldest at the bottom.
 
+This is Ben's own record — user research and findings, not Claude/dev activity. Claude: only add an entry here when explicitly asked to.
+
 ---
 
 ## 2026-07-23 — Events first
