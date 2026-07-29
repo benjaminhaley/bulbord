@@ -1,6 +1,9 @@
 import {
+  IonButton,
+  IonButtons,
   IonContent,
   IonHeader,
+  IonIcon,
   IonItem,
   IonLabel,
   IonList,
@@ -10,25 +13,11 @@ import {
   IonTitle,
   IonToolbar,
 } from '@ionic/react'
+import { listOutline } from 'ionicons/icons'
 import { useEffect, useState } from 'react'
 
 import { fetchEvents, type Event } from './api'
-
-function formatWhen(event: Event): string {
-  const date = new Date(`${event.start_date}T00:00:00`)
-  const dateLabel = date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
-
-  if (event.all_day || !event.start_time) {
-    return dateLabel
-  }
-
-  const [hours, minutes] = event.start_time.split(':')
-  const time = new Date()
-  time.setHours(Number(hours), Number(minutes))
-  const timeLabel = time.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
-
-  return `${dateLabel} · ${timeLabel}`
-}
+import { formatWhen, teaser } from './format'
 
 export function EventsPage() {
   const [events, setEvents] = useState<Event[] | null>(null)
@@ -45,6 +34,11 @@ export function EventsPage() {
       <IonHeader>
         <IonToolbar>
           <IonTitle>Events</IonTitle>
+          <IonButtons slot="end">
+            <IonButton routerLink="/event-sources">
+              <IonIcon slot="icon-only" icon={listOutline} />
+            </IonButton>
+          </IonButtons>
         </IonToolbar>
       </IonHeader>
       <IonContent fullscreen>
@@ -66,11 +60,12 @@ export function EventsPage() {
         {events !== null && events.length > 0 && (
           <IonList>
             {events.map((event) => (
-              <IonItem key={event.id} href={event.source_url ?? undefined} target="_blank" rel="noreferrer">
+              <IonItem key={event.id} routerLink={`/events/${event.id}`}>
                 <IonLabel>
                   <h2>{event.title}</h2>
                   <p>{formatWhen(event)}</p>
                   {event.address && <IonNote>{event.address}</IonNote>}
+                  {teaser(event.description) && <p className="teaser">{teaser(event.description)}</p>}
                 </IonLabel>
               </IonItem>
             ))}

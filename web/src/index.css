@@ -6,3 +6,10 @@
   font-size: 1.25rem;
   color: var(--ion-color-medium);
 }
+
+.teaser {
+  color: var(--ion-color-medium);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

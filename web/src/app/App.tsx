@@ -4,6 +4,8 @@ import { Redirect, Route } from 'react-router-dom'
 import { calendarOutline, sunnyOutline } from 'ionicons/icons'
 
 import { EventsPage } from '../events/EventsPage'
+import { EventDetailPage } from '../events/EventDetailPage'
+import { SourcesPage } from '../events/SourcesPage'
 import { CampsPage } from '../camps/CampsPage'
 
 export function App() {
@@ -13,6 +15,8 @@ export function App() {
         <IonTabs>
           <IonRouterOutlet>
             <Route exact path="/events" component={EventsPage} />
+            <Route exact path="/event-sources" component={SourcesPage} />
+            <Route exact path="/events/:id" component={EventDetailPage} />
             <Route exact path="/camps" component={CampsPage} />
             <Redirect exact path="/" to="/events" />
           </IonRouterOutlet>
