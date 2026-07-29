@@ -1,3 +1,21 @@
+/*
+ * Campy is designed for one viewport class: vertical phone (see CLAUDE.md).
+ * On wider screens (desktop browser), pin the app to a phone-sized column
+ * instead of letting it stretch full-width, so the web and native-port
+ * experiences stay visually identical without separate responsive work.
+ */
+body {
+  background: var(--ion-color-step-100, #e0e0e0);
+}
+
+#root {
+  position: relative;
+  height: 100%;
+  max-width: 430px;
+  margin: 0 auto;
+  box-shadow: 0 0 24px rgba(0, 0, 0, 0.2);
+}
+
 .coming-soon {
   height: 100%;
   display: flex;
