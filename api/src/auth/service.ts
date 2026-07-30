@@ -5,7 +5,10 @@ import { authIdentities, eventsLog, loginCodes, sessions, userRoles, users } fro
 import { hashToken, randomToken } from './tokens.js'
 import type { FacebookProfile } from './facebook.js'
 
-const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000 // 30 days
+// Effectively unlimited (100 years) rather than a real "never expires" (which
+// would need a nullable expiresAt column) — low-stakes MVP, favor staying
+// logged in over re-auth friction. Logout still works via deletedAt.
+const SESSION_TTL_MS = 100 * 365 * 24 * 60 * 60 * 1000
 const LOGIN_CODE_TTL_MS = 2 * 60 * 1000 // 2 minutes
 
 interface IdentityProfile {
