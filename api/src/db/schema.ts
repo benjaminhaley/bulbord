@@ -92,6 +92,17 @@ export const userRoles = pgTable('user_roles', {
   ...timestamps, // deletedAt doubles as "role revoked at"
 })
 
+// Running list of feature requests/notes. Only Ben posts today, but any
+// logged-in user can (see api/src/feedback/routes.ts) so opening it up to
+// others later needs no schema change.
+export const feedback = pgTable('feedback', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  title: text('title').notNull(),
+  description: text('description'),
+  createdByUserId: uuid('created_by_user_id').references(() => users.id),
+  ...timestamps,
+})
+
 // One-time, short-lived code handed to the browser in the OAuth redirect so
 // the real session token is never carried in a URL/browser history. The
 // frontend immediately exchanges it for the token via POST /auth/exchange.

@@ -4,6 +4,7 @@ import Fastify from 'fastify'
 import { authPlugin } from './auth/plugin.js'
 import { authRoutes } from './auth/routes.js'
 import { eventsRoutes } from './events/routes.js'
+import { feedbackRoutes } from './feedback/routes.js'
 
 export async function buildApp() {
   const app = Fastify({ logger: true })
@@ -17,6 +18,7 @@ export async function buildApp() {
   await app.register(authPlugin)
   await app.register(authRoutes)
   await app.register(eventsRoutes)
+  await app.register(feedbackRoutes)
 
   return app
 }
