@@ -1,4 +1,6 @@
-import { IonContent, IonHeader, IonPage, IonTitle, IonToolbar } from '@ionic/react'
+import { IonButtons, IonContent, IonHeader, IonPage, IonTitle, IonToolbar } from '@ionic/react'
+
+import { AccountButton } from '../auth/AccountButton'
 
 export function CampsPage() {
   return (
@@ -6,6 +8,9 @@ export function CampsPage() {
       <IonHeader>
         <IonToolbar>
           <IonTitle>Camps</IonTitle>
+          <IonButtons slot="end">
+            <AccountButton />
+          </IonButtons>
         </IonToolbar>
       </IonHeader>
       <IonContent fullscreen className="ion-padding">

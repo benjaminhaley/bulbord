@@ -1,3 +1,5 @@
+import { API_URL } from '../config'
+
 export interface Event {
   id: string
   title: string
@@ -29,8 +31,6 @@ interface EventResponse {
 interface EventSourcesResponse {
   data: EventSource[]
 }
-
-const API_URL = import.meta.env.VITE_API_URL as string
 
 export async function fetchEvents(): Promise<Event[]> {
   const response = await fetch(`${API_URL}/events`)

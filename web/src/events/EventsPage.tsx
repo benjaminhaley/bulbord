@@ -16,6 +16,7 @@ import {
 import { listOutline } from 'ionicons/icons'
 import { useEffect, useState } from 'react'
 
+import { AccountButton } from '../auth/AccountButton'
 import { fetchEvents, type Event } from './api'
 import { formatWhen, teaser } from './format'
 
@@ -38,6 +39,7 @@ export function EventsPage() {
             <IonButton routerLink="/event-sources">
               <IonIcon slot="icon-only" icon={listOutline} />
             </IonButton>
+            <AccountButton />
           </IonButtons>
         </IonToolbar>
       </IonHeader>

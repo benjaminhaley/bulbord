@@ -8,6 +8,27 @@
       "when": 1785283968845,
       "tag": "0000_little_cerebro",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1785351227366,
+      "tag": "0001_robust_raider",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1785351285395,
+      "tag": "0002_left_daredevil",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1785352077817,
+      "tag": "0003_polite_blur",
+      "breakpoints": true
     }
   ]
 }

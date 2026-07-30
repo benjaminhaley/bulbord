@@ -1,4 +1,4 @@
-import { boolean, date, jsonb, numeric, pgTable, text, time, timestamp, uuid } from 'drizzle-orm/pg-core'
+import { boolean, date, jsonb, numeric, pgTable, text, time, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core'
 
 const timestamps = {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
@@ -42,3 +42,70 @@ export const eventsLog = pgTable('events_log', {
   metadata: jsonb('metadata'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 })
+
+export const users = pgTable('users', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  name: text('name').notNull(),
+  email: text('email'),
+  avatarUrl: text('avatar_url'),
+  ...timestamps,
+})
+
+// One row per (provider, provider account) a user has linked. Lets Google/Apple
+// slot in later as additional rows without touching `users` or existing sessions.
+export const authIdentities = pgTable(
+  'auth_identities',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id),
+    provider: text('provider').notNull(), // 'facebook' | ...
+    providerUserId: text('provider_user_id').notNull(),
+    ...timestamps,
+  },
+  (table) => [uniqueIndex('auth_identities_provider_account_idx').on(table.provider, table.providerUserId)],
+)
+
+export const sessions = pgTable(
+  'sessions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id),
+    tokenHash: text('token_hash').notNull(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    ...timestamps, // deletedAt doubles as "revoked at" (logout)
+  },
+  (table) => [uniqueIndex('sessions_token_hash_idx').on(table.tokenHash)],
+)
+
+// Roles are data, not hardcoded checks, so approval/admin duties can be
+// reassigned or delegated (e.g. to Claude) later without a schema change.
+export const userRoles = pgTable('user_roles', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: uuid('user_id')
+    .notNull()
+    .references(() => users.id),
+  role: text('role').notNull(), // 'admin' | 'approver' | ...
+  ...timestamps, // deletedAt doubles as "role revoked at"
+})
+
+// One-time, short-lived code handed to the browser in the OAuth redirect so
+// the real session token is never carried in a URL/browser history. The
+// frontend immediately exchanges it for the token via POST /auth/exchange.
+export const loginCodes = pgTable(
+  'login_codes',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    codeHash: text('code_hash').notNull(),
+    sessionId: uuid('session_id')
+      .notNull()
+      .references(() => sessions.id),
+    sessionToken: text('session_token').notNull(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    ...timestamps, // deletedAt doubles as "consumed at"
+  },
+  (table) => [uniqueIndex('login_codes_code_hash_idx').on(table.codeHash)],
+)
