@@ -6,6 +6,7 @@ export interface FeedbackItem {
   title: string
   description: string | null
   created_at: string
+  author_name: string | null
 }
 
 interface FeedbackResponse {

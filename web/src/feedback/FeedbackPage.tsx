@@ -136,7 +136,10 @@ export function FeedbackPage() {
                 <IonLabel className="ion-text-wrap">
                   <h2>{item.title}</h2>
                   {item.description && <p>{item.description}</p>}
-                  <IonNote>{formatDate(item.created_at)}</IonNote>
+                  <IonNote>
+                    {item.author_name ? `${item.author_name} · ` : ''}
+                    {formatDate(item.created_at)}
+                  </IonNote>
                 </IonLabel>
               </IonItem>
             ))}

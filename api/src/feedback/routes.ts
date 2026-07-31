@@ -1,16 +1,20 @@
-import { desc, isNull } from 'drizzle-orm'
+import { desc, eq, isNull } from 'drizzle-orm'
 import type { FastifyInstance } from 'fastify'
 
 import { db } from '../db/client.js'
-import { eventsLog, feedback } from '../db/schema.js'
+import { eventsLog, feedback, users } from '../db/schema.js'
 import { requireAuth } from '../auth/plugin.js'
 
-function serializeFeedback(f: Pick<typeof feedback.$inferSelect, 'id' | 'title' | 'description' | 'createdAt'>) {
+function serializeFeedback(
+  f: Pick<typeof feedback.$inferSelect, 'id' | 'title' | 'description' | 'createdAt'>,
+  authorName: string | null,
+) {
   return {
     id: f.id,
     title: f.title,
     description: f.description,
     created_at: f.createdAt,
+    author_name: authorName,
   }
 }
 
@@ -22,12 +26,18 @@ export async function feedbackRoutes(app: FastifyInstance) {
         title: feedback.title,
         description: feedback.description,
         createdAt: feedback.createdAt,
+        authorName: users.name,
       })
       .from(feedback)
+      .leftJoin(users, eq(users.id, feedback.createdByUserId))
       .where(isNull(feedback.deletedAt))
       .orderBy(desc(feedback.createdAt))
 
-    return reply.send({ data: rows.map(serializeFeedback), has_more: false, next_cursor: null })
+    return reply.send({
+      data: rows.map((row) => serializeFeedback(row, row.authorName)),
+      has_more: false,
+      next_cursor: null,
+    })
   })
 
   app.post('/feedback', { preHandler: requireAuth }, async (request, reply) => {
@@ -53,6 +63,6 @@ export async function feedbackRoutes(app: FastifyInstance) {
       metadata: { feedbackId: created.id },
     })
 
-    return reply.code(201).send({ data: serializeFeedback(created) })
+    return reply.code(201).send({ data: serializeFeedback(created, request.currentUser!.name) })
   })
 }
