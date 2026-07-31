@@ -23,10 +23,13 @@ import { type ReactNode, useRef, useEffect, useState } from 'react'
 
 import { AccountButton } from '../auth/AccountButton'
 import { useAuth } from '../auth/AuthContext'
+import { useLoginPrompt } from '../auth/LoginPrompt'
 import { API_URL } from '../config'
 import { ImageLightbox } from '../uploads/ImageLightbox'
 import { uploadImage, type UploadedImage } from '../uploads/api'
 import { completeFeedback, createFeedback, fetchFeedback, type FeedbackItem } from './api'
+
+const ADD_FEEDBACK_LOGIN_PROMPT = 'Log in to post feedback and feature requests.'
 
 function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
@@ -240,7 +243,8 @@ function ClosedFeedbackItem({ item, onImageClick }: { item: FeedbackItem; onImag
 }
 
 export function FeedbackPage() {
-  const { user, isAdmin } = useAuth()
+  const { isAdmin } = useAuth()
+  const { requireLogin, loginPromptModal } = useLoginPrompt()
   const [items, setItems] = useState<FeedbackItem[] | null>(null)
   const [error, setError] = useState(false)
   const [showForm, setShowForm] = useState(false)
@@ -261,11 +265,9 @@ export function FeedbackPage() {
         <IonToolbar>
           <IonTitle>Feedback</IonTitle>
           <IonButtons slot="end">
-            {user && (
-              <IonButton onClick={() => setShowForm((v) => !v)}>
-                <IonIcon slot="icon-only" icon={showForm ? closeOutline : addOutline} />
-              </IonButton>
-            )}
+            <IonButton onClick={() => requireLogin(ADD_FEEDBACK_LOGIN_PROMPT, () => setShowForm((v) => !v))}>
+              <IonIcon slot="icon-only" icon={showForm ? closeOutline : addOutline} />
+            </IonButton>
             <AccountButton />
           </IonButtons>
         </IonToolbar>
@@ -341,6 +343,7 @@ export function FeedbackPage() {
         )}
       </IonContent>
       <ImageLightbox src={lightboxSrc} onDismiss={() => setLightboxSrc(null)} />
+      {loginPromptModal}
     </IonPage>
   )
 }
