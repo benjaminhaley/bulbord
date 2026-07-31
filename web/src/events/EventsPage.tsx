@@ -107,7 +107,7 @@ export function EventsPage() {
                   onClick={() => toggleFilter(f.id)}
                 >
                   {f.icon && <IonIcon icon={f.icon} />}
-                  {f.label}
+                  <IonLabel>{f.label}</IonLabel>
                 </IonChip>
               ))}
             </div>
