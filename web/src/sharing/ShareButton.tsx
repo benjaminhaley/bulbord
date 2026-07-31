@@ -47,7 +47,7 @@ export function ShareButton() {
       {/* Not IonFab/IonFabButton's usual in-IonContent placement — this button
           must persist across every page, not just one, so it sits outside the
           route-specific IonContent and anchors via .share-fab (index.css). */}
-      <IonFabButton className="share-fab" onClick={() => setOpen(true)} aria-label="Share this page">
+      <IonFabButton className="share-fab" color="light" onClick={() => setOpen(true)} aria-label="Share this page">
         <IonIcon icon={shareOutline} />
       </IonFabButton>
       <IonModal isOpen={open} onDidDismiss={() => setOpen(false)}>
@@ -61,9 +61,11 @@ export function ShareButton() {
             </IonButtons>
           </IonToolbar>
         </IonHeader>
-        <IonContent className="ion-padding ion-text-center">
-          {qrDataUrl && <img src={qrDataUrl} alt="QR code for this page" className="share-qr" />}
-          <IonNote>{shareUrl}</IonNote>
+        <IonContent className="ion-padding">
+          <div className="share-content">
+            {qrDataUrl && <img src={qrDataUrl} alt="QR code for this page" className="share-qr" />}
+            <IonNote>{shareUrl}</IonNote>
+          </div>
         </IonContent>
       </IonModal>
     </>

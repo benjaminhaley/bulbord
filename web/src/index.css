@@ -54,13 +54,23 @@ ion-app {
   right: 16px;
   bottom: calc(56px + env(safe-area-inset-bottom, 0px) + 16px);
   margin: 0;
+  --color: #333;
+  --box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
+  opacity: 0.85;
+}
+
+.share-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
 }
 
 .share-qr {
   max-width: 100%;
   width: 280px;
   height: 280px;
-  margin: 24px auto;
+  margin-top: 24px;
   border-radius: 8px;
 }
 
