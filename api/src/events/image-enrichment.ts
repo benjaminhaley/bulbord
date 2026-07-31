@@ -2,22 +2,23 @@ import { eq } from 'drizzle-orm'
 
 import { db } from '../db/client.js'
 import { events } from '../db/schema.js'
-import { extractOgImageUrl } from '../uploads/extract-og-image.js'
+import { extractPageImageUrl } from '../uploads/extract-page-image.js'
 import { fetchExternalImage } from '../uploads/fetch-external-image.js'
 import { generatePlaceholderImage } from '../uploads/placeholder.js'
 import { imageUrl, uploadImage } from '../uploads/storage.js'
 
-// Tries the source page's og:image (or twitter:image) first; falls back to a
-// generated placeholder whenever that fails — no source_url, an unreachable
-// page, no image meta tag, or a download failure — so every event ends up
-// with an image_url, never null.
+// Tries to pull a real image off the source page first (og:image, JSON-LD,
+// WordPress featured image, or the best plain <img> — see extractPageImageUrl);
+// falls back to a generated placeholder whenever that fails — no source_url,
+// an unreachable page, no image found, or a download failure — so every
+// event ends up with an image_url, never null.
 export async function enrichEventImage(
   eventId: string,
   sourceUrl: string | null,
   title: string,
 ): Promise<'sourced' | 'placeholder'> {
-  const ogImageUrl = sourceUrl ? await extractOgImageUrl(sourceUrl) : null
-  const downloaded = ogImageUrl ? await fetchExternalImage(ogImageUrl) : null
+  const pageImageUrl = sourceUrl ? await extractPageImageUrl(sourceUrl) : null
+  const downloaded = pageImageUrl ? await fetchExternalImage(pageImageUrl) : null
   const buffer = downloaded ?? (await generatePlaceholderImage(title))
 
   const { key, thumbnailKey } = await uploadImage(buffer, 'events')
