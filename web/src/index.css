@@ -34,7 +34,19 @@ body {
   text-align: center;
 }
 
-.teaser {
+/* min-width: 0 is required alongside ion-label's own flex: 1 — without it,
+   a nowrap child expands the flex item to its full content width instead of
+   shrinking to the row, so text-overflow: ellipsis never triggers and the
+   text is instead hard-clipped by the page edge with no "…" visible. */
+ion-label {
+  min-width: 0;
+}
+
+/* Ionic's own stylesheet ships `.sc-ion-label-md-s p { overflow: inherit;
+   text-overflow: inherit }`, which outranks a bare `.teaser` class selector
+   and forces our overflow/ellipsis back to ion-label's default (visible) —
+   the extra `ion-label p` prefix raises specificity enough to win. */
+ion-label p.teaser {
   color: var(--ion-color-medium);
   white-space: nowrap;
   overflow: hidden;

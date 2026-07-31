@@ -150,36 +150,40 @@ export function EventsPage() {
         )}
         {filteredEvents.length > 0 && (
           <IonList>
-            {filteredEvents.map((event) => (
-              <IonItemSliding key={event.id}>
-                <IonItemOptions side="start" onIonSwipe={(e) => handleSwipe(e, event, 'interested')}>
-                  <IonItemOption expandable color="warning" onClick={(e) => handleSwipe(e, event, 'interested')}>
-                    <IonIcon slot="icon-only" icon={star} />
-                  </IonItemOption>
-                </IonItemOptions>
-                <IonItem routerLink={`/events/${event.id}`}>
-                  {event.thumbnail_url && (
-                    <img
-                      src={`${API_URL}${event.thumbnail_url}`}
-                      alt=""
-                      slot="start"
-                      style={{ width: 56, height: 56, objectFit: 'cover', borderRadius: 8 }}
-                    />
-                  )}
-                  <IonLabel>
-                    <h2>{event.title}</h2>
-                    <p>{formatWhen(event)}</p>
-                    {locationLabel(event) && <IonNote>{locationLabel(event)}</IonNote>}
-                    {teaser(event.description) && <p className="teaser">{teaser(event.description)}</p>}
-                  </IonLabel>
-                </IonItem>
-                <IonItemOptions side="end" onIonSwipe={(e) => handleSwipe(e, event, 'dismissed')}>
-                  <IonItemOption expandable color="medium" onClick={(e) => handleSwipe(e, event, 'dismissed')}>
-                    <IonIcon slot="icon-only" icon={eyeOffOutline} />
-                  </IonItemOption>
-                </IonItemOptions>
-              </IonItemSliding>
-            ))}
+            {filteredEvents.map((event) => {
+              const location = locationLabel(event)
+              const description = teaser(event.description)
+              return (
+                <IonItemSliding key={event.id}>
+                  <IonItemOptions side="start" onIonSwipe={(e) => handleSwipe(e, event, 'interested')}>
+                    <IonItemOption expandable color="warning" onClick={(e) => handleSwipe(e, event, 'interested')}>
+                      <IonIcon slot="icon-only" icon={star} />
+                    </IonItemOption>
+                  </IonItemOptions>
+                  <IonItem routerLink={`/events/${event.id}`}>
+                    {event.thumbnail_url && (
+                      <img
+                        src={`${API_URL}${event.thumbnail_url}`}
+                        alt=""
+                        slot="start"
+                        style={{ width: 56, height: 56, objectFit: 'cover', borderRadius: 8 }}
+                      />
+                    )}
+                    <IonLabel>
+                      <h2>{event.title}</h2>
+                      <p>{formatWhen(event)}</p>
+                      {location && <IonNote>{location}</IonNote>}
+                      {description && <p className="teaser">{description}</p>}
+                    </IonLabel>
+                  </IonItem>
+                  <IonItemOptions side="end" onIonSwipe={(e) => handleSwipe(e, event, 'dismissed')}>
+                    <IonItemOption expandable color="medium" onClick={(e) => handleSwipe(e, event, 'dismissed')}>
+                      <IonIcon slot="icon-only" icon={eyeOffOutline} />
+                    </IonItemOption>
+                  </IonItemOptions>
+                </IonItemSliding>
+              )
+            })}
           </IonList>
         )}
       </IonContent>
