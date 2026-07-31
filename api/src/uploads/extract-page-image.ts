@@ -18,6 +18,18 @@ function resolveUrl(url: string, base: string): string | null {
   }
 }
 
+// Scopes image search to the page's actual content — <article>, falling
+// back to <main>, falling back to the whole document for pages without
+// semantic markup — so sidebar/widget images (e.g. a "related posts" list)
+// never get mistaken for the page's own image.
+function contentRoot($: cheerio.CheerioAPI): cheerio.Cheerio<any> {
+  const article = $('article').first()
+  if (article.length) return article
+  const main = $('main').first()
+  if (main.length) return main
+  return $.root()
+}
+
 function imageFromJsonLd($: cheerio.CheerioAPI, pageUrl: string): string | null {
   for (const script of $('script[type="application/ld+json"]').toArray()) {
     let data: unknown
@@ -40,16 +52,14 @@ function imageFromJsonLd($: cheerio.CheerioAPI, pageUrl: string): string | null 
   return null
 }
 
-// Picks the best content <img> outside header/nav/footer chrome: the
-// largest by declared width×height if any have dimensions, otherwise the
-// first one encountered. Filters out obvious logos/icons by filename.
-function imageFromContent($: cheerio.CheerioAPI, pageUrl: string): string | null {
-  $('header, nav, footer').remove()
-
+// Picks the best <img> within root: the largest by declared width×height if
+// any have dimensions, otherwise the first one encountered. Filters out
+// obvious logos/icons by filename.
+function imageFromContent($: cheerio.CheerioAPI, root: cheerio.Cheerio<any>, pageUrl: string): string | null {
   let firstCandidate: string | null = null
   let best: { url: string; area: number } | null = null
 
-  for (const el of $('img').toArray()) {
+  for (const el of root.find('img').toArray()) {
     const src = $(el).attr('src')
     if (!src || SKIP_SRC_PATTERN.test(src)) continue
     const resolved = resolveUrl(src, pageUrl)
@@ -92,10 +102,12 @@ export async function extractPageImageUrl(pageUrl: string): Promise<string | nul
     const jsonLdImage = imageFromJsonLd($, pageUrl)
     if (jsonLdImage) return jsonLdImage
 
-    const featuredImage = $('img.wp-post-image').first().attr('src')
+    const root = contentRoot($)
+
+    const featuredImage = root.find('img.wp-post-image').first().attr('src')
     if (featuredImage) return resolveUrl(featuredImage, pageUrl)
 
-    return imageFromContent($, pageUrl)
+    return imageFromContent($, root, pageUrl)
   } catch {
     return null
   }
