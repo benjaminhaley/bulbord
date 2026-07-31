@@ -64,6 +64,13 @@
       "when": 1785517300742,
       "tag": "0008_rare_quasimodo",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1785520843821,
+      "tag": "0009_rename_event_stars_to_interests",
+      "breakpoints": true
     }
   ]
 }

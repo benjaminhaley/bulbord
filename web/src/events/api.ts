@@ -1,6 +1,8 @@
 import { API_URL } from '../config'
 import { authHeaders } from '../auth/token'
 
+export type InterestStatus = 'interested' | 'dismissed'
+
 export interface Event {
   id: string
   title: string
@@ -13,7 +15,7 @@ export interface Event {
   source_url: string | null
   image_url: string | null
   thumbnail_url: string | null
-  starred: boolean
+  interest_status: InterestStatus | null
 }
 
 export interface EventSource {
@@ -55,23 +57,24 @@ export async function fetchEvent(id: string): Promise<Event> {
   return body.data
 }
 
-export async function starEvent(id: string): Promise<void> {
-  const response = await fetch(`${API_URL}/events/${id}/star`, {
-    method: 'POST',
-    headers: authHeaders(),
+export async function setEventInterest(id: string, status: InterestStatus): Promise<void> {
+  const response = await fetch(`${API_URL}/events/${id}/interest`, {
+    method: 'PUT',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ status }),
   })
   if (!response.ok) {
-    throw new Error(`Failed to star event: ${response.status}`)
+    throw new Error(`Failed to set event interest: ${response.status}`)
   }
 }
 
-export async function unstarEvent(id: string): Promise<void> {
-  const response = await fetch(`${API_URL}/events/${id}/star`, {
+export async function clearEventInterest(id: string): Promise<void> {
+  const response = await fetch(`${API_URL}/events/${id}/interest`, {
     method: 'DELETE',
     headers: authHeaders(),
   })
   if (!response.ok) {
-    throw new Error(`Failed to unstar event: ${response.status}`)
+    throw new Error(`Failed to clear event interest: ${response.status}`)
   }
 }
 

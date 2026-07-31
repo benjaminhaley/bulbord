@@ -1,67 +1,51 @@
 import {
   IonButton,
   IonButtons,
-  IonChip,
   IonContent,
   IonHeader,
   IonIcon,
   IonItem,
+  IonItemOption,
+  IonItemOptions,
+  IonItemSliding,
   IonLabel,
   IonList,
   IonNote,
   IonPage,
+  IonSegment,
+  IonSegmentButton,
   IonSpinner,
   IonTitle,
   IonToolbar,
 } from '@ionic/react'
-import { listOutline, star, starOutline } from 'ionicons/icons'
+import { eyeOffOutline, listOutline, star } from 'ionicons/icons'
 import { useEffect, useMemo, useState } from 'react'
 
 import { AccountButton } from '../auth/AccountButton'
 import { useAuth } from '../auth/AuthContext'
 import { API_URL } from '../config'
-import { fetchEvents, type Event } from './api'
+import { fetchEvents, type Event, type InterestStatus } from './api'
 import { formatWhen, locationLabel, teaser } from './format'
-import { useStarToggle } from './useStarToggle'
+import { useEventInterest } from './useEventInterest'
 
-// Filters are declarative so new ones (date range, distance, category, …)
-// slot in later without touching the toggle/apply logic below.
-interface EventFilter {
-  id: string
-  label: string
-  icon?: string
-  requiresAuth?: boolean
-  matches: (event: Event) => boolean
-}
+// 'Starred' and 'Dismissed' are mutually exclusive views over the same
+// interest_status field, so this is a single-select mode rather than the
+// AND-composable multi-select filters (date range, distance, category, …)
+// that may get added here later — keeping the two mechanisms separate avoids
+// faking single-select behavior out of a multi-select filter list.
+type ViewMode = 'all' | 'starred' | 'dismissed'
 
-const FILTERS: EventFilter[] = [
-  { id: 'starred', label: 'Starred', icon: starOutline, requiresAuth: true, matches: (e) => e.starred },
-]
-
-function StarButton({ event, onToggled }: { event: Event; onToggled: (event: Event) => void }) {
-  const { pending, toggleStar } = useStarToggle(onToggled)
-
-  return (
-    <IonButton
-      fill="clear"
-      slot="end"
-      disabled={pending}
-      onClick={(e) => {
-        e.stopPropagation()
-        e.preventDefault()
-        toggleStar(event)
-      }}
-    >
-      <IonIcon slot="icon-only" icon={event.starred ? star : starOutline} color={event.starred ? 'warning' : 'medium'} />
-    </IonButton>
-  )
+function closeSliding(target: EventTarget | null) {
+  const sliding = (target as HTMLElement | null)?.closest('ion-item-sliding') as HTMLIonItemSlidingElement | null
+  sliding?.close()
 }
 
 export function EventsPage() {
   const { user } = useAuth()
   const [events, setEvents] = useState<Event[] | null>(null)
   const [error, setError] = useState(false)
-  const [activeFilterIds, setActiveFilterIds] = useState<string[]>([])
+  const [viewMode, setViewMode] = useState<ViewMode>('all')
+  const { setInterest } = useEventInterest(updateEvent)
 
   useEffect(() => {
     fetchEvents()
@@ -69,20 +53,20 @@ export function EventsPage() {
       .catch(() => setError(true))
   }, [])
 
-  const visibleFilters = FILTERS.filter((f) => !f.requiresAuth || user)
-  const activeFilters = visibleFilters.filter((f) => activeFilterIds.includes(f.id))
-
   const filteredEvents = useMemo(() => {
-    if (!events || activeFilters.length === 0) return events ?? []
-    return events.filter((event) => activeFilters.every((f) => f.matches(event)))
-  }, [events, activeFilters])
-
-  function toggleFilter(id: string) {
-    setActiveFilterIds((prev) => (prev.includes(id) ? prev.filter((f) => f !== id) : [...prev, id]))
-  }
+    if (!events) return []
+    if (viewMode === 'starred') return events.filter((e) => e.interest_status === 'interested')
+    if (viewMode === 'dismissed') return events.filter((e) => e.interest_status === 'dismissed')
+    return events.filter((e) => e.interest_status !== 'dismissed')
+  }, [events, viewMode])
 
   function updateEvent(updated: Event) {
     setEvents((prev) => prev?.map((e) => (e.id === updated.id ? updated : e)) ?? null)
+  }
+
+  function handleSwipe(e: { target: EventTarget | null }, event: Event, status: InterestStatus) {
+    setInterest(event, status)
+    closeSliding(e.target)
   }
 
   return (
@@ -97,21 +81,19 @@ export function EventsPage() {
             <AccountButton />
           </IonButtons>
         </IonToolbar>
-        {visibleFilters.length > 0 && (
-          <IonToolbar className="filter-toolbar">
-            <div className="filter-row">
-              {visibleFilters.map((f) => (
-                <IonChip
-                  key={f.id}
-                  outline={!activeFilterIds.includes(f.id)}
-                  color={activeFilterIds.includes(f.id) ? 'primary' : undefined}
-                  onClick={() => toggleFilter(f.id)}
-                >
-                  {f.icon && <IonIcon icon={f.icon} />}
-                  <IonLabel>{f.label}</IonLabel>
-                </IonChip>
-              ))}
-            </div>
+        {user && (
+          <IonToolbar>
+            <IonSegment value={viewMode} onIonChange={(e) => setViewMode(e.detail.value as ViewMode)}>
+              <IonSegmentButton value="all">
+                <IonLabel>All</IonLabel>
+              </IonSegmentButton>
+              <IonSegmentButton value="starred">
+                <IonLabel>Starred</IonLabel>
+              </IonSegmentButton>
+              <IonSegmentButton value="dismissed">
+                <IonLabel>Dismissed</IonLabel>
+              </IonSegmentButton>
+            </IonSegment>
           </IonToolbar>
         )}
       </IonHeader>
@@ -133,29 +115,45 @@ export function EventsPage() {
         )}
         {events !== null && events.length > 0 && filteredEvents.length === 0 && (
           <div className="coming-soon">
-            <p>No events match these filters</p>
+            <p>No events match this view</p>
           </div>
         )}
         {filteredEvents.length > 0 && (
           <IonList>
             {filteredEvents.map((event) => (
-              <IonItem key={event.id} routerLink={`/events/${event.id}`}>
-                {event.thumbnail_url && (
-                  <img
-                    src={`${API_URL}${event.thumbnail_url}`}
-                    alt=""
-                    slot="start"
-                    style={{ width: 56, height: 56, objectFit: 'cover', borderRadius: 8 }}
-                  />
+              <IonItemSliding key={event.id}>
+                {user && (
+                  <IonItemOptions side="start" onIonSwipe={(e) => handleSwipe(e, event, 'interested')}>
+                    <IonItemOption expandable color="warning" onClick={(e) => handleSwipe(e, event, 'interested')}>
+                      <IonIcon slot="icon-only" icon={star} />
+                    </IonItemOption>
+                  </IonItemOptions>
                 )}
-                <IonLabel>
-                  <h2>{event.title}</h2>
-                  <p>{formatWhen(event)}</p>
-                  {locationLabel(event) && <IonNote>{locationLabel(event)}</IonNote>}
-                  {teaser(event.description) && <p className="teaser">{teaser(event.description)}</p>}
-                </IonLabel>
-                {user && <StarButton event={event} onToggled={updateEvent} />}
-              </IonItem>
+                <IonItem routerLink={`/events/${event.id}`}>
+                  {event.thumbnail_url && (
+                    <img
+                      src={`${API_URL}${event.thumbnail_url}`}
+                      alt=""
+                      slot="start"
+                      style={{ width: 56, height: 56, objectFit: 'cover', borderRadius: 8 }}
+                    />
+                  )}
+                  <IonLabel>
+                    <h2>{event.title}</h2>
+                    <p>{formatWhen(event)}</p>
+                    {locationLabel(event) && <IonNote>{locationLabel(event)}</IonNote>}
+                    {teaser(event.description) && <p className="teaser">{teaser(event.description)}</p>}
+                  </IonLabel>
+                  {event.interest_status === 'interested' && <IonIcon slot="end" icon={star} color="warning" />}
+                </IonItem>
+                {user && (
+                  <IonItemOptions side="end" onIonSwipe={(e) => handleSwipe(e, event, 'dismissed')}>
+                    <IonItemOption expandable color="medium" onClick={(e) => handleSwipe(e, event, 'dismissed')}>
+                      <IonIcon slot="icon-only" icon={eyeOffOutline} />
+                    </IonItemOption>
+                  </IonItemOptions>
+                )}
+              </IonItemSliding>
             ))}
           </IonList>
         )}

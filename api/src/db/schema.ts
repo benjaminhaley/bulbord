@@ -42,11 +42,12 @@ export const events = pgTable('events', {
   ...timestamps,
 })
 
-// One row per (user, event) ever starred, toggled via deletedAt rather than
-// inserted/deleted per star/unstar — keeps a single unique row per pair while
-// still following the soft-delete-only rule.
-export const eventStars = pgTable(
-  'event_stars',
+// One row per (user, event) ever swiped, toggled via deletedAt rather than
+// inserted/deleted per swipe — keeps a single unique row per pair while
+// still following the soft-delete-only rule. `status` records which way the
+// user swiped; a missing or soft-deleted row means "no action taken yet".
+export const eventInterests = pgTable(
+  'event_interests',
   {
     id: uuid('id').primaryKey().defaultRandom(),
     userId: uuid('user_id')
@@ -55,9 +56,10 @@ export const eventStars = pgTable(
     eventId: uuid('event_id')
       .notNull()
       .references(() => events.id),
+    status: text('status').notNull(), // 'interested' | 'dismissed'
     ...timestamps,
   },
-  (table) => [uniqueIndex('event_stars_user_event_idx').on(table.userId, table.eventId)],
+  (table) => [uniqueIndex('event_interests_user_event_idx').on(table.userId, table.eventId)],
 )
 
 export const eventsLog = pgTable('events_log', {

@@ -18,14 +18,14 @@ import { useAuth } from '../auth/AuthContext'
 import { API_URL } from '../config'
 import { fetchEvent, type Event } from './api'
 import { formatWhen } from './format'
-import { useStarToggle } from './useStarToggle'
+import { useEventInterest } from './useEventInterest'
 
 export function EventDetailPage() {
   const { id } = useParams<{ id: string }>()
   const { user } = useAuth()
   const [event, setEvent] = useState<Event | null>(null)
   const [error, setError] = useState(false)
-  const { pending: starPending, toggleStar } = useStarToggle(setEvent)
+  const { pending: interestPending, setInterest, clearInterest } = useEventInterest(setEvent)
 
   useEffect(() => {
     setEvent(null)
@@ -45,8 +45,15 @@ export function EventDetailPage() {
           <IonTitle>{event?.title ?? 'Event'}</IonTitle>
           {user && event && (
             <IonButtons slot="end">
-              <IonButton disabled={starPending} onClick={() => toggleStar(event)}>
-                <IonIcon slot="icon-only" icon={event.starred ? star : starOutline} color={event.starred ? 'warning' : undefined} />
+              <IonButton
+                disabled={interestPending}
+                onClick={() => (event.interest_status === 'interested' ? clearInterest(event) : setInterest(event, 'interested'))}
+              >
+                <IonIcon
+                  slot="icon-only"
+                  icon={event.interest_status === 'interested' ? star : starOutline}
+                  color={event.interest_status === 'interested' ? 'warning' : undefined}
+                />
               </IonButton>
             </IonButtons>
           )}
