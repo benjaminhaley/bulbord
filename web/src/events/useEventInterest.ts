@@ -2,6 +2,14 @@ import { useState } from 'react'
 
 import { clearEventInterest, setEventInterest, type Event, type InterestStatus } from './api'
 
+// Shared with useLoginPrompt's requireLogin() at both call sites (EventsPage's
+// swipe actions, EventDetailPage's star button) so the explanation for a given
+// interest action only has one source of truth.
+export const INTEREST_LOGIN_PROMPTS: Record<InterestStatus, string> = {
+  interested: "Log in to star events you're interested in, so you can quickly find them again later.",
+  dismissed: "Log in to dismiss events you don't want to see, so they stay out of your feed.",
+}
+
 export function useEventInterest(onChanged: (event: Event) => void) {
   const [pending, setPending] = useState(false)
 

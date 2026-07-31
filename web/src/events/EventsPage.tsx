@@ -24,10 +24,11 @@ import { useEffect, useMemo, useState } from 'react'
 
 import { AccountButton } from '../auth/AccountButton'
 import { useAuth } from '../auth/AuthContext'
+import { useLoginPrompt } from '../auth/LoginPrompt'
 import { API_URL } from '../config'
 import { fetchEvents, type Event, type InterestStatus } from './api'
 import { formatWhen, locationLabel, teaser } from './format'
-import { useEventInterest } from './useEventInterest'
+import { INTEREST_LOGIN_PROMPTS, useEventInterest } from './useEventInterest'
 
 // 'Starred' and 'Dismissed' are mutually exclusive views over the same
 // interest_status field, so this is a single-select mode rather than the
@@ -61,6 +62,7 @@ export function EventsPage() {
   const [viewMode, setViewMode] = useState<ViewMode>('new')
   const [swipeToast, setSwipeToast] = useState<SwipeToast | null>(null)
   const { setInterest, clearInterest } = useEventInterest(updateEvent)
+  const { requireLogin, loginPromptModal } = useLoginPrompt()
 
   useEffect(() => {
     fetchEvents()
@@ -80,9 +82,11 @@ export function EventsPage() {
   }
 
   function handleSwipe(e: { target: EventTarget | null }, event: Event, status: InterestStatus) {
-    setSwipeToast({ event, previousStatus: event.interest_status, newStatus: status })
-    setInterest(event, status)
     closeSliding(e.target)
+    requireLogin(INTEREST_LOGIN_PROMPTS[status], () => {
+      setSwipeToast({ event, previousStatus: event.interest_status, newStatus: status })
+      setInterest(event, status)
+    })
   }
 
   function undoSwipe() {
@@ -148,13 +152,11 @@ export function EventsPage() {
           <IonList>
             {filteredEvents.map((event) => (
               <IonItemSliding key={event.id}>
-                {user && (
-                  <IonItemOptions side="start" onIonSwipe={(e) => handleSwipe(e, event, 'interested')}>
-                    <IonItemOption expandable color="warning" onClick={(e) => handleSwipe(e, event, 'interested')}>
-                      <IonIcon slot="icon-only" icon={star} />
-                    </IonItemOption>
-                  </IonItemOptions>
-                )}
+                <IonItemOptions side="start" onIonSwipe={(e) => handleSwipe(e, event, 'interested')}>
+                  <IonItemOption expandable color="warning" onClick={(e) => handleSwipe(e, event, 'interested')}>
+                    <IonIcon slot="icon-only" icon={star} />
+                  </IonItemOption>
+                </IonItemOptions>
                 <IonItem routerLink={`/events/${event.id}`}>
                   {event.thumbnail_url && (
                     <img
@@ -171,13 +173,11 @@ export function EventsPage() {
                     {teaser(event.description) && <p className="teaser">{teaser(event.description)}</p>}
                   </IonLabel>
                 </IonItem>
-                {user && (
-                  <IonItemOptions side="end" onIonSwipe={(e) => handleSwipe(e, event, 'dismissed')}>
-                    <IonItemOption expandable color="medium" onClick={(e) => handleSwipe(e, event, 'dismissed')}>
-                      <IonIcon slot="icon-only" icon={eyeOffOutline} />
-                    </IonItemOption>
-                  </IonItemOptions>
-                )}
+                <IonItemOptions side="end" onIonSwipe={(e) => handleSwipe(e, event, 'dismissed')}>
+                  <IonItemOption expandable color="medium" onClick={(e) => handleSwipe(e, event, 'dismissed')}>
+                    <IonIcon slot="icon-only" icon={eyeOffOutline} />
+                  </IonItemOption>
+                </IonItemOptions>
               </IonItemSliding>
             ))}
           </IonList>
@@ -192,6 +192,7 @@ export function EventsPage() {
         buttons={[{ text: 'Undo', handler: undoSwipe }]}
         onDidDismiss={() => setSwipeToast(null)}
       />
+      {loginPromptModal}
     </IonPage>
   )
 }

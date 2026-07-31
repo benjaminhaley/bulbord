@@ -140,14 +140,21 @@ export async function eventsRoutes(app: FastifyInstance) {
     const userId = request.currentUser?.id ?? null
 
     let cursorStartDate: string | null = null
+    let cursorSortTime: string | null = null
     let cursorId: string | null = null
     if (query.cursor) {
-      const [startDate, id] = Buffer.from(query.cursor, 'base64url').toString('utf8').split('|')
+      const [startDate, sortTime, id] = Buffer.from(query.cursor, 'base64url').toString('utf8').split('|')
       cursorStartDate = startDate ?? null
+      cursorSortTime = sortTime ?? null
       cursorId = id ?? null
     }
 
     const conditions = [eq(events.status, 'approved'), isNull(events.deletedAt), gte(events.startDate, todayInChicago())]
+
+    // Events with no specific start_time (null = no specific time, distinct
+    // from all_day — see CLAUDE.md) sort after every timed event on the same
+    // day, since we can't place them chronologically within the day.
+    const sortTimeExpr = sql`coalesce(${events.startTime}, '23:59:59'::time)`
 
     // A recurring event (e.g. "Weekly Story Time") is ingested as one row per
     // occurrence sharing the same (title, source_url) — see CLAUDE.md's
@@ -161,9 +168,10 @@ export async function eventsRoutes(app: FastifyInstance) {
       db
         .select({
           ...getTableColumns(events),
-          rn: sql<number>`row_number() over (partition by ${events.title}, coalesce(${events.sourceUrl}, ${events.id}::text) order by ${events.startDate} asc, ${events.id} asc)`.as(
+          rn: sql<number>`row_number() over (partition by ${events.title}, coalesce(${events.sourceUrl}, ${events.id}::text) order by ${events.startDate} asc, ${sortTimeExpr} asc, ${events.id} asc)`.as(
             'rn',
           ),
+          sortTime: sortTimeExpr.as('sort_time'),
         })
         .from(events)
         .where(and(...conditions)),
@@ -186,6 +194,7 @@ export async function eventsRoutes(app: FastifyInstance) {
         imageUrl: nextOccurrence.imageUrl,
         thumbnailUrl: nextOccurrence.thumbnailUrl,
         interestStatus: eventInterests.status,
+        sortTime: nextOccurrence.sortTime,
       })
       .from(nextOccurrence)
       .leftJoin(
@@ -195,17 +204,21 @@ export async function eventsRoutes(app: FastifyInstance) {
           : sql`false`,
       )
       .where(
-        cursorStartDate && cursorId
-          ? and(eq(nextOccurrence.rn, 1), sql`(${nextOccurrence.startDate}, ${nextOccurrence.id}) > (${cursorStartDate}, ${cursorId})`)
+        cursorStartDate && cursorSortTime && cursorId
+          ? and(
+              eq(nextOccurrence.rn, 1),
+              sql`(${nextOccurrence.startDate}, ${nextOccurrence.sortTime}, ${nextOccurrence.id}) > (${cursorStartDate}, ${cursorSortTime}::time, ${cursorId})`,
+            )
           : eq(nextOccurrence.rn, 1),
       )
-      .orderBy(asc(nextOccurrence.startDate), asc(nextOccurrence.id))
+      .orderBy(asc(nextOccurrence.startDate), asc(nextOccurrence.sortTime), asc(nextOccurrence.id))
       .limit(limit + 1)
 
     const hasMore = rows.length > limit
     const page = rows.slice(0, limit)
     const last = page.at(-1)
-    const nextCursor = hasMore && last ? Buffer.from(`${last.startDate}|${last.id}`).toString('base64url') : null
+    const nextCursor =
+      hasMore && last ? Buffer.from(`${last.startDate}|${last.sortTime}|${last.id}`).toString('base64url') : null
 
     return reply.send({
       data: page.map((row) => serializeEvent(row, row.interestStatus as InterestStatus | null)),

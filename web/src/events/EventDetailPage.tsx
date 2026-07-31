@@ -14,18 +14,29 @@ import { star, starOutline } from 'ionicons/icons'
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 
-import { useAuth } from '../auth/AuthContext'
+import { useLoginPrompt } from '../auth/LoginPrompt'
 import { API_URL } from '../config'
 import { fetchEvent, type Event } from './api'
 import { formatWhen } from './format'
-import { useEventInterest } from './useEventInterest'
+import { INTEREST_LOGIN_PROMPTS, useEventInterest } from './useEventInterest'
 
 export function EventDetailPage() {
   const { id } = useParams<{ id: string }>()
-  const { user } = useAuth()
   const [event, setEvent] = useState<Event | null>(null)
   const [error, setError] = useState(false)
   const { pending: interestPending, setInterest, clearInterest } = useEventInterest(setEvent)
+  const { requireLogin, loginPromptModal } = useLoginPrompt()
+
+  function toggleInterest() {
+    if (!event) return
+    requireLogin(INTEREST_LOGIN_PROMPTS.interested, () => {
+      if (event.interest_status === 'interested') {
+        clearInterest(event)
+      } else {
+        setInterest(event, 'interested')
+      }
+    })
+  }
 
   useEffect(() => {
     setEvent(null)
@@ -43,12 +54,9 @@ export function EventDetailPage() {
             <IonBackButton defaultHref="/events" />
           </IonButtons>
           <IonTitle>{event?.title ?? 'Event'}</IonTitle>
-          {user && event && (
+          {event && (
             <IonButtons slot="end">
-              <IonButton
-                disabled={interestPending}
-                onClick={() => (event.interest_status === 'interested' ? clearInterest(event) : setInterest(event, 'interested'))}
-              >
+              <IonButton disabled={interestPending} onClick={toggleInterest}>
                 <IonIcon
                   slot="icon-only"
                   icon={event.interest_status === 'interested' ? star : starOutline}
@@ -92,6 +100,7 @@ export function EventDetailPage() {
           </>
         )}
       </IonContent>
+      {loginPromptModal}
     </IonPage>
   )
 }
