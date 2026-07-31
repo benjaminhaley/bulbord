@@ -14,7 +14,24 @@ function todayInChicago(): string {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Chicago' }).format(new Date())
 }
 
-function serializeEvent(e: typeof events.$inferSelect, interestStatus: InterestStatus | null) {
+type SerializableEvent = Pick<
+  typeof events.$inferSelect,
+  | 'id'
+  | 'title'
+  | 'description'
+  | 'startDate'
+  | 'startTime'
+  | 'allDay'
+  | 'address'
+  | 'locationName'
+  | 'latitude'
+  | 'longitude'
+  | 'sourceUrl'
+  | 'imageUrl'
+  | 'thumbnailUrl'
+>
+
+function serializeEvent(e: SerializableEvent, interestStatus: InterestStatus | null) {
   return {
     id: e.id,
     title: e.title,
@@ -131,21 +148,58 @@ export async function eventsRoutes(app: FastifyInstance) {
     }
 
     const conditions = [eq(events.status, 'approved'), isNull(events.deletedAt), gte(events.startDate, todayInChicago())]
-    if (cursorStartDate && cursorId) {
-      conditions.push(sql`(${events.startDate}, ${events.id}) > (${cursorStartDate}, ${cursorId})`)
-    }
+
+    // A recurring event (e.g. "Weekly Story Time") is ingested as one row per
+    // occurrence sharing the same (title, source_url) — see CLAUDE.md's
+    // ingestion dedup key. Rank occurrences within each series by date and
+    // keep only the soonest upcoming one; later occurrences resurface on
+    // their own once the current one passes and drops out of the `gte`
+    // filter above. Events with no source_url (user submissions) fall into
+    // their own single-row partition via the id fallback, so same-titled
+    // one-off suggestions are never collapsed together.
+    const nextOccurrence = db.$with('next_occurrence').as(
+      db
+        .select({
+          ...getTableColumns(events),
+          rn: sql<number>`row_number() over (partition by ${events.title}, coalesce(${events.sourceUrl}, ${events.id}::text) order by ${events.startDate} asc, ${events.id} asc)`.as(
+            'rn',
+          ),
+        })
+        .from(events)
+        .where(and(...conditions)),
+    )
 
     const rows = await db
-      .select({ ...getTableColumns(events), interestStatus: eventInterests.status })
-      .from(events)
+      .with(nextOccurrence)
+      .select({
+        id: nextOccurrence.id,
+        title: nextOccurrence.title,
+        description: nextOccurrence.description,
+        startDate: nextOccurrence.startDate,
+        startTime: nextOccurrence.startTime,
+        allDay: nextOccurrence.allDay,
+        address: nextOccurrence.address,
+        locationName: nextOccurrence.locationName,
+        latitude: nextOccurrence.latitude,
+        longitude: nextOccurrence.longitude,
+        sourceUrl: nextOccurrence.sourceUrl,
+        imageUrl: nextOccurrence.imageUrl,
+        thumbnailUrl: nextOccurrence.thumbnailUrl,
+        interestStatus: eventInterests.status,
+      })
+      .from(nextOccurrence)
       .leftJoin(
         eventInterests,
         userId
-          ? and(eq(eventInterests.eventId, events.id), eq(eventInterests.userId, userId), isNull(eventInterests.deletedAt))
+          ? and(eq(eventInterests.eventId, nextOccurrence.id), eq(eventInterests.userId, userId), isNull(eventInterests.deletedAt))
           : sql`false`,
       )
-      .where(and(...conditions))
-      .orderBy(asc(events.startDate), asc(events.id))
+      .where(
+        cursorStartDate && cursorId
+          ? and(eq(nextOccurrence.rn, 1), sql`(${nextOccurrence.startDate}, ${nextOccurrence.id}) > (${cursorStartDate}, ${cursorId})`)
+          : eq(nextOccurrence.rn, 1),
+      )
+      .orderBy(asc(nextOccurrence.startDate), asc(nextOccurrence.id))
       .limit(limit + 1)
 
     const hasMore = rows.length > limit
