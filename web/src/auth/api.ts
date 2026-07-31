@@ -1,5 +1,5 @@
 import { API_URL } from '../config'
-import { clearToken, getToken } from './token'
+import { authHeaders, clearToken, getToken } from './token'
 
 export interface CurrentUser {
   id: string
@@ -44,7 +44,7 @@ export async function fetchCurrentUser(): Promise<CurrentUser | null> {
   if (!token) return null
 
   const response = await fetch(`${API_URL}/auth/me`, {
-    headers: { Authorization: `Bearer ${token}` },
+    headers: authHeaders(),
   })
   if (response.status === 401) {
     clearToken()
@@ -62,7 +62,7 @@ export async function logout(): Promise<void> {
   if (token) {
     await fetch(`${API_URL}/auth/logout`, {
       method: 'POST',
-      headers: { Authorization: `Bearer ${token}` },
+      headers: authHeaders(),
     }).catch(() => {})
   }
   clearToken()

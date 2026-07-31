@@ -11,6 +11,7 @@ import { EventDetailPage } from '../events/EventDetailPage'
 import { SourcesPage } from '../events/SourcesPage'
 import { CampsPage } from '../camps/CampsPage'
 import { FeedbackPage } from '../feedback/FeedbackPage'
+import { ShareButton } from '../sharing/ShareButton'
 
 export function App() {
   return (
@@ -43,6 +44,7 @@ export function App() {
               </IonTabButton>
             </IonTabBar>
           </IonTabs>
+          <ShareButton />
         </IonReactRouter>
       </AuthProvider>
     </IonApp>

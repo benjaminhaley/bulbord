@@ -1,5 +1,5 @@
 import { API_URL } from '../config'
-import { getToken } from '../auth/token'
+import { authHeaders } from '../auth/token'
 
 export interface FeedbackItem {
   id: string
@@ -31,12 +31,11 @@ export async function fetchFeedback(): Promise<FeedbackItem[]> {
 }
 
 async function authedPost(path: string, body: unknown): Promise<FeedbackItem> {
-  const token = getToken()
   const response = await fetch(`${API_URL}${path}`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...authHeaders(),
     },
     body: JSON.stringify(body),
   })

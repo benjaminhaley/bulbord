@@ -11,6 +11,7 @@ export async function buildApp() {
 
   await app.register(cors, {
     origin: (process.env.CORS_ORIGIN ?? '').split(',').filter(Boolean),
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
   })
 
   app.get('/health', async () => ({ ok: true }))

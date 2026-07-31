@@ -11,3 +11,8 @@ export function setToken(token: string): void {
 export function clearToken(): void {
   localStorage.removeItem(STORAGE_KEY)
 }
+
+export function authHeaders(): HeadersInit {
+  const token = getToken()
+  return token ? { Authorization: `Bearer ${token}` } : {}
+}

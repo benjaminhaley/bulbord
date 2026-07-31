@@ -14,6 +14,7 @@
     "@ionic/react": "^8.8.15",
     "@ionic/react-router": "^8.8.15",
     "ionicons": "^8.0.13",
+    "qrcode": "^1.5.4",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "react-router": "^5.3.4",
@@ -22,6 +23,7 @@
   },
   "devDependencies": {
     "@types/node": "^24.13.2",
+    "@types/qrcode": "^1.5.6",
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
     "@types/react-router": "^5.1.20",

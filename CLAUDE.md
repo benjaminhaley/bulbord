@@ -22,8 +22,8 @@ For product background, goals, and development path, see `readme.md`. For runnin
 - Still follows the recoverability rule: `deleted_at` soft-delete column present (no delete route built yet), and every POST writes an `events_log` entry (`feedback_created`).
 
 ## Sharing
-- App-level sharing: a persistent, always-visible share action for inviting someone to Campy itself, with a QR code as the primary mechanism — built for local/in-person sharing (shown at pickup, scanned phone-to-phone). This is the growth/invite path, not a way to point someone at a specific listing.
-- Listing-level sharing (sending a specific camp/event to another user) is a separate mechanism, scoped to people who already have accounts, not a public link or QR code. Not part of MVP — design the data model so it can be added later, but don't build it now.
+- One mechanism, not two: a persistent, always-visible share button (present on every page) opens a fullscreen modal with a QR code encoding whatever page the visitor is currently on — the app root, `/events`, or a specific event's detail page. Built for local/in-person sharing (shown at pickup, scanned phone-to-phone), so pointing at the current page (including a specific listing) is the intended behavior, not a gap. Generated client-side (`web/src/sharing/ShareButton.tsx`, `qrcode` package) — no third-party service ever sees the URL.
+- This supersedes an earlier draft that split "app-level" (invite-only, never a specific listing) from a separate not-yet-built "listing-level" share mechanism. Revisit only if a real need emerges for a share surface that must NOT reflect the current page (e.g. a remote/non-in-person invite link).
 
 ## Platform strategy
 - Build a standard responsive mobile-web app first. No native app development until the web product is proven.
@@ -93,8 +93,10 @@ For product background, goals, and development path, see `readme.md`. For runnin
 - Run the `/simplify` skill as a standard step before merging non-trivial work — a deliberate pass reviewing the changed code for reuse, redundancy, and unnecessary complexity, not an occasional nice-to-have.
 
 ## Status of these decisions
-Confirmed with Ben (2026-07-23): Capacitor for the native port, Ionic forced-Material design system, Sentry-as-exception for error tracking, Railway for hosting (agent API/MCP access as the deciding criterion), public-listings/private-PII data classification, pending-review queue with a generalizable approver role, soft-delete + audit-log + PITR recoverability model, Stripe-style API conventions, Rails-style DB naming, feature-based file organization, QR-code app-invite sharing (distinct from a not-yet-built account-scoped listing-sharing mechanism), and knip + `/simplify` as the anti-sprawl mechanism.
+Confirmed with Ben (2026-07-23): Capacitor for the native port, Ionic forced-Material design system, Sentry-as-exception for error tracking, Railway for hosting (agent API/MCP access as the deciding criterion), public-listings/private-PII data classification, pending-review queue with a generalizable approver role, soft-delete + audit-log + PITR recoverability model, Stripe-style API conventions, Rails-style DB naming, feature-based file organization, and knip + `/simplify` as the anti-sprawl mechanism.
 
 Confirmed with Ben (2026-07-29): production database changes (migrations, data management) don't require asking first — recoverability (soft-delete + audit log + PITR) is the safety mechanism, not a confirmation gate. This replaced an earlier confirm-first rule.
+
+Confirmed with Ben (2026-07-31): sharing is one QR mechanism that always reflects the current page, including a specific event's detail page — replacing the earlier app-invite-only / listing-level split described in the 2026-07-23 line above.
 
 Proposed by Claude, not yet explicitly confirmed: Fastify, Drizzle, Vitest/Playwright, `events_log` exact schema, coverage philosophy, docker-compose local dev setup, knip/ESLint exact config, the events/event_sources data model and ingestion-operation pattern above (including deferring the daily-job trigger mechanism and Facebook sourcing), and the auth implementation details above (users/auth_identities/sessions/user_roles schema, bearer-token-over-cookie choice, signed-state + one-time-exchange-code OAuth handshake). Treat these as the working default, but they're open to change — this file should stay current, not aspirational. When a decision here changes, update this file in the same commit as the change.

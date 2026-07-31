@@ -35,6 +35,24 @@ export const events = pgTable('events', {
   ...timestamps,
 })
 
+// One row per (user, event) ever starred, toggled via deletedAt rather than
+// inserted/deleted per star/unstar — keeps a single unique row per pair while
+// still following the soft-delete-only rule.
+export const eventStars = pgTable(
+  'event_stars',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id),
+    eventId: uuid('event_id')
+      .notNull()
+      .references(() => events.id),
+    ...timestamps,
+  },
+  (table) => [uniqueIndex('event_stars_user_event_idx').on(table.userId, table.eventId)],
+)
+
 export const eventsLog = pgTable('events_log', {
   id: uuid('id').primaryKey().defaultRandom(),
   actor: text('actor').notNull(),

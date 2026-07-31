@@ -40,3 +40,27 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+/* Positioning context for the persistent share button, so it anchors to the
+   phone-sized column (see #root above) instead of the full browser viewport
+   on wide desktop windows. */
+ion-app {
+  position: relative;
+}
+
+.share-fab {
+  position: absolute;
+  z-index: 1000;
+  right: 16px;
+  bottom: calc(56px + env(safe-area-inset-bottom, 0px) + 16px);
+  margin: 0;
+}
+
+.share-qr {
+  max-width: 100%;
+  width: 280px;
+  height: 280px;
+  margin: 24px auto;
+  border-radius: 8px;
+}
+

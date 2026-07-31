@@ -1,4 +1,5 @@
 import { API_URL } from '../config'
+import { authHeaders } from '../auth/token'
 
 export interface Event {
   id: string
@@ -9,6 +10,7 @@ export interface Event {
   all_day: boolean
   address: string | null
   source_url: string | null
+  starred: boolean
 }
 
 export interface EventSource {
@@ -33,7 +35,7 @@ interface EventSourcesResponse {
 }
 
 export async function fetchEvents(): Promise<Event[]> {
-  const response = await fetch(`${API_URL}/events`)
+  const response = await fetch(`${API_URL}/events`, { headers: authHeaders() })
   if (!response.ok) {
     throw new Error(`Failed to fetch events: ${response.status}`)
   }
@@ -42,12 +44,32 @@ export async function fetchEvents(): Promise<Event[]> {
 }
 
 export async function fetchEvent(id: string): Promise<Event> {
-  const response = await fetch(`${API_URL}/events/${id}`)
+  const response = await fetch(`${API_URL}/events/${id}`, { headers: authHeaders() })
   if (!response.ok) {
     throw new Error(`Failed to fetch event: ${response.status}`)
   }
   const body = (await response.json()) as EventResponse
   return body.data
+}
+
+export async function starEvent(id: string): Promise<void> {
+  const response = await fetch(`${API_URL}/events/${id}/star`, {
+    method: 'POST',
+    headers: authHeaders(),
+  })
+  if (!response.ok) {
+    throw new Error(`Failed to star event: ${response.status}`)
+  }
+}
+
+export async function unstarEvent(id: string): Promise<void> {
+  const response = await fetch(`${API_URL}/events/${id}/star`, {
+    method: 'DELETE',
+    headers: authHeaders(),
+  })
+  if (!response.ok) {
+    throw new Error(`Failed to unstar event: ${response.status}`)
+  }
 }
 
 export async function fetchEventSources(): Promise<EventSource[]> {
