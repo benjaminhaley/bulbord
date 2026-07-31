@@ -66,6 +66,20 @@ ion-app {
   gap: 12px;
 }
 
+/* Ionic's default chip margin doesn't line up with ion-title/ion-item's
+   16px start padding, so the filter row needs its own offset to match. */
+.filter-toolbar {
+  --padding-top: 0;
+  --padding-bottom: 8px;
+}
+
+.filter-row {
+  display: flex;
+  gap: 4px;
+  padding-inline-start: 12px;
+  padding-inline-end: 16px;
+}
+
 .share-qr {
   max-width: 100%;
   width: 280px;

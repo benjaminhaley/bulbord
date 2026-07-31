@@ -28,11 +28,14 @@ import { useStarToggle } from './useStarToggle'
 interface EventFilter {
   id: string
   label: string
+  icon?: string
   requiresAuth?: boolean
   matches: (event: Event) => boolean
 }
 
-const FILTERS: EventFilter[] = [{ id: 'starred', label: 'Starred', requiresAuth: true, matches: (e) => e.starred }]
+const FILTERS: EventFilter[] = [
+  { id: 'starred', label: 'Starred', icon: starOutline, requiresAuth: true, matches: (e) => e.starred },
+]
 
 function StarButton({ event, onToggled }: { event: Event; onToggled: (event: Event) => void }) {
   const { pending, toggleStar } = useStarToggle(onToggled)
@@ -94,17 +97,20 @@ export function EventsPage() {
           </IonButtons>
         </IonToolbar>
         {visibleFilters.length > 0 && (
-          <IonToolbar>
-            {visibleFilters.map((f) => (
-              <IonChip
-                key={f.id}
-                outline={!activeFilterIds.includes(f.id)}
-                color={activeFilterIds.includes(f.id) ? 'primary' : undefined}
-                onClick={() => toggleFilter(f.id)}
-              >
-                {f.label}
-              </IonChip>
-            ))}
+          <IonToolbar className="filter-toolbar">
+            <div className="filter-row">
+              {visibleFilters.map((f) => (
+                <IonChip
+                  key={f.id}
+                  outline={!activeFilterIds.includes(f.id)}
+                  color={activeFilterIds.includes(f.id) ? 'primary' : undefined}
+                  onClick={() => toggleFilter(f.id)}
+                >
+                  {f.icon && <IonIcon icon={f.icon} />}
+                  {f.label}
+                </IonChip>
+              ))}
+            </div>
           </IonToolbar>
         )}
       </IonHeader>
