@@ -15,6 +15,10 @@ export interface CandidateEvent {
   latitude?: string
   longitude?: string
   sourceUrl: string
+  // A directly-verified image URL to use instead of extracting one from
+  // sourceUrl — for sources extraction can't reach (e.g. a JS-rendered page)
+  // where a real image was found and hand-checked another way.
+  imageUrl?: string
   status: 'approved' | 'pending'
 }
 
@@ -28,7 +32,7 @@ export interface IngestOptions {
 export async function ingestEvents(candidates: CandidateEvent[], { sourceId, actor }: IngestOptions) {
   let inserted = 0
   let skipped = 0
-  const toEnrich: { id: string; sourceUrl: string; title: string }[] = []
+  const toEnrich: { id: string; sourceUrl: string; imageUrl?: string }[] = []
 
   for (const candidate of candidates) {
     const existing = await db
@@ -66,15 +70,15 @@ export async function ingestEvents(candidates: CandidateEvent[], { sourceId, act
       })
       .returning({ id: events.id })
     inserted++
-    toEnrich.push({ id: row.id, sourceUrl: candidate.sourceUrl, title: candidate.title })
+    toEnrich.push({ id: row.id, sourceUrl: candidate.sourceUrl, imageUrl: candidate.imageUrl })
   }
 
-  const { sourced, placeholder } = await enrichEventImages(toEnrich)
+  const { sourced, none } = await enrichEventImages(toEnrich)
 
   await db.insert(eventsLog).values({
     actor,
     action: 'events_ingested',
-    metadata: { candidateCount: candidates.length, inserted, skipped, sourceId, imagesSourced: sourced, imagesPlaceholder: placeholder },
+    metadata: { candidateCount: candidates.length, inserted, skipped, sourceId, imagesSourced: sourced, imagesMissing: none },
   })
 
   return { inserted, skipped }

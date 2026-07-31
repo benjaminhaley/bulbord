@@ -20,7 +20,7 @@ async function main() {
     .returning({ id: events.id, title: events.title })
 
   for (const event of updated) {
-    await enrichEventImage(event.id, NEW_URL, event.title)
+    await enrichEventImage(event.id, { sourceUrl: NEW_URL })
   }
 
   await db.insert(eventsLog).values({

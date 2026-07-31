@@ -82,7 +82,7 @@ function imageFromContent($: cheerio.CheerioAPI, root: cheerio.Cheerio<any>, pag
 // Last-resort fallback for pages with no content image of their own (e.g. a
 // plain meeting-notice post): the site's own header logo. Unlike
 // imageFromContent, this deliberately does NOT skip logo-looking images —
-// the org's branding is a more meaningful image than a generated placeholder.
+// the org's branding is a more meaningful image than no image at all.
 function siteLogo($: cheerio.CheerioAPI, pageUrl: string): string | null {
   const header = $('header').first()
   const scope: cheerio.Cheerio<any> = header.length ? header : $.root()
