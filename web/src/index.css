@@ -41,13 +41,17 @@ body {
   text-overflow: ellipsis;
 }
 
-/* Positioning context for the persistent share button, so it anchors to the
-   phone-sized column (see #root above) instead of the full browser viewport
-   on wide desktop windows. */
-ion-app {
-  position: relative;
-}
-
+/* .share-fab (position: absolute below) anchors to #root's own
+   `position: relative` above — the phone-sized column, not the full browser
+   viewport on wide desktop windows. Do NOT also set `position: relative` on
+   ion-app: Ionic's ion-tabs is `position: absolute; inset: 0` internally and
+   relies on ion-app being unpositioned so it's anchored to the true
+   viewport (which iOS Safari keeps in sync as its toolbar shows/hides).
+   Giving ion-app its own position turns it into the containing block
+   instead, and ion-app's height (chained through 100% from html/body/#root)
+   doesn't reliably track Safari's dynamic toolbar the way the real viewport
+   does — this caused the tab bar to intermittently render mispositioned and
+   backgroundless (2026-07-31 feedback). */
 .share-fab {
   position: absolute;
   z-index: 1000;
