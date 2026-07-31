@@ -79,11 +79,22 @@ function imageFromContent($: cheerio.CheerioAPI, root: cheerio.Cheerio<any>, pag
   return best?.url ?? firstCandidate
 }
 
+// Last-resort fallback for pages with no content image of their own (e.g. a
+// plain meeting-notice post): the site's own header logo. Unlike
+// imageFromContent, this deliberately does NOT skip logo-looking images —
+// the org's branding is a more meaningful image than a generated placeholder.
+function siteLogo($: cheerio.CheerioAPI, pageUrl: string): string | null {
+  const header = $('header').first()
+  const scope: cheerio.Cheerio<any> = header.length ? header : $.root()
+  const src = scope.find('img').first().attr('src')
+  return src ? resolveUrl(src, pageUrl) : null
+}
+
 // Best-effort, in priority order: og:image/twitter:image meta tags, a
 // schema.org JSON-LD "image", a WordPress featured image (the near-universal
-// `wp-post-image` class), then the best plain <img> in the page content.
-// Returns null (never throws) on any failure — this is opportunistic
-// ingestion-time enrichment, not a guaranteed lookup.
+// `wp-post-image` class), the best plain <img> in the page content, then the
+// site's own header logo. Returns null (never throws) on any failure — this
+// is opportunistic ingestion-time enrichment, not a guaranteed lookup.
 export async function extractPageImageUrl(pageUrl: string): Promise<string | null> {
   const response = await fetchWithTimeout(pageUrl, FETCH_TIMEOUT_MS)
   if (!response || !response.ok) return null
@@ -107,7 +118,10 @@ export async function extractPageImageUrl(pageUrl: string): Promise<string | nul
     const featuredImage = root.find('img.wp-post-image').first().attr('src')
     if (featuredImage) return resolveUrl(featuredImage, pageUrl)
 
-    return imageFromContent($, root, pageUrl)
+    const contentImage = imageFromContent($, root, pageUrl)
+    if (contentImage) return contentImage
+
+    return siteLogo($, pageUrl)
   } catch {
     return null
   }
