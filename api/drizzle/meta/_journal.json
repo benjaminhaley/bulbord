@@ -57,6 +57,13 @@
       "when": 1785508383555,
       "tag": "0007_clean_snowbird",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1785517300742,
+      "tag": "0008_rare_quasimodo",
+      "breakpoints": true
     }
   ]
 }

@@ -25,6 +25,11 @@ export const events = pgTable('events', {
   startTime: time('start_time'), // null = no specific time
   allDay: boolean('all_day').notNull().default(false),
   address: text('address'),
+  // A human-friendly place name ("Merlo Library") shown in place of the raw
+  // address on the events list; opportunistically populated during sourcing
+  // (JSON-LD location.name, or filled in by hand), same as latitude/longitude
+  // above — not a live lookup. Falls back to the raw address when absent.
+  locationName: text('location_name'),
   latitude: numeric('latitude', { precision: 9, scale: 6 }),
   longitude: numeric('longitude', { precision: 9, scale: 6 }),
   sourceUrl: text('source_url'),

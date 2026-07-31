@@ -44,15 +44,15 @@ function FeedbackItemBody({
   return (
     <IonLabel className="ion-text-wrap">
       <h2>{item.title}</h2>
-      {item.description && <p>{item.description}</p>}
       {item.thumbnail_url && item.image_url && (
         <img
           src={`${API_URL}${item.thumbnail_url}`}
           alt=""
           onClick={() => onImageClick(item.image_url!)}
-          style={{ maxWidth: 120, maxHeight: 120, borderRadius: 8, marginTop: 4, cursor: 'pointer' }}
+          style={{ width: '100%', maxHeight: 240, objectFit: 'cover', borderRadius: 8, margin: '8px 0', cursor: 'pointer' }}
         />
       )}
+      {item.description && <p>{item.description}</p>}
       {extra}
       <IonNote>
         {item.author_name ? `${item.author_name} · ` : ''}

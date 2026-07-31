@@ -21,6 +21,7 @@ function serializeEvent(e: typeof events.$inferSelect, starred: boolean) {
     start_time: e.startTime,
     all_day: e.allDay,
     address: e.address,
+    location_name: e.locationName,
     latitude: e.latitude,
     longitude: e.longitude,
     source_url: e.sourceUrl,

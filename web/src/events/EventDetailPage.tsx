@@ -74,6 +74,7 @@ export function EventDetailPage() {
             )}
             <h1>{event.title}</h1>
             <p>{formatWhen(event)}</p>
+            {event.location_name && <p>{event.location_name}</p>}
             {event.address && <p>{event.address}</p>}
             {event.description && <p>{event.description}</p>}
             {event.source_url && (

@@ -9,6 +9,7 @@ export interface Event {
   start_time: string | null
   all_day: boolean
   address: string | null
+  location_name: string | null
   source_url: string | null
   image_url: string | null
   thumbnail_url: string | null

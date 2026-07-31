@@ -11,6 +11,7 @@ export interface CandidateEvent {
   startTime?: string // HH:MM, omit for all_day / no specific time
   allDay: boolean
   address?: string
+  locationName?: string
   latitude?: string
   longitude?: string
   sourceUrl: string
@@ -56,6 +57,7 @@ export async function ingestEvents(candidates: CandidateEvent[], { sourceId, act
         startTime: candidate.startTime,
         allDay: candidate.allDay,
         address: candidate.address,
+        locationName: candidate.locationName,
         latitude: candidate.latitude,
         longitude: candidate.longitude,
         sourceUrl: candidate.sourceUrl,

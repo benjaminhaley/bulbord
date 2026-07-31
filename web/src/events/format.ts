@@ -16,6 +16,12 @@ export function formatWhen(event: Event): string {
   return `${dateLabel} · ${timeLabel}`
 }
 
+// Prefer a human-friendly place name over the raw address in list contexts;
+// the full address is still shown on the event detail page.
+export function locationLabel(event: Event): string | null {
+  return event.location_name ?? event.address
+}
+
 export function teaser(description: string | null, maxLength = 90): string | null {
   if (!description) return null
   if (description.length <= maxLength) return description

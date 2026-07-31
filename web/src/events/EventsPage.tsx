@@ -21,7 +21,7 @@ import { AccountButton } from '../auth/AccountButton'
 import { useAuth } from '../auth/AuthContext'
 import { API_URL } from '../config'
 import { fetchEvents, type Event } from './api'
-import { formatWhen, teaser } from './format'
+import { formatWhen, locationLabel, teaser } from './format'
 import { useStarToggle } from './useStarToggle'
 
 // Filters are declarative so new ones (date range, distance, category, …)
@@ -151,7 +151,7 @@ export function EventsPage() {
                 <IonLabel>
                   <h2>{event.title}</h2>
                   <p>{formatWhen(event)}</p>
-                  {event.address && <IonNote>{event.address}</IonNote>}
+                  {locationLabel(event) && <IonNote>{locationLabel(event)}</IonNote>}
                   {teaser(event.description) && <p className="teaser">{teaser(event.description)}</p>}
                 </IonLabel>
                 {user && <StarButton event={event} onToggled={updateEvent} />}
