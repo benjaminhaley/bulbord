@@ -29,6 +29,8 @@ export const events = pgTable('events', {
   longitude: numeric('longitude', { precision: 9, scale: 6 }),
   sourceUrl: text('source_url'),
   sourceId: uuid('source_id').references(() => eventSources.id),
+  imageUrl: text('image_url'),
+  thumbnailUrl: text('thumbnail_url'),
   status: text('status').notNull().default('pending'), // 'pending' | 'approved' | 'rejected'
   submittedByUserId: uuid('submitted_by_user_id'),
   approvedByUserId: uuid('approved_by_user_id'),
@@ -118,6 +120,8 @@ export const feedback = pgTable('feedback', {
   title: text('title').notNull(),
   description: text('description'),
   createdByUserId: uuid('created_by_user_id').references(() => users.id),
+  imageUrl: text('image_url'),
+  thumbnailUrl: text('thumbnail_url'),
   completedAt: timestamp('completed_at', { withTimezone: true }),
   completionNote: text('completion_note'),
   completedByUserId: uuid('completed_by_user_id').references(() => users.id),

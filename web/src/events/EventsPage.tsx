@@ -19,6 +19,7 @@ import { useEffect, useMemo, useState } from 'react'
 
 import { AccountButton } from '../auth/AccountButton'
 import { useAuth } from '../auth/AuthContext'
+import { API_URL } from '../config'
 import { fetchEvents, type Event } from './api'
 import { formatWhen, teaser } from './format'
 import { useStarToggle } from './useStarToggle'
@@ -139,6 +140,14 @@ export function EventsPage() {
           <IonList>
             {filteredEvents.map((event) => (
               <IonItem key={event.id} routerLink={`/events/${event.id}`}>
+                {event.thumbnail_url && (
+                  <img
+                    src={`${API_URL}${event.thumbnail_url}`}
+                    alt=""
+                    slot="start"
+                    style={{ width: 56, height: 56, objectFit: 'cover', borderRadius: 8 }}
+                  />
+                )}
                 <IonLabel>
                   <h2>{event.title}</h2>
                   <p>{formatWhen(event)}</p>

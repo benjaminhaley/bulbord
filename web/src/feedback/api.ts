@@ -7,6 +7,8 @@ export interface FeedbackItem {
   description: string | null
   created_at: string
   author_name: string | null
+  image_url: string | null
+  thumbnail_url: string | null
   completed_at: string | null
   completion_note: string | null
 }
@@ -46,8 +48,17 @@ async function authedPost(path: string, body: unknown): Promise<FeedbackItem> {
   return responseBody.data
 }
 
-export function createFeedback(title: string, description: string): Promise<FeedbackItem> {
-  return authedPost('/feedback', { title, description })
+export function createFeedback(
+  title: string,
+  description: string,
+  image?: { image_url: string; thumbnail_url: string },
+): Promise<FeedbackItem> {
+  return authedPost('/feedback', {
+    title,
+    description,
+    image_url: image?.image_url,
+    thumbnail_url: image?.thumbnail_url,
+  })
 }
 
 export function completeFeedback(id: string, note: string): Promise<FeedbackItem> {

@@ -8,7 +8,7 @@ import { requireAuth, requireRole } from '../auth/plugin.js'
 function serializeFeedback(
   f: Pick<
     typeof feedback.$inferSelect,
-    'id' | 'title' | 'description' | 'createdAt' | 'completedAt' | 'completionNote'
+    'id' | 'title' | 'description' | 'createdAt' | 'completedAt' | 'completionNote' | 'imageUrl' | 'thumbnailUrl'
   >,
   authorName: string | null,
 ) {
@@ -18,6 +18,8 @@ function serializeFeedback(
     description: f.description,
     created_at: f.createdAt,
     author_name: authorName,
+    image_url: f.imageUrl,
+    thumbnail_url: f.thumbnailUrl,
     completed_at: f.completedAt,
     completion_note: f.completionNote,
   }
@@ -33,6 +35,8 @@ export async function feedbackRoutes(app: FastifyInstance) {
         createdAt: feedback.createdAt,
         completedAt: feedback.completedAt,
         completionNote: feedback.completionNote,
+        imageUrl: feedback.imageUrl,
+        thumbnailUrl: feedback.thumbnailUrl,
         authorName: users.name,
       })
       .from(feedback)
@@ -48,7 +52,7 @@ export async function feedbackRoutes(app: FastifyInstance) {
   })
 
   app.post('/feedback', { preHandler: requireAuth }, async (request, reply) => {
-    const body = request.body as { title?: string; description?: string }
+    const body = request.body as { title?: string; description?: string; image_url?: string; thumbnail_url?: string }
     const title = body.title?.trim()
     if (!title) {
       return reply.code(400).send({ error: { message: 'title is required' } })
@@ -60,6 +64,8 @@ export async function feedbackRoutes(app: FastifyInstance) {
       .values({
         title,
         description: body.description?.trim() || null,
+        imageUrl: body.image_url || null,
+        thumbnailUrl: body.thumbnail_url || null,
         createdByUserId: userId,
       })
       .returning()

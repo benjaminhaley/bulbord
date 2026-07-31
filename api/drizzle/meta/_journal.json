@@ -50,6 +50,13 @@
       "when": 1785504126750,
       "tag": "0006_yummy_dragon_lord",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1785508383555,
+      "tag": "0007_clean_snowbird",
+      "breakpoints": true
     }
   ]
 }

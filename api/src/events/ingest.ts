@@ -2,6 +2,7 @@ import { and, eq } from 'drizzle-orm'
 
 import { db } from '../db/client.js'
 import { events, eventsLog } from '../db/schema.js'
+import { enrichEventImages } from './image-enrichment.js'
 
 export interface CandidateEvent {
   title: string
@@ -26,6 +27,7 @@ export interface IngestOptions {
 export async function ingestEvents(candidates: CandidateEvent[], { sourceId, actor }: IngestOptions) {
   let inserted = 0
   let skipped = 0
+  const toEnrich: { id: string; sourceUrl: string }[] = []
 
   for (const candidate of candidates) {
     const existing = await db
@@ -45,26 +47,32 @@ export async function ingestEvents(candidates: CandidateEvent[], { sourceId, act
       continue
     }
 
-    await db.insert(events).values({
-      title: candidate.title,
-      description: candidate.description,
-      startDate: candidate.startDate,
-      startTime: candidate.startTime,
-      allDay: candidate.allDay,
-      address: candidate.address,
-      latitude: candidate.latitude,
-      longitude: candidate.longitude,
-      sourceUrl: candidate.sourceUrl,
-      sourceId,
-      status: candidate.status,
-    })
+    const [row] = await db
+      .insert(events)
+      .values({
+        title: candidate.title,
+        description: candidate.description,
+        startDate: candidate.startDate,
+        startTime: candidate.startTime,
+        allDay: candidate.allDay,
+        address: candidate.address,
+        latitude: candidate.latitude,
+        longitude: candidate.longitude,
+        sourceUrl: candidate.sourceUrl,
+        sourceId,
+        status: candidate.status,
+      })
+      .returning({ id: events.id })
     inserted++
+    toEnrich.push({ id: row.id, sourceUrl: candidate.sourceUrl })
   }
+
+  const imagesEnriched = await enrichEventImages(toEnrich)
 
   await db.insert(eventsLog).values({
     actor,
     action: 'events_ingested',
-    metadata: { candidateCount: candidates.length, inserted, skipped, sourceId },
+    metadata: { candidateCount: candidates.length, inserted, skipped, sourceId, imagesEnriched },
   })
 
   return { inserted, skipped }

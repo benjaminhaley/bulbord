@@ -15,6 +15,7 @@ import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 
 import { useAuth } from '../auth/AuthContext'
+import { API_URL } from '../config'
 import { fetchEvent, type Event } from './api'
 import { formatWhen } from './format'
 import { useStarToggle } from './useStarToggle'
@@ -64,6 +65,13 @@ export function EventDetailPage() {
         )}
         {event && (
           <>
+            {event.image_url && (
+              <img
+                src={`${API_URL}${event.image_url}`}
+                alt=""
+                style={{ width: '100%', borderRadius: 12, marginBottom: 16 }}
+              />
+            )}
             <h1>{event.title}</h1>
             <p>{formatWhen(event)}</p>
             {event.address && <p>{event.address}</p>}

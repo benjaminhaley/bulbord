@@ -24,6 +24,8 @@ function serializeEvent(e: typeof events.$inferSelect, starred: boolean) {
     latitude: e.latitude,
     longitude: e.longitude,
     source_url: e.sourceUrl,
+    image_url: e.imageUrl,
+    thumbnail_url: e.thumbnailUrl,
     starred,
   }
 }

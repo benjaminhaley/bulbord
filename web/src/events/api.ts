@@ -10,6 +10,8 @@ export interface Event {
   all_day: boolean
   address: string | null
   source_url: string | null
+  image_url: string | null
+  thumbnail_url: string | null
   starred: boolean
 }
 
