@@ -1,12 +1,15 @@
-import { desc, eq, isNull } from 'drizzle-orm'
+import { and, desc, eq, isNull } from 'drizzle-orm'
 import type { FastifyInstance } from 'fastify'
 
 import { db } from '../db/client.js'
 import { eventsLog, feedback, users } from '../db/schema.js'
-import { requireAuth } from '../auth/plugin.js'
+import { requireAuth, requireRole } from '../auth/plugin.js'
 
 function serializeFeedback(
-  f: Pick<typeof feedback.$inferSelect, 'id' | 'title' | 'description' | 'createdAt'>,
+  f: Pick<
+    typeof feedback.$inferSelect,
+    'id' | 'title' | 'description' | 'createdAt' | 'completedAt' | 'completionNote'
+  >,
   authorName: string | null,
 ) {
   return {
@@ -15,6 +18,8 @@ function serializeFeedback(
     description: f.description,
     created_at: f.createdAt,
     author_name: authorName,
+    completed_at: f.completedAt,
+    completion_note: f.completionNote,
   }
 }
 
@@ -26,6 +31,8 @@ export async function feedbackRoutes(app: FastifyInstance) {
         title: feedback.title,
         description: feedback.description,
         createdAt: feedback.createdAt,
+        completedAt: feedback.completedAt,
+        completionNote: feedback.completionNote,
         authorName: users.name,
       })
       .from(feedback)
@@ -64,5 +71,37 @@ export async function feedbackRoutes(app: FastifyInstance) {
     })
 
     return reply.code(201).send({ data: serializeFeedback(created, request.currentUser!.name) })
+  })
+
+  app.post('/feedback/:id/complete', { preHandler: requireRole('admin') }, async (request, reply) => {
+    const { id } = request.params as { id: string }
+    const body = request.body as { note?: string }
+
+    const [updated] = await db
+      .update(feedback)
+      .set({
+        completedAt: new Date(),
+        completionNote: body.note?.trim() || null,
+        completedByUserId: request.currentUser!.id,
+        updatedAt: new Date(),
+      })
+      .where(and(eq(feedback.id, id), isNull(feedback.deletedAt)))
+      .returning()
+
+    if (!updated) {
+      return reply.code(404).send({ error: { message: 'Feedback not found' } })
+    }
+
+    await db.insert(eventsLog).values({
+      actor: request.currentUser!.id,
+      action: 'feedback_completed',
+      metadata: { feedbackId: id },
+    })
+
+    const [authorRow] = updated.createdByUserId
+      ? await db.select({ name: users.name }).from(users).where(eq(users.id, updated.createdByUserId)).limit(1)
+      : []
+
+    return reply.send({ data: serializeFeedback(updated, authorRow?.name ?? null) })
   })
 }

@@ -7,6 +7,8 @@ export interface FeedbackItem {
   description: string | null
   created_at: string
   author_name: string | null
+  completed_at: string | null
+  completion_note: string | null
 }
 
 interface FeedbackResponse {
@@ -28,19 +30,27 @@ export async function fetchFeedback(): Promise<FeedbackItem[]> {
   return body.data
 }
 
-export async function createFeedback(title: string, description: string): Promise<FeedbackItem> {
+async function authedPost(path: string, body: unknown): Promise<FeedbackItem> {
   const token = getToken()
-  const response = await fetch(`${API_URL}/feedback`, {
+  const response = await fetch(`${API_URL}${path}`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
-    body: JSON.stringify({ title, description }),
+    body: JSON.stringify(body),
   })
   if (!response.ok) {
-    throw new Error(`Failed to post feedback: ${response.status}`)
+    throw new Error(`Request to ${path} failed: ${response.status}`)
   }
-  const body = (await response.json()) as FeedbackItemResponse
-  return body.data
+  const responseBody = (await response.json()) as FeedbackItemResponse
+  return responseBody.data
+}
+
+export function createFeedback(title: string, description: string): Promise<FeedbackItem> {
+  return authedPost('/feedback', { title, description })
+}
+
+export function completeFeedback(id: string, note: string): Promise<FeedbackItem> {
+  return authedPost(`/feedback/${id}/complete`, { note })
 }

@@ -100,6 +100,9 @@ export const feedback = pgTable('feedback', {
   title: text('title').notNull(),
   description: text('description'),
   createdByUserId: uuid('created_by_user_id').references(() => users.id),
+  completedAt: timestamp('completed_at', { withTimezone: true }),
+  completionNote: text('completion_note'),
+  completedByUserId: uuid('completed_by_user_id').references(() => users.id),
   ...timestamps,
 })
 

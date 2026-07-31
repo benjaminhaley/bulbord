@@ -1,4 +1,6 @@
 import {
+  IonAccordion,
+  IonAccordionGroup,
   IonButton,
   IonButtons,
   IonContent,
@@ -16,15 +18,29 @@ import {
   IonTitle,
   IonToolbar,
 } from '@ionic/react'
-import { addOutline, closeOutline } from 'ionicons/icons'
-import { useEffect, useState } from 'react'
+import { addOutline, checkmarkOutline, closeOutline } from 'ionicons/icons'
+import { type ReactNode, useEffect, useState } from 'react'
 
 import { AccountButton } from '../auth/AccountButton'
 import { useAuth } from '../auth/AuthContext'
-import { createFeedback, fetchFeedback, type FeedbackItem } from './api'
+import { completeFeedback, createFeedback, fetchFeedback, type FeedbackItem } from './api'
 
 function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
+}
+
+function FeedbackItemBody({ item, extra }: { item: FeedbackItem; extra?: ReactNode }) {
+  return (
+    <IonLabel className="ion-text-wrap">
+      <h2>{item.title}</h2>
+      {item.description && <p>{item.description}</p>}
+      {extra}
+      <IonNote>
+        {item.author_name ? `${item.author_name} · ` : ''}
+        {formatDate(item.created_at)}
+      </IonNote>
+    </IonLabel>
+  )
 }
 
 function NewFeedbackForm({ onCreated, onCancel }: { onCreated: (item: FeedbackItem) => void; onCancel: () => void }) {
@@ -76,8 +92,72 @@ function NewFeedbackForm({ onCreated, onCancel }: { onCreated: (item: FeedbackIt
   )
 }
 
+function MarkDoneForm({ onConfirm, onCancel }: { onConfirm: (note: string) => void; onCancel: () => void }) {
+  const [note, setNote] = useState('')
+
+  return (
+    <IonItem lines="none">
+      <IonLabel className="ion-text-wrap">
+        <IonTextarea
+          placeholder="Optional note"
+          value={note}
+          onIonInput={(e) => setNote(e.detail.value ?? '')}
+          autoGrow
+          autofocus
+        />
+        <IonButton fill="outline" size="small" onClick={() => onConfirm(note.trim())}>
+          Mark done
+        </IonButton>
+        <IonButton fill="clear" color="medium" size="small" onClick={onCancel}>
+          Cancel
+        </IonButton>
+      </IonLabel>
+    </IonItem>
+  )
+}
+
+function FeedbackListItem({
+  item,
+  isAdmin,
+  onCompleted,
+}: {
+  item: FeedbackItem
+  isAdmin: boolean
+  onCompleted: (item: FeedbackItem) => void
+}) {
+  const [markingDone, setMarkingDone] = useState(false)
+
+  async function confirmDone(note: string) {
+    const updated = await completeFeedback(item.id, note)
+    onCompleted(updated)
+    setMarkingDone(false)
+  }
+
+  return (
+    <>
+      <IonItem lines={markingDone ? 'none' : 'full'}>
+        <FeedbackItemBody item={item} />
+        {isAdmin && !markingDone && (
+          <IonButton fill="clear" slot="end" onClick={() => setMarkingDone(true)}>
+            <IonIcon slot="icon-only" icon={checkmarkOutline} />
+          </IonButton>
+        )}
+      </IonItem>
+      {markingDone && <MarkDoneForm onConfirm={confirmDone} onCancel={() => setMarkingDone(false)} />}
+    </>
+  )
+}
+
+function ClosedFeedbackItem({ item }: { item: FeedbackItem }) {
+  return (
+    <IonItem lines="full">
+      <FeedbackItemBody item={item} extra={item.completion_note && <p>{item.completion_note}</p>} />
+    </IonItem>
+  )
+}
+
 export function FeedbackPage() {
-  const { user } = useAuth()
+  const { user, isAdmin } = useAuth()
   const [items, setItems] = useState<FeedbackItem[] | null>(null)
   const [error, setError] = useState(false)
   const [showForm, setShowForm] = useState(false)
@@ -87,6 +167,9 @@ export function FeedbackPage() {
       .then(setItems)
       .catch(() => setError(true))
   }, [])
+
+  const openItems = items?.filter((item) => !item.completed_at) ?? []
+  const closedItems = items?.filter((item) => item.completed_at) ?? []
 
   return (
     <IonPage>
@@ -130,20 +213,42 @@ export function FeedbackPage() {
           </div>
         )}
         {items !== null && items.length > 0 && (
-          <IonList>
-            {items.map((item) => (
-              <IonItem key={item.id} lines="full">
-                <IonLabel className="ion-text-wrap">
-                  <h2>{item.title}</h2>
-                  {item.description && <p>{item.description}</p>}
-                  <IonNote>
-                    {item.author_name ? `${item.author_name} · ` : ''}
-                    {formatDate(item.created_at)}
-                  </IonNote>
-                </IonLabel>
-              </IonItem>
-            ))}
-          </IonList>
+          <>
+            <IonList>
+              {openItems.map((item) => (
+                <FeedbackListItem
+                  key={item.id}
+                  item={item}
+                  isAdmin={isAdmin}
+                  onCompleted={(updated) =>
+                    setItems((prev) => prev?.map((i) => (i.id === updated.id ? updated : i)) ?? null)
+                  }
+                />
+              ))}
+              {openItems.length === 0 && (
+                <IonItem lines="full">
+                  <IonLabel className="ion-text-wrap">
+                    <p>No open feedback</p>
+                  </IonLabel>
+                </IonItem>
+              )}
+            </IonList>
+
+            {closedItems.length > 0 && (
+              <IonAccordionGroup>
+                <IonAccordion value="closed">
+                  <IonItem slot="header">
+                    <IonLabel>Closed ({closedItems.length})</IonLabel>
+                  </IonItem>
+                  <IonList slot="content">
+                    {closedItems.map((item) => (
+                      <ClosedFeedbackItem key={item.id} item={item} />
+                    ))}
+                  </IonList>
+                </IonAccordion>
+              </IonAccordionGroup>
+            )}
+          </>
         )}
       </IonContent>
     </IonPage>
