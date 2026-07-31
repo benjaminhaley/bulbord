@@ -29,7 +29,7 @@ export function App() {
               <Route exact path="/auth/callback" component={AuthCallbackPage} />
               <Redirect exact path="/" to="/events" />
             </IonRouterOutlet>
-            <IonTabBar slot="bottom">
+            <IonTabBar slot="bottom" id="main-tab-bar">
               <IonTabButton tab="events" href="/events">
                 <IonIcon icon={calendarOutline} />
                 <IonLabel>Events</IonLabel>

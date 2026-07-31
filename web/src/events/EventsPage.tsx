@@ -16,6 +16,7 @@ import {
   IonSegmentButton,
   IonSpinner,
   IonTitle,
+  IonToast,
   IonToolbar,
 } from '@ionic/react'
 import { eyeOffOutline, listOutline, star } from 'ionicons/icons'
@@ -33,7 +34,20 @@ import { useEventInterest } from './useEventInterest'
 // AND-composable multi-select filters (date range, distance, category, …)
 // that may get added here later — keeping the two mechanisms separate avoids
 // faking single-select behavior out of a multi-select filter list.
-type ViewMode = 'all' | 'starred' | 'dismissed'
+type ViewMode = 'new' | 'starred' | 'dismissed'
+
+// What to show in the undo toast after a swipe, and what to restore if the
+// user taps Undo — the status the event had immediately before the swipe.
+interface SwipeToast {
+  event: Event
+  previousStatus: InterestStatus | null
+  newStatus: InterestStatus
+}
+
+const TOAST_MESSAGES: Record<InterestStatus, string> = {
+  interested: 'Marked interested',
+  dismissed: 'Dismissed',
+}
 
 function closeSliding(target: EventTarget | null) {
   const sliding = (target as HTMLElement | null)?.closest('ion-item-sliding') as HTMLIonItemSlidingElement | null
@@ -44,8 +58,9 @@ export function EventsPage() {
   const { user } = useAuth()
   const [events, setEvents] = useState<Event[] | null>(null)
   const [error, setError] = useState(false)
-  const [viewMode, setViewMode] = useState<ViewMode>('all')
-  const { setInterest } = useEventInterest(updateEvent)
+  const [viewMode, setViewMode] = useState<ViewMode>('new')
+  const [swipeToast, setSwipeToast] = useState<SwipeToast | null>(null)
+  const { setInterest, clearInterest } = useEventInterest(updateEvent)
 
   useEffect(() => {
     fetchEvents()
@@ -57,7 +72,7 @@ export function EventsPage() {
     if (!events) return []
     if (viewMode === 'starred') return events.filter((e) => e.interest_status === 'interested')
     if (viewMode === 'dismissed') return events.filter((e) => e.interest_status === 'dismissed')
-    return events.filter((e) => e.interest_status !== 'dismissed')
+    return events.filter((e) => e.interest_status === null)
   }, [events, viewMode])
 
   function updateEvent(updated: Event) {
@@ -65,8 +80,19 @@ export function EventsPage() {
   }
 
   function handleSwipe(e: { target: EventTarget | null }, event: Event, status: InterestStatus) {
+    setSwipeToast({ event, previousStatus: event.interest_status, newStatus: status })
     setInterest(event, status)
     closeSliding(e.target)
+  }
+
+  function undoSwipe() {
+    if (!swipeToast) return
+    const { event, previousStatus } = swipeToast
+    if (previousStatus === null) {
+      clearInterest(event)
+    } else {
+      setInterest(event, previousStatus)
+    }
   }
 
   return (
@@ -84,8 +110,8 @@ export function EventsPage() {
         {user && (
           <IonToolbar>
             <IonSegment value={viewMode} onIonChange={(e) => setViewMode(e.detail.value as ViewMode)}>
-              <IonSegmentButton value="all">
-                <IonLabel>All</IonLabel>
+              <IonSegmentButton value="new">
+                <IonLabel>New</IonLabel>
               </IonSegmentButton>
               <IonSegmentButton value="starred">
                 <IonLabel>Starred</IonLabel>
@@ -144,7 +170,6 @@ export function EventsPage() {
                     {locationLabel(event) && <IonNote>{locationLabel(event)}</IonNote>}
                     {teaser(event.description) && <p className="teaser">{teaser(event.description)}</p>}
                   </IonLabel>
-                  {event.interest_status === 'interested' && <IonIcon slot="end" icon={star} color="warning" />}
                 </IonItem>
                 {user && (
                   <IonItemOptions side="end" onIonSwipe={(e) => handleSwipe(e, event, 'dismissed')}>
@@ -158,6 +183,15 @@ export function EventsPage() {
           </IonList>
         )}
       </IonContent>
+      <IonToast
+        isOpen={!!swipeToast}
+        message={swipeToast ? TOAST_MESSAGES[swipeToast.newStatus] : ''}
+        duration={3000}
+        position="bottom"
+        positionAnchor="main-tab-bar"
+        buttons={[{ text: 'Undo', handler: undoSwipe }]}
+        onDidDismiss={() => setSwipeToast(null)}
+      />
     </IonPage>
   )
 }
