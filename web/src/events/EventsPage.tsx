@@ -27,6 +27,7 @@ import { useAuth } from '../auth/AuthContext'
 import { API_URL } from '../config'
 import { fetchEvents, type Event, type InterestStatus } from './api'
 import { formatWhen, locationLabel, teaser } from './format'
+import { InterestedBadge } from './InterestedBadge'
 import { useEventInterest } from './useEventInterest'
 
 // 'Starred' and 'Dismissed' are mutually exclusive views over the same
@@ -170,6 +171,9 @@ export function EventsPage() {
                       <p>{formatWhen(event)}</p>
                       {location && <IonNote>{location}</IonNote>}
                       {description && <p className="teaser">{description}</p>}
+                      {event.interested_count > 0 && (
+                        <InterestedBadge eventId={event.id} count={event.interested_count} />
+                      )}
                     </IonLabel>
                   </IonItem>
                   <IonItemOptions side="end" onIonSwipe={(e) => handleSwipe(e, event, 'dismissed')}>

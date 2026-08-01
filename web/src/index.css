@@ -53,6 +53,11 @@ ion-label p.teaser {
   text-overflow: ellipsis;
 }
 
+.interested-badge {
+  display: block;
+  cursor: pointer;
+}
+
 /* .share-fab (position: absolute below) anchors to #root's own
    `position: relative` above — the phone-sized column, not the full browser
    viewport on wide desktop windows.
