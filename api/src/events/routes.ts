@@ -169,7 +169,9 @@ export async function eventsRoutes(app: FastifyInstance) {
         .from(events)
         .where(sourceConditions)
         .orderBy(desc(events.startDate)),
-      db.select({ lastEventAddedAt: sql<Date | null>`max(${events.createdAt})` }).from(events).where(sourceConditions),
+      // The postgres.js driver returns a raw, untyped `sql` aggregate as a
+      // string rather than a Date, unlike drizzle-mapped table columns.
+      db.select({ lastEventAddedAt: sql<string | null>`max(${events.createdAt})` }).from(events).where(sourceConditions),
     ])
 
     if (!source) {
@@ -186,7 +188,7 @@ export async function eventsRoutes(app: FastifyInstance) {
         is_active: source.isActive,
         last_checked_at: source.lastCheckedAt,
         last_event_added_at: lastEventAddedAt,
-        is_stale: isSourceStale(lastEventAddedAt),
+        is_stale: isSourceStale(lastEventAddedAt ? new Date(lastEventAddedAt) : null),
         events: sourceEvents.map((e) => ({ id: e.id, title: e.title, start_date: e.startDate, status: e.status })),
       },
     })
