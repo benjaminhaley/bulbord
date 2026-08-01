@@ -140,6 +140,10 @@ function JoinScreen() {
   )
 }
 
+function capitalizeFirst(value: string) {
+  return value.length ? value[0].toUpperCase() + value.slice(1) : value
+}
+
 function ProfileSetupScreen() {
   const { refresh } = useAuth()
   const [firstName, setFirstName] = useState('')
@@ -209,11 +213,15 @@ function ProfileSetupScreen() {
         <IonList inset>
           <IonItem>
             <IonLabel position="stacked">First name</IonLabel>
-            <IonInput value={firstName} onIonInput={(e) => setFirstName(e.detail.value ?? '')} autofocus />
+            <IonInput
+              value={firstName}
+              onIonInput={(e) => setFirstName(capitalizeFirst(e.detail.value ?? ''))}
+              autofocus
+            />
           </IonItem>
           <IonItem lines="none">
             <IonLabel position="stacked">Last name</IonLabel>
-            <IonInput value={lastName} onIonInput={(e) => setLastName(e.detail.value ?? '')} />
+            <IonInput value={lastName} onIonInput={(e) => setLastName(capitalizeFirst(e.detail.value ?? ''))} />
           </IonItem>
         </IonList>
         {error && (
