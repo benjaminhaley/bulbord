@@ -50,7 +50,7 @@ export function SourcesPage() {
         {sources !== null && sources.length > 0 && (
           <IonList>
             {sources.map((source) => (
-              <IonItem key={source.id} href={source.url} target="_blank" rel="noreferrer">
+              <IonItem key={source.id} routerLink={`/event-sources/${source.id}`}>
                 <IonLabel>
                   <h2>{source.name}</h2>
                   <IonNote>{source.url}</IonNote>
