@@ -17,6 +17,8 @@ export interface Event {
   thumbnail_url: string | null
   interest_status: InterestStatus | null
   interested_count: number
+  // In interest order, with the viewer's own name already replaced with "You".
+  interested_names: string[]
 }
 
 export interface InterestedUser {

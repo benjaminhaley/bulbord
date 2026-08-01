@@ -31,7 +31,12 @@ type SerializableEvent = Pick<
   | 'thumbnailUrl'
 >
 
-function serializeEvent(e: SerializableEvent, interestStatus: InterestStatus | null, interestedCount: number) {
+function serializeEvent(
+  e: SerializableEvent,
+  interestStatus: InterestStatus | null,
+  interestedCount: number,
+  interestedNames: string[],
+) {
   return {
     id: e.id,
     title: e.title,
@@ -48,14 +53,21 @@ function serializeEvent(e: SerializableEvent, interestStatus: InterestStatus | n
     thumbnail_url: e.thumbnailUrl,
     interest_status: interestStatus,
     interested_count: interestedCount,
+    interested_names: interestedNames,
   }
 }
 
-// Correlated scalar subquery — fine for a single row (GET /events/:id), but
+// Correlated scalar subqueries — fine for a single row (GET /events/:id), but
 // the paginated list route below aggregates via a joined CTE instead so it
 // doesn't re-scan event_interests once per returned row.
 function interestedCountExpr(eventId: SQLWrapper) {
   return sql<number>`(select count(*)::int from ${eventInterests} where ${eventInterests.eventId} = ${eventId} and ${eventInterests.status} = 'interested' and ${eventInterests.deletedAt} is null)`
+}
+
+// Names in interest-order, with the current viewer's own name swapped for
+// "You" — same substitution the paginated list's interest_names CTE applies.
+function interestedNamesExpr(eventId: SQLWrapper, userId: string | null) {
+  return sql<string[]>`(select coalesce(array_agg(case when ${eventInterests.userId} = ${userId} then 'You' else ${users.name} end order by ${eventInterests.createdAt}), '{}') from ${eventInterests} join ${users} on ${users.id} = ${eventInterests.userId} where ${eventInterests.eventId} = ${eventId} and ${eventInterests.status} = 'interested' and ${eventInterests.deletedAt} is null)`
 }
 
 // "Stale" flags a source the ingestion pipeline hasn't turned up anything new
@@ -76,6 +88,7 @@ export async function eventsRoutes(app: FastifyInstance) {
         ...getTableColumns(events),
         interestStatus: eventInterests.status,
         interestedCount: interestedCountExpr(events.id),
+        interestedNames: interestedNamesExpr(events.id, userId),
       })
       .from(events)
       .leftJoin(
@@ -91,7 +104,9 @@ export async function eventsRoutes(app: FastifyInstance) {
       return reply.code(404).send({ error: { message: 'Event not found' } })
     }
 
-    return reply.send({ data: serializeEvent(row, row.interestStatus as InterestStatus | null, row.interestedCount) })
+    return reply.send({
+      data: serializeEvent(row, row.interestStatus as InterestStatus | null, row.interestedCount, row.interestedNames),
+    })
   })
 
   app.put('/events/:id/interest', { preHandler: requireAuth }, async (request, reply) => {
@@ -239,14 +254,22 @@ export async function eventsRoutes(app: FastifyInstance) {
 
     // Pre-aggregated once via GROUP BY rather than a correlated subquery
     // re-run per returned row — cheaper on the paginated list than the
-    // single-row interestedCountExpr used by GET /events/:id above.
+    // single-row interestedCountExpr/interestedNamesExpr used by
+    // GET /events/:id above. Substitutes "You" for the current viewer's own
+    // name, same as interestedNamesExpr.
     const interestCounts = db.$with('interest_counts').as(
       db
         .select({
           eventId: eventInterests.eventId,
-          interestedCount: sql<number>`count(*) filter (where ${eventInterests.status} = 'interested')`.as('interested_count'),
+          interestedCount: sql<number>`count(*) filter (where ${eventInterests.status} = 'interested')::int`.as(
+            'interested_count',
+          ),
+          interestedNames: sql<string[]>`coalesce(array_agg(case when ${eventInterests.userId} = ${userId} then 'You' else ${users.name} end order by ${eventInterests.createdAt}) filter (where ${eventInterests.status} = 'interested'), '{}')`.as(
+            'interested_names',
+          ),
         })
         .from(eventInterests)
+        .innerJoin(users, eq(users.id, eventInterests.userId))
         .where(isNull(eventInterests.deletedAt))
         .groupBy(eventInterests.eventId),
     )
@@ -269,6 +292,7 @@ export async function eventsRoutes(app: FastifyInstance) {
         thumbnailUrl: nextOccurrence.thumbnailUrl,
         interestStatus: eventInterests.status,
         interestedCount: sql<number>`coalesce(${interestCounts.interestedCount}, 0)`,
+        interestedNames: sql<string[]>`coalesce(${interestCounts.interestedNames}, '{}')`,
         sortTime: nextOccurrence.sortTime,
       })
       .from(nextOccurrence)
@@ -297,7 +321,9 @@ export async function eventsRoutes(app: FastifyInstance) {
       hasMore && last ? Buffer.from(`${last.startDate}|${last.sortTime}|${last.id}`).toString('base64url') : null
 
     return reply.send({
-      data: page.map((row) => serializeEvent(row, row.interestStatus as InterestStatus | null, row.interestedCount)),
+      data: page.map((row) =>
+        serializeEvent(row, row.interestStatus as InterestStatus | null, row.interestedCount, row.interestedNames),
+      ),
       has_more: hasMore,
       next_cursor: nextCursor,
     })

@@ -86,7 +86,9 @@ export function EventDetailPage() {
             )}
             <h1>{event.title}</h1>
             <p>{formatWhen(event)}</p>
-            {event.interested_count > 0 && <InterestedBadge eventId={event.id} count={event.interested_count} />}
+            {event.interested_count > 0 && (
+              <InterestedBadge eventId={event.id} count={event.interested_count} names={event.interested_names} />
+            )}
             {event.location_name && <p>{event.location_name}</p>}
             {event.address && <p>{event.address}</p>}
             {event.description && <p>{event.description}</p>}
