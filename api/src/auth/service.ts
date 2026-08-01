@@ -73,17 +73,18 @@ export async function revokeSession(bearerToken: string) {
 // Post-registration "set up your profile" step — the only place a user's
 // name/photo are ever set after the placeholder assigned at registration.
 export async function updateProfile(userId: string, updates: { name?: string; avatarUrl?: string }) {
-  const [updated] = await db
-    .update(users)
-    .set({
-      ...(updates.name ? { name: updates.name, profileCompletedAt: new Date() } : {}),
-      ...(updates.avatarUrl ? { avatarUrl: updates.avatarUrl } : {}),
-      updatedAt: new Date(),
-    })
-    .where(eq(users.id, userId))
-    .returning()
-
-  await db.insert(eventsLog).values({ actor: userId, action: 'profile_updated', metadata: {} })
+  const [[updated]] = await Promise.all([
+    db
+      .update(users)
+      .set({
+        ...(updates.name ? { name: updates.name, profileCompletedAt: new Date() } : {}),
+        ...(updates.avatarUrl ? { avatarUrl: updates.avatarUrl } : {}),
+        updatedAt: new Date(),
+      })
+      .where(eq(users.id, userId))
+      .returning(),
+    db.insert(eventsLog).values({ actor: userId, action: 'profile_updated', metadata: {} }),
+  ])
 
   return updated
 }

@@ -1,4 +1,4 @@
-import type { FastifyInstance } from 'fastify'
+import type { FastifyInstance, FastifyReply } from 'fastify'
 
 import { bearerToken, requireAuth } from './plugin.js'
 import { getPublicInviteInfo, revokeSession, updateProfile } from './service.js'
@@ -8,6 +8,28 @@ import {
   verifyAuthentication,
   verifyRegistration,
 } from './webauthn.js'
+
+type VerifyResult = { ok: true; token: string } | { ok: false; message: string }
+
+// Shared by /register/verify and /login/verify below — same request shape
+// (an opaque `response` plus the `challengeToken` from the matching /options
+// call) and same response shaping, only the verify function itself differs.
+async function handleVerify<T extends { response: never; challengeToken: string }>(
+  reply: FastifyReply,
+  body: unknown,
+  verify: (input: T) => Promise<VerifyResult>,
+) {
+  const { response, challengeToken } = (body ?? {}) as { response?: unknown; challengeToken?: string }
+  if (!response || !challengeToken) {
+    return reply.code(400).send({ error: { message: 'response and challengeToken are required' } })
+  }
+
+  const result = await verify({ response, challengeToken } as T)
+  if (!result.ok) {
+    return reply.code(400).send({ error: { message: result.message } })
+  }
+  return reply.send({ data: { token: result.token } })
+}
 
 export async function authRoutes(app: FastifyInstance) {
   app.post('/auth/webauthn/register/options', async (request, reply) => {
@@ -19,42 +41,14 @@ export async function authRoutes(app: FastifyInstance) {
     return reply.send({ data: { options: result.options, challengeToken: result.challengeToken } })
   })
 
-  app.post('/auth/webauthn/register/verify', async (request, reply) => {
-    const body = request.body as { response?: unknown; challengeToken?: string }
-    if (!body.response || !body.challengeToken) {
-      return reply.code(400).send({ error: { message: 'response and challengeToken are required' } })
-    }
-
-    const result = await verifyRegistration({
-      response: body.response as Parameters<typeof verifyRegistration>[0]['response'],
-      challengeToken: body.challengeToken,
-    })
-    if (!result.ok) {
-      return reply.code(400).send({ error: { message: result.message } })
-    }
-    return reply.send({ data: { token: result.token } })
-  })
+  app.post('/auth/webauthn/register/verify', (request, reply) => handleVerify(reply, request.body, verifyRegistration))
 
   app.post('/auth/webauthn/login/options', async (_request, reply) => {
     const { options, challengeToken } = await createAuthenticationOptions()
     return reply.send({ data: { options, challengeToken } })
   })
 
-  app.post('/auth/webauthn/login/verify', async (request, reply) => {
-    const body = request.body as { response?: unknown; challengeToken?: string }
-    if (!body.response || !body.challengeToken) {
-      return reply.code(400).send({ error: { message: 'response and challengeToken are required' } })
-    }
-
-    const result = await verifyAuthentication({
-      response: body.response as Parameters<typeof verifyAuthentication>[0]['response'],
-      challengeToken: body.challengeToken,
-    })
-    if (!result.ok) {
-      return reply.code(400).send({ error: { message: result.message } })
-    }
-    return reply.send({ data: { token: result.token } })
-  })
+  app.post('/auth/webauthn/login/verify', (request, reply) => handleVerify(reply, request.body, verifyAuthentication))
 
   app.get('/auth/me', { preHandler: requireAuth }, async (request, reply) => {
     const user = request.currentUser!

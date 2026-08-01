@@ -161,22 +161,23 @@ export async function verifyRegistration(input: { response: RegistrationResponse
     .values({ id: payload.newUserId, name: 'New Campy member', invitedByUserId: payload.inviterUserId })
     .returning()
 
-  await db.insert(passkeyCredentials).values({
-    userId: user.id,
-    credentialId: credential.id,
-    publicKey: isoBase64URL.fromBuffer(credential.publicKey),
-    counter: credential.counter,
-    deviceType: credentialDeviceType,
-    backedUp: credentialBackedUp,
-    transports,
-  })
-
-  await db.insert(eventsLog).values([
-    { actor: user.id, action: 'user_created', metadata: { invitedByUserId: payload.inviterUserId } },
-    { actor: user.id, action: 'passkey_registered', metadata: { credentialId: credential.id } },
+  // Independent writes — none reads another's result — so they run concurrently.
+  const [, , { token }] = await Promise.all([
+    db.insert(passkeyCredentials).values({
+      userId: user.id,
+      credentialId: credential.id,
+      publicKey: isoBase64URL.fromBuffer(credential.publicKey),
+      counter: credential.counter,
+      deviceType: credentialDeviceType,
+      backedUp: credentialBackedUp,
+      transports,
+    }),
+    db.insert(eventsLog).values([
+      { actor: user.id, action: 'user_created', metadata: { invitedByUserId: payload.inviterUserId } },
+      { actor: user.id, action: 'passkey_registered', metadata: { credentialId: credential.id } },
+    ]),
+    createSession(user.id),
   ])
-
-  const { token } = await createSession(user.id)
   return { ok: true as const, token, user }
 }
 
@@ -231,11 +232,12 @@ export async function verifyAuthentication(input: { response: AuthenticationResp
     return { ok: false as const, message: 'Could not verify passkey sign-in.' }
   }
 
-  await db
-    .update(passkeyCredentials)
-    .set({ counter: verification.authenticationInfo.newCounter, updatedAt: new Date() })
-    .where(eq(passkeyCredentials.id, stored.credential.id))
-
-  const { token } = await createSession(stored.user.id)
+  const [, { token }] = await Promise.all([
+    db
+      .update(passkeyCredentials)
+      .set({ counter: verification.authenticationInfo.newCounter, updatedAt: new Date() })
+      .where(eq(passkeyCredentials.id, stored.credential.id)),
+    createSession(stored.user.id),
+  ])
   return { ok: true as const, token, user: stored.user }
 }

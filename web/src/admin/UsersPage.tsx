@@ -14,12 +14,9 @@ import {
 } from '@ionic/react'
 import { useEffect, useState } from 'react'
 
-import { API_URL } from '../config'
+import { formatDate } from '../format'
+import { Avatar } from '../uploads/Avatar'
 import { fetchAdminUsers, type AdminUser } from './api'
-
-function formatDate(iso: string) {
-  return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
-}
 
 // First admin view in the app (see CLAUDE.md's Introspectability section) —
 // every member, plus the basic invited-by social graph.
@@ -58,14 +55,7 @@ export function UsersPage() {
           <IonList>
             {users.map((user) => (
               <IonItem key={user.id} lines="full">
-                {user.avatar_url && (
-                  <img
-                    slot="start"
-                    src={`${API_URL}${user.avatar_url}`}
-                    alt=""
-                    style={{ width: 40, height: 40, borderRadius: '50%', objectFit: 'cover' }}
-                  />
-                )}
+                <Avatar slot="start" url={user.avatar_url} />
                 <IonLabel className="ion-text-wrap">
                   <h2>{user.name}</h2>
                   <IonNote>

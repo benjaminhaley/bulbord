@@ -1,4 +1,5 @@
 import { API_URL } from '../config'
+import { readErrorMessage } from './http'
 import { authHeaders, clearToken, getToken } from './token'
 
 export interface CurrentUser {
@@ -35,8 +36,7 @@ export async function updateProfile(updates: { name?: string; avatarUrl?: string
     body: JSON.stringify(updates),
   })
   if (!response.ok) {
-    const body = (await response.json().catch(() => null)) as { error?: { message: string } } | null
-    throw new Error(body?.error?.message ?? `Failed to update profile: ${response.status}`)
+    throw new Error(await readErrorMessage(response, `Failed to update profile: ${response.status}`))
   }
   const body = (await response.json()) as { data: CurrentUser }
   return body.data

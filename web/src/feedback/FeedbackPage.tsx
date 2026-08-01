@@ -19,18 +19,16 @@ import {
   IonToolbar,
 } from '@ionic/react'
 import { addOutline, checkmarkOutline, closeOutline, imageOutline } from 'ionicons/icons'
-import { type ReactNode, useRef, useEffect, useState } from 'react'
+import { type ReactNode, useEffect, useState } from 'react'
 
 import { AccountButton } from '../auth/AccountButton'
 import { useAuth } from '../auth/AuthContext'
 import { API_URL } from '../config'
+import { formatDate } from '../format'
 import { ImageLightbox } from '../uploads/ImageLightbox'
-import { uploadImage, type UploadedImage } from '../uploads/api'
+import type { UploadedImage } from '../uploads/api'
+import { useImageUpload } from '../uploads/useImageUpload'
 import { completeFeedback, createFeedback, fetchFeedback, type FeedbackItem } from './api'
-
-function formatDate(iso: string) {
-  return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
-}
 
 function FeedbackItemBody({
   item,
@@ -66,21 +64,13 @@ function NewFeedbackForm({ onCreated, onCancel }: { onCreated: (item: FeedbackIt
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [image, setImage] = useState<UploadedImage | null>(null)
-  const [uploading, setUploading] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const fileInputRef = useRef<HTMLInputElement>(null)
+  const { fileInputRef, uploading, attach } = useImageUpload('feedback', setImage)
 
   async function attachImage(file: File) {
-    setUploading(true)
     setError(null)
-    try {
-      setImage(await uploadImage(file))
-    } catch {
-      setError('Could not upload image')
-    } finally {
-      setUploading(false)
-    }
+    if (!(await attach(file))) setError('Could not upload image')
   }
 
   function handlePaste(e: React.ClipboardEvent) {

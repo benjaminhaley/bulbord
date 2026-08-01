@@ -9,11 +9,12 @@ import {
   IonSpinner,
   IonText,
 } from '@ionic/react'
-import { type ReactNode, useEffect, useRef, useState } from 'react'
+import { type ReactNode, useEffect, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 
 import { API_URL } from '../config'
-import { uploadImage } from '../uploads/api'
+import { Avatar } from '../uploads/Avatar'
+import { useImageUpload } from '../uploads/useImageUpload'
 import { fetchInviteInfo, updateProfile, type InviteInfo } from './api'
 import { useAuth } from './AuthContext'
 import { setToken } from './token'
@@ -123,13 +124,7 @@ function JoinScreen() {
 
   return (
     <CenteredMessage>
-      {invite?.avatarUrl && (
-        <img
-          src={`${API_URL}${invite.avatarUrl}`}
-          alt=""
-          style={{ width: 64, height: 64, borderRadius: '50%', objectFit: 'cover' }}
-        />
-      )}
+      <Avatar url={invite?.avatarUrl ?? null} size={64} />
       <h2>{invite ? `${invite.name} invited you to Campy` : 'Set up Campy'}</h2>
       <p>Create a passkey to sign in — just your face, fingerprint, or screen lock. No password to remember.</p>
       {error && (
@@ -150,21 +145,12 @@ function ProfileSetupScreen() {
   const [firstName, setFirstName] = useState('')
   const [lastName, setLastName] = useState('')
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null)
-  const [uploading, setUploading] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const fileInputRef = useRef<HTMLInputElement>(null)
+  const { fileInputRef, uploading, attach } = useImageUpload('profiles', (image) => setAvatarUrl(image.image_url))
 
   async function attachPhoto(file: File) {
-    setUploading(true)
-    try {
-      const uploaded = await uploadImage(file, 'profiles')
-      setAvatarUrl(uploaded.image_url)
-    } catch {
-      setError('Could not upload photo')
-    } finally {
-      setUploading(false)
-    }
+    if (!(await attach(file))) setError('Could not upload photo')
   }
 
   async function submit() {

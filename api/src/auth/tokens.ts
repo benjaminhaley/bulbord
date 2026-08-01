@@ -12,36 +12,16 @@ function sign(value: string, secret: string): string {
   return createHmac('sha256', secret).update(value).digest('base64url')
 }
 
-// Fixed-length hash comparison so neither timing nor length leaks anything
-// about the secret, regardless of the length of the value being checked.
+// Fixed-length comparison so neither timing nor length leaks anything about
+// which of two values (secrets, or a value against its expected signature).
+function bytesEqual(a: string, b: string): boolean {
+  const bufA = Buffer.from(a)
+  const bufB = Buffer.from(b)
+  return bufA.length === bufB.length && timingSafeEqual(bufA, bufB)
+}
+
 export function secretsMatch(a: string, b: string): boolean {
-  return timingSafeEqual(Buffer.from(hashToken(a)), Buffer.from(hashToken(b)))
-}
-
-// Signed, timestamped nonce used as the OAuth `state` param — CSRF protection
-// for the login handshake without needing a server-side session before login exists.
-export function createState(secret: string): string {
-  const nonce = randomToken(16)
-  const timestamp = Date.now().toString()
-  const payload = `${nonce}.${timestamp}`
-  return `${payload}.${sign(payload, secret)}`
-}
-
-export function verifyState(state: string, secret: string, maxAgeMs = 10 * 60 * 1000): boolean {
-  const parts = state.split('.')
-  if (parts.length !== 3) return false
-  const [nonce, timestamp, signature] = parts
-  const payload = `${nonce}.${timestamp}`
-  const expected = sign(payload, secret)
-
-  const expectedBuf = Buffer.from(expected)
-  const actualBuf = Buffer.from(signature)
-  if (expectedBuf.length !== actualBuf.length || !timingSafeEqual(expectedBuf, actualBuf)) {
-    return false
-  }
-
-  const age = Date.now() - Number(timestamp)
-  return age >= 0 && age <= maxAgeMs
+  return bytesEqual(hashToken(a), hashToken(b))
 }
 
 // Generic signed-JSON envelope — used for the WebAuthn ceremony's challenge
@@ -57,13 +37,7 @@ export function verifyJson<T>(token: string, secret: string): T | null {
   const parts = token.split('.')
   if (parts.length !== 2) return null
   const [encoded, signature] = parts
-  const expected = sign(encoded, secret)
-
-  const expectedBuf = Buffer.from(expected)
-  const actualBuf = Buffer.from(signature)
-  if (expectedBuf.length !== actualBuf.length || !timingSafeEqual(expectedBuf, actualBuf)) {
-    return null
-  }
+  if (!bytesEqual(sign(encoded, secret), signature)) return null
 
   try {
     return JSON.parse(Buffer.from(encoded, 'base64url').toString('utf8')) as T
