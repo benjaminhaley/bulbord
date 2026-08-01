@@ -55,15 +55,24 @@ ion-label p.teaser {
 
 /* .share-fab (position: absolute below) anchors to #root's own
    `position: relative` above — the phone-sized column, not the full browser
-   viewport on wide desktop windows. Do NOT also set `position: relative` on
-   ion-app: Ionic's ion-tabs is `position: absolute; inset: 0` internally and
-   relies on ion-app being unpositioned so it's anchored to the true
-   viewport (which iOS Safari keeps in sync as its toolbar shows/hides).
-   Giving ion-app its own position turns it into the containing block
-   instead, and ion-app's height (chained through 100% from html/body/#root)
-   doesn't reliably track Safari's dynamic toolbar the way the real viewport
-   does — this caused the tab bar to intermittently render mispositioned and
-   backgroundless (2026-07-31 feedback). */
+   viewport on wide desktop windows.
+
+   Correction to a 2026-07-31 fix attempt: that commit removed a custom
+   `ion-app { position: relative }` rule, reasoning it was the tab bar's
+   containing block. It wasn't — Ionic's own `.ion-page` class (which ion-app
+   always carries) sets `position: absolute` on it unconditionally via a
+   class selector, which outranks a bare-element-selector override
+   regardless of source order. ion-app's containing block was, and still is,
+   #root above (position: relative). The tab bar disappearing recurred after
+   that fix shipped (2026-08-01 feedback), consistent with it having been a
+   no-op. Root cause not confirmed — could not reproduce locally, since it
+   depends on iOS Safari's dynamic toolbar resize, which headless Chromium
+   doesn't emulate. `translateZ(0)` below is a targeted mitigation for the
+   known WebKit bug class where a fixed/absolutely-positioned element
+   dropped from its own compositing layer can paint blank for a frame during
+   a toolbar-driven viewport resize — promoting the tab bar to its own layer
+   sidesteps that repaint. If this recurs, it needs a real device/Safari
+   version to reproduce against. */
 .share-fab {
   position: absolute;
   z-index: 1000;
@@ -73,6 +82,10 @@ ion-label p.teaser {
   --color: #333;
   --box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
   opacity: 0.85;
+}
+
+#main-tab-bar {
+  transform: translateZ(0);
 }
 
 .share-content {
