@@ -43,3 +43,31 @@ export function verifyState(state: string, secret: string, maxAgeMs = 10 * 60 * 
   const age = Date.now() - Number(timestamp)
   return age >= 0 && age <= maxAgeMs
 }
+
+// Generic signed-JSON envelope — used for the WebAuthn ceremony's challenge
+// token, which needs to carry a small payload (the challenge plus whatever
+// was already validated when options were generated, e.g. an invite) between
+// the options and verify calls without server-side storage in between.
+export function signJson(payload: unknown, secret: string): string {
+  const encoded = Buffer.from(JSON.stringify(payload)).toString('base64url')
+  return `${encoded}.${sign(encoded, secret)}`
+}
+
+export function verifyJson<T>(token: string, secret: string): T | null {
+  const parts = token.split('.')
+  if (parts.length !== 2) return null
+  const [encoded, signature] = parts
+  const expected = sign(encoded, secret)
+
+  const expectedBuf = Buffer.from(expected)
+  const actualBuf = Buffer.from(signature)
+  if (expectedBuf.length !== actualBuf.length || !timingSafeEqual(expectedBuf, actualBuf)) {
+    return null
+  }
+
+  try {
+    return JSON.parse(Buffer.from(encoded, 'base64url').toString('utf8')) as T
+  } catch {
+    return null
+  }
+}

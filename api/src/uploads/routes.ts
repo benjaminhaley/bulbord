@@ -6,18 +6,29 @@ import { getImageObject, imageUrl, uploadImage } from './storage.js'
 // Bucket objects are private (Railway buckets have no public-URL mode), so
 // every image is served through this proxy. Keys are content-addressed
 // (uuid-based), so a long, immutable cache is always safe.
+const UPLOAD_FOLDERS = ['feedback', 'profiles'] as const
+type UploadFolder = (typeof UPLOAD_FOLDERS)[number]
+
+function isUploadFolder(value: unknown): value is UploadFolder {
+  return typeof value === 'string' && (UPLOAD_FOLDERS as readonly string[]).includes(value)
+}
+
 export async function uploadsRoutes(app: FastifyInstance) {
-  // Feedback screenshots today. Event images are populated by the ingestion
-  // pipeline directly via uploadImage(), not through this route — add a
-  // folder param here if a second HTTP caller shows up.
+  // Feedback screenshots and profile photos today. Event images are
+  // populated by the ingestion pipeline directly via uploadImage(), not
+  // through this route.
   app.post('/uploads', { preHandler: requireAuth }, async (request, reply) => {
     const file = await request.file()
     if (!file) {
       return reply.code(400).send({ error: { message: 'file is required' } })
     }
 
+    const folderField = file.fields.folder
+    const folderValue = !Array.isArray(folderField) && folderField?.type === 'field' ? folderField.value : undefined
+    const folder = isUploadFolder(folderValue) ? folderValue : 'feedback'
+
     const buffer = await file.toBuffer()
-    const { key, thumbnailKey } = await uploadImage(buffer, 'feedback')
+    const { key, thumbnailKey } = await uploadImage(buffer, folder)
 
     return reply.code(201).send({
       data: { image_url: imageUrl(key), thumbnail_url: imageUrl(thumbnailKey) },

@@ -5,38 +5,9 @@ export interface CurrentUser {
   id: string
   name: string
   email: string | null
+  avatarUrl: string | null
+  profileComplete: boolean
   roles: string[]
-}
-
-export function facebookLoginUrl(): string {
-  return `${API_URL}/auth/facebook`
-}
-
-export async function exchangeLoginCode(code: string): Promise<string> {
-  const response = await fetch(`${API_URL}/auth/exchange`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ code }),
-  })
-  if (!response.ok) {
-    throw new Error(`Failed to exchange login code: ${response.status}`)
-  }
-  const body = (await response.json()) as { data: { token: string } }
-  return body.data.token
-}
-
-export async function passwordLogin(password: string): Promise<string> {
-  const response = await fetch(`${API_URL}/auth/password-login`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ password }),
-  })
-  if (!response.ok) {
-    const body = (await response.json().catch(() => null)) as { error?: { message: string } } | null
-    throw new Error(body?.error?.message ?? `Login failed: ${response.status}`)
-  }
-  const body = (await response.json()) as { data: { token: string } }
-  return body.data.token
 }
 
 export async function fetchCurrentUser(): Promise<CurrentUser | null> {
@@ -54,6 +25,32 @@ export async function fetchCurrentUser(): Promise<CurrentUser | null> {
     throw new Error(`Failed to fetch current user: ${response.status}`)
   }
   const body = (await response.json()) as { data: CurrentUser }
+  return body.data
+}
+
+export async function updateProfile(updates: { name?: string; avatarUrl?: string }): Promise<CurrentUser> {
+  const response = await fetch(`${API_URL}/auth/me`, {
+    method: 'PATCH',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify(updates),
+  })
+  if (!response.ok) {
+    const body = (await response.json().catch(() => null)) as { error?: { message: string } } | null
+    throw new Error(body?.error?.message ?? `Failed to update profile: ${response.status}`)
+  }
+  const body = (await response.json()) as { data: CurrentUser }
+  return body.data
+}
+
+export interface InviteInfo {
+  name: string
+  avatarUrl: string | null
+}
+
+export async function fetchInviteInfo(inviterUserId: string): Promise<InviteInfo | null> {
+  const response = await fetch(`${API_URL}/invites/${inviterUserId}`)
+  if (!response.ok) return null
+  const body = (await response.json()) as { data: InviteInfo }
   return body.data
 }
 

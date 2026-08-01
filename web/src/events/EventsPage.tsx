@@ -24,11 +24,10 @@ import { useEffect, useMemo, useState } from 'react'
 
 import { AccountButton } from '../auth/AccountButton'
 import { useAuth } from '../auth/AuthContext'
-import { useLoginPrompt } from '../auth/LoginPrompt'
 import { API_URL } from '../config'
 import { fetchEvents, type Event, type InterestStatus } from './api'
 import { formatWhen, locationLabel, teaser } from './format'
-import { INTEREST_LOGIN_PROMPTS, useEventInterest } from './useEventInterest'
+import { useEventInterest } from './useEventInterest'
 
 // 'Starred' and 'Dismissed' are mutually exclusive views over the same
 // interest_status field, so this is a single-select mode rather than the
@@ -62,7 +61,6 @@ export function EventsPage() {
   const [viewMode, setViewMode] = useState<ViewMode>('new')
   const [swipeToast, setSwipeToast] = useState<SwipeToast | null>(null)
   const { setInterest, clearInterest } = useEventInterest(updateEvent)
-  const { requireLogin, loginPromptModal } = useLoginPrompt()
 
   useEffect(() => {
     fetchEvents()
@@ -83,10 +81,8 @@ export function EventsPage() {
 
   function handleSwipe(e: { target: EventTarget | null }, event: Event, status: InterestStatus) {
     closeSliding(e.target)
-    requireLogin(INTEREST_LOGIN_PROMPTS[status], () => {
-      setSwipeToast({ event, previousStatus: event.interest_status, newStatus: status })
-      setInterest(event, status)
-    })
+    setSwipeToast({ event, previousStatus: event.interest_status, newStatus: status })
+    setInterest(event, status)
   }
 
   function undoSwipe() {
@@ -196,7 +192,6 @@ export function EventsPage() {
         buttons={[{ text: 'Undo', handler: undoSwipe }]}
         onDidDismiss={() => setSwipeToast(null)}
       />
-      {loginPromptModal}
     </IonPage>
   )
 }

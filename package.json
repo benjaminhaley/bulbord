@@ -1,0 +1,10 @@
+{
+  "name": "campy",
+  "private": true,
+  "scripts": {
+    "dev": "concurrently -n postgres,api,web -c blue,green,magenta \"docker compose up\" \"npm run dev --prefix api\" \"npm run dev --prefix web\""
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1"
+  }
+}

@@ -5,69 +5,22 @@ import {
   IonContent,
   IonHeader,
   IonIcon,
-  IonInput,
   IonItem,
   IonLabel,
   IonList,
-  IonNote,
   IonPage,
   IonSpinner,
-  IonText,
   IonTitle,
   IonToolbar,
 } from '@ionic/react'
-import { logoFacebook, shieldCheckmarkOutline } from 'ionicons/icons'
-import { useState } from 'react'
+import { peopleOutline, shieldCheckmarkOutline } from 'ionicons/icons'
 
+import { API_URL } from '../config'
 import { useAuth } from './AuthContext'
-import { facebookLoginUrl, passwordLogin } from './api'
-import { setToken } from './token'
 
-function PasswordLogin() {
-  const { refresh } = useAuth()
-  const [password, setPassword] = useState('')
-  const [error, setError] = useState<string | null>(null)
-  const [submitting, setSubmitting] = useState(false)
-
-  async function submit() {
-    setSubmitting(true)
-    setError(null)
-    try {
-      const token = await passwordLogin(password)
-      setToken(token)
-      await refresh()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Login failed')
-    } finally {
-      setSubmitting(false)
-    }
-  }
-
-  return (
-    <IonList inset>
-      <IonItem>
-        <IonLabel position="stacked">Temporary admin password</IonLabel>
-        <IonInput
-          type="password"
-          value={password}
-          onIonInput={(e) => setPassword(e.detail.value ?? '')}
-          onKeyDown={(e) => e.key === 'Enter' && submit()}
-        />
-      </IonItem>
-      {error && (
-        <IonText color="danger">
-          <p className="ion-padding-start">{error}</p>
-        </IonText>
-      )}
-      <IonItem lines="none">
-        <IonButton fill="outline" disabled={submitting || !password} onClick={submit}>
-          Log in
-        </IonButton>
-      </IonItem>
-    </IonList>
-  )
-}
-
+// Reachable only once already signed in — JoinGate (see JoinGate.tsx) handles
+// every sign-in/registration path before a route ever renders, so this page
+// only needs to show who you are and let you log out.
 export function AccountPage() {
   const { user, isLoading, isAdmin, logout } = useAuth()
 
@@ -88,29 +41,31 @@ export function AccountPage() {
           </div>
         )}
 
-        {!isLoading && !user && (
-          <div className="account-fallback">
-            <IonButton href={facebookLoginUrl()}>
-              <IonIcon slot="start" icon={logoFacebook} />
-              Log in with Facebook
-            </IonButton>
-            <IonNote>Facebook login is temporarily down. Use the admin password below instead.</IonNote>
-            <PasswordLogin />
-          </div>
-        )}
-
         {!isLoading && user && (
           <IonList>
             <IonItem lines="none">
+              {user.avatarUrl && (
+                <img
+                  slot="start"
+                  src={`${API_URL}${user.avatarUrl}`}
+                  alt=""
+                  style={{ width: 40, height: 40, borderRadius: '50%', objectFit: 'cover' }}
+                />
+              )}
               <IonLabel>
                 <h2>{user.name}</h2>
-                {user.email && <IonNote>{user.email}</IonNote>}
               </IonLabel>
             </IonItem>
             {isAdmin && (
               <IonItem lines="none">
                 <IonIcon slot="start" icon={shieldCheckmarkOutline} color="primary" />
                 <IonLabel>Administrator</IonLabel>
+              </IonItem>
+            )}
+            {isAdmin && (
+              <IonItem lines="none" routerLink="/admin/users">
+                <IonIcon slot="start" icon={peopleOutline} />
+                <IonLabel>All members</IonLabel>
               </IonItem>
             )}
             <IonItem lines="none">

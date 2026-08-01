@@ -3,9 +3,11 @@ import { IonReactRouter } from '@ionic/react-router'
 import { Redirect, Route } from 'react-router-dom'
 import { calendarOutline, chatbubbleOutline, sunnyOutline } from 'ionicons/icons'
 
+import { AdminRoute } from '../admin/AdminRoute'
+import { UsersPage } from '../admin/UsersPage'
 import { AuthProvider } from '../auth/AuthContext'
 import { AccountPage } from '../auth/AccountPage'
-import { AuthCallbackPage } from '../auth/AuthCallbackPage'
+import { JoinGate } from '../auth/JoinGate'
 import { EventsPage } from '../events/EventsPage'
 import { EventDetailPage } from '../events/EventDetailPage'
 import { SourcesPage } from '../events/SourcesPage'
@@ -18,33 +20,35 @@ export function App() {
     <IonApp>
       <AuthProvider>
         <IonReactRouter>
-          <IonTabs>
-            <IonRouterOutlet>
-              <Route exact path="/events" component={EventsPage} />
-              <Route exact path="/event-sources" component={SourcesPage} />
-              <Route exact path="/events/:id" component={EventDetailPage} />
-              <Route exact path="/camps" component={CampsPage} />
-              <Route exact path="/feedback" component={FeedbackPage} />
-              <Route exact path="/account" component={AccountPage} />
-              <Route exact path="/auth/callback" component={AuthCallbackPage} />
-              <Redirect exact path="/" to="/events" />
-            </IonRouterOutlet>
-            <IonTabBar slot="bottom" id="main-tab-bar">
-              <IonTabButton tab="events" href="/events">
-                <IonIcon icon={calendarOutline} />
-                <IonLabel>Events</IonLabel>
-              </IonTabButton>
-              <IonTabButton tab="camps" href="/camps">
-                <IonIcon icon={sunnyOutline} />
-                <IonLabel>Camps</IonLabel>
-              </IonTabButton>
-              <IonTabButton tab="feedback" href="/feedback">
-                <IonIcon icon={chatbubbleOutline} />
-                <IonLabel>Feedback</IonLabel>
-              </IonTabButton>
-            </IonTabBar>
-          </IonTabs>
-          <ShareButton />
+          <JoinGate>
+            <IonTabs>
+              <IonRouterOutlet>
+                <Route exact path="/events" component={EventsPage} />
+                <Route exact path="/event-sources" component={SourcesPage} />
+                <Route exact path="/events/:id" component={EventDetailPage} />
+                <Route exact path="/camps" component={CampsPage} />
+                <Route exact path="/feedback" component={FeedbackPage} />
+                <Route exact path="/account" component={AccountPage} />
+                <AdminRoute exact path="/admin/users" component={UsersPage} />
+                <Redirect exact path="/" to="/events" />
+              </IonRouterOutlet>
+              <IonTabBar slot="bottom" id="main-tab-bar">
+                <IonTabButton tab="events" href="/events">
+                  <IonIcon icon={calendarOutline} />
+                  <IonLabel>Events</IonLabel>
+                </IonTabButton>
+                <IonTabButton tab="camps" href="/camps">
+                  <IonIcon icon={sunnyOutline} />
+                  <IonLabel>Camps</IonLabel>
+                </IonTabButton>
+                <IonTabButton tab="feedback" href="/feedback">
+                  <IonIcon icon={chatbubbleOutline} />
+                  <IonLabel>Feedback</IonLabel>
+                </IonTabButton>
+              </IonTabBar>
+            </IonTabs>
+            <ShareButton />
+          </JoinGate>
         </IonReactRouter>
       </AuthProvider>
     </IonApp>

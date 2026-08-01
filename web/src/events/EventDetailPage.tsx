@@ -14,28 +14,24 @@ import { star, starOutline } from 'ionicons/icons'
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 
-import { useLoginPrompt } from '../auth/LoginPrompt'
 import { API_URL } from '../config'
 import { fetchEvent, type Event } from './api'
 import { formatWhen } from './format'
-import { INTEREST_LOGIN_PROMPTS, useEventInterest } from './useEventInterest'
+import { useEventInterest } from './useEventInterest'
 
 export function EventDetailPage() {
   const { id } = useParams<{ id: string }>()
   const [event, setEvent] = useState<Event | null>(null)
   const [error, setError] = useState(false)
   const { pending: interestPending, setInterest, clearInterest } = useEventInterest(setEvent)
-  const { requireLogin, loginPromptModal } = useLoginPrompt()
 
   function toggleInterest() {
     if (!event) return
-    requireLogin(INTEREST_LOGIN_PROMPTS.interested, () => {
-      if (event.interest_status === 'interested') {
-        clearInterest(event)
-      } else {
-        setInterest(event, 'interested')
-      }
-    })
+    if (event.interest_status === 'interested') {
+      clearInterest(event)
+    } else {
+      setInterest(event, 'interested')
+    }
   }
 
   useEffect(() => {
@@ -100,7 +96,6 @@ export function EventDetailPage() {
           </>
         )}
       </IonContent>
-      {loginPromptModal}
     </IonPage>
   )
 }

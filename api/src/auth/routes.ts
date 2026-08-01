@@ -1,119 +1,107 @@
 import type { FastifyInstance } from 'fastify'
 
-import { exchangeFacebookCode, facebookAuthorizeUrl, fetchFacebookProfile } from './facebook.js'
 import { bearerToken, requireAuth } from './plugin.js'
+import { getPublicInviteInfo, revokeSession, updateProfile } from './service.js'
 import {
-  consumeLoginCode,
-  createLoginCode,
-  createSession,
-  findOrCreateAdminBootstrapUser,
-  findOrCreateUserFromFacebook,
-  revokeSession,
-} from './service.js'
-import { createState, secretsMatch, verifyState } from './tokens.js'
-
-interface AuthEnv {
-  facebookAppId: string
-  facebookAppSecret: string
-  facebookCallbackUrl: string
-  sessionSecret: string
-  webUrl: string
-}
-
-function readEnv(): AuthEnv {
-  const facebookAppId = process.env.FACEBOOK_APP_ID
-  const facebookAppSecret = process.env.FACEBOOK_APP_SECRET
-  const facebookCallbackUrl = process.env.FACEBOOK_CALLBACK_URL
-  const sessionSecret = process.env.SESSION_SECRET
-  const webUrl = process.env.WEB_URL
-
-  if (!facebookAppId || !facebookAppSecret || !facebookCallbackUrl || !sessionSecret || !webUrl) {
-    throw new Error(
-      'Missing auth env vars: FACEBOOK_APP_ID, FACEBOOK_APP_SECRET, FACEBOOK_CALLBACK_URL, SESSION_SECRET, WEB_URL are all required',
-    )
-  }
-
-  return { facebookAppId, facebookAppSecret, facebookCallbackUrl, sessionSecret, webUrl }
-}
+  createAuthenticationOptions,
+  createRegistrationOptions,
+  verifyAuthentication,
+  verifyRegistration,
+} from './webauthn.js'
 
 export async function authRoutes(app: FastifyInstance) {
-  const env = readEnv()
+  app.post('/auth/webauthn/register/options', async (request, reply) => {
+    const body = request.body as { inviterUserId?: string; rootSecret?: string }
+    const result = await createRegistrationOptions(body)
+    if (!result.ok) {
+      return reply.code(403).send({ error: { message: result.message } })
+    }
+    return reply.send({ data: { options: result.options, challengeToken: result.challengeToken } })
+  })
 
-  app.get('/auth/facebook', async (_request, reply) => {
-    const state = createState(env.sessionSecret)
-    const url = facebookAuthorizeUrl({
-      appId: env.facebookAppId,
-      redirectUri: env.facebookCallbackUrl,
-      state,
+  app.post('/auth/webauthn/register/verify', async (request, reply) => {
+    const body = request.body as { response?: unknown; challengeToken?: string }
+    if (!body.response || !body.challengeToken) {
+      return reply.code(400).send({ error: { message: 'response and challengeToken are required' } })
+    }
+
+    const result = await verifyRegistration({
+      response: body.response as Parameters<typeof verifyRegistration>[0]['response'],
+      challengeToken: body.challengeToken,
     })
-    return reply.redirect(url)
+    if (!result.ok) {
+      return reply.code(400).send({ error: { message: result.message } })
+    }
+    return reply.send({ data: { token: result.token } })
   })
 
-  app.get('/auth/facebook/callback', async (request, reply) => {
-    const query = request.query as { code?: string; state?: string; error?: string }
-
-    if (query.error || !query.code || !query.state || !verifyState(query.state, env.sessionSecret)) {
-      return reply.redirect(`${env.webUrl}/auth/callback?error=login_failed`)
-    }
-
-    try {
-      const accessToken = await exchangeFacebookCode({
-        appId: env.facebookAppId,
-        appSecret: env.facebookAppSecret,
-        redirectUri: env.facebookCallbackUrl,
-        code: query.code,
-      })
-      const profile = await fetchFacebookProfile(accessToken)
-      const user = await findOrCreateUserFromFacebook(profile)
-      const { token, session } = await createSession(user.id)
-      const code = await createLoginCode(session.id, token)
-
-      return reply.redirect(`${env.webUrl}/auth/callback?code=${code}`)
-    } catch (err) {
-      request.log.error(err, 'facebook login failed')
-      return reply.redirect(`${env.webUrl}/auth/callback?error=login_failed`)
-    }
+  app.post('/auth/webauthn/login/options', async (_request, reply) => {
+    const { options, challengeToken } = await createAuthenticationOptions()
+    return reply.send({ data: { options, challengeToken } })
   })
 
-  app.post('/auth/exchange', async (request, reply) => {
-    const body = request.body as { code?: string }
-    if (!body.code) {
-      return reply.code(400).send({ error: { message: 'code is required' } })
+  app.post('/auth/webauthn/login/verify', async (request, reply) => {
+    const body = request.body as { response?: unknown; challengeToken?: string }
+    if (!body.response || !body.challengeToken) {
+      return reply.code(400).send({ error: { message: 'response and challengeToken are required' } })
     }
 
-    const token = await consumeLoginCode(body.code)
-    if (!token) {
-      return reply.code(400).send({ error: { message: 'Invalid or expired code' } })
+    const result = await verifyAuthentication({
+      response: body.response as Parameters<typeof verifyAuthentication>[0]['response'],
+      challengeToken: body.challengeToken,
+    })
+    if (!result.ok) {
+      return reply.code(400).send({ error: { message: result.message } })
     }
-
-    return reply.send({ data: { token } })
-  })
-
-  // Stopgap while Facebook OAuth is unavailable (see CLAUDE.md, Login section).
-  // Unset ADMIN_LOGIN_PASSWORD in Railway to disable this route once Facebook login is restored.
-  app.post('/auth/password-login', async (request, reply) => {
-    const adminPassword = process.env.ADMIN_LOGIN_PASSWORD
-    if (!adminPassword) {
-      return reply.code(503).send({ error: { message: 'Password login is not enabled' } })
-    }
-
-    const body = request.body as { password?: string }
-    if (!body.password || !secretsMatch(body.password, adminPassword)) {
-      return reply.code(401).send({ error: { message: 'Invalid password' } })
-    }
-
-    const user = await findOrCreateAdminBootstrapUser()
-    const { token } = await createSession(user.id)
-    return reply.send({ data: { token } })
+    return reply.send({ data: { token: result.token } })
   })
 
   app.get('/auth/me', { preHandler: requireAuth }, async (request, reply) => {
     const user = request.currentUser!
-    return reply.send({ data: { id: user.id, name: user.name, email: user.email, roles: user.roles } })
+    return reply.send({
+      data: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        avatarUrl: user.avatarUrl,
+        profileComplete: user.profileComplete,
+        roles: user.roles,
+      },
+    })
+  })
+
+  app.patch('/auth/me', { preHandler: requireAuth }, async (request, reply) => {
+    const body = request.body as { name?: string; avatarUrl?: string }
+    const name = body.name?.trim()
+    if (body.name !== undefined && !name) {
+      return reply.code(400).send({ error: { message: 'name cannot be blank' } })
+    }
+
+    const updated = await updateProfile(request.currentUser!.id, { name, avatarUrl: body.avatarUrl })
+    return reply.send({
+      data: {
+        id: updated.id,
+        name: updated.name,
+        avatarUrl: updated.avatarUrl,
+        profileComplete: updated.profileCompletedAt !== null,
+      },
+    })
   })
 
   app.post('/auth/logout', { preHandler: requireAuth }, async (request, reply) => {
     await revokeSession(bearerToken(request)!)
     return reply.code(204).send()
+  })
+
+  // Public — powers the "Sam Rivera invited you" copy on the join screen for
+  // a not-yet-a-member visitor. Returns name/photo only (see CLAUDE.md's Data
+  // safety rules on public PII exposure).
+  app.get('/invites/:userId', async (request, reply) => {
+    const { userId } = request.params as { userId: string }
+    const info = await getPublicInviteInfo(userId)
+    if (!info) {
+      return reply.code(404).send({ error: { message: 'Invite not found' } })
+    }
+    return reply.send({ data: info })
   })
 }

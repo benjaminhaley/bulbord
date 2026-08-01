@@ -7,6 +7,8 @@ export interface AuthedUser {
   id: string
   name: string
   email: string | null
+  avatarUrl: string | null
+  profileComplete: boolean
   roles: string[]
 }
 
@@ -36,6 +38,8 @@ export const authPlugin = fp(async (app) => {
       id: resolved.user.id,
       name: resolved.user.name,
       email: resolved.user.email,
+      avatarUrl: resolved.user.avatarUrl,
+      profileComplete: resolved.user.profileCompletedAt !== null,
       roles: resolved.roles,
     }
   })

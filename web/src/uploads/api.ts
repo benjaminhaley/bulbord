@@ -10,9 +10,10 @@ interface UploadResponse {
   data: UploadedImage
 }
 
-export async function uploadImage(file: File | Blob): Promise<UploadedImage> {
+export async function uploadImage(file: File | Blob, folder?: 'feedback' | 'profiles'): Promise<UploadedImage> {
   const form = new FormData()
   form.append('file', file)
+  if (folder) form.append('folder', folder)
 
   const response = await fetch(`${API_URL}/uploads`, {
     method: 'POST',

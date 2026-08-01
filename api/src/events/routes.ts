@@ -51,7 +51,7 @@ function serializeEvent(e: SerializableEvent, interestStatus: InterestStatus | n
 }
 
 export async function eventsRoutes(app: FastifyInstance) {
-  app.get('/events/:id', async (request, reply) => {
+  app.get('/events/:id', { preHandler: requireAuth }, async (request, reply) => {
     const { id } = request.params as { id: string }
     const userId = request.currentUser?.id ?? null
 
@@ -124,7 +124,7 @@ export async function eventsRoutes(app: FastifyInstance) {
     return reply.code(204).send()
   })
 
-  app.get('/event-sources', async (_request, reply) => {
+  app.get('/event-sources', { preHandler: requireAuth }, async (_request, reply) => {
     const rows = await db
       .select({ id: eventSources.id, name: eventSources.name, url: eventSources.url, type: eventSources.type })
       .from(eventSources)
@@ -134,7 +134,7 @@ export async function eventsRoutes(app: FastifyInstance) {
     return reply.send({ data: rows, has_more: false, next_cursor: null })
   })
 
-  app.get('/events', async (request, reply) => {
+  app.get('/events', { preHandler: requireAuth }, async (request, reply) => {
     const query = request.query as { limit?: string; cursor?: string }
     const limit = Math.min(Number(query.limit) || 20, 100)
     const userId = request.currentUser?.id ?? null

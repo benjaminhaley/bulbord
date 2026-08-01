@@ -2,6 +2,7 @@ import cors from '@fastify/cors'
 import multipart from '@fastify/multipart'
 import Fastify from 'fastify'
 
+import { adminRoutes } from './admin/routes.js'
 import { authPlugin } from './auth/plugin.js'
 import { authRoutes } from './auth/routes.js'
 import { eventsRoutes } from './events/routes.js'
@@ -21,6 +22,7 @@ export async function buildApp() {
 
   await app.register(authPlugin)
   await app.register(authRoutes)
+  await app.register(adminRoutes)
   await app.register(eventsRoutes)
   await app.register(feedbackRoutes)
   await app.register(uploadsRoutes)

@@ -79,7 +79,7 @@ export async function clearEventInterest(id: string): Promise<void> {
 }
 
 export async function fetchEventSources(): Promise<EventSource[]> {
-  const response = await fetch(`${API_URL}/event-sources`)
+  const response = await fetch(`${API_URL}/event-sources`, { headers: authHeaders() })
   if (!response.ok) {
     throw new Error(`Failed to fetch event sources: ${response.status}`)
   }

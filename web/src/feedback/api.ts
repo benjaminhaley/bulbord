@@ -24,7 +24,7 @@ interface FeedbackItemResponse {
 }
 
 export async function fetchFeedback(): Promise<FeedbackItem[]> {
-  const response = await fetch(`${API_URL}/feedback`)
+  const response = await fetch(`${API_URL}/feedback`, { headers: authHeaders() })
   if (!response.ok) {
     throw new Error(`Failed to fetch feedback: ${response.status}`)
   }

@@ -1,4 +1,4 @@
-import { boolean, date, jsonb, numeric, pgTable, text, time, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core'
+import { boolean, date, integer, jsonb, numeric, pgTable, text, time, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core'
 
 const timestamps = {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
@@ -75,23 +75,37 @@ export const users = pgTable('users', {
   name: text('name').notNull(),
   email: text('email'),
   avatarUrl: text('avatar_url'),
+  // Null means system/root (no inviter) — the very first account, created via
+  // the ROOT_INVITE_SECRET bootstrap. Every other user was invited by scanning
+  // another member's share QR (see web/src/sharing/ShareButton.tsx), which
+  // carries `?invite=<inviter's user id>`.
+  invitedByUserId: uuid('invited_by_user_id'),
+  // Null until the post-registration "set up your profile" step (real
+  // name + optional photo) completes — the frontend join gate uses this,
+  // not a placeholder-name string match, to decide whether to show that step.
+  profileCompletedAt: timestamp('profile_completed_at', { withTimezone: true }),
   ...timestamps,
 })
 
-// One row per (provider, provider account) a user has linked. Lets Google/Apple
-// slot in later as additional rows without touching `users` or existing sessions.
-export const authIdentities = pgTable(
-  'auth_identities',
+// One row per passkey (WebAuthn credential) a user has registered. A user can
+// have more than one (e.g. one per device) — deletedAt revokes a lost device's
+// passkey without touching the others.
+export const passkeyCredentials = pgTable(
+  'passkey_credentials',
   {
     id: uuid('id').primaryKey().defaultRandom(),
     userId: uuid('user_id')
       .notNull()
       .references(() => users.id),
-    provider: text('provider').notNull(), // 'facebook' | ...
-    providerUserId: text('provider_user_id').notNull(),
+    credentialId: text('credential_id').notNull(), // base64url, from the authenticator
+    publicKey: text('public_key').notNull(), // base64url-encoded COSE public key
+    counter: integer('counter').notNull().default(0), // signature counter, for clone detection
+    deviceType: text('device_type').notNull(), // 'singleDevice' | 'multiDevice'
+    backedUp: boolean('backed_up').notNull(),
+    transports: jsonb('transports'), // e.g. ['internal', 'hybrid']
     ...timestamps,
   },
-  (table) => [uniqueIndex('auth_identities_provider_account_idx').on(table.provider, table.providerUserId)],
+  (table) => [uniqueIndex('passkey_credentials_credential_id_idx').on(table.credentialId)],
 )
 
 export const sessions = pgTable(
@@ -134,21 +148,3 @@ export const feedback = pgTable('feedback', {
   completedByUserId: uuid('completed_by_user_id').references(() => users.id),
   ...timestamps,
 })
-
-// One-time, short-lived code handed to the browser in the OAuth redirect so
-// the real session token is never carried in a URL/browser history. The
-// frontend immediately exchanges it for the token via POST /auth/exchange.
-export const loginCodes = pgTable(
-  'login_codes',
-  {
-    id: uuid('id').primaryKey().defaultRandom(),
-    codeHash: text('code_hash').notNull(),
-    sessionId: uuid('session_id')
-      .notNull()
-      .references(() => sessions.id),
-    sessionToken: text('session_token').notNull(),
-    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
-    ...timestamps, // deletedAt doubles as "consumed at"
-  },
-  (table) => [uniqueIndex('login_codes_code_hash_idx').on(table.codeHash)],
-)

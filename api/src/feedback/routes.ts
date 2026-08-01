@@ -26,7 +26,7 @@ function serializeFeedback(
 }
 
 export async function feedbackRoutes(app: FastifyInstance) {
-  app.get('/feedback', async (_request, reply) => {
+  app.get('/feedback', { preHandler: requireAuth }, async (_request, reply) => {
     const rows = await db
       .select({
         id: feedback.id,
