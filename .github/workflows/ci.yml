@@ -10,7 +10,7 @@ env:
   CORS_ORIGIN: http://localhost:5173
   SESSION_SECRET: ci-session-secret-not-used-anywhere-real
   WEBAUTHN_RP_ID: localhost
-  WEBAUTHN_RP_NAME: Campy
+  WEBAUTHN_RP_NAME: Nettlehorst
   WEBAUTHN_ORIGIN: http://localhost:5173
   ROOT_INVITE_SECRET: ci-root-invite-secret
   # storage.ts reads these at module load (server boot), even though no test

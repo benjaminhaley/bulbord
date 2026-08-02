@@ -33,7 +33,7 @@ function baseEvent(overrides: Partial<WeeklyEvent> = {}) {
 describe('renderNewsletterHtml', () => {
   const options = {
     apiUrl: 'https://api-production-a551.up.railway.app',
-    webUrl: 'https://campcampy.com',
+    webUrl: 'https://nettlehorst.bulbord.com',
     unsubscribeUrl: 'https://api-production-a551.up.railway.app/newsletter/unsubscribe?token=abc',
   }
 
@@ -63,7 +63,7 @@ describe('renderNewsletterHtml', () => {
     })
     expect(html).toContain('Story Time')
     expect(html).toContain('Merlo Library')
-    expect(html).toContain('https://campcampy.com/events/event-1')
+    expect(html).toContain('https://nettlehorst.bulbord.com/events/event-1')
   })
 
   it('prefixes the thumbnail with the API base URL', () => {

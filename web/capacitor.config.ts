@@ -5,8 +5,8 @@ import type { CapacitorConfig } from '@capacitor/cli'
 // (public/.well-known/) and the native projects' signing config, so treat it
 // as effectively permanent once a real device/store build exists.
 const config: CapacitorConfig = {
-  appId: 'com.campcampy.app',
-  appName: 'Campy',
+  appId: 'com.bulbord.app',
+  appName: 'Bulbord',
   webDir: 'dist',
   plugins: {
     // Bridges navigator.credentials.create/get to native Credential Manager
@@ -17,8 +17,8 @@ const config: CapacitorConfig = {
     // calls underneath them. `cap sync` auto-wires the native association
     // config (iOS entitlements, Android asset_statements) from `domains`.
     CapacitorPasskey: {
-      origin: 'https://campcampy.com',
-      domains: ['campcampy.com'],
+      origin: 'https://nettlehorst.bulbord.com',
+      domains: ['nettlehorst.bulbord.com'],
       autoShim: true,
     },
   },

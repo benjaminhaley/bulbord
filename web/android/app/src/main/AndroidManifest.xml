@@ -24,7 +24,7 @@
 
             <!-- Digital Asset Links verification (autoVerify) — required for
                  the app to be treated as the same trusted origin as
-                 campcampy.com for passkeys via Credential Manager, and lets
+                 nettlehorst.bulbord.com for passkeys via Credential Manager, and lets
                  shared invite/event links open directly in the app instead
                  of a browser. Backed by assetlinks.json, see
                  web/public/.well-known/assetlinks.json. -->
@@ -32,7 +32,7 @@
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="https" android:host="campcampy.com" />
+                <data android:scheme="https" android:host="nettlehorst.bulbord.com" />
             </intent-filter>
 
         </activity>

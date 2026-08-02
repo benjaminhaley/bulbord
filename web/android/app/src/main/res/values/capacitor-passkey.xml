@@ -1,4 +1,4 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="capacitor_passkey_asset_statements" translatable="false">[{"include":"https://campcampy.com/.well-known/assetlinks.json"}]</string>
+    <string name="capacitor_passkey_asset_statements" translatable="false">[{"include":"https://nettlehorst.bulbord.com/.well-known/assetlinks.json"}]</string>
 </resources>

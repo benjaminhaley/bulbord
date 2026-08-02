@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">Campy</string>
-    <string name="title_activity_main">Campy</string>
-    <string name="package_name">com.campcampy.app</string>
-    <string name="custom_url_scheme">com.campcampy.app</string>
+    <string name="app_name">Bulbord</string>
+    <string name="title_activity_main">Bulbord</string>
+    <string name="package_name">com.bulbord.app</string>
+    <string name="custom_url_scheme">com.bulbord.app</string>
 </resources>

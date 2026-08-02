@@ -1,4 +1,4 @@
-package com.campcampy.app;
+package com.bulbord.app;
 
 import com.getcapacitor.BridgeActivity;
 

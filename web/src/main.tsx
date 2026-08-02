@@ -15,12 +15,17 @@ import '@ionic/react/css/display.css'
 
 import './index.css'
 import { App } from './app/App.tsx'
+import { LandingPage } from './landing/LandingPage.tsx'
 
 // Force Material Design on every platform (iOS, Android, web) — see CLAUDE.md Design system.
 setupIonicReact({ mode: 'md' })
 
+// Bulbord is the platform brand; each institution's community lives at its
+// own subdomain (nettlehorst.bulbord.com today). The bare platform domain
+// shows a simple pointer instead of the invite-gated app — see CLAUDE.md
+// Product shape.
+const isPlatformRoot = window.location.hostname === 'bulbord.com'
+
 createRoot(document.getElementById('root')!).render(
-  <StrictMode>
-    <App />
-  </StrictMode>,
+  <StrictMode>{isPlatformRoot ? <LandingPage /> : <App />}</StrictMode>,
 )
