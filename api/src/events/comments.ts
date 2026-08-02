@@ -1,4 +1,4 @@
-import { and, asc, eq, isNull } from 'drizzle-orm'
+import { and, desc, eq, isNull } from 'drizzle-orm'
 import type { FastifyInstance } from 'fastify'
 
 import { requireAuth } from '../auth/plugin.js'
@@ -54,7 +54,7 @@ export async function eventCommentsRoutes(app: FastifyInstance) {
       .from(eventComments)
       .innerJoin(users, eq(users.id, eventComments.userId))
       .where(and(eq(eventComments.eventId, id), isNull(eventComments.deletedAt)))
-      .orderBy(asc(eventComments.createdAt))
+      .orderBy(desc(eventComments.createdAt))
 
     return reply.send({
       data: rows.map((row) => serializeComment(row, row.authorName, row.authorAvatarUrl, currentUser)),

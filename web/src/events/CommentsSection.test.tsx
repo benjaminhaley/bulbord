@@ -57,11 +57,11 @@ describe('CommentsSection', () => {
     expect(screen.getByText('Looking forward to this!')).toBeInTheDocument()
   })
 
-  it('posts a new comment and appends it to the list', async () => {
-    mockFetch.mockResolvedValue([])
+  it('posts a new comment and puts it at the top of the list (newest first)', async () => {
+    mockFetch.mockResolvedValue([comment({ id: 'old', body: 'Older comment' })])
     mockCreate.mockResolvedValue(comment({ id: 'new', body: 'Count me in' }))
     const { container } = render(<CommentsSection eventId="e1" />)
-    await screen.findByText('No comments yet')
+    await screen.findByText('Older comment')
 
     const textarea = container.querySelector('ion-textarea')!
     typeIntoIonTextarea(textarea, 'Count me in')
@@ -70,7 +70,10 @@ describe('CommentsSection', () => {
     await waitFor(() => {
       expect(mockCreate).toHaveBeenCalledWith('e1', 'Count me in')
     })
-    expect(await screen.findByText('Count me in')).toBeInTheDocument()
+    await screen.findByText('Count me in')
+
+    const text = container.textContent ?? ''
+    expect(text.indexOf('Count me in')).toBeLessThan(text.indexOf('Older comment'))
   })
 
   it('shows Edit/Delete only when the server says the viewer may act on a comment', async () => {

@@ -118,7 +118,7 @@ export function CommentsSection({ eventId }: { eventId: string }) {
     setPosting(true)
     try {
       const created = await createEventComment(eventId, trimmed)
-      setComments((prev) => [...(prev ?? []), created])
+      setComments((prev) => [created, ...(prev ?? [])])
       setNewBody('')
     } catch {
       setError(true)
