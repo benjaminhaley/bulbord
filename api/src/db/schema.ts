@@ -63,6 +63,18 @@ export const eventInterests = pgTable(
   (table) => [uniqueIndex('event_interests_user_event_idx').on(table.userId, table.eventId)],
 )
 
+export const eventComments = pgTable('event_comments', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  eventId: uuid('event_id')
+    .notNull()
+    .references(() => events.id),
+  userId: uuid('user_id')
+    .notNull()
+    .references(() => users.id),
+  body: text('body').notNull(),
+  ...timestamps,
+})
+
 export const eventsLog = pgTable('events_log', {
   id: uuid('id').primaryKey().defaultRandom(),
   actor: text('actor').notNull(),

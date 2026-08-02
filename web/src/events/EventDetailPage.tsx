@@ -16,6 +16,7 @@ import { useParams } from 'react-router-dom'
 
 import { API_URL } from '../config'
 import { fetchEvent, type Event } from './api'
+import { CommentsSection } from './CommentsSection'
 import { formatWhen } from './format'
 import { InterestedBadge } from './InterestedBadge'
 import { useEventInterest } from './useEventInterest'
@@ -97,6 +98,7 @@ export function EventDetailPage() {
                 View source
               </IonButton>
             )}
+            <CommentsSection eventId={event.id} />
           </>
         )}
       </IonContent>

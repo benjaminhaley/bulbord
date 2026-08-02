@@ -27,6 +27,19 @@ export interface InterestedUser {
   avatar_url: string | null
 }
 
+export interface EventComment {
+  id: string
+  event_id: string
+  body: string
+  created_at: string
+  updated_at: string
+  author_id: string
+  author_name: string | null
+  author_avatar_url: string | null
+  can_edit: boolean
+  can_delete: boolean
+}
+
 export interface EventSource {
   id: string
   name: string
@@ -67,6 +80,16 @@ interface EventResponse {
 
 interface EventSourcesResponse {
   data: EventSource[]
+}
+
+interface EventCommentsResponse {
+  data: EventComment[]
+  has_more: boolean
+  next_cursor: string | null
+}
+
+interface EventCommentResponse {
+  data: EventComment
 }
 
 interface InterestedUsersResponse {
@@ -159,4 +182,49 @@ export async function fetchEventSources(): Promise<EventSource[]> {
   }
   const body = (await response.json()) as EventSourcesResponse
   return body.data
+}
+
+export async function fetchEventComments(id: string): Promise<EventComment[]> {
+  const response = await fetch(`${API_URL}/events/${id}/comments`, { headers: authHeaders() })
+  if (!response.ok) {
+    throw new Error(`Failed to fetch comments: ${response.status}`)
+  }
+  const body = (await response.json()) as EventCommentsResponse
+  return body.data
+}
+
+export async function createEventComment(id: string, body: string): Promise<EventComment> {
+  const response = await fetch(`${API_URL}/events/${id}/comments`, {
+    method: 'POST',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ body }),
+  })
+  if (!response.ok) {
+    throw new Error(`Failed to post comment: ${response.status}`)
+  }
+  const responseBody = (await response.json()) as EventCommentResponse
+  return responseBody.data
+}
+
+export async function updateEventComment(id: string, commentId: string, body: string): Promise<EventComment> {
+  const response = await fetch(`${API_URL}/events/${id}/comments/${commentId}`, {
+    method: 'PATCH',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ body }),
+  })
+  if (!response.ok) {
+    throw new Error(`Failed to update comment: ${response.status}`)
+  }
+  const responseBody = (await response.json()) as EventCommentResponse
+  return responseBody.data
+}
+
+export async function deleteEventComment(id: string, commentId: string): Promise<void> {
+  const response = await fetch(`${API_URL}/events/${id}/comments/${commentId}`, {
+    method: 'DELETE',
+    headers: authHeaders(),
+  })
+  if (!response.ok) {
+    throw new Error(`Failed to delete comment: ${response.status}`)
+  }
 }
