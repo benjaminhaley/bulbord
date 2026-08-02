@@ -69,7 +69,7 @@ interface LoginChallengePayload {
 
 export type InvitationResolution = { ok: true; inviterUserId: string | null } | { ok: false; message: string }
 
-// The only place "you need an invitation to join Campy" is enforced — see
+// The only place "you need an invitation to join Nettlehorst" is enforced — see
 // CLAUDE.md's Login section. Resolved once here, at options-generation time,
 // then signed into the challenge token so /verify trusts the signature rather
 // than re-validating client-supplied ids (no TOCTOU gap between the calls).
@@ -96,7 +96,7 @@ export async function resolveInvitation(
     return { ok: true, inviterUserId: inviter.id }
   }
 
-  return { ok: false, message: 'An invitation is required to join Campy' }
+  return { ok: false, message: 'An invitation is required to join Nettlehorst' }
 }
 
 export async function createRegistrationOptions(input: { inviterUserId?: string; rootSecret?: string }) {
@@ -119,8 +119,8 @@ export async function createRegistrationOptions(input: { inviterUserId?: string;
     // OS/authenticator's own passkey label (shown in account pickers on
     // shared devices) stays generic forever, since WebAuthn has no API to
     // rename a credential after creation.
-    userName: 'New Campy member',
-    userDisplayName: 'New Campy member',
+    userName: 'New Nettlehorst member',
+    userDisplayName: 'New Nettlehorst member',
     attestationType: 'none',
     authenticatorSelection: { residentKey: 'required', userVerification: 'required' },
   })
@@ -158,7 +158,7 @@ export async function verifyRegistration(input: { response: RegistrationResponse
 
   const [user] = await db
     .insert(users)
-    .values({ id: payload.newUserId, name: 'New Campy member', invitedByUserId: payload.inviterUserId })
+    .values({ id: payload.newUserId, name: 'New Nettlehorst member', invitedByUserId: payload.inviterUserId })
     .returning()
 
   // Independent writes — none reads another's result — so they run concurrently.

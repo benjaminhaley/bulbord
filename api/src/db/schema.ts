@@ -1,3 +1,4 @@
+import { sql } from 'drizzle-orm'
 import { boolean, date, integer, jsonb, numeric, pgTable, text, time, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core'
 
 const timestamps = {
@@ -142,6 +143,15 @@ export const userRoles = pgTable('user_roles', {
 // others later needs no schema change.
 export const feedback = pgTable('feedback', {
   id: uuid('id').primaryKey().defaultRandom(),
+  // A small, subtle, permanent reference number ("#28") assigned in creation
+  // order across all feedback ever posted (open and closed) — backed by a DB
+  // sequence (feedback_number_seq) so it's never reused even if a row is later
+  // soft-deleted. Not the primary key on purpose: the UUID stays the real
+  // identity, this is just a human-friendly way to refer to one in conversation.
+  number: integer('number')
+    .notNull()
+    .unique()
+    .default(sql`nextval('feedback_number_seq')`),
   title: text('title').notNull(),
   description: text('description'),
   createdByUserId: uuid('created_by_user_id').references(() => users.id),

@@ -24,7 +24,7 @@ async function main() {
 
   const apiUrl = requireEnv('PUBLIC_API_URL')
   const webUrl = requireEnv('PUBLIC_WEB_URL')
-  const subject = `This week on Campy: ${weekEvents.length} event${weekEvents.length === 1 ? '' : 's'}`
+  const subject = `This week on Nettlehorst: ${weekEvents.length} event${weekEvents.length === 1 ? '' : 's'}`
 
   // Each recipient's send is an independent Resend call — sent in parallel
   // rather than awaited one at a time in a loop. allSettled rather than all,

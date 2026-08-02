@@ -8,12 +8,21 @@ import { requireAuth, requireRole } from '../auth/plugin.js'
 function serializeFeedback(
   f: Pick<
     typeof feedback.$inferSelect,
-    'id' | 'title' | 'description' | 'createdAt' | 'completedAt' | 'completionNote' | 'imageUrl' | 'thumbnailUrl'
+    | 'id'
+    | 'number'
+    | 'title'
+    | 'description'
+    | 'createdAt'
+    | 'completedAt'
+    | 'completionNote'
+    | 'imageUrl'
+    | 'thumbnailUrl'
   >,
   authorName: string | null,
 ) {
   return {
     id: f.id,
+    number: f.number,
     title: f.title,
     description: f.description,
     created_at: f.createdAt,
@@ -30,6 +39,7 @@ export async function feedbackRoutes(app: FastifyInstance) {
     const rows = await db
       .select({
         id: feedback.id,
+        number: feedback.number,
         title: feedback.title,
         description: feedback.description,
         createdAt: feedback.createdAt,

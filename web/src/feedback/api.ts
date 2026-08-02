@@ -3,6 +3,7 @@ import { authHeaders } from '../auth/token'
 
 export interface FeedbackItem {
   id: string
+  number: number
   title: string
   description: string | null
   created_at: string

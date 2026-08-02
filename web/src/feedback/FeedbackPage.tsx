@@ -53,7 +53,7 @@ function FeedbackItemBody({
       {item.description && <p>{item.description}</p>}
       {extra}
       <IonNote>
-        {item.author_name ? `${item.author_name} · ` : ''}
+        #{item.number} · {item.author_name ? `${item.author_name} · ` : ''}
         {formatDate(item.created_at)}
       </IonNote>
     </IonLabel>

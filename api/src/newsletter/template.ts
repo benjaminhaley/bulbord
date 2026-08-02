@@ -93,14 +93,14 @@ export function renderNewsletterHtml(options: {
           <table role="presentation" width="480" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:12px;overflow:hidden;">
             <tr>
               <td style="padding:24px 24px 8px;">
-                <h1 style="font-size:20px;margin:0 0 4px;color:#111111;">This week on Campy</h1>
+                <h1 style="font-size:20px;margin:0 0 4px;color:#111111;">This week on Nettlehorst</h1>
                 <p style="color:#666666;font-size:14px;margin:0;">Hi ${escapeHtml(recipient.name)}, here's what's coming up.</p>
               </td>
             </tr>
             ${body}
             <tr>
               <td style="padding:24px;text-align:center;">
-                <a href="${webUrl}/events" style="display:inline-block;background:#111111;color:#ffffff;padding:12px 24px;border-radius:8px;text-decoration:none;font-size:14px;">Open Campy</a>
+                <a href="${webUrl}/events" style="display:inline-block;background:#111111;color:#ffffff;padding:12px 24px;border-radius:8px;text-decoration:none;font-size:14px;">Open Nettlehorst</a>
               </td>
             </tr>
             <tr>

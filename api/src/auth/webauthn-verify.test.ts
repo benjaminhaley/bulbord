@@ -58,7 +58,7 @@ let storedCredentialRow: {
 
 beforeEach(() => {
   vi.stubEnv('WEBAUTHN_RP_ID', 'localhost')
-  vi.stubEnv('WEBAUTHN_RP_NAME', 'Campy')
+  vi.stubEnv('WEBAUTHN_RP_NAME', 'Nettlehorst')
   vi.stubEnv('WEBAUTHN_ORIGIN', 'http://localhost:5173')
   vi.stubEnv('SESSION_SECRET', 'the-session-secret')
   insertCalls.length = 0
