@@ -64,12 +64,15 @@ export function SourceDetailPage() {
                 : 'No events identified yet from this source'}
             </p>
             {source.notes && <p>{source.notes}</p>}
+            <p>
+              <strong>{source.event_count}</strong> currently shown in the app (approved and upcoming)
+            </p>
             <IonButton expand="block" href={source.url} target="_blank" rel="noreferrer">
               Visit source
             </IonButton>
             <IonList inset>
               <IonListHeader>
-                <IonLabel>Events from this source ({source.events.length})</IonLabel>
+                <IonLabel>All events ever ingested from this source ({source.events.length})</IonLabel>
               </IonListHeader>
               {source.events.length === 0 && (
                 <IonItem lines="none">

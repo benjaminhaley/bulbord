@@ -78,6 +78,15 @@ function isSourceStale(lastEventAddedAt: Date | null): boolean {
   return !lastEventAddedAt || Date.now() - lastEventAddedAt.getTime() > STALE_THRESHOLD_MS
 }
 
+// Count of a source's events that actually appear in the app right now —
+// i.e. the same approved+upcoming filter GET /events applies — not a raw
+// all-time count of everything ever ingested from it (pending/rejected/past
+// events all still show up in the source's own event list below, just not
+// counted here).
+function shownEventCountExpr(sourceId: SQLWrapper) {
+  return sql<number>`(select count(*)::int from ${events} where ${events.sourceId} = ${sourceId} and ${events.status} = 'approved' and ${events.deletedAt} is null and ${events.startDate} >= ${todayInChicago()})`
+}
+
 export async function eventsRoutes(app: FastifyInstance) {
   app.get('/events/:id', { preHandler: requireAuth }, async (request, reply) => {
     const { id } = request.params as { id: string }
@@ -161,12 +170,22 @@ export async function eventsRoutes(app: FastifyInstance) {
 
   app.get('/event-sources', { preHandler: requireAuth }, async (_request, reply) => {
     const rows = await db
-      .select({ id: eventSources.id, name: eventSources.name, url: eventSources.url, type: eventSources.type })
+      .select({
+        id: eventSources.id,
+        name: eventSources.name,
+        url: eventSources.url,
+        type: eventSources.type,
+        eventCount: shownEventCountExpr(eventSources.id),
+      })
       .from(eventSources)
       .where(and(eq(eventSources.isActive, true), isNull(eventSources.deletedAt)))
       .orderBy(asc(eventSources.name))
 
-    return reply.send({ data: rows, has_more: false, next_cursor: null })
+    return reply.send({
+      data: rows.map((row) => ({ id: row.id, name: row.name, url: row.url, type: row.type, event_count: row.eventCount })),
+      has_more: false,
+      next_cursor: null,
+    })
   })
 
   app.get('/event-sources/:id', { preHandler: requireAuth }, async (request, reply) => {
@@ -193,6 +212,12 @@ export async function eventsRoutes(app: FastifyInstance) {
       return reply.code(404).send({ error: { message: 'Source not found' } })
     }
 
+    // Already have every event for this source in hand (sourceEvents above),
+    // so filter in JS rather than a second round trip — same approved+upcoming
+    // definition as shownEventCountExpr, used where the events aren't already loaded.
+    const today = todayInChicago()
+    const eventCount = sourceEvents.filter((e) => e.status === 'approved' && e.startDate >= today).length
+
     return reply.send({
       data: {
         id: source.id,
@@ -204,6 +229,7 @@ export async function eventsRoutes(app: FastifyInstance) {
         last_checked_at: source.lastCheckedAt,
         last_event_added_at: lastEventAddedAt,
         is_stale: isSourceStale(lastEventAddedAt ? new Date(lastEventAddedAt) : null),
+        event_count: eventCount,
         events: sourceEvents.map((e) => ({ id: e.id, title: e.title, start_date: e.startDate, status: e.status })),
       },
     })

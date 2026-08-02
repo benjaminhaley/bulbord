@@ -55,6 +55,7 @@ export function SourcesPage() {
                   <h2>{source.name}</h2>
                   <IonNote>{source.url}</IonNote>
                 </IonLabel>
+                <IonNote slot="end">{source.event_count}</IonNote>
               </IonItem>
             ))}
           </IonList>

@@ -32,6 +32,9 @@ export interface EventSource {
   name: string
   url: string
   type: string
+  // Events from this source that are actually approved + upcoming right now
+  // — not an all-time count of everything ever ingested from it.
+  event_count: number
 }
 
 export interface SourceEvent {
@@ -47,6 +50,8 @@ export interface EventSourceDetail extends EventSource {
   last_checked_at: string | null
   last_event_added_at: string | null
   is_stale: boolean
+  // Every event ever ingested from this source, regardless of status/date —
+  // event_count (inherited above) is the approved+upcoming subset of these.
   events: SourceEvent[]
 }
 
@@ -72,13 +77,31 @@ interface EventSourceDetailResponse {
   data: EventSourceDetail
 }
 
+// GET /events paginates (100/page max) — loop through every page rather than
+// silently showing only the chronologically-soonest page. Fine at this app's
+// scale (low hundreds of events at most); a true infinite-scroll UI would be
+// overkill for a family app's event list.
 export async function fetchEvents(): Promise<Event[]> {
-  const response = await fetch(`${API_URL}/events`, { headers: authHeaders() })
-  if (!response.ok) {
-    throw new Error(`Failed to fetch events: ${response.status}`)
+  const all: Event[] = []
+  let cursor: string | null = null
+
+  for (;;) {
+    const url = new URL(`${API_URL}/events`)
+    url.searchParams.set('limit', '100')
+    if (cursor) url.searchParams.set('cursor', cursor)
+
+    const response = await fetch(url, { headers: authHeaders() })
+    if (!response.ok) {
+      throw new Error(`Failed to fetch events: ${response.status}`)
+    }
+    const body = (await response.json()) as EventsResponse
+    all.push(...body.data)
+
+    if (!body.has_more || !body.next_cursor) break
+    cursor = body.next_cursor
   }
-  const body = (await response.json()) as EventsResponse
-  return body.data
+
+  return all
 }
 
 export async function fetchEvent(id: string): Promise<Event> {
