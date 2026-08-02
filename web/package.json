@@ -9,6 +9,7 @@
     "lint": "oxlint",
     "typecheck": "tsc -b --noEmit",
     "test": "vitest run",
+    "knip": "KNIP_DISABLE_RAW_TRANSFER=1 knip",
     "test:e2e": "playwright test",
     "preview": "vite preview",
     "start": "sirv dist --single --host 0.0.0.0 --port ${PORT:-3000}"
@@ -34,7 +35,6 @@
     "@playwright/test": "^1.62.1",
     "@testing-library/jest-dom": "^7.0.0",
     "@testing-library/react": "^16.3.2",
-    "@testing-library/user-event": "^14.6.1",
     "@types/node": "^24.13.2",
     "@types/qrcode": "^1.5.6",
     "@types/react": "^19.2.17",
@@ -43,6 +43,7 @@
     "@types/react-router-dom": "^5.3.3",
     "@vitejs/plugin-react": "^6.0.3",
     "jsdom": "^30.0.1",
+    "knip": "^6.31.0",
     "oxlint": "^1.71.0",
     "typescript": "~6.0.2",
     "vite": "^8.1.1",

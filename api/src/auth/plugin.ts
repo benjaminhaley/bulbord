@@ -3,7 +3,7 @@ import type { FastifyReply, FastifyRequest } from 'fastify'
 
 import { resolveSessionUser } from './service.js'
 
-export interface AuthedUser {
+interface AuthedUser {
   id: string
   name: string
   email: string | null

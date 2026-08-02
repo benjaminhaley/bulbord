@@ -9,6 +9,7 @@
     "start": "node dist/server.js",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run",
+    "knip": "KNIP_DISABLE_RAW_TRANSFER=1 knip",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx src/db/migrate.ts",
     "events:seed": "tsx src/events/seed-2026-07-29.ts",
@@ -30,6 +31,7 @@
   "devDependencies": {
     "@types/node": "^26.1.2",
     "drizzle-kit": "^0.31.10",
+    "knip": "^6.31.0",
     "tsx": "^4.23.1",
     "typescript": "^7.0.2",
     "vitest": "^4.1.10"

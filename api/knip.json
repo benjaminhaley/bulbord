@@ -1,0 +1,5 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "entry": ["src/events/{seed,backfill,fix,update}-*.ts"],
+  "project": ["src/**/*.ts"]
+}

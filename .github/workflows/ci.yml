@@ -46,6 +46,8 @@ jobs:
         working-directory: api
       - run: npm run typecheck
         working-directory: api
+      - run: npm run knip
+        working-directory: api
       - run: npm run db:migrate
         working-directory: api
       - run: npm test
@@ -63,6 +65,8 @@ jobs:
       - run: npm run lint
         working-directory: web
       - run: npm run typecheck
+        working-directory: web
+      - run: npm run knip
         working-directory: web
       - run: npm test
         working-directory: web

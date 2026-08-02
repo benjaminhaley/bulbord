@@ -37,7 +37,7 @@ export interface EventSource {
   event_count: number
 }
 
-export interface SourceEvent {
+interface SourceEvent {
   id: string
   title: string
   start_date: string
