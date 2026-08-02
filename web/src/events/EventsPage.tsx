@@ -61,6 +61,7 @@ export function EventsPage() {
   const [error, setError] = useState(false)
   const [viewMode, setViewMode] = useState<ViewMode>('new')
   const [swipeToast, setSwipeToast] = useState<SwipeToast | null>(null)
+  const [multiTouch, setMultiTouch] = useState(false)
   const { setInterest, clearInterest } = useEventInterest(updateEvent)
 
   useEffect(() => {
@@ -96,6 +97,20 @@ export function EventsPage() {
     }
   }
 
+  // Ionic's item-sliding gesture reads raw touch movement without checking
+  // how many fingers are down, so a two-finger pinch-to-zoom gets its first
+  // finger's movement misread as a horizontal swipe. Disabling every sliding
+  // item for as long as a second finger is on screen cleanly aborts any
+  // in-progress swipe (IonItemSliding settles back to closed rather than
+  // firing interested/dismissed) without touching Ionic itself or any other
+  // page — this is the only screen with swipeable list items.
+  function handleTouchStart(e: React.TouchEvent) {
+    if (e.touches.length > 1) setMultiTouch(true)
+  }
+  function handleTouchEnd(e: React.TouchEvent) {
+    if (e.touches.length === 0) setMultiTouch(false)
+  }
+
   return (
     <IonPage>
       <IonHeader>
@@ -124,7 +139,7 @@ export function EventsPage() {
           </IonToolbar>
         )}
       </IonHeader>
-      <IonContent fullscreen>
+      <IonContent fullscreen onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd} onTouchCancel={handleTouchEnd}>
         {events === null && !error && (
           <div className="coming-soon">
             <IonSpinner name="dots" />
@@ -151,7 +166,7 @@ export function EventsPage() {
               const location = locationLabel(event)
               const description = teaser(event.description)
               return (
-                <IonItemSliding key={event.id}>
+                <IonItemSliding key={event.id} disabled={multiTouch}>
                   <IonItemOptions side="start" onIonSwipe={(e) => handleSwipe(e, event, 'interested')}>
                     <IonItemOption expandable color="warning" onClick={(e) => handleSwipe(e, event, 'interested')}>
                       <IonIcon slot="icon-only" icon={star} />
