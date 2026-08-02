@@ -72,11 +72,11 @@ export function SourceDetailPage() {
             </IonButton>
             <IonList inset>
               <IonListHeader>
-                <IonLabel>All events ever ingested from this source ({source.events.length})</IonLabel>
+                <IonLabel>Upcoming events from this source ({source.events.length})</IonLabel>
               </IonListHeader>
               {source.events.length === 0 && (
                 <IonItem lines="none">
-                  <IonLabel color="medium">None yet</IonLabel>
+                  <IonLabel color="medium">Nothing upcoming</IonLabel>
                 </IonItem>
               )}
               {source.events.map((event) => (

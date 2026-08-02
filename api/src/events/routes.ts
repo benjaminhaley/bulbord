@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, getTableColumns, gte, isNull, sql, type SQLWrapper } from 'drizzle-orm'
+import { and, asc, eq, getTableColumns, gte, isNull, sql, type SQLWrapper } from 'drizzle-orm'
 import type { FastifyInstance } from 'fastify'
 
 import { db } from '../db/client.js'
@@ -199,7 +199,13 @@ export async function eventsRoutes(app: FastifyInstance) {
 
   app.get('/event-sources/:id', { preHandler: requireAuth }, async (request, reply) => {
     const { id } = request.params as { id: string }
-    const sourceConditions = and(eq(events.sourceId, id), isNull(events.deletedAt))
+    // last_event_added_at/is_stale (below) look at every event ever ingested
+    // from this source, all statuses/dates — that's what tells you whether
+    // ingestion has gone quiet. The enumerated event list is deliberately
+    // narrower: next-upcoming-first, past events excluded, since it's meant
+    // to answer "what's coming up from this source," not "what's its history."
+    const allSourceConditions = and(eq(events.sourceId, id), isNull(events.deletedAt))
+    const upcomingSourceConditions = and(allSourceConditions, gte(events.startDate, todayInChicago()))
 
     const [[source], sourceEvents, [{ lastEventAddedAt }]] = await Promise.all([
       db
@@ -210,22 +216,19 @@ export async function eventsRoutes(app: FastifyInstance) {
       db
         .select({ id: events.id, title: events.title, startDate: events.startDate, status: events.status })
         .from(events)
-        .where(sourceConditions)
-        .orderBy(desc(events.startDate)),
+        .where(upcomingSourceConditions)
+        .orderBy(asc(events.startDate)),
       // The postgres.js driver returns a raw, untyped `sql` aggregate as a
       // string rather than a Date, unlike drizzle-mapped table columns.
-      db.select({ lastEventAddedAt: sql<string | null>`max(${events.createdAt})` }).from(events).where(sourceConditions),
+      db.select({ lastEventAddedAt: sql<string | null>`max(${events.createdAt})` }).from(events).where(allSourceConditions),
     ])
 
     if (!source) {
       return reply.code(404).send({ error: { message: 'Source not found' } })
     }
 
-    // Already have every event for this source in hand (sourceEvents above),
-    // so filter in JS rather than a second round trip — same approved+upcoming
-    // definition as shownEventCountExpr, used where the events aren't already loaded.
-    const today = todayInChicago()
-    const eventCount = sourceEvents.filter((e) => e.status === 'approved' && e.startDate >= today).length
+    // sourceEvents is already upcoming-only (query above), so just check status.
+    const eventCount = sourceEvents.filter((e) => e.status === 'approved').length
 
     return reply.send({
       data: {
