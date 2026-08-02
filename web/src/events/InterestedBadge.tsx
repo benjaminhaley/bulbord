@@ -26,14 +26,15 @@ function joinWithAnd(names: string[]): string {
   return `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`
 }
 
-// Shows as many actual names as fit within the character budget (e.g. "You,
-// Alice and 3 more"), falling back to just the first name if even that
-// overflows — never returns an empty string since count > 0 here.
+// Leads with the count (so "1 interested: You" reads as a count followed by
+// who, not a sentence with "You" as its subject), then as many actual names
+// as fit within the character budget, trailing off with "…" if it doesn't
+// all fit — never returns an empty name list since count > 0 here.
 export function buildInterestedTeaser(names: string[], totalCount: number, maxChars = TEASER_MAX_CHARS): string {
   for (let shown = names.length; shown >= 1; shown--) {
-    const remaining = totalCount - shown
-    const text = remaining > 0 ? `${names.slice(0, shown).join(', ')} and ${remaining} more` : joinWithAnd(names.slice(0, shown))
-    if (text.length <= maxChars || shown === 1) return `${text} interested`
+    const truncated = shown < names.length
+    const text = truncated ? `${names.slice(0, shown).join(', ')}…` : joinWithAnd(names.slice(0, shown))
+    if (text.length <= maxChars || shown === 1) return `${totalCount} interested: ${text}`
   }
   return `${totalCount} interested`
 }
