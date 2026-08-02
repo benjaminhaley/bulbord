@@ -60,6 +60,16 @@ function serializeEvent(
 // Correlated scalar subqueries — fine for a single row (GET /events/:id), but
 // the paginated list route below aggregates via a joined CTE instead so it
 // doesn't re-scan event_interests once per returned row.
+//
+// CAUTION: drizzle only table-qualifies a raw sql`` column interpolation
+// (e.g. the `${eventId}` below) when the surrounding query already involves
+// more than one table — GET /events/:id's outer query happens to already
+// left-join event_interests, which is the only reason `${eventId}` renders
+// as "events"."id" instead of a bare "id" that would wrongly resolve to
+// event_interests' own id column inside this subquery. A caller with a
+// single-table outer query would silently get that wrong (see the
+// event_count fix on GET /event-sources, which hit exactly this and had to
+// use a real join instead) — don't reuse these two helpers from one.
 function interestedCountExpr(eventId: SQLWrapper) {
   return sql<number>`(select count(*)::int from ${eventInterests} where ${eventInterests.eventId} = ${eventId} and ${eventInterests.status} = 'interested' and ${eventInterests.deletedAt} is null)`
 }
@@ -78,14 +88,6 @@ function isSourceStale(lastEventAddedAt: Date | null): boolean {
   return !lastEventAddedAt || Date.now() - lastEventAddedAt.getTime() > STALE_THRESHOLD_MS
 }
 
-// Count of a source's events that actually appear in the app right now —
-// i.e. the same approved+upcoming filter GET /events applies — not a raw
-// all-time count of everything ever ingested from it (pending/rejected/past
-// events all still show up in the source's own event list below, just not
-// counted here).
-function shownEventCountExpr(sourceId: SQLWrapper) {
-  return sql<number>`(select count(*)::int from ${events} where ${events.sourceId} = ${sourceId} and ${events.status} = 'approved' and ${events.deletedAt} is null and ${events.startDate} >= ${todayInChicago()})`
-}
 
 export async function eventsRoutes(app: FastifyInstance) {
   app.get('/events/:id', { preHandler: requireAuth }, async (request, reply) => {
@@ -169,16 +171,23 @@ export async function eventsRoutes(app: FastifyInstance) {
   })
 
   app.get('/event-sources', { preHandler: requireAuth }, async (_request, reply) => {
+    // A genuine join + GROUP BY, not a correlated subquery referencing the
+    // outer eventSources.id — drizzle only qualifies a raw sql`` column
+    // interpolation with its table name when the surrounding query already
+    // involves more than one table, so a correlated subquery here silently
+    // (and wrongly) resolved the outer id against events' own id column.
     const rows = await db
       .select({
         id: eventSources.id,
         name: eventSources.name,
         url: eventSources.url,
         type: eventSources.type,
-        eventCount: shownEventCountExpr(eventSources.id),
+        eventCount: sql<number>`count(*) filter (where ${events.status} = 'approved' and ${events.startDate} >= ${todayInChicago()})::int`,
       })
       .from(eventSources)
+      .leftJoin(events, and(eq(events.sourceId, eventSources.id), isNull(events.deletedAt)))
       .where(and(eq(eventSources.isActive, true), isNull(eventSources.deletedAt)))
+      .groupBy(eventSources.id, eventSources.name, eventSources.url, eventSources.type)
       .orderBy(asc(eventSources.name))
 
     return reply.send({
