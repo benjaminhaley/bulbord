@@ -195,8 +195,11 @@ function ProfileSetupScreen() {
           <div
             onClick={() => fileInputRef.current?.click()}
             style={{
-              width: 84,
-              height: 84,
+              // rem, not px, so this grows along with OS/browser text-size
+              // settings instead of staying fixed while "Add photo" grows
+              // past it and gets clipped by overflow: hidden below.
+              width: '5.25rem',
+              height: '5.25rem',
               borderRadius: '50%',
               border: '1.5px dashed var(--ion-color-medium)',
               margin: '0 auto',
@@ -232,7 +235,7 @@ function ProfileSetupScreen() {
             <IonInput type="email" value={email} onIonInput={(e) => setEmail(e.detail.value ?? '')} />
           </IonItem>
         </IonList>
-        <p className="ion-padding-start" style={{ color: 'var(--ion-color-medium)', fontSize: 14, marginTop: 4 }}>
+        <p className="ion-padding-start" style={{ color: 'var(--ion-color-medium)', fontSize: '0.875rem', marginTop: 4 }}>
           Used for the weekly events newsletter — you can unsubscribe anytime from any email you get.
         </p>
         {error && (

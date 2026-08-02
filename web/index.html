@@ -3,9 +3,14 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <!--
+      user-scalable=no / maximum-scale=1.0 previously blocked pinch-to-zoom
+      entirely — a WCAG 1.4.4 (Resize Text) failure and the main blocker for
+      anyone who needs larger text (feedback #30). Allow zooming up to 5x.
+    -->
     <meta
       name="viewport"
-      content="viewport-fit=cover, width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, user-scalable=no"
+      content="viewport-fit=cover, width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=5.0"
     />
     <title>Nettlehorst</title>
   </head>
