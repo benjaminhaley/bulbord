@@ -75,6 +75,10 @@ export const users = pgTable('users', {
   name: text('name').notNull(),
   email: text('email'),
   avatarUrl: text('avatar_url'),
+  // Whether this user should receive the weekly events newsletter (see
+  // api/src/newsletter/). Defaults on; flipped off via the no-login-required
+  // unsubscribe link, never re-enabled automatically.
+  newsletterSubscribed: boolean('newsletter_subscribed').notNull().default(true),
   // Null means system/root (no inviter) — the very first account, created via
   // the ROOT_INVITE_SECRET bootstrap. Every other user was invited by scanning
   // another member's share QR (see web/src/sharing/ShareButton.tsx), which

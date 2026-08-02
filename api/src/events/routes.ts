@@ -1,18 +1,12 @@
 import { and, asc, eq, getTableColumns, gte, isNull, sql, type SQLWrapper } from 'drizzle-orm'
 import type { FastifyInstance } from 'fastify'
 
+import { requireAuth } from '../auth/plugin.js'
 import { db } from '../db/client.js'
 import { events, eventSources, eventInterests, eventsLog, users } from '../db/schema.js'
-import { requireAuth } from '../auth/plugin.js'
+import { todayInChicago } from '../dates.js'
 
 type InterestStatus = 'interested' | 'dismissed'
-
-// Events are Chicago-area, so "today" for filtering out past events is
-// Chicago's calendar day, not the server's (UTC) one — using UTC would drop
-// today's evening events a few hours early.
-function todayInChicago(): string {
-  return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Chicago' }).format(new Date())
-}
 
 type SerializableEvent = Pick<
   typeof events.$inferSelect,

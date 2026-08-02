@@ -1,7 +1,7 @@
 import type { FastifyInstance, FastifyReply } from 'fastify'
 
 import { bearerToken, requireAuth } from './plugin.js'
-import { getPublicInviteInfo, revokeSession, updateProfile } from './service.js'
+import { getPublicInviteInfo, revokeSession, updateProfile, validateProfileUpdate } from './service.js'
 import {
   createAuthenticationOptions,
   createRegistrationOptions,
@@ -65,17 +65,18 @@ export async function authRoutes(app: FastifyInstance) {
   })
 
   app.patch('/auth/me', { preHandler: requireAuth }, async (request, reply) => {
-    const body = request.body as { name?: string; avatarUrl?: string }
-    const name = body.name?.trim()
-    if (body.name !== undefined && !name) {
-      return reply.code(400).send({ error: { message: 'name cannot be blank' } })
+    const body = request.body as { name?: string; email?: string; avatarUrl?: string }
+    const result = validateProfileUpdate({ profileComplete: request.currentUser!.profileComplete }, body)
+    if (!result.ok) {
+      return reply.code(400).send({ error: { message: result.message } })
     }
 
-    const updated = await updateProfile(request.currentUser!.id, { name, avatarUrl: body.avatarUrl })
+    const updated = await updateProfile(request.currentUser!.id, result.updates)
     return reply.send({
       data: {
         id: updated.id,
         name: updated.name,
+        email: updated.email,
         avatarUrl: updated.avatarUrl,
         profileComplete: updated.profileCompletedAt !== null,
       },

@@ -70,14 +70,48 @@ export async function revokeSession(bearerToken: string) {
   }
 }
 
+export type ProfileUpdateInput = { name?: string; email?: string; avatarUrl?: string }
+type ValidationResult =
+  | { ok: true; updates: ProfileUpdateInput }
+  | { ok: false; message: string }
+
+// Validates a PATCH /auth/me body before it reaches updateProfile — pulled
+// out as a pure function (rather than left inline in the route handler) so
+// the signup-flow's email requirement, the actual business rule here, is
+// unit-testable without spinning up Fastify. Email is only required the
+// first time a profile is completed (the signup flow) — later edits to just
+// the name, say, shouldn't force it.
+export function validateProfileUpdate(current: { profileComplete: boolean }, body: ProfileUpdateInput): ValidationResult {
+  const name = body.name?.trim()
+  if (body.name !== undefined && !name) {
+    return { ok: false, message: 'name cannot be blank' }
+  }
+
+  const email = body.email?.trim()
+  if (body.email !== undefined && !email) {
+    return { ok: false, message: 'email cannot be blank' }
+  }
+  if (email !== undefined && !email.includes('@')) {
+    return { ok: false, message: 'email must be a valid email address' }
+  }
+
+  const completingProfile = !!name && !current.profileComplete
+  if (completingProfile && !email) {
+    return { ok: false, message: 'email is required to complete your profile' }
+  }
+
+  return { ok: true, updates: { name, email, avatarUrl: body.avatarUrl } }
+}
+
 // Post-registration "set up your profile" step — the only place a user's
 // name/photo are ever set after the placeholder assigned at registration.
-export async function updateProfile(userId: string, updates: { name?: string; avatarUrl?: string }) {
+export async function updateProfile(userId: string, updates: { name?: string; email?: string; avatarUrl?: string }) {
   const [[updated]] = await Promise.all([
     db
       .update(users)
       .set({
         ...(updates.name ? { name: updates.name, profileCompletedAt: new Date() } : {}),
+        ...(updates.email ? { email: updates.email } : {}),
         ...(updates.avatarUrl ? { avatarUrl: updates.avatarUrl } : {}),
         updatedAt: new Date(),
       })

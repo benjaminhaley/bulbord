@@ -148,22 +148,26 @@ function ProfileSetupScreen() {
   const { refresh } = useAuth()
   const [firstName, setFirstName] = useState('')
   const [lastName, setLastName] = useState('')
+  const [email, setEmail] = useState('')
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const { fileInputRef, uploading, attach } = useImageUpload('profiles', (image) => setAvatarUrl(image.image_url))
+
+  const name = `${firstName.trim()} ${lastName.trim()}`.trim()
+  const trimmedEmail = email.trim()
+  const canSubmit = !submitting && !uploading && !!firstName.trim() && !!lastName.trim() && trimmedEmail.includes('@')
 
   async function attachPhoto(file: File) {
     if (!(await attach(file))) setError('Could not upload photo')
   }
 
   async function submit() {
-    const name = `${firstName.trim()} ${lastName.trim()}`.trim()
-    if (!name) return
+    if (!canSubmit) return
     setSubmitting(true)
     setError(null)
     try {
-      await updateProfile({ name, avatarUrl: avatarUrl ?? undefined })
+      await updateProfile({ name, email: trimmedEmail, avatarUrl: avatarUrl ?? undefined })
       await refresh()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not save your profile')
@@ -219,11 +223,18 @@ function ProfileSetupScreen() {
               autofocus
             />
           </IonItem>
-          <IonItem lines="none">
+          <IonItem>
             <IonLabel position="stacked">Last name</IonLabel>
             <IonInput value={lastName} onIonInput={(e) => setLastName(capitalizeFirst(e.detail.value ?? ''))} />
           </IonItem>
+          <IonItem lines="none">
+            <IonLabel position="stacked">Email</IonLabel>
+            <IonInput type="email" value={email} onIonInput={(e) => setEmail(e.detail.value ?? '')} />
+          </IonItem>
         </IonList>
+        <p className="ion-padding-start" style={{ color: 'var(--ion-color-medium)', fontSize: 14, marginTop: 4 }}>
+          Used for the weekly events newsletter — you can unsubscribe anytime from any email you get.
+        </p>
         {error && (
           <IonText color="danger">
             <p className="ion-padding-start">{error}</p>
@@ -232,7 +243,7 @@ function ProfileSetupScreen() {
         <IonButton
           expand="block"
           className="ion-margin-top"
-          disabled={submitting || uploading || !firstName.trim() || !lastName.trim()}
+          disabled={!canSubmit}
           onClick={submit}
         >
           Continue

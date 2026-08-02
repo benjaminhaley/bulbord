@@ -13,7 +13,8 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx src/db/migrate.ts",
     "events:seed": "tsx src/events/seed-2026-07-29.ts",
-    "events:refine-sources": "tsx src/events/update-2026-07-29-refine-sources.ts"
+    "events:refine-sources": "tsx src/events/update-2026-07-29-refine-sources.ts",
+    "newsletter:send": "tsx src/newsletter/send-weekly.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1100.0",
@@ -26,6 +27,7 @@
     "fastify": "^5.10.0",
     "fastify-plugin": "^6.0.0",
     "postgres": "^3.4.9",
+    "resend": "^6.18.1",
     "sharp": "^0.35.3"
   },
   "devDependencies": {
