@@ -17,6 +17,7 @@
     "newsletter:send": "tsx src/newsletter/send-weekly.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.115.0",
     "@aws-sdk/client-s3": "^3.1100.0",
     "@fastify/cors": "^11.3.0",
     "@fastify/multipart": "^10.1.0",

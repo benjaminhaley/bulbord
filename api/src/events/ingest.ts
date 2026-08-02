@@ -3,6 +3,7 @@ import { and, eq } from 'drizzle-orm'
 import { db } from '../db/client.js'
 import { events, eventsLog } from '../db/schema.js'
 import { enrichEventImages } from './image-enrichment.js'
+import { simplifyTitle } from './title-normalization.js'
 
 export interface CandidateEvent {
   title: string
@@ -35,15 +36,20 @@ export async function ingestEvents(candidates: CandidateEvent[], { sourceId, act
   const toEnrich: { id: string; sourceUrl: string; imageUrl?: string }[] = []
 
   for (const candidate of candidates) {
+    // Simplified once and reused for both the dedup lookup and the insert
+    // value, so a later re-ingestion of the same source page matches the
+    // same (already-simplified) row instead of drifting into a duplicate.
+    const title = await simplifyTitle({
+      title: candidate.title,
+      description: candidate.description,
+      locationName: candidate.locationName,
+    })
+
     const existing = await db
       .select({ id: events.id })
       .from(events)
       .where(
-        and(
-          eq(events.title, candidate.title),
-          eq(events.startDate, candidate.startDate),
-          eq(events.sourceUrl, candidate.sourceUrl),
-        ),
+        and(eq(events.title, title), eq(events.startDate, candidate.startDate), eq(events.sourceUrl, candidate.sourceUrl)),
       )
       .limit(1)
 
@@ -55,7 +61,7 @@ export async function ingestEvents(candidates: CandidateEvent[], { sourceId, act
     const [row] = await db
       .insert(events)
       .values({
-        title: candidate.title,
+        title,
         description: candidate.description,
         startDate: candidate.startDate,
         startTime: candidate.startTime,
