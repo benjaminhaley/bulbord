@@ -37,6 +37,7 @@ export interface ResourceReport {
   sources_checked: number
   total_added: number
   total_skipped: number
+  last_checked_at: string | null
   results: { source_id: string; name: string; added: number; skipped: number; error?: string }[]
 }
 
@@ -54,4 +55,15 @@ export async function resourceEventSources(): Promise<ResourceReport> {
   }
   const body = (await response.json()) as { data: ResourceReport }
   return body.data
+}
+
+// Shown before the admin has clicked anything, so "0 added" after a run
+// doesn't read as broken when it just hasn't been run recently.
+export async function fetchSourcesLastCheckedAt(): Promise<string | null> {
+  const response = await fetch(`${API_URL}/admin/events/resource`, { headers: authHeaders() })
+  if (!response.ok) {
+    throw new Error(`Failed to fetch sources last-checked time: ${response.status}`)
+  }
+  const body = (await response.json()) as { data: { last_checked_at: string | null } }
+  return body.data.last_checked_at
 }

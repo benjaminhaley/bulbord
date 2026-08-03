@@ -15,10 +15,11 @@ import {
   IonToolbar,
 } from '@ionic/react'
 import { eyeOutline, mailOutline, peopleOutline, refreshOutline } from 'ionicons/icons'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
+import { formatRelativeDateTime } from '../format'
 import { useAuth } from '../auth/AuthContext'
-import { resourceEventSources, sendTestNewsletterEmail, type ResourceReport } from './api'
+import { fetchSourcesLastCheckedAt, resourceEventSources, sendTestNewsletterEmail, type ResourceReport } from './api'
 
 // Reachable only by tapping your own avatar a second time, on the Account
 // page (see AccountPage.tsx) — a deliberately low-visibility entry point
@@ -29,6 +30,13 @@ export function DevToolsPage() {
   const [toast, setToast] = useState<string | null>(null)
   const [resourcing, setResourcing] = useState(false)
   const [report, setReport] = useState<ResourceReport | null>(null)
+  const [lastCheckedAt, setLastCheckedAt] = useState<string | null>(null)
+
+  useEffect(() => {
+    fetchSourcesLastCheckedAt()
+      .then(setLastCheckedAt)
+      .catch(() => {})
+  }, [])
 
   async function sendTest() {
     setSending(true)
@@ -48,6 +56,7 @@ export function DevToolsPage() {
     try {
       const result = await resourceEventSources()
       setReport(result)
+      setLastCheckedAt(result.last_checked_at)
       setToast(`Checked ${result.sources_checked} source(s), added ${result.total_added} event(s)`)
     } catch (err) {
       setToast(err instanceof Error ? err.message : 'Could not re-run sourcing')
@@ -92,6 +101,7 @@ export function DevToolsPage() {
             <IonLabel className="ion-text-wrap">
               <h2>Re-run event sourcing</h2>
               <p>Re-check every active source for new or updated events and report what was added.</p>
+              <p>Last checked: {lastCheckedAt ? formatRelativeDateTime(lastCheckedAt) : 'never'}</p>
             </IonLabel>
             {resourcing && <IonSpinner slot="end" name="dots" />}
           </IonItem>

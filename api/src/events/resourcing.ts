@@ -1,6 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk'
 import * as cheerio from 'cheerio'
-import { and, eq, isNull } from 'drizzle-orm'
+import { and, eq, isNull, sql } from 'drizzle-orm'
 
 import { db } from '../db/client.js'
 import { todayInChicago } from '../dates.js'
@@ -141,7 +141,19 @@ export interface ResourceReport {
   sourcesChecked: number
   totalAdded: number
   totalSkipped: number
+  lastCheckedAt: Date | null
   results: SourceResourceResult[]
+}
+
+// The most recent time any active source was checked — shown in Developer
+// Tools (feedback #41 follow-up) so an admin can tell whether "0 added" just
+// happened or the tool hasn't actually run recently.
+export async function getSourcesLastCheckedAt(): Promise<Date | null> {
+  const [row] = await db
+    .select({ lastCheckedAt: sql<Date | null>`max(${eventSources.lastCheckedAt})` })
+    .from(eventSources)
+    .where(and(eq(eventSources.isActive, true), isNull(eventSources.deletedAt)))
+  return row?.lastCheckedAt ?? null
 }
 
 // Re-runs the ingestion pipeline against every known active source (feedback
@@ -185,6 +197,7 @@ export async function resourceActiveEventSources(actor: string): Promise<Resourc
     sourcesChecked: sources.length,
     totalAdded: results.reduce((sum, r) => sum + r.added, 0),
     totalSkipped: results.reduce((sum, r) => sum + r.skipped, 0),
+    lastCheckedAt: await getSourcesLastCheckedAt(),
     results,
   }
 }
