@@ -1,4 +1,4 @@
-import { IonBackButton, IonButton, IonButtons, IonHeader, IonPage, IonText, IonTitle, IonToolbar } from '@ionic/react'
+import { IonBackButton, IonButton, IonButtons, IonHeader, IonPage, IonTitle, IonToolbar } from '@ionic/react'
 
 import { useAuth } from '../auth/AuthContext'
 import { InviteAcceptCard } from '../auth/JoinGate'
@@ -9,7 +9,13 @@ import { InviteAcceptCard } from '../auth/JoinGate'
 // InviteAcceptCard — the exact same component JoinGate.tsx's real join
 // screen renders — with busy={true} so the buttons are visibly present but
 // inert, rather than a separately hand-copied mockup that could drift from
-// what the real join screen looks like.
+// what the real join screen looks like. Deliberately no disclaimer text
+// injected into the card itself (an earlier version did this via the
+// `banner` prop) — Ben found that broke "exact reproduction," which is the
+// whole point of reusing the real component; the page's own title plus the
+// visibly-disabled controls already say "preview" without interrupting the
+// real screen's content. The "next step" link lives in the header instead
+// of inline content for the same reason, and so it's never below the fold.
 export function InvitePreviewPage() {
   const { user } = useAuth()
 
@@ -21,6 +27,9 @@ export function InvitePreviewPage() {
             <IonBackButton defaultHref="/admin/dev-tools" />
           </IonButtons>
           <IonTitle>Sign-up Flow Preview</IonTitle>
+          <IonButtons slot="end">
+            <IonButton routerLink="/admin/profile-setup-preview">Next</IonButton>
+          </IonButtons>
         </IonToolbar>
       </IonHeader>
       <InviteAcceptCard
@@ -29,16 +38,6 @@ export function InvitePreviewPage() {
         error={null}
         onAccept={() => {}}
         onSignIn={() => {}}
-        banner={
-          <IonText color="medium">
-            <p>This is what someone sees when they open your invite link. Buttons are disabled — preview only.</p>
-          </IonText>
-        }
-        footer={
-          <IonButton expand="block" fill="clear" routerLink="/admin/profile-setup-preview" className="ion-margin-top">
-            See the next step: setting up a profile →
-          </IonButton>
-        }
       />
     </IonPage>
   )

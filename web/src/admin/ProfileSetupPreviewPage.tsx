@@ -1,4 +1,4 @@
-import { IonBackButton, IonButtons, IonHeader, IonPage, IonText, IonTitle, IonToolbar } from '@ionic/react'
+import { IonBackButton, IonButtons, IonHeader, IonPage, IonTitle, IonToolbar } from '@ionic/react'
 
 import { ProfileSetupScreen } from '../auth/JoinGate'
 
@@ -9,7 +9,10 @@ import { ProfileSetupScreen } from '../auth/JoinGate'
 // the form is visibly present but genuinely inert (matching
 // InviteAcceptCard's own busy={true} convention above it) — without that,
 // tapping Continue here would actually overwrite the admin's own name/email
-// via the real PATCH /auth/me call.
+// via the real PATCH /auth/me call. No disclaimer banner injected into the
+// screen itself, for the same "exact reproduction" reason as
+// InvitePreviewPage — the page title and disabled controls already say
+// "preview" on their own.
 export function ProfileSetupPreviewPage() {
   return (
     <IonPage>
@@ -21,16 +24,7 @@ export function ProfileSetupPreviewPage() {
           <IonTitle>Sign-up Flow Preview</IonTitle>
         </IonToolbar>
       </IonHeader>
-      <ProfileSetupScreen
-        preview
-        banner={
-          <IonText color="medium">
-            <p className="ion-padding-top">
-              This is what a new member fills out right after accepting an invite. Inputs are disabled — preview only.
-            </p>
-          </IonText>
-        }
-      />
+      <ProfileSetupScreen preview />
     </IonPage>
   )
 }

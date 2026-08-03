@@ -77,25 +77,15 @@ export function InviteAcceptCard({
   error,
   onAccept,
   onSignIn,
-  banner,
-  footer,
 }: {
   invite: InviteInfo | null
   busy: boolean
   error: string | null
   onAccept: () => void
   onSignIn: () => void
-  // Preview-only annotation (InvitePreviewPage.tsx) shown above the card
-  // itself, inside the same centered content — undefined in the real join
-  // flow.
-  banner?: ReactNode
-  // Preview-only, shown below the buttons (SignupFlowPreviewPage.tsx's
-  // "see the next step" link) — undefined in the real join flow.
-  footer?: ReactNode
 }) {
   return (
     <CenteredMessage>
-      {banner}
       <Avatar url={invite?.avatarUrl ?? null} name={invite?.name} size={64} />
       <h2>{invite ? `${invite.name} invited you` : 'Join Nettelhorst Bulbord'}</h2>
       {error && (
@@ -110,7 +100,6 @@ export function InviteAcceptCard({
       <IonButton expand="block" fill="outline" disabled={busy} onClick={onSignIn}>
         Sign In With Passkey
       </IonButton>
-      {footer}
     </CenteredMessage>
   )
 }
@@ -223,7 +212,7 @@ function capitalizeFirst(value: string) {
 // caller can nest it inside its own IonPage/IonHeader with a back button,
 // the same shape InviteAcceptCard/CenteredMessage above already use; the
 // real flow's own caller (JoinGate, below) supplies the IonPage instead.
-export function ProfileSetupScreen({ banner, preview = false }: { banner?: ReactNode; preview?: boolean } = {}) {
+export function ProfileSetupScreen({ preview = false }: { preview?: boolean } = {}) {
   const { refresh } = useAuth()
   const [firstName, setFirstName] = useState('')
   const [lastName, setLastName] = useState('')
@@ -259,7 +248,6 @@ export function ProfileSetupScreen({ banner, preview = false }: { banner?: React
 
   return (
     <IonContent fullscreen className="ion-padding">
-      {banner}
       <h2 className="ion-padding-top">Set up your profile</h2>
       <div style={{ textAlign: 'center', margin: '16px 0' }}>
         <input
