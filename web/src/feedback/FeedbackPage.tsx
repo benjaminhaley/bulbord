@@ -21,7 +21,7 @@ import {
 import { addOutline, checkmarkOutline, closeOutline, imageOutline } from 'ionicons/icons'
 import { type ReactNode, useEffect, useState } from 'react'
 
-import { AccountButton } from '../auth/AccountButton'
+import { InstitutionBanner } from '../app/InstitutionBanner'
 import { useAuth } from '../auth/AuthContext'
 import { API_URL } from '../config'
 import { formatDate } from '../format'
@@ -248,13 +248,13 @@ export function FeedbackPage() {
   return (
     <IonPage>
       <IonHeader>
+        <InstitutionBanner />
         <IonToolbar>
           <IonTitle>Feedback</IonTitle>
           <IonButtons slot="end">
             <IonButton onClick={() => setShowForm((v) => !v)}>
               <IonIcon slot="icon-only" icon={showForm ? closeOutline : addOutline} />
             </IonButton>
-            <AccountButton />
           </IonButtons>
         </IonToolbar>
       </IonHeader>

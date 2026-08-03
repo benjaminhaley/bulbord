@@ -22,8 +22,8 @@ import {
 import { eyeOffOutline, listOutline, star } from 'ionicons/icons'
 import { useEffect, useMemo, useState } from 'react'
 
-import { AccountButton } from '../auth/AccountButton'
 import { useAuth } from '../auth/AuthContext'
+import { InstitutionBanner } from '../app/InstitutionBanner'
 import { API_URL } from '../config'
 import { fetchEvents, type Event, type InterestStatus } from './api'
 import { formatWhen, locationLabel, teaser } from './format'
@@ -114,13 +114,13 @@ export function EventsPage() {
   return (
     <IonPage>
       <IonHeader>
+        <InstitutionBanner />
         <IonToolbar>
-          <IonTitle size="small">Events near Nettelhorst</IonTitle>
+          <IonTitle>Events</IonTitle>
           <IonButtons slot="end">
             <IonButton routerLink="/event-sources">
               <IonIcon slot="icon-only" icon={listOutline} />
             </IonButton>
-            <AccountButton />
           </IonButtons>
         </IonToolbar>
         {user && (

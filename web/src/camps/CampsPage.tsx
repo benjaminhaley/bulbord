@@ -1,16 +1,14 @@
-import { IonButtons, IonContent, IonHeader, IonPage, IonTitle, IonToolbar } from '@ionic/react'
+import { IonContent, IonHeader, IonPage, IonTitle, IonToolbar } from '@ionic/react'
 
-import { AccountButton } from '../auth/AccountButton'
+import { InstitutionBanner } from '../app/InstitutionBanner'
 
 export function CampsPage() {
   return (
     <IonPage>
       <IonHeader>
+        <InstitutionBanner />
         <IonToolbar>
-          <IonTitle size="small">Camps near Nettelhorst</IonTitle>
-          <IonButtons slot="end">
-            <AccountButton />
-          </IonButtons>
+          <IonTitle>Camps</IonTitle>
         </IonToolbar>
       </IonHeader>
       <IonContent fullscreen className="ion-padding">
