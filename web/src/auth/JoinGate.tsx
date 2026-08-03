@@ -78,6 +78,7 @@ export function InviteAcceptCard({
   onAccept,
   onSignIn,
   banner,
+  footer,
 }: {
   invite: InviteInfo | null
   busy: boolean
@@ -88,6 +89,9 @@ export function InviteAcceptCard({
   // itself, inside the same centered content — undefined in the real join
   // flow.
   banner?: ReactNode
+  // Preview-only, shown below the buttons (SignupFlowPreviewPage.tsx's
+  // "see the next step" link) — undefined in the real join flow.
+  footer?: ReactNode
 }) {
   return (
     <CenteredMessage>
@@ -106,6 +110,7 @@ export function InviteAcceptCard({
       <IonButton expand="block" fill="outline" disabled={busy} onClick={onSignIn}>
         Sign In With Passkey
       </IonButton>
+      {footer}
     </CenteredMessage>
   )
 }
@@ -209,11 +214,16 @@ function capitalizeFirst(value: string) {
   return value.length ? value[0].toUpperCase() + value.slice(1) : value
 }
 
-// Exported (not just used internally by JoinGate) so it can be previewed in
-// isolation via Storybook (feedback #44) with the same real component code
-// the actual sign-up flow renders — same reuse rationale as InviteAcceptCard
-// above, just for the next step in the flow.
-export function ProfileSetupScreen() {
+// Exported (not just used internally by JoinGate) so it can be previewed —
+// both via Storybook (feedback #44) and in-app via the admin
+// SignupFlowPreviewPage (feedback #44 follow-up: Ben wants to walk through
+// the whole flow from the deployed app itself, not just a local dev tool) —
+// with the same real component code the actual sign-up flow renders. No
+// IonPage wrapper here (unlike a typical top-level screen) so a preview
+// caller can nest it inside its own IonPage/IonHeader with a back button,
+// the same shape InviteAcceptCard/CenteredMessage above already use; the
+// real flow's own caller (JoinGate, below) supplies the IonPage instead.
+export function ProfileSetupScreen({ banner, preview = false }: { banner?: ReactNode; preview?: boolean } = {}) {
   const { refresh } = useAuth()
   const [firstName, setFirstName] = useState('')
   const [lastName, setLastName] = useState('')
@@ -226,7 +236,8 @@ export function ProfileSetupScreen() {
 
   const name = `${firstName.trim()} ${lastName.trim()}`.trim()
   const trimmedEmail = email.trim()
-  const canSubmit = !submitting && !uploading && !!firstName.trim() && !!lastName.trim() && trimmedEmail.includes('@')
+  const canSubmit =
+    !preview && !submitting && !uploading && !!firstName.trim() && !!lastName.trim() && trimmedEmail.includes('@')
 
   async function attachPhoto(file: File) {
     if (!(await attach(file))) setError('Could not upload photo')
@@ -247,38 +258,39 @@ export function ProfileSetupScreen() {
   }
 
   return (
-    <IonPage>
-      <IonContent fullscreen className="ion-padding">
-        <h2 className="ion-padding-top">Set up your profile</h2>
-        <div style={{ textAlign: 'center', margin: '16px 0' }}>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/*"
-            hidden
-            onChange={(e) => {
-              const file = e.target.files?.[0]
-              if (file) void attachPhoto(file)
-              e.target.value = ''
-            }}
-          />
-          <div
-            onClick={() => fileInputRef.current?.click()}
-            style={{
-              // rem, not px, so this grows along with OS/browser text-size
-              // settings instead of staying fixed while "Add photo" grows
-              // past it and gets clipped by overflow: hidden below.
-              width: '5.25rem',
-              height: '5.25rem',
-              borderRadius: '50%',
-              border: '1.5px dashed var(--ion-color-medium)',
-              margin: '0 auto',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              overflow: 'hidden',
-              cursor: 'pointer',
-            }}
+    <IonContent fullscreen className="ion-padding">
+      {banner}
+      <h2 className="ion-padding-top">Set up your profile</h2>
+      <div style={{ textAlign: 'center', margin: '16px 0' }}>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          hidden
+          disabled={preview}
+          onChange={(e) => {
+            const file = e.target.files?.[0]
+            if (file) void attachPhoto(file)
+            e.target.value = ''
+          }}
+        />
+        <div
+          onClick={() => !preview && fileInputRef.current?.click()}
+          style={{
+            // rem, not px, so this grows along with OS/browser text-size
+            // settings instead of staying fixed while "Add photo" grows
+            // past it and gets clipped by overflow: hidden below.
+            width: '5.25rem',
+            height: '5.25rem',
+            borderRadius: '50%',
+            border: '1.5px dashed var(--ion-color-medium)',
+            margin: '0 auto',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            overflow: 'hidden',
+            cursor: preview ? 'default' : 'pointer',
+          }}
           >
             {uploading && <IonSpinner name="dots" />}
             {!uploading && avatarUrl && (
@@ -293,21 +305,27 @@ export function ProfileSetupScreen() {
             <IonInput
               value={firstName}
               onIonInput={(e) => setFirstName(capitalizeFirst(e.detail.value ?? ''))}
+              disabled={preview}
               autofocus
             />
           </IonItem>
           <IonItem>
             <IonLabel position="stacked">Last name</IonLabel>
-            <IonInput value={lastName} onIonInput={(e) => setLastName(capitalizeFirst(e.detail.value ?? ''))} />
+            <IonInput
+              value={lastName}
+              onIonInput={(e) => setLastName(capitalizeFirst(e.detail.value ?? ''))}
+              disabled={preview}
+            />
           </IonItem>
           <IonItem>
             <IonLabel position="stacked">Email</IonLabel>
-            <IonInput type="email" value={email} onIonInput={(e) => setEmail(e.detail.value ?? '')} />
+            <IonInput type="email" value={email} onIonInput={(e) => setEmail(e.detail.value ?? '')} disabled={preview} />
           </IonItem>
           <IonItem lines="none">
             <IonCheckbox
               checked={newsletterSubscribed}
               onIonChange={(e) => setNewsletterSubscribed(e.detail.checked)}
+              disabled={preview}
               justify="start"
               labelPlacement="end"
             >
@@ -332,7 +350,6 @@ export function ProfileSetupScreen() {
           Continue
         </IonButton>
       </IonContent>
-    </IonPage>
   )
 }
 
@@ -364,7 +381,11 @@ export function JoinGate({ children }: { children: ReactNode }) {
   }
 
   if (!user.profileComplete) {
-    return <ProfileSetupScreen />
+    return (
+      <IonPage>
+        <ProfileSetupScreen />
+      </IonPage>
+    )
   }
 
   return <>{children}</>

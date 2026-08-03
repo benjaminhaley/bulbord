@@ -88,8 +88,8 @@ export function DevToolsPage() {
           <IonItem button routerLink="/admin/invite-preview">
             <IonIcon slot="start" icon={eyeOutline} />
             <IonLabel className="ion-text-wrap">
-              <h2>Preview the invite page</h2>
-              <p>See what a new member sees after tapping your invite QR code.</p>
+              <h2>Preview the sign-up flow</h2>
+              <p>Walk through what a new member sees, from tapping your invite QR code through setting up their profile.</p>
             </IonLabel>
           </IonItem>
           <IonItem button routerLink="/admin/users">
