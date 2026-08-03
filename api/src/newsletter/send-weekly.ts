@@ -7,7 +7,7 @@ import { requireEnv } from '../env.js'
 import { sendNewsletterEmail } from './mailer.js'
 import { getWeeklyEvents } from './query.js'
 import { createUnsubscribeToken } from './service.js'
-import { formatWeeklyEvents, renderNewsletterHtml } from './template.js'
+import { formatWeeklyEvents, newsletterSubject, renderNewsletterHtml } from './template.js'
 import { getUpcomingWeekRange } from './week.js'
 
 // Invoked weekly by the Railway cron service (Sunday night, Chicago time) —
@@ -24,7 +24,7 @@ async function main() {
 
   const apiUrl = requireEnv('PUBLIC_API_URL')
   const webUrl = requireEnv('PUBLIC_WEB_URL')
-  const subject = `This week on Nettelhorst: ${weekEvents.length} event${weekEvents.length === 1 ? '' : 's'}`
+  const subject = newsletterSubject(weekEvents.length)
 
   // Each recipient's send is an independent Resend call — sent in parallel
   // rather than awaited one at a time in a loop. allSettled rather than all,

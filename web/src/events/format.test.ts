@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { buildInterestedTeaser, formatWhen, locationLabel, teaser } from './format.js'
+import { buildInterestedTeaser, formatWhen, locationLabel, teaser } from './format'
 
 describe('formatWhen', () => {
   const now = new Date('2026-08-02T09:00:00-05:00')

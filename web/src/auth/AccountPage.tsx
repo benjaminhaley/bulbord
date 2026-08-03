@@ -1,5 +1,5 @@
 import { IonBackButton, IonButton, IonButtons, IonContent, IonHeader, IonIcon, IonItem, IonLabel, IonList, IonPage, IonTitle, IonToolbar } from '@ionic/react'
-import { peopleOutline, shieldCheckmarkOutline } from 'ionicons/icons'
+import { shieldCheckmarkOutline } from 'ionicons/icons'
 
 import { Avatar } from '../uploads/Avatar'
 import { useAuth } from './AuthContext'
@@ -23,23 +23,20 @@ export function AccountPage() {
       <IonContent fullscreen className="ion-padding">
         {user && (
           <IonList>
-            <IonItem lines="none">
+            {/* Tapping your profile picture gets you here (InstitutionBanner);
+                admins can tap it again here to reach Developer Tools (feedback
+                #38) — everyone else just sees their name, non-interactive. */}
+            <IonItem lines="none" button={isAdmin} routerLink={isAdmin ? '/admin/dev-tools' : undefined} detail={isAdmin}>
               <Avatar slot="start" url={user.avatarUrl} />
               <IonLabel>
                 <h2>{user.name}</h2>
               </IonLabel>
             </IonItem>
             {isAdmin && (
-              <>
-                <IonItem lines="none">
-                  <IonIcon slot="start" icon={shieldCheckmarkOutline} color="primary" />
-                  <IonLabel>Administrator</IonLabel>
-                </IonItem>
-                <IonItem lines="none" routerLink="/admin/users">
-                  <IonIcon slot="start" icon={peopleOutline} />
-                  <IonLabel>All members</IonLabel>
-                </IonItem>
-              </>
+              <IonItem lines="none">
+                <IonIcon slot="start" icon={shieldCheckmarkOutline} color="primary" />
+                <IonLabel>Administrator</IonLabel>
+              </IonItem>
             )}
             <IonItem lines="none">
               <IonButton fill="outline" color="medium" onClick={logout}>

@@ -4,6 +4,15 @@
  * instead of letting it stretch full-width, so the web and native-port
  * experiences stay visually identical without separate responsive work.
  */
+
+/* --ion-color-medium (the event card's when/location/description-teaser/
+ * interested-count text color) is set at runtime in main.tsx from
+ * events/theme.ts's EVENT_CARD_SECONDARY_TEXT_COLOR — the same constant the
+ * newsletter template imports — rather than declared here, so there's one
+ * real source of truth instead of a CSS value and a JS constant that could
+ * silently drift apart.
+ */
+
 body {
   background: var(--ion-color-step-100, #e0e0e0);
 }

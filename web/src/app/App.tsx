@@ -4,6 +4,8 @@ import { Redirect, Route } from 'react-router-dom'
 import { calendarOutline, chatbubbleOutline, sunnyOutline } from 'ionicons/icons'
 
 import { AdminRoute } from '../admin/AdminRoute'
+import { DevToolsPage } from '../admin/DevToolsPage'
+import { InvitePreviewPage } from '../admin/InvitePreviewPage'
 import { UsersPage } from '../admin/UsersPage'
 import { AuthProvider } from '../auth/AuthContext'
 import { AccountPage } from '../auth/AccountPage'
@@ -32,6 +34,8 @@ export function App() {
                 <Route exact path="/feedback" component={FeedbackPage} />
                 <Route exact path="/account" component={AccountPage} />
                 <AdminRoute exact path="/admin/users" component={UsersPage} />
+                <AdminRoute exact path="/admin/dev-tools" component={DevToolsPage} />
+                <AdminRoute exact path="/admin/invite-preview" component={InvitePreviewPage} />
                 <Redirect exact path="/" to="/events" />
               </IonRouterOutlet>
               <IonTabBar slot="bottom" id="main-tab-bar">

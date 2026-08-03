@@ -30,6 +30,54 @@ function CenteredMessage({ children }: { children: ReactNode }) {
   )
 }
 
+// Extracted so the admin "preview my invite page" dev tool (feedback #38,
+// InvitePreviewPage.tsx) can render exactly what a real invitee sees without
+// duplicating the markup — it passes busy={true} to inertly disable both
+// buttons (reusing the existing disabled state rather than inventing a
+// separate "preview mode" prop) instead of wiring onAccept/onSignIn to real
+// passkey calls, which would be actively dangerous to trigger while already
+// signed in as admin (registerPasskey/loginWithPasskey overwrite the current
+// session token).
+export function InviteAcceptCard({
+  invite,
+  busy,
+  error,
+  onAccept,
+  onSignIn,
+  banner,
+}: {
+  invite: InviteInfo | null
+  busy: boolean
+  error: string | null
+  onAccept: () => void
+  onSignIn: () => void
+  // Preview-only annotation (InvitePreviewPage.tsx) shown above the card
+  // itself, inside the same centered content — undefined in the real join
+  // flow.
+  banner?: ReactNode
+}) {
+  return (
+    <CenteredMessage>
+      {banner}
+      <Avatar url={invite?.avatarUrl ?? null} size={64} />
+      <h2>{invite ? `${invite.name} invited you to Nettelhorst` : 'Set up Nettelhorst'}</h2>
+      <p>Create a passkey to sign in — just your face, fingerprint, or screen lock. No password to remember.</p>
+      {error && (
+        <IonText color="danger">
+          <p>{error}</p>
+        </IonText>
+      )}
+      <IonButton expand="block" disabled={busy} onClick={onAccept}>
+        {invite ? 'Accept Invite' : 'Continue'}
+      </IonButton>
+      <p className="ion-margin-top">Already on Nettelhorst?</p>
+      <IonButton expand="block" fill="outline" disabled={busy} onClick={onSignIn}>
+        Sign In With Passkey
+      </IonButton>
+    </CenteredMessage>
+  )
+}
+
 // Always offers a "sign in" path regardless of whether an invite/rootSecret
 // param is present — a returning member who cleared localStorage or opened
 // the app on a new device has neither in their URL bar, but still has a real
@@ -122,22 +170,7 @@ function JoinScreen() {
     )
   }
 
-  return (
-    <CenteredMessage>
-      <Avatar url={invite?.avatarUrl ?? null} size={64} />
-      <h2>{invite ? `${invite.name} invited you to Nettelhorst` : 'Set up Nettelhorst'}</h2>
-      <p>Create a passkey to sign in — just your face, fingerprint, or screen lock. No password to remember.</p>
-      {error && (
-        <IonText color="danger">
-          <p>{error}</p>
-        </IonText>
-      )}
-      <IonButton expand="block" disabled={busy} onClick={accept}>
-        {invite ? 'Accept Invite' : 'Continue'}
-      </IonButton>
-      {signInSection}
-    </CenteredMessage>
-  )
+  return <InviteAcceptCard invite={invite ?? null} busy={busy} error={error} onAccept={accept} onSignIn={signIn} />
 }
 
 function capitalizeFirst(value: string) {

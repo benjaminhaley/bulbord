@@ -4,6 +4,10 @@ import { signJson, verifyJson } from '../auth/tokens.js'
 import { db } from '../db/client.js'
 import { eventsLog, users } from '../db/schema.js'
 import { requireEnv } from '../env.js'
+import { sendNewsletterEmail } from './mailer.js'
+import { getWeeklyEvents } from './query.js'
+import { formatWeeklyEvents, newsletterSubject, renderNewsletterHtml } from './template.js'
+import { getUpcomingWeekRange } from './week.js'
 
 interface UnsubscribeTokenPayload {
   kind: 'newsletter_unsubscribe'
@@ -35,4 +39,27 @@ export async function unsubscribeFromNewsletter(token: string | undefined): Prom
   ])
 
   return 'ok'
+}
+
+// Admin dev tool (feedback #38): renders and sends this week's newsletter to
+// the requesting admin's own address only, using the same query/template/
+// mailer path as the real weekly send (send-weekly.ts) — so a "does this
+// look right" test actually reflects what a member would get, rather than a
+// separately-maintained preview that could drift. Uses the admin's own real
+// unsubscribe token, same as any recipient would get, rather than faking one.
+export async function sendTestNewsletterEmail(recipient: { id: string; name: string; email: string }): Promise<void> {
+  const { monday, sunday } = getUpcomingWeekRange()
+  const events = formatWeeklyEvents(await getWeeklyEvents(monday, sunday))
+  const apiUrl = requireEnv('PUBLIC_API_URL')
+  const webUrl = requireEnv('PUBLIC_WEB_URL')
+
+  const html = renderNewsletterHtml({
+    events,
+    recipient: { id: recipient.id, name: recipient.name },
+    apiUrl,
+    webUrl,
+    unsubscribeUrl: `${apiUrl}/newsletter/unsubscribe?token=${createUnsubscribeToken(recipient.id)}`,
+  })
+
+  await sendNewsletterEmail(recipient.email, newsletterSubject(events.length, '[Test] '), html)
 }

@@ -27,10 +27,38 @@ vi.mock('../db/client.js', () => {
   return { db: builder }
 })
 
+const sendNewsletterEmailMock = vi.fn(async (_to: string, _subject: string, _html: string) => {})
+vi.mock('./mailer.js', () => ({
+  sendNewsletterEmail: (to: string, subject: string, html: string) => sendNewsletterEmailMock(to, subject, html),
+}))
+
+const getWeeklyEventsMock = vi.fn(async (_fromDate: string, _toDate: string) => [
+  {
+    id: 'event-1',
+    title: 'Story Time',
+    description: 'A cozy weekly story time.',
+    startDate: '2026-08-03',
+    startTime: '10:00:00',
+    allDay: false,
+    address: null,
+    locationName: 'Merlo Library',
+    thumbnailUrl: null,
+    interestedCount: 0,
+    interestedNames: [],
+  },
+])
+vi.mock('./query.js', () => ({
+  getWeeklyEvents: (fromDate: string, toDate: string) => getWeeklyEventsMock(fromDate, toDate),
+}))
+
 beforeEach(() => {
   vi.stubEnv('SESSION_SECRET', 'the-session-secret')
+  vi.stubEnv('PUBLIC_API_URL', 'https://api-production-a551.up.railway.app')
+  vi.stubEnv('PUBLIC_WEB_URL', 'https://nettelhorst.bulbord.com')
   updateCalls.length = 0
   insertCalls.length = 0
+  sendNewsletterEmailMock.mockClear()
+  getWeeklyEventsMock.mockClear()
 })
 
 describe('unsubscribeFromNewsletter', () => {
@@ -69,5 +97,21 @@ describe('unsubscribeFromNewsletter', () => {
     const result = await unsubscribeFromNewsletter('not-a-real-token')
     expect(result).toBe('invalid')
     expect(updateCalls).toHaveLength(0)
+  })
+})
+
+describe('sendTestNewsletterEmail', () => {
+  it('sends this week\'s real newsletter render to just the given recipient, subject marked as a test', async () => {
+    const { sendTestNewsletterEmail } = await import('./service.js')
+
+    await sendTestNewsletterEmail({ id: 'admin-1', name: 'Ben Haley', email: 'ben@example.com' })
+
+    expect(getWeeklyEventsMock).toHaveBeenCalledTimes(1)
+    expect(sendNewsletterEmailMock).toHaveBeenCalledTimes(1)
+    const [to, subject, html] = sendNewsletterEmailMock.mock.calls[0]
+    expect(to).toBe('ben@example.com')
+    expect(subject).toBe('[Test] This week near Nettelhorst: 1 event')
+    expect(html).toContain('Story Time')
+    expect(html).toContain('/newsletter/unsubscribe?token=')
   })
 })

@@ -34,6 +34,11 @@ export interface WeeklyEvent {
 // Interested names carry each person's id (not a pre-substituted "You") —
 // one query result is rendered once per recipient, so the "You" swap
 // happens per-recipient at render time instead (see format.ts).
+// A week with a lot of activity could otherwise produce an unbounded, very
+// long email — cap it at the soonest 10 events (the ordering below is by
+// date/time, so this is "the next 10," not an arbitrary slice).
+const MAX_NEWSLETTER_EVENTS = 10
+
 export async function getWeeklyEvents(fromDate: string, toDate: string): Promise<WeeklyEvent[]> {
   const conditions = [
     eq(events.status, 'approved'),
@@ -92,4 +97,5 @@ export async function getWeeklyEvents(fromDate: string, toDate: string): Promise
     .leftJoin(interestCounts, eq(interestCounts.eventId, nextOccurrence.id))
     .where(eq(nextOccurrence.rn, 1))
     .orderBy(asc(nextOccurrence.startDate), asc(nextOccurrence.sortTime), asc(nextOccurrence.id))
+    .limit(MAX_NEWSLETTER_EVENTS)
 }

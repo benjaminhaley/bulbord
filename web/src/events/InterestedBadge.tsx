@@ -18,26 +18,7 @@ import { useState } from 'react'
 
 import { Avatar } from '../uploads/Avatar'
 import { fetchInterestedUsers, type InterestedUser } from './api'
-
-const TEASER_MAX_CHARS = 30
-
-function joinWithAnd(names: string[]): string {
-  if (names.length === 1) return names[0]
-  return `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`
-}
-
-// Leads with the count (so "1 interested: You" reads as a count followed by
-// who, not a sentence with "You" as its subject), then as many actual names
-// as fit within the character budget, trailing off with "…" if it doesn't
-// all fit — never returns an empty name list since count > 0 here.
-export function buildInterestedTeaser(names: string[], totalCount: number, maxChars = TEASER_MAX_CHARS): string {
-  for (let shown = names.length; shown >= 1; shown--) {
-    const truncated = shown < names.length
-    const text = truncated ? `${names.slice(0, shown).join(', ')}…` : joinWithAnd(names.slice(0, shown))
-    if (text.length <= maxChars || shown === 1) return `${totalCount} interested: ${text}`
-  }
-  return `${totalCount} interested`
-}
+import { buildInterestedTeaser } from './format'
 
 // Attendance-signal social proof (see CLAUDE.md's data classification: names
 // and avatars only, never contact/PII). Stops propagation on open so this can

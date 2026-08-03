@@ -163,7 +163,7 @@ export function EventsPage() {
         {filteredEvents.length > 0 && (
           <IonList>
             {filteredEvents.map((event) => {
-              const location = locationLabel(event)
+              const location = locationLabel({ locationName: event.location_name, address: event.address })
               const description = teaser(event.description)
               return (
                 <IonItemSliding key={event.id} disabled={multiTouch}>
@@ -183,7 +183,7 @@ export function EventsPage() {
                     )}
                     <IonLabel>
                       <h2>{event.title}</h2>
-                      <p>{formatWhen(event)}</p>
+                      <p>{formatWhen({ startDate: event.start_date, startTime: event.start_time, allDay: event.all_day })}</p>
                       {location && <IonNote>{location}</IonNote>}
                       {description && <p className="teaser">{description}</p>}
                       {event.interested_count > 0 && (

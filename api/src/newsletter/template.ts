@@ -1,5 +1,6 @@
 import { buildInterestedTeaser, formatWhen, locationLabel, teaser } from './format.js'
 import type { WeeklyEvent } from './query.js'
+import { EVENT_CARD_SECONDARY_TEXT_COLOR as SECONDARY_TEXT_COLOR } from './theme.js'
 
 export interface NewsletterRecipient {
   id: string
@@ -43,7 +44,9 @@ function escapeHtml(value: string): string {
 // thumbnail, title, when, location, description teaser, interested-count
 // line. Table-based layout with inline styles throughout — standard for
 // email-client HTML rendering, which doesn't support external stylesheets
-// or most modern CSS.
+// or most modern CSS. The whole row is one anchor (rather than just the
+// title, as before) to match the app's IonItem, where tapping anywhere on
+// the row — not just the title text — opens the event.
 function eventRowHtml(event: FormattedEvent, recipient: NewsletterRecipient, apiUrl: string, webUrl: string): string {
   const names = event.interestedNames.map((person) => (person.id === recipient.id ? 'You' : person.name))
   const interestedLine = event.interestedCount > 0 ? buildInterestedTeaser(names, event.interestedCount) : null
@@ -54,20 +57,31 @@ function eventRowHtml(event: FormattedEvent, recipient: NewsletterRecipient, api
   return `
     <tr>
       <td style="padding:16px 0;border-bottom:1px solid #e5e5e5;">
-        <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
-          <tr>
-            ${thumb ? `<td width="64" valign="top" style="padding-right:12px;">${thumb}</td>` : ''}
-            <td valign="top">
-              <a href="${webUrl}/events/${event.id}" style="font-size:16px;font-weight:600;color:#111111;text-decoration:none;">${escapeHtml(event.title)}</a>
-              <div style="color:#555555;font-size:14px;margin-top:2px;">${escapeHtml(event.when)}</div>
-              ${event.location ? `<div style="color:#888888;font-size:13px;margin-top:2px;">${escapeHtml(event.location)}</div>` : ''}
-              ${event.description ? `<div style="color:#333333;font-size:14px;margin-top:6px;">${escapeHtml(event.description)}</div>` : ''}
-              ${interestedLine ? `<div style="color:#0a7a4d;font-size:13px;margin-top:6px;">${escapeHtml(interestedLine)}</div>` : ''}
-            </td>
-          </tr>
-        </table>
+        <a href="${webUrl}/events/${event.id}" style="display:block;text-decoration:none;">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+            <tr>
+              ${thumb ? `<td width="64" valign="top" style="padding-right:12px;">${thumb}</td>` : ''}
+              <td valign="top">
+                <div style="font-size:16px;font-weight:600;color:#111111;">${escapeHtml(event.title)}</div>
+                <div style="color:${SECONDARY_TEXT_COLOR};font-size:14px;margin-top:2px;">${escapeHtml(event.when)}</div>
+                ${event.location ? `<div style="color:${SECONDARY_TEXT_COLOR};font-size:13px;margin-top:2px;">${escapeHtml(event.location)}</div>` : ''}
+                ${event.description ? `<div style="color:${SECONDARY_TEXT_COLOR};font-size:14px;margin-top:6px;">${escapeHtml(event.description)}</div>` : ''}
+                ${interestedLine ? `<div style="color:${SECONDARY_TEXT_COLOR};font-size:13px;margin-top:6px;">${escapeHtml(interestedLine)}</div>` : ''}
+              </td>
+            </tr>
+          </table>
+        </a>
       </td>
     </tr>`
+}
+
+// Shared by the real weekly send (send-weekly.ts) and the admin "send
+// yourself a test email" dev tool (service.ts's sendTestNewsletterEmail) —
+// one place for the subject line so a test send's subject can't drift from
+// what members actually receive (feedback #38, and the same drift concern
+// feedback #36 raised about the HTML template itself).
+export function newsletterSubject(eventCount: number, prefix = ''): string {
+  return `${prefix}This week near Nettelhorst: ${eventCount} event${eventCount === 1 ? '' : 's'}`
 }
 
 export function renderNewsletterHtml(options: {
@@ -92,15 +106,25 @@ export function renderNewsletterHtml(options: {
         <td align="center">
           <table role="presentation" width="480" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:12px;overflow:hidden;">
             <tr>
+              <td style="background:#2c2c2c;padding:14px 24px;">
+                <table role="presentation" cellpadding="0" cellspacing="0">
+                  <tr>
+                    <td style="padding-right:10px;"><img src="${webUrl}/nettelhorst-logo.png" width="28" height="28" style="display:block;width:28px;height:28px;object-fit:contain;" alt="" /></td>
+                    <td style="font-size:16px;font-weight:600;color:#ffffff;">Nettelhorst</td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+            <tr>
               <td style="padding:24px 24px 8px;">
-                <h1 style="font-size:20px;margin:0 0 4px;color:#111111;">This week on Nettelhorst</h1>
+                <h1 style="font-size:20px;margin:0 0 4px;color:#111111;">This week near Nettelhorst</h1>
                 <p style="color:#666666;font-size:14px;margin:0;">Hi ${escapeHtml(recipient.name)}, here's what's coming up.</p>
               </td>
             </tr>
             ${body}
             <tr>
               <td style="padding:24px;text-align:center;">
-                <a href="${webUrl}/events" style="display:inline-block;background:#111111;color:#ffffff;padding:12px 24px;border-radius:8px;text-decoration:none;font-size:14px;">Open Nettelhorst</a>
+                <a href="${webUrl}/events" style="display:inline-block;background:#111111;color:#ffffff;padding:12px 24px;border-radius:8px;text-decoration:none;font-size:14px;">See more</a>
               </td>
             </tr>
             <tr>

@@ -84,6 +84,25 @@ describe('renderNewsletterHtml', () => {
     expect(html).toContain('https://api-production-a551.up.railway.app/newsletter/unsubscribe?token=abc')
   })
 
+  it('includes the institution logo and a "See more" call to action', () => {
+    const html = renderNewsletterHtml({
+      events: [baseEvent()],
+      recipient: { id: 'user-me', name: 'Ben Haley' },
+      ...options,
+    })
+    expect(html).toContain('https://nettelhorst.bulbord.com/nettelhorst-logo.png')
+    expect(html).toContain('>See more<')
+  })
+
+  it('wraps the whole event row in a single link, not just the title', () => {
+    const html = renderNewsletterHtml({
+      events: [baseEvent()],
+      recipient: { id: 'user-me', name: 'Ben Haley' },
+      ...options,
+    })
+    expect(html).toMatch(/<a href="https:\/\/nettelhorst\.bulbord\.com\/events\/event-1"[^>]*>[\s\S]*Story Time[\s\S]*Merlo Library[\s\S]*<\/a>/)
+  })
+
   it('shows a fallback message when there are no events this week', () => {
     const html = renderNewsletterHtml({ events: [], recipient: { id: 'user-me', name: 'Ben Haley' }, ...options })
     expect(html).toContain('No events found for this week yet')

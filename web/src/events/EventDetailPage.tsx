@@ -86,7 +86,7 @@ export function EventDetailPage() {
               />
             )}
             <h1>{event.title}</h1>
-            <p>{formatWhen(event)}</p>
+            <p>{formatWhen({ startDate: event.start_date, startTime: event.start_time, allDay: event.all_day })}</p>
             {event.interested_count > 0 && (
               <InterestedBadge eventId={event.id} count={event.interested_count} names={event.interested_names} />
             )}
