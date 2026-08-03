@@ -115,7 +115,7 @@ export function EventsPage() {
     <IonPage>
       <IonHeader>
         <IonToolbar>
-          <IonTitle>Events</IonTitle>
+          <IonTitle>Events near Nettelhorst</IonTitle>
           <IonButtons slot="end">
             <IonButton routerLink="/event-sources">
               <IonIcon slot="icon-only" icon={listOutline} />
