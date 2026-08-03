@@ -1,5 +1,6 @@
 import { API_URL } from '../config'
 import { authHeaders } from '../auth/token'
+import type { UploadedImage } from '../uploads/api'
 
 export interface FeedbackItem {
   id: string
@@ -8,10 +9,10 @@ export interface FeedbackItem {
   description: string | null
   created_at: string
   author_name: string | null
-  image_url: string | null
-  thumbnail_url: string | null
+  images: UploadedImage[]
   completed_at: string | null
   completion_note: string | null
+  can_edit: boolean
 }
 
 interface FeedbackResponse {
@@ -33,9 +34,9 @@ export async function fetchFeedback(): Promise<FeedbackItem[]> {
   return body.data
 }
 
-async function authedPost(path: string, body: unknown): Promise<FeedbackItem> {
+async function authedRequest(method: 'POST' | 'PATCH', path: string, body: unknown): Promise<FeedbackItem> {
   const response = await fetch(`${API_URL}${path}`, {
-    method: 'POST',
+    method,
     headers: {
       'Content-Type': 'application/json',
       ...authHeaders(),
@@ -49,19 +50,19 @@ async function authedPost(path: string, body: unknown): Promise<FeedbackItem> {
   return responseBody.data
 }
 
-export function createFeedback(
+export function createFeedback(title: string, description: string, images: UploadedImage[]): Promise<FeedbackItem> {
+  return authedRequest('POST', '/feedback', { title, description, images })
+}
+
+export function updateFeedback(
+  id: string,
   title: string,
   description: string,
-  image?: { image_url: string; thumbnail_url: string },
+  images: UploadedImage[],
 ): Promise<FeedbackItem> {
-  return authedPost('/feedback', {
-    title,
-    description,
-    image_url: image?.image_url,
-    thumbnail_url: image?.thumbnail_url,
-  })
+  return authedRequest('PATCH', `/feedback/${id}`, { title, description, images })
 }
 
 export function completeFeedback(id: string, note: string): Promise<FeedbackItem> {
-  return authedPost(`/feedback/${id}/complete`, { note })
+  return authedRequest('POST', `/feedback/${id}/complete`, { note })
 }

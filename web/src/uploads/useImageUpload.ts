@@ -6,20 +6,23 @@ import { uploadImage, type UploadedImage } from './api'
 // step — same hidden-file-input + upload-in-flight shape, just a different
 // folder and a different place to put the result.
 export function useImageUpload(folder: 'feedback' | 'profiles', onUploaded: (image: UploadedImage) => void) {
-  const [uploading, setUploading] = useState(false)
+  // A count, not a flag: feedback's multi-photo picker can have several
+  // attach() calls in flight together, and a flag would flicker to "done"
+  // as soon as the first of several parallel uploads finished.
+  const [inFlightCount, setInFlightCount] = useState(0)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   async function attach(file: File): Promise<boolean> {
-    setUploading(true)
+    setInFlightCount((n) => n + 1)
     try {
       onUploaded(await uploadImage(file, folder))
       return true
     } catch {
       return false
     } finally {
-      setUploading(false)
+      setInFlightCount((n) => n - 1)
     }
   }
 
-  return { fileInputRef, uploading, attach }
+  return { fileInputRef, uploading: inFlightCount > 0, attach }
 }

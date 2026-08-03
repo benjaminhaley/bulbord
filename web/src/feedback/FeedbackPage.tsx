@@ -18,7 +18,7 @@ import {
   IonTitle,
   IonToolbar,
 } from '@ionic/react'
-import { addOutline, checkmarkOutline, closeOutline, imageOutline } from 'ionicons/icons'
+import { addOutline, checkmarkOutline, closeOutline, createOutline, imageOutline } from 'ionicons/icons'
 import { type ReactNode, useEffect, useState } from 'react'
 
 import { InstitutionBanner } from '../app/InstitutionBanner'
@@ -27,8 +27,107 @@ import { API_URL } from '../config'
 import { formatDate } from '../format'
 import { ImageLightbox } from '../uploads/ImageLightbox'
 import type { UploadedImage } from '../uploads/api'
-import { useImageUpload } from '../uploads/useImageUpload'
-import { completeFeedback, createFeedback, fetchFeedback, type FeedbackItem } from './api'
+import { completeFeedback, createFeedback, fetchFeedback, updateFeedback, type FeedbackItem } from './api'
+import { useMultiImageUpload } from './useMultiImageUpload'
+
+function FeedbackImages({ images, onImageClick }: { images: UploadedImage[]; onImageClick: (url: string) => void }) {
+  if (images.length === 0) return null
+
+  if (images.length === 1) {
+    const [image] = images
+    return (
+      <img
+        src={`${API_URL}${image.thumbnail_url}`}
+        alt=""
+        onClick={() => onImageClick(image.image_url)}
+        style={{ width: '100%', maxHeight: 240, objectFit: 'cover', borderRadius: 8, margin: '8px 0', cursor: 'pointer' }}
+      />
+    )
+  }
+
+  return (
+    <div style={{ display: 'flex', gap: 8, overflowX: 'auto', margin: '8px 0' }}>
+      {images.map((image, index) => (
+        <img
+          key={`${image.thumbnail_url}-${index}`}
+          src={`${API_URL}${image.thumbnail_url}`}
+          alt=""
+          onClick={() => onImageClick(image.image_url)}
+          style={{ width: 140, height: 140, objectFit: 'cover', borderRadius: 8, cursor: 'pointer', flexShrink: 0 }}
+        />
+      ))}
+    </div>
+  )
+}
+
+function PhotoPicker({
+  images,
+  uploading,
+  fileInputRef,
+  onFiles,
+  onRemove,
+}: {
+  images: UploadedImage[]
+  uploading: boolean
+  fileInputRef: React.RefObject<HTMLInputElement | null>
+  onFiles: (files: FileList) => void
+  onRemove: (index: number) => void
+}) {
+  return (
+    <>
+      <IonItem lines="none">
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          multiple
+          hidden
+          onChange={(e) => {
+            if (e.target.files?.length) onFiles(e.target.files)
+            e.target.value = ''
+          }}
+        />
+        <IonButton fill="clear" onClick={() => fileInputRef.current?.click()}>
+          <IonIcon slot="icon-only" icon={imageOutline} />
+        </IonButton>
+        {uploading && <IonSpinner name="dots" />}
+      </IonItem>
+      {images.length > 0 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, padding: '0 16px 8px' }}>
+          {images.map((image, index) => (
+            <div key={`${image.thumbnail_url}-${index}`} style={{ position: 'relative' }}>
+              <img
+                src={`${API_URL}${image.thumbnail_url}`}
+                alt=""
+                style={{ width: 60, height: 60, objectFit: 'cover', borderRadius: 8 }}
+              />
+              <IonButton
+                fill="clear"
+                size="small"
+                style={{ position: 'absolute', top: -14, right: -14, '--padding-start': '4px', '--padding-end': '4px' }}
+                onClick={() => onRemove(index)}
+              >
+                <IonIcon slot="icon-only" icon={closeOutline} />
+              </IonButton>
+            </div>
+          ))}
+        </div>
+      )}
+    </>
+  )
+}
+
+function makePasteHandler(onFiles: (files: File[]) => void) {
+  return function handlePaste(e: React.ClipboardEvent) {
+    const files = Array.from(e.clipboardData.items)
+      .filter((item) => item.type.startsWith('image/'))
+      .map((item) => item.getAsFile())
+      .filter((file): file is File => file !== null)
+    if (files.length === 0) return
+    e.preventDefault()
+    onFiles(files)
+  }
+}
 
 function FeedbackItemBody({
   item,
@@ -42,14 +141,7 @@ function FeedbackItemBody({
   return (
     <IonLabel className="ion-text-wrap">
       <h2>{item.title}</h2>
-      {item.thumbnail_url && item.image_url && (
-        <img
-          src={`${API_URL}${item.thumbnail_url}`}
-          alt=""
-          onClick={() => onImageClick(item.image_url!)}
-          style={{ width: '100%', maxHeight: 240, objectFit: 'cover', borderRadius: 8, margin: '8px 0', cursor: 'pointer' }}
-        />
-      )}
+      <FeedbackImages images={item.images} onImageClick={onImageClick} />
       {item.description && <p>{item.description}</p>}
       {extra}
       <IonNote>
@@ -60,39 +152,42 @@ function FeedbackItemBody({
   )
 }
 
-function NewFeedbackForm({ onCreated, onCancel }: { onCreated: (item: FeedbackItem) => void; onCancel: () => void }) {
-  const [title, setTitle] = useState('')
-  const [description, setDescription] = useState('')
-  const [image, setImage] = useState<UploadedImage | null>(null)
+// Shared by the "new post" and "edit post" flows — they differ only in
+// starting values, button copy, and what happens on submit.
+function FeedbackForm({
+  initialTitle = '',
+  initialDescription = '',
+  initialImages = [],
+  descriptionPlaceholder,
+  submitLabel,
+  errorMessage,
+  onSubmit,
+  onCancel,
+}: {
+  initialTitle?: string
+  initialDescription?: string
+  initialImages?: UploadedImage[]
+  descriptionPlaceholder?: string
+  submitLabel: string
+  errorMessage: string
+  onSubmit: (title: string, description: string, images: UploadedImage[]) => Promise<void>
+  onCancel: () => void
+}) {
+  const [title, setTitle] = useState(initialTitle)
+  const [description, setDescription] = useState(initialDescription)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const { fileInputRef, uploading, attach } = useImageUpload('feedback', setImage)
-
-  async function attachImage(file: File) {
-    setError(null)
-    if (!(await attach(file))) setError('Could not upload image')
-  }
-
-  function handlePaste(e: React.ClipboardEvent) {
-    const item = Array.from(e.clipboardData.items).find((i) => i.type.startsWith('image/'))
-    const file = item?.getAsFile()
-    if (!file) return
-    e.preventDefault()
-    void attachImage(file)
-  }
+  const { images, fileInputRef, uploading, attachFiles, removeAt } = useMultiImageUpload(initialImages)
+  const handlePaste = makePasteHandler((files) => void attachFiles(files))
 
   async function submit() {
     if (!title.trim()) return
     setSubmitting(true)
     setError(null)
     try {
-      const created = await createFeedback(title.trim(), description.trim(), image ?? undefined)
-      onCreated(created)
-      setTitle('')
-      setDescription('')
-      setImage(null)
+      await onSubmit(title.trim(), description.trim(), images)
     } catch {
-      setError('Could not post feedback')
+      setError(errorMessage)
     } finally {
       setSubmitting(false)
     }
@@ -109,39 +204,17 @@ function NewFeedbackForm({ onCreated, onCancel }: { onCreated: (item: FeedbackIt
         <IonTextarea
           value={description}
           onIonInput={(e) => setDescription(e.detail.value ?? '')}
-          placeholder="Paste a screenshot here, or attach one below"
+          placeholder={descriptionPlaceholder}
           autoGrow
         />
       </IonItem>
-      <IonItem lines="none">
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="image/*"
-          hidden
-          onChange={(e) => {
-            const file = e.target.files?.[0]
-            if (file) void attachImage(file)
-            e.target.value = ''
-          }}
-        />
-        <IonButton fill="clear" onClick={() => fileInputRef.current?.click()}>
-          <IonIcon slot="icon-only" icon={imageOutline} />
-        </IonButton>
-        {uploading && <IonSpinner name="dots" />}
-        {image && (
-          <>
-            <img
-              src={`${API_URL}${image.thumbnail_url}`}
-              alt=""
-              style={{ width: 60, height: 60, objectFit: 'cover', borderRadius: 8, marginLeft: 8 }}
-            />
-            <IonButton fill="clear" onClick={() => setImage(null)}>
-              <IonIcon slot="icon-only" icon={closeOutline} />
-            </IonButton>
-          </>
-        )}
-      </IonItem>
+      <PhotoPicker
+        images={images}
+        uploading={uploading}
+        fileInputRef={fileInputRef}
+        onFiles={(files) => void attachFiles(files)}
+        onRemove={removeAt}
+      />
       {error && (
         <IonText color="danger">
           <p className="ion-padding-start">{error}</p>
@@ -149,9 +222,9 @@ function NewFeedbackForm({ onCreated, onCancel }: { onCreated: (item: FeedbackIt
       )}
       <IonItem lines="none">
         <IonButton fill="outline" disabled={submitting || uploading || !title.trim()} onClick={submit}>
-          Post
+          {submitLabel}
         </IonButton>
-        <IonButton fill="clear" color="medium" onClick={onCancel}>
+        <IonButton fill="clear" color="medium" disabled={submitting} onClick={onCancel}>
           Cancel
         </IonButton>
       </IonItem>
@@ -187,14 +260,17 @@ function FeedbackListItem({
   item,
   isAdmin,
   onCompleted,
+  onUpdated,
   onImageClick,
 }: {
   item: FeedbackItem
   isAdmin: boolean
   onCompleted: (item: FeedbackItem) => void
+  onUpdated: (item: FeedbackItem) => void
   onImageClick: (url: string) => void
 }) {
   const [markingDone, setMarkingDone] = useState(false)
+  const [editing, setEditing] = useState(false)
 
   async function confirmDone(note: string) {
     const updated = await completeFeedback(item.id, note)
@@ -202,11 +278,37 @@ function FeedbackListItem({
     setMarkingDone(false)
   }
 
+  if (editing) {
+    return (
+      <FeedbackForm
+        initialTitle={item.title}
+        initialDescription={item.description ?? ''}
+        initialImages={item.images}
+        submitLabel="Save"
+        errorMessage="Could not save changes"
+        onSubmit={async (title, description, images) => {
+          onUpdated(await updateFeedback(item.id, title, description, images))
+          setEditing(false)
+        }}
+        onCancel={() => setEditing(false)}
+      />
+    )
+  }
+
   return (
     <>
       <IonItem lines={markingDone ? 'none' : 'full'}>
-        <FeedbackItemBody item={item} onImageClick={onImageClick} />
-        {isAdmin && !markingDone && (
+        <FeedbackItemBody
+          item={item}
+          extra={item.completion_note && <p>{item.completion_note}</p>}
+          onImageClick={onImageClick}
+        />
+        {item.can_edit && !markingDone && (
+          <IonButton fill="clear" slot="end" onClick={() => setEditing(true)}>
+            <IonIcon slot="icon-only" icon={createOutline} />
+          </IonButton>
+        )}
+        {isAdmin && !item.completed_at && !markingDone && (
           <IonButton fill="clear" slot="end" onClick={() => setMarkingDone(true)}>
             <IonIcon slot="icon-only" icon={checkmarkOutline} />
           </IonButton>
@@ -214,18 +316,6 @@ function FeedbackListItem({
       </IonItem>
       {markingDone && <MarkDoneForm onConfirm={confirmDone} onCancel={() => setMarkingDone(false)} />}
     </>
-  )
-}
-
-function ClosedFeedbackItem({ item, onImageClick }: { item: FeedbackItem; onImageClick: (url: string) => void }) {
-  return (
-    <IonItem lines="full">
-      <FeedbackItemBody
-        item={item}
-        extra={item.completion_note && <p>{item.completion_note}</p>}
-        onImageClick={onImageClick}
-      />
-    </IonItem>
   )
 }
 
@@ -245,6 +335,10 @@ export function FeedbackPage() {
   const openItems = items?.filter((item) => !item.completed_at) ?? []
   const closedItems = items?.filter((item) => item.completed_at) ?? []
 
+  function handleUpdated(updated: FeedbackItem) {
+    setItems((prev) => prev?.map((i) => (i.id === updated.id ? updated : i)) ?? null)
+  }
+
   return (
     <IonPage>
       <IonHeader>
@@ -260,9 +354,13 @@ export function FeedbackPage() {
       </IonHeader>
       <IonContent fullscreen>
         {showForm && (
-          <NewFeedbackForm
-            onCreated={(item) => {
-              setItems((prev) => [item, ...(prev ?? [])])
+          <FeedbackForm
+            descriptionPlaceholder="Paste a screenshot here, or attach one below"
+            submitLabel="Post"
+            errorMessage="Could not post feedback"
+            onSubmit={async (title, description, images) => {
+              const created = await createFeedback(title, description, images)
+              setItems((prev) => [created, ...(prev ?? [])])
               setShowForm(false)
             }}
             onCancel={() => setShowForm(false)}
@@ -292,9 +390,8 @@ export function FeedbackPage() {
                   key={item.id}
                   item={item}
                   isAdmin={isAdmin}
-                  onCompleted={(updated) =>
-                    setItems((prev) => prev?.map((i) => (i.id === updated.id ? updated : i)) ?? null)
-                  }
+                  onCompleted={handleUpdated}
+                  onUpdated={handleUpdated}
                   onImageClick={(url) => setLightboxSrc(`${API_URL}${url}`)}
                 />
               ))}
@@ -315,9 +412,12 @@ export function FeedbackPage() {
                   </IonItem>
                   <IonList slot="content">
                     {closedItems.map((item) => (
-                      <ClosedFeedbackItem
+                      <FeedbackListItem
                         key={item.id}
                         item={item}
+                        isAdmin={isAdmin}
+                        onCompleted={handleUpdated}
+                        onUpdated={handleUpdated}
                         onImageClick={(url) => setLightboxSrc(`${API_URL}${url}`)}
                       />
                     ))}

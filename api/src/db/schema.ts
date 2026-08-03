@@ -167,10 +167,22 @@ export const feedback = pgTable('feedback', {
   title: text('title').notNull(),
   description: text('description'),
   createdByUserId: uuid('created_by_user_id').references(() => users.id),
-  imageUrl: text('image_url'),
-  thumbnailUrl: text('thumbnail_url'),
   completedAt: timestamp('completed_at', { withTimezone: true }),
   completionNote: text('completion_note'),
   completedByUserId: uuid('completed_by_user_id').references(() => users.id),
+  ...timestamps,
+})
+
+// One row per photo attached to a feedback post — a post can now carry more
+// than one (feedback #40). `position` preserves attach order since multiple
+// rows inserted in one statement don't reliably tie-break on createdAt alone.
+export const feedbackImages = pgTable('feedback_images', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  feedbackId: uuid('feedback_id')
+    .notNull()
+    .references(() => feedback.id),
+  imageUrl: text('image_url').notNull(),
+  thumbnailUrl: text('thumbnail_url').notNull(),
+  position: integer('position').notNull().default(0),
   ...timestamps,
 })
