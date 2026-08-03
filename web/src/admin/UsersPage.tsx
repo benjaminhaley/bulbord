@@ -55,7 +55,7 @@ export function UsersPage() {
           <IonList>
             {users.map((user) => (
               <IonItem key={user.id} lines="full">
-                <Avatar slot="start" url={user.avatar_url} />
+                <Avatar slot="start" url={user.avatar_url} name={user.name} />
                 <IonLabel className="ion-text-wrap">
                   <h2>{user.name}</h2>
                   <IonNote>

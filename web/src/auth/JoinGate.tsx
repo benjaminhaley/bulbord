@@ -1,5 +1,6 @@
 import {
   IonButton,
+  IonCheckbox,
   IonContent,
   IonInput,
   IonItem,
@@ -20,10 +21,42 @@ import { useAuth } from './AuthContext'
 import { setToken } from './token'
 import { loginWithPasskey, registerPasskey } from './webauthn'
 
+// Shown on every logged-out state (loading, invite, sign-in, dead-end) so a
+// visitor always sees who this is for before deciding whether to continue
+// (feedback #37) — logo/name mirror InstitutionBanner.tsx's authenticated
+// header, since there's no shared header component spanning both states.
+function BrandHeader() {
+  return (
+    <>
+      {/* nettelhorst-logo.png is white artwork on a transparent background
+          (designed for InstitutionBanner's dark toolbar) — invisible on this
+          screen's plain background without its own dark backing. */}
+      <div
+        style={{
+          width: 64,
+          height: 64,
+          borderRadius: 16,
+          background: '#2c2c2c',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+      >
+        <img src="/nettelhorst-logo.png" alt="" style={{ width: 40, height: 40, objectFit: 'contain' }} />
+      </div>
+      <h1 style={{ margin: '4px 0 0', fontSize: '1.5rem', fontWeight: 700 }}>Nettelhorst</h1>
+      <p style={{ margin: '0 0 16px', color: 'var(--ion-color-medium)' }}>
+        A bulletin board for the Nettelhorst community
+      </p>
+    </>
+  )
+}
+
 function CenteredMessage({ children }: { children: ReactNode }) {
   return (
     <IonContent fullscreen className="ion-padding">
       <div className="account-fallback" style={{ height: '100%', justifyContent: 'center' }}>
+        <BrandHeader />
         {children}
       </div>
     </IonContent>
@@ -59,9 +92,8 @@ export function InviteAcceptCard({
   return (
     <CenteredMessage>
       {banner}
-      <Avatar url={invite?.avatarUrl ?? null} size={64} />
-      <h2>{invite ? `${invite.name} invited you to Nettelhorst` : 'Set up Nettelhorst'}</h2>
-      <p>Create a passkey to sign in — just your face, fingerprint, or screen lock. No password to remember.</p>
+      <Avatar url={invite?.avatarUrl ?? null} name={invite?.name} size={64} />
+      <h2>{invite ? `${invite.name} invited you` : 'Join Nettelhorst'}</h2>
       {error && (
         <IonText color="danger">
           <p>{error}</p>
@@ -182,6 +214,7 @@ function ProfileSetupScreen() {
   const [firstName, setFirstName] = useState('')
   const [lastName, setLastName] = useState('')
   const [email, setEmail] = useState('')
+  const [newsletterSubscribed, setNewsletterSubscribed] = useState(true)
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -200,7 +233,7 @@ function ProfileSetupScreen() {
     setSubmitting(true)
     setError(null)
     try {
-      await updateProfile({ name, email: trimmedEmail, avatarUrl: avatarUrl ?? undefined })
+      await updateProfile({ name, email: trimmedEmail, avatarUrl: avatarUrl ?? undefined, newsletterSubscribed })
       await refresh()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not save your profile')
@@ -263,13 +296,23 @@ function ProfileSetupScreen() {
             <IonLabel position="stacked">Last name</IonLabel>
             <IonInput value={lastName} onIonInput={(e) => setLastName(capitalizeFirst(e.detail.value ?? ''))} />
           </IonItem>
-          <IonItem lines="none">
+          <IonItem>
             <IonLabel position="stacked">Email</IonLabel>
             <IonInput type="email" value={email} onIonInput={(e) => setEmail(e.detail.value ?? '')} />
           </IonItem>
+          <IonItem lines="none">
+            <IonCheckbox
+              checked={newsletterSubscribed}
+              onIonChange={(e) => setNewsletterSubscribed(e.detail.checked)}
+              justify="start"
+              labelPlacement="end"
+            >
+              Get weekly events email
+            </IonCheckbox>
+          </IonItem>
         </IonList>
         <p className="ion-padding-start" style={{ color: 'var(--ion-color-medium)', fontSize: '0.875rem', marginTop: 4 }}>
-          Used for the weekly events newsletter — you can unsubscribe anytime from any email you get.
+          You can unsubscribe anytime from any email you get.
         </p>
         {error && (
           <IonText color="danger">

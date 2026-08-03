@@ -70,7 +70,12 @@ export async function revokeSession(bearerToken: string) {
   }
 }
 
-export type ProfileUpdateInput = { name?: string; email?: string; avatarUrl?: string }
+export type ProfileUpdateInput = {
+  name?: string
+  email?: string
+  avatarUrl?: string
+  newsletterSubscribed?: boolean
+}
 type ValidationResult =
   | { ok: true; updates: ProfileUpdateInput }
   | { ok: false; message: string }
@@ -100,12 +105,12 @@ export function validateProfileUpdate(current: { profileComplete: boolean }, bod
     return { ok: false, message: 'email is required to complete your profile' }
   }
 
-  return { ok: true, updates: { name, email, avatarUrl: body.avatarUrl } }
+  return { ok: true, updates: { name, email, avatarUrl: body.avatarUrl, newsletterSubscribed: body.newsletterSubscribed } }
 }
 
 // Post-registration "set up your profile" step — the only place a user's
 // name/photo are ever set after the placeholder assigned at registration.
-export async function updateProfile(userId: string, updates: { name?: string; email?: string; avatarUrl?: string }) {
+export async function updateProfile(userId: string, updates: ProfileUpdateInput) {
   const [[updated]] = await Promise.all([
     db
       .update(users)
@@ -113,6 +118,7 @@ export async function updateProfile(userId: string, updates: { name?: string; em
         ...(updates.name ? { name: updates.name, profileCompletedAt: new Date() } : {}),
         ...(updates.email ? { email: updates.email } : {}),
         ...(updates.avatarUrl ? { avatarUrl: updates.avatarUrl } : {}),
+        ...(updates.newsletterSubscribed !== undefined ? { newsletterSubscribed: updates.newsletterSubscribed } : {}),
         updatedAt: new Date(),
       })
       .where(eq(users.id, userId))

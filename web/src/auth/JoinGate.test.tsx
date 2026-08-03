@@ -58,7 +58,7 @@ describe('JoinGate', () => {
   it('shows the inviter\'s name once the invite lookup resolves', async () => {
     mockUseAuth.mockReturnValue({ user: null, isLoading: false })
     renderGate('/events?invite=user-42')
-    expect(await screen.findByText('Sam Rivera invited you to Nettelhorst')).toBeInTheDocument()
+    expect(await screen.findByText('Sam Rivera invited you')).toBeInTheDocument()
   })
 
   it('shows the profile setup step for a signed-in user with no completed profile', () => {
@@ -105,7 +105,36 @@ describe('JoinGate', () => {
     fireEvent.click(screen.getByText('Continue').closest('ion-button')!)
 
     await waitFor(() => {
-      expect(mockUpdateProfile).toHaveBeenCalledWith({ name: 'Ben Haley', email: 'ben@example.com', avatarUrl: undefined })
+      expect(mockUpdateProfile).toHaveBeenCalledWith({
+        name: 'Ben Haley',
+        email: 'ben@example.com',
+        avatarUrl: undefined,
+        newsletterSubscribed: true,
+      })
+    })
+  })
+
+  it('submits newsletterSubscribed: false when the checkbox is unchecked', async () => {
+    mockUseAuth.mockReturnValue({ user: { id: 'u1', name: 'New Nettelhorst member', profileComplete: false }, isLoading: false })
+    const { container } = renderGate('/events')
+
+    const [firstNameInput, lastNameInput, emailInput] = container.querySelectorAll('ion-input')
+    typeIntoIonInput(firstNameInput, 'Ben')
+    typeIntoIonInput(lastNameInput, 'Haley')
+    typeIntoIonInput(emailInput, 'ben@example.com')
+
+    const checkbox = container.querySelector('ion-checkbox')!
+    fireEvent(checkbox, new CustomEvent('ionChange', { detail: { checked: false }, bubbles: true }))
+
+    fireEvent.click(screen.getByText('Continue').closest('ion-button')!)
+
+    await waitFor(() => {
+      expect(mockUpdateProfile).toHaveBeenCalledWith({
+        name: 'Ben Haley',
+        email: 'ben@example.com',
+        avatarUrl: undefined,
+        newsletterSubscribed: false,
+      })
     })
   })
 })

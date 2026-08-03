@@ -1,5 +1,4 @@
-import { IonIcon, IonToolbar } from '@ionic/react'
-import { personCircleOutline } from 'ionicons/icons'
+import { IonToolbar } from '@ionic/react'
 import { useHistory } from 'react-router-dom'
 
 import { useAuth } from '../auth/AuthContext'
@@ -21,7 +20,9 @@ export function InstitutionBanner() {
     <IonToolbar style={{ '--background': '#2c2c2c', '--color': 'white' } as React.CSSProperties}>
       <div
         slot="start"
-        style={{ display: 'flex', alignItems: 'center', gap: 10, paddingInlineStart: 16 }}
+        role="button"
+        onClick={() => history.push('/about')}
+        style={{ display: 'flex', alignItems: 'center', gap: 10, paddingInlineStart: 16, cursor: 'pointer' }}
       >
         <img src="/nettelhorst-logo.png" alt="" style={{ width: 28, height: 28, objectFit: 'contain' }} />
         <span style={{ fontSize: '1.1rem', fontWeight: 600 }}>Nettelhorst</span>
@@ -32,11 +33,7 @@ export function InstitutionBanner() {
         onClick={() => history.push('/account')}
         style={{ display: 'flex', alignItems: 'center', paddingInlineEnd: 16, cursor: 'pointer' }}
       >
-        {user?.avatarUrl ? (
-          <Avatar url={user.avatarUrl} size={32} />
-        ) : (
-          <IonIcon icon={personCircleOutline} style={{ fontSize: 32, color: 'white' }} />
-        )}
+        {user && <Avatar url={user.avatarUrl} name={user.name} size={32} />}
       </div>
     </IonToolbar>
   )

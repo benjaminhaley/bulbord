@@ -43,4 +43,15 @@ describe('validateProfileUpdate', () => {
     const result = validateProfileUpdate({ profileComplete: true }, { avatarUrl: '/uploads/profiles/x.jpg' })
     expect(result).toEqual({ ok: true, updates: { name: undefined, email: undefined, avatarUrl: '/uploads/profiles/x.jpg' } })
   })
+
+  it('passes newsletterSubscribed through, including an explicit opt-out', () => {
+    const result = validateProfileUpdate(
+      { profileComplete: false },
+      { name: 'Ben Haley', email: 'ben@example.com', newsletterSubscribed: false },
+    )
+    expect(result).toEqual({
+      ok: true,
+      updates: { name: 'Ben Haley', email: 'ben@example.com', avatarUrl: undefined, newsletterSubscribed: false },
+    })
+  })
 })

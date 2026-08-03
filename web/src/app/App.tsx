@@ -8,6 +8,7 @@ import { DevToolsPage } from '../admin/DevToolsPage'
 import { InvitePreviewPage } from '../admin/InvitePreviewPage'
 import { UsersPage } from '../admin/UsersPage'
 import { AuthProvider } from '../auth/AuthContext'
+import { AboutPage } from '../auth/AboutPage'
 import { AccountPage } from '../auth/AccountPage'
 import { JoinGate } from '../auth/JoinGate'
 import { EventsPage } from '../events/EventsPage'
@@ -33,6 +34,7 @@ export function App() {
                 <Route exact path="/camps" component={CampsPage} />
                 <Route exact path="/feedback" component={FeedbackPage} />
                 <Route exact path="/account" component={AccountPage} />
+                <Route exact path="/about" component={AboutPage} />
                 <AdminRoute exact path="/admin/users" component={UsersPage} />
                 <AdminRoute exact path="/admin/dev-tools" component={DevToolsPage} />
                 <AdminRoute exact path="/admin/invite-preview" component={InvitePreviewPage} />

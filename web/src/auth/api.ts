@@ -29,7 +29,12 @@ export async function fetchCurrentUser(): Promise<CurrentUser | null> {
   return body.data
 }
 
-export async function updateProfile(updates: { name?: string; email?: string; avatarUrl?: string }): Promise<CurrentUser> {
+export async function updateProfile(updates: {
+  name?: string
+  email?: string
+  avatarUrl?: string
+  newsletterSubscribed?: boolean
+}): Promise<CurrentUser> {
   const response = await fetch(`${API_URL}/auth/me`, {
     method: 'PATCH',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },

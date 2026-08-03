@@ -49,7 +49,7 @@ function CommentItem({
 
   return (
     <div style={{ display: 'flex', gap: 12, padding: '12px 0', borderBottom: '1px solid var(--ion-color-step-100)' }}>
-      <Avatar url={comment.author_avatar_url} size={36} />
+      <Avatar url={comment.author_avatar_url} name={comment.author_name ?? undefined} size={36} />
       <div style={{ flex: 1, minWidth: 0 }}>
         <p style={{ margin: 0 }}>
           <strong>{comment.author_name ?? 'Member'}</strong>{' '}

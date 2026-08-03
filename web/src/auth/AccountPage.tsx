@@ -1,5 +1,5 @@
 import { IonBackButton, IonButton, IonButtons, IonContent, IonHeader, IonIcon, IonItem, IonLabel, IonList, IonPage, IonTitle, IonToolbar } from '@ionic/react'
-import { shieldCheckmarkOutline } from 'ionicons/icons'
+import { informationCircleOutline, shieldCheckmarkOutline } from 'ionicons/icons'
 
 import { Avatar } from '../uploads/Avatar'
 import { useAuth } from './AuthContext'
@@ -27,7 +27,7 @@ export function AccountPage() {
                 admins can tap it again here to reach Developer Tools (feedback
                 #38) — everyone else just sees their name, non-interactive. */}
             <IonItem lines="none" button={isAdmin} routerLink={isAdmin ? '/admin/dev-tools' : undefined} detail={isAdmin}>
-              <Avatar slot="start" url={user.avatarUrl} />
+              <Avatar slot="start" url={user.avatarUrl} name={user.name} />
               <IonLabel>
                 <h2>{user.name}</h2>
               </IonLabel>
@@ -38,6 +38,10 @@ export function AccountPage() {
                 <IonLabel>Administrator</IonLabel>
               </IonItem>
             )}
+            <IonItem button routerLink="/about" lines="none">
+              <IonIcon slot="start" icon={informationCircleOutline} />
+              <IonLabel>About</IonLabel>
+            </IonItem>
             <IonItem lines="none">
               <IonButton fill="outline" color="medium" onClick={logout}>
                 Log out
