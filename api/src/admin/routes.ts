@@ -17,6 +17,7 @@ export async function adminRoutes(app: FastifyInstance) {
         avatar_url: row.avatarUrl,
         created_at: row.createdAt,
         invited_by_name: row.invitedByName,
+        newsletter_subscribed: row.newsletterSubscribed,
       })),
       has_more: false,
       next_cursor: null,

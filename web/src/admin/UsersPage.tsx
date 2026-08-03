@@ -62,6 +62,9 @@ export function UsersPage() {
                     Joined {formatDate(user.created_at)}
                     {user.invited_by_name ? ` · invited by ${user.invited_by_name}` : ' · root member'}
                   </IonNote>
+                  <IonNote color={user.newsletter_subscribed ? 'success' : 'medium'} className="ion-text-wrap" style={{ display: 'block' }}>
+                    {user.newsletter_subscribed ? 'Subscribed to newsletter' : 'Not subscribed to newsletter'}
+                  </IonNote>
                 </IonLabel>
               </IonItem>
             ))}

@@ -148,6 +148,7 @@ export async function listUsersForAdmin() {
       avatarUrl: users.avatarUrl,
       createdAt: users.createdAt,
       invitedByName: inviter.name,
+      newsletterSubscribed: users.newsletterSubscribed,
     })
     .from(users)
     .leftJoin(inviter, eq(inviter.id, users.invitedByUserId))

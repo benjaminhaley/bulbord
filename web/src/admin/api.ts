@@ -7,6 +7,7 @@ export interface AdminUser {
   avatar_url: string | null
   created_at: string
   invited_by_name: string | null
+  newsletter_subscribed: boolean
 }
 
 export async function fetchAdminUsers(): Promise<AdminUser[]> {
