@@ -17,8 +17,10 @@ export interface Event {
   thumbnail_url: string | null
   interest_status: InterestStatus | null
   interested_count: number
-  // In interest order, with the viewer's own name already replaced with "You".
-  interested_names: string[]
+  // In interest order, with the viewer's own name already replaced with "You"
+  // (feedback #43 — icon-stack teaser needs a photo/initials per person, not
+  // just names).
+  interested_people: { name: string; avatar_url: string | null }[]
 }
 
 export interface InterestedUser {

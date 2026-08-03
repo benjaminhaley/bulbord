@@ -18,13 +18,26 @@ import { useState } from 'react'
 
 import { Avatar } from '../uploads/Avatar'
 import { fetchInterestedUsers, type InterestedUser } from './api'
-import { buildInterestedTeaser } from './format'
+
+// Max icons shown before collapsing the rest into a "+N" bubble — keeps the
+// stack from growing unboundedly wide on a popular event.
+const MAX_STACKED_ICONS = 5
 
 // Attendance-signal social proof (see CLAUDE.md's data classification: names
 // and avatars only, never contact/PII). Stops propagation on open so this can
 // sit inside an EventsPage row without also triggering the row's own
-// routerLink navigation to the event detail page.
-export function InterestedBadge({ eventId, count, names }: { eventId: string; count: number; names: string[] }) {
+// routerLink navigation to the event detail page. Closed state is a small
+// icon stack (feedback #43 — replaced a "3 interested: Alice, Bob and
+// Carol" text teaser, since faces read faster than names at a glance).
+export function InterestedBadge({
+  eventId,
+  count,
+  people,
+}: {
+  eventId: string
+  count: number
+  people: { name: string; avatar_url: string | null }[]
+}) {
   const [open, setOpen] = useState(false)
   const [users, setUsers] = useState<InterestedUser[] | null>(null)
 
@@ -39,11 +52,24 @@ export function InterestedBadge({ eventId, count, names }: { eventId: string; co
     }
   }
 
+  const shown = people.slice(0, MAX_STACKED_ICONS)
+  const overflow = count - shown.length
+
   return (
     <>
-      <IonNote onClick={show} className="interested-badge">
-        {buildInterestedTeaser(names, count)}
-      </IonNote>
+      <div
+        onClick={show}
+        style={{ display: 'inline-flex', alignItems: 'center', cursor: 'pointer', marginTop: 4 }}
+      >
+        {shown.map((person, i) => (
+          <div key={i} style={{ marginInlineStart: i === 0 ? 0 : -8, border: '2px solid var(--ion-background-color)', borderRadius: '50%' }}>
+            <Avatar url={person.avatar_url} name={person.name} size={24} />
+          </div>
+        ))}
+        {overflow > 0 && (
+          <IonNote style={{ marginInlineStart: 4 }}>+{overflow}</IonNote>
+        )}
+      </div>
       <IonModal isOpen={open} onDidDismiss={() => setOpen(false)}>
         <IonHeader>
           <IonToolbar>
@@ -70,7 +96,7 @@ export function InterestedBadge({ eventId, count, names }: { eventId: string; co
             <IonList>
               {users.map((user) => (
                 <IonItem key={user.id}>
-                  <Avatar slot="start" url={user.avatar_url} />
+                  <Avatar slot="start" url={user.avatar_url} name={user.name} />
                   <IonLabel>{user.name}</IonLabel>
                 </IonItem>
               ))}

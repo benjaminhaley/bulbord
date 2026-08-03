@@ -187,7 +187,7 @@ export function EventsPage() {
                       {location && <IonNote>{location}</IonNote>}
                       {description && <p className="teaser">{description}</p>}
                       {event.interested_count > 0 && (
-                        <InterestedBadge eventId={event.id} count={event.interested_count} names={event.interested_names} />
+                        <InterestedBadge eventId={event.id} count={event.interested_count} people={event.interested_people} />
                       )}
                     </IonLabel>
                   </IonItem>
