@@ -2,32 +2,48 @@ import { eq } from 'drizzle-orm'
 
 import { db } from '../db/client.js'
 import { events } from '../db/schema.js'
-import { extractPageImageUrl } from '../uploads/extract-page-image.js'
+import { extractPageImageCandidates } from '../uploads/extract-page-image.js'
 import { fetchExternalImage } from '../uploads/fetch-external-image.js'
+import { isLowQualityImage } from '../uploads/image-quality.js'
 import { imageUrl, uploadImage } from '../uploads/storage.js'
 
-// Tries to pull a real image off the source page (og:image, JSON-LD,
-// WordPress featured image, or the best plain <img> — see extractPageImageUrl),
-// or downloads a manually-vetted imageUrl when a candidate supplies one
-// directly (for sources like a JS-rendered page that extraction can't reach —
-// see CandidateEvent.imageUrl in ingest.ts). Leaves image_url/thumbnail_url
-// null when neither finds a real photo — no generated placeholder (2026-07-31
-// feedback: a placeholder reads as broken, not as "no image yet").
+// Tries every candidate image in priority order — a manually-vetted
+// overrideImageUrl first (a subject-specific lookup like
+// movie-poster-lookup.ts, or a hand-verified URL for a source extraction
+// can't reach; see CandidateEvent.imageUrl in ingest.ts), then whatever
+// extractPageImageCandidates finds on the source page (og:image, JSON-LD,
+// WordPress featured image, best plain <img>, site logo) — downloading and
+// quality-checking each (see image-quality.ts) rather than trusting the
+// first one found: a highest-priority tag can point at something unusably
+// small (a site's own tiny header badge misconfigured as its og:image), and
+// the next candidate down might be a real, usable photo. Leaves
+// image_url/thumbnail_url null when nothing in the whole list passes — no
+// generated placeholder (2026-07-31 feedback: a placeholder reads as broken,
+// not as "no image yet") and no low-quality substitute either.
 export async function enrichEventImage(
   eventId: string,
   { sourceUrl, overrideImageUrl }: { sourceUrl: string | null; overrideImageUrl?: string | null },
 ): Promise<'sourced' | 'none'> {
-  const pageImageUrl = overrideImageUrl ?? (sourceUrl ? await extractPageImageUrl(sourceUrl) : null)
-  const downloaded = pageImageUrl ? await fetchExternalImage(pageImageUrl) : null
-  if (!downloaded) return 'none'
+  const candidates = [
+    ...(overrideImageUrl ? [overrideImageUrl] : []),
+    ...(sourceUrl ? await extractPageImageCandidates(sourceUrl) : []),
+  ]
 
-  const { key, thumbnailKey } = await uploadImage(downloaded, 'events')
-  await db
-    .update(events)
-    .set({ imageUrl: imageUrl(key), thumbnailUrl: imageUrl(thumbnailKey), updatedAt: new Date() })
-    .where(eq(events.id, eventId))
+  for (const candidateUrl of candidates) {
+    const downloaded = await fetchExternalImage(candidateUrl)
+    if (!downloaded) continue
+    if (await isLowQualityImage(downloaded)) continue
 
-  return 'sourced'
+    const { key, thumbnailKey } = await uploadImage(downloaded, 'events')
+    await db
+      .update(events)
+      .set({ imageUrl: imageUrl(key), thumbnailUrl: imageUrl(thumbnailKey), updatedAt: new Date() })
+      .where(eq(events.id, eventId))
+
+    return 'sourced'
+  }
+
+  return 'none'
 }
 
 const ENRICH_CONCURRENCY = 5

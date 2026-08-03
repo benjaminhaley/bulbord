@@ -93,14 +93,20 @@ function siteLogo($: cheerio.CheerioAPI, pageUrl: string): string | null {
 // Best-effort, in priority order: og:image/twitter:image meta tags, a
 // schema.org JSON-LD "image", a WordPress featured image (the near-universal
 // `wp-post-image` class), the best plain <img> in the page content, then the
-// site's own header logo. Returns null (never throws) on any failure — this
-// is opportunistic ingestion-time enrichment, not a guaranteed lookup.
-export async function extractPageImageUrl(pageUrl: string): Promise<string | null> {
+// site's own header logo. Returns every candidate found (deduped, most
+// promising first) rather than just the first hit — a highest-priority tag
+// can point at something unusably small (e.g. a site's tiny header badge
+// misconfigured as its own og:image), so image-enrichment.ts downloads and
+// quality-checks these in order and keeps going until one is actually usable
+// instead of trusting the first URL found (see image-quality.ts). Returns []
+// (never throws) on any failure — this is opportunistic ingestion-time
+// enrichment, not a guaranteed lookup.
+export async function extractPageImageCandidates(pageUrl: string): Promise<string[]> {
   const response = await fetchWithTimeout(pageUrl, FETCH_TIMEOUT_MS)
-  if (!response || !response.ok) return null
+  if (!response || !response.ok) return []
 
   const contentType = response.headers.get('content-type') ?? ''
-  if (!contentType.includes('html')) return null
+  if (!contentType.includes('html')) return []
 
   try {
     const html = await response.text()
@@ -108,21 +114,22 @@ export async function extractPageImageUrl(pageUrl: string): Promise<string | nul
 
     const metaImage =
       $('meta[property="og:image"]').attr('content') ?? $('meta[name="twitter:image"]').attr('content') ?? null
-    if (metaImage) return resolveUrl(metaImage, pageUrl)
-
     const jsonLdImage = imageFromJsonLd($, pageUrl)
-    if (jsonLdImage) return jsonLdImage
-
     const root = contentRoot($)
-
-    const featuredImage = root.find('img.wp-post-image').first().attr('src')
-    if (featuredImage) return resolveUrl(featuredImage, pageUrl)
-
+    const featuredImage = root.find('img.wp-post-image').first().attr('src') ?? null
     const contentImage = imageFromContent($, root, pageUrl)
-    if (contentImage) return contentImage
+    const logo = siteLogo($, pageUrl)
 
-    return siteLogo($, pageUrl)
+    const candidates = [
+      metaImage ? resolveUrl(metaImage, pageUrl) : null,
+      jsonLdImage,
+      featuredImage ? resolveUrl(featuredImage, pageUrl) : null,
+      contentImage,
+      logo,
+    ].filter((url): url is string => url !== null)
+
+    return [...new Set(candidates)]
   } catch {
-    return null
+    return []
   }
 }
