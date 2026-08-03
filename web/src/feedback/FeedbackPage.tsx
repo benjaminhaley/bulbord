@@ -303,15 +303,19 @@ function FeedbackListItem({
           extra={item.completion_note && <p>{item.completion_note}</p>}
           onImageClick={onImageClick}
         />
-        {item.can_edit && !markingDone && (
-          <IonButton fill="clear" slot="end" onClick={() => setEditing(true)}>
-            <IonIcon slot="icon-only" icon={createOutline} />
-          </IonButton>
-        )}
-        {isAdmin && !item.completed_at && !markingDone && (
-          <IonButton fill="clear" slot="end" onClick={() => setMarkingDone(true)}>
-            <IonIcon slot="icon-only" icon={checkmarkOutline} />
-          </IonButton>
+        {(item.can_edit || (isAdmin && !item.completed_at)) && !markingDone && (
+          <div slot="end" style={{ display: 'flex', flexDirection: 'column' }}>
+            {item.can_edit && (
+              <IonButton fill="clear" onClick={() => setEditing(true)}>
+                <IonIcon slot="icon-only" icon={createOutline} />
+              </IonButton>
+            )}
+            {isAdmin && !item.completed_at && (
+              <IonButton fill="clear" onClick={() => setMarkingDone(true)}>
+                <IonIcon slot="icon-only" icon={checkmarkOutline} />
+              </IonButton>
+            )}
+          </div>
         )}
       </IonItem>
       {markingDone && <MarkDoneForm onConfirm={confirmDone} onCancel={() => setMarkingDone(false)} />}
