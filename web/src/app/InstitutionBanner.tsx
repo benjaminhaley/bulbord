@@ -25,7 +25,7 @@ export function InstitutionBanner() {
         style={{ display: 'flex', alignItems: 'center', gap: 10, paddingInlineStart: 16, cursor: 'pointer' }}
       >
         <img src="/nettelhorst-logo.png" alt="" style={{ width: 28, height: 28, objectFit: 'contain' }} />
-        <span style={{ fontSize: '1.1rem', fontWeight: 600 }}>Nettelhorst</span>
+        <span style={{ fontSize: '1.1rem', fontWeight: 600 }}>Nettelhorst Bulbord</span>
       </div>
       <div
         slot="end"

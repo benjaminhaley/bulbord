@@ -45,7 +45,7 @@ describe('JoinGate', () => {
   it('shows a dead end with no invite/rootSecret param and no session', () => {
     mockUseAuth.mockReturnValue({ user: null, isLoading: false })
     renderGate('/events')
-    expect(screen.getByText('You need an invitation to join Nettelhorst')).toBeInTheDocument()
+    expect(screen.getByText('You need an invitation to join Nettelhorst Bulbord')).toBeInTheDocument()
     expect(screen.queryByText('the real app')).not.toBeInTheDocument()
   })
 

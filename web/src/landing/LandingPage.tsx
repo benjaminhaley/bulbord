@@ -13,7 +13,7 @@ export function LandingPage() {
           <div style={{ marginTop: '40%' }}>
             <h1>Bulbord</h1>
             <p>A hyper-local hub for school and community groups.</p>
-            <IonButton href="https://nettelhorst.bulbord.com">Go to Nettelhorst</IonButton>
+            <IonButton href="https://nettelhorst.bulbord.com">Go to Nettelhorst Bulbord</IonButton>
           </div>
         </IonContent>
       </IonPage>

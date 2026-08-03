@@ -41,7 +41,7 @@ test('the whole invite-only passkey flow: bootstrap, sign out/in, then a second 
 
   await test.step('an uninvited visitor is fully gated out', async () => {
     await page.goto('/')
-    await expect(page.getByRole('heading', { name: 'You need an invitation to join Nettelhorst' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'You need an invitation to join Nettelhorst Bulbord' })).toBeVisible()
   })
 
   await test.step('root registration via the bootstrap secret', async () => {
@@ -60,7 +60,7 @@ test('the whole invite-only passkey flow: bootstrap, sign out/in, then a second 
   await test.step('signing out gates the app again, but sign-in still works', async () => {
     await page.evaluate(() => localStorage.removeItem('bulbord_session_token'))
     await page.goto('/')
-    await expect(page.getByRole('heading', { name: 'You need an invitation to join Nettelhorst' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'You need an invitation to join Nettelhorst Bulbord' })).toBeVisible()
 
     await page.getByRole('button', { name: 'Sign In With Passkey' }).click()
     await page.waitForSelector('ion-tab-bar', { timeout: 15000 })
@@ -72,7 +72,7 @@ test('the whole invite-only passkey flow: bootstrap, sign out/in, then a second 
     await addVirtualAuthenticator(guestContext, guestPage)
 
     await guestPage.goto(`${baseURL}/events?invite=${rootUserId}`)
-    await expect(guestPage.getByRole('heading', { name: 'Ben Haley invited you to Nettelhorst' })).toBeVisible({
+    await expect(guestPage.getByRole('heading', { name: 'Ben Haley invited you' })).toBeVisible({
       timeout: 10000,
     })
     await guestPage.getByRole('button', { name: 'Accept Invite' }).click()

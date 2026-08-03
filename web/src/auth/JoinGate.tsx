@@ -44,7 +44,7 @@ function BrandHeader() {
       >
         <img src="/nettelhorst-logo.png" alt="" style={{ width: 40, height: 40, objectFit: 'contain' }} />
       </div>
-      <h1 style={{ margin: '4px 0 0', fontSize: '1.5rem', fontWeight: 700 }}>Nettelhorst</h1>
+      <h1 style={{ margin: '4px 0 0', fontSize: '1.5rem', fontWeight: 700 }}>Nettelhorst Bulbord</h1>
       <p style={{ margin: '0 0 16px', color: 'var(--ion-color-medium)' }}>
         A bulletin board for the Nettelhorst community
       </p>
@@ -93,7 +93,7 @@ export function InviteAcceptCard({
     <CenteredMessage>
       {banner}
       <Avatar url={invite?.avatarUrl ?? null} name={invite?.name} size={64} />
-      <h2>{invite ? `${invite.name} invited you` : 'Join Nettelhorst'}</h2>
+      <h2>{invite ? `${invite.name} invited you` : 'Join Nettelhorst Bulbord'}</h2>
       {error && (
         <IonText color="danger">
           <p>{error}</p>
@@ -102,7 +102,7 @@ export function InviteAcceptCard({
       <IonButton expand="block" disabled={busy} onClick={onAccept}>
         {invite ? 'Accept Invite' : 'Continue'}
       </IonButton>
-      <p className="ion-margin-top">Already on Nettelhorst?</p>
+      <p className="ion-margin-top">Already on Nettelhorst Bulbord?</p>
       <IonButton expand="block" fill="outline" disabled={busy} onClick={onSignIn}>
         Sign In With Passkey
       </IonButton>
@@ -163,7 +163,7 @@ function JoinScreen() {
 
   const signInSection = (
     <>
-      <p className="ion-margin-top">Already on Nettelhorst?</p>
+      <p className="ion-margin-top">Already on Nettelhorst Bulbord?</p>
       <IonButton expand="block" fill="outline" disabled={busy} onClick={signIn}>
         Sign In With Passkey
       </IonButton>
@@ -183,13 +183,13 @@ function JoinScreen() {
       <CenteredMessage>
         {!hasInvite ? (
           <>
-            <h2>You need an invitation to join Nettelhorst</h2>
-            <p>Ask someone already using Nettelhorst to share their invite QR code with you.</p>
+            <h2>You need an invitation to join Nettelhorst Bulbord</h2>
+            <p>Ask someone already using Nettelhorst Bulbord to share their invite QR code with you.</p>
           </>
         ) : (
           <>
             <h2>This invite link isn't valid</h2>
-            <p>Ask for a fresh invite QR code from someone already using Nettelhorst.</p>
+            <p>Ask for a fresh invite QR code from someone already using Nettelhorst Bulbord.</p>
           </>
         )}
         {error && (
