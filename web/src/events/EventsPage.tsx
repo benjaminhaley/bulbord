@@ -26,6 +26,7 @@ import { useMemo, useState } from 'react'
 import { useAuth } from '../auth/AuthContext'
 import { InstitutionBanner } from '../app/InstitutionBanner'
 import { API_URL } from '../config'
+import { Avatar } from '../uploads/Avatar'
 import { createEvent, fetchEvents, type Event, type InterestStatus } from './api'
 import { EventForm } from './EventForm'
 import { formatWhen, locationLabel, teaser } from './format'
@@ -214,13 +215,17 @@ export function EventsPage() {
                     </IonItemOption>
                   </IonItemOptions>
                   <IonItem routerLink={`/events/${event.id}`}>
-                    {event.thumbnail_url && (
+                    {event.thumbnail_url ? (
                       <img
                         src={`${API_URL}${event.thumbnail_url}`}
                         alt=""
                         slot="start"
                         style={{ width: 56, height: 56, objectFit: 'cover', borderRadius: 8 }}
                       />
+                    ) : (
+                      event.submitted_by && (
+                        <Avatar url={event.submitted_by.avatar_url} name={event.submitted_by.name} size={56} slot="start" />
+                      )
                     )}
                     <IonLabel>
                       <h2>{event.title}</h2>

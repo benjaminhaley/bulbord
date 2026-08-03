@@ -14,13 +14,19 @@ export function AboutPage() {
         </IonToolbar>
       </IonHeader>
       <IonContent fullscreen className="ion-padding">
+        <h2>About Nettelhorst Bulbord</h2>
         <p>
-          This app is built by Ben Haley and designed to help our community at Nettelhorst come together more
-          frequently, for the good of our kids and families.
+          This app is designed to help our community at Nettelhorst come together more frequently, for the good of
+          our kids and families.
         </p>
         <p>
           Feedback welcome! <a href="mailto:benjamin.haley@gmail.com">benjamin.haley@gmail.com</a> ·{' '}
           <a href="tel:+16302979831">630-297-9831</a>
+        </p>
+        <h2>About Me</h2>
+        <p>
+          I'm Ben Haley, a parent of two kids at Nettelhorst — Sebron in third grade and Parker in pre-K. You'll see
+          me riding around town in a cargo bike, often with the whole family loaded in.
         </p>
       </IonContent>
     </IonPage>

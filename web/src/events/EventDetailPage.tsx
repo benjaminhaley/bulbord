@@ -15,6 +15,7 @@ import { useEffect, useState } from 'react'
 import { useHistory, useParams } from 'react-router-dom'
 
 import { API_URL } from '../config'
+import { Avatar } from '../uploads/Avatar'
 import { deleteEvent, fetchEvent, updateEvent, type Event } from './api'
 import { CommentsSection } from './CommentsSection'
 import { EventForm } from './EventForm'
@@ -109,15 +110,24 @@ export function EventDetailPage() {
         )}
         {event && !editing && (
           <>
-            {event.image_url && (
+            {event.image_url ? (
               <img
                 src={`${API_URL}${event.image_url}`}
                 alt=""
                 style={{ width: '100%', borderRadius: 12, marginBottom: 16 }}
               />
+            ) : (
+              event.submitted_by && (
+                <div style={{ display: 'flex', justifyContent: 'center', margin: '8px 0 16px' }}>
+                  <Avatar url={event.submitted_by.avatar_url} name={event.submitted_by.name} size={120} />
+                </div>
+              )
             )}
             <h1>{event.title}</h1>
             <p>{formatWhen({ startDate: event.start_date, startTime: event.start_time, allDay: event.all_day })}</p>
+            {event.submitted_by && (
+              <p style={{ color: 'var(--ion-color-medium)', marginTop: -8 }}>Posted by {event.submitted_by.name}</p>
+            )}
             {event.interested_count > 0 && (
               <InterestedBadge eventId={event.id} count={event.interested_count} people={event.interested_people} />
             )}

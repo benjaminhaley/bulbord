@@ -24,6 +24,11 @@ export interface Event {
   // True only for the member who submitted this event (feedback #46) — never
   // true for system-sourced events, which have no submitter to match.
   can_edit: boolean
+  // Present only for member self-service posts (feedback #46); null for
+  // system-sourced events, which have no submitter. Used to attribute the
+  // post and as a placeholder image fallback when the event has no photo
+  // of its own (feedback, 2026-08-03).
+  submitted_by: { name: string; avatar_url: string | null } | null
 }
 
 // Fields a member supplies when submitting or editing their own event

@@ -31,12 +31,19 @@ type SerializableEvent = Pick<
 // the closed state needs a photo/initials per person, not just a name.
 export type InterestedPersonSummary = { name: string; avatar_url: string | null }
 
+// null for system-sourced events (no submitter to show); present for member
+// self-service posts (feedback #46), so the frontend can attribute the post
+// and fall back to the poster's own photo as a placeholder image when the
+// event has no image of its own (feedback, 2026-08-03).
+export type SubmitterSummary = { name: string; avatar_url: string | null }
+
 function serializeEvent(
   e: SerializableEvent,
   interestStatus: InterestStatus | null,
   interestedCount: number,
   interestedPeople: InterestedPersonSummary[],
   currentUserId: string | null,
+  submittedBy: SubmitterSummary | null,
 ) {
   return {
     id: e.id,
@@ -58,6 +65,7 @@ function serializeEvent(
     // Creator-only edit/delete (feedback #46) — no admin override, same
     // posture as feedback-post edits (feedback #39).
     can_edit: currentUserId !== null && canEditEvent({ id: currentUserId }, e),
+    submitted_by: submittedBy,
   }
 }
 
@@ -86,6 +94,14 @@ function interestedPeopleExpr(eventId: SQLWrapper, userId: string | null) {
   return sql<InterestedPersonSummary[]>`(select coalesce(json_agg(json_build_object('name', case when ${eventInterests.userId} = ${userId} then 'You' else ${users.name} end, 'avatar_url', ${users.avatarUrl}) order by ${eventInterests.createdAt}), '[]'::json) from ${eventInterests} join ${users} on ${users.id} = ${eventInterests.userId} where ${eventInterests.eventId} = ${eventId} and ${eventInterests.status} = 'interested' and ${eventInterests.deletedAt} is null)`
 }
 
+// Scalar subquery, not a join — mirrors interestedCountExpr/interestedPeopleExpr
+// above. Naturally yields SQL NULL (not an error) when submittedByUserId
+// itself is NULL (system-sourced events), since the WHERE clause then
+// matches no row.
+function submittedByExpr(submittedByUserId: SQLWrapper) {
+  return sql<SubmitterSummary | null>`(select json_build_object('name', ${users.name}, 'avatar_url', ${users.avatarUrl}) from ${users} where ${users.id} = ${submittedByUserId})`
+}
+
 // "Stale" flags a source the ingestion pipeline hasn't turned up anything new
 // from recently — a signal the source may have gone quiet or broken, not a
 // judgment about the events themselves (which can be far in the future).
@@ -105,6 +121,7 @@ async function loadEventDetail(id: string, userId: string | null) {
       interestStatus: eventInterests.status,
       interestedCount: interestedCountExpr(events.id),
       interestedPeople: interestedPeopleExpr(events.id, userId),
+      submittedBy: submittedByExpr(events.submittedByUserId),
     })
     .from(events)
     .leftJoin(
@@ -135,6 +152,7 @@ export async function eventsRoutes(app: FastifyInstance) {
         row.interestedCount,
         row.interestedPeople,
         userId,
+        row.submittedBy,
       ),
     })
   })
@@ -198,6 +216,7 @@ export async function eventsRoutes(app: FastifyInstance) {
         row.interestedCount,
         row.interestedPeople,
         currentUser.id,
+        row.submittedBy,
       ),
     })
   })
@@ -270,6 +289,7 @@ export async function eventsRoutes(app: FastifyInstance) {
         row.interestedCount,
         row.interestedPeople,
         currentUser.id,
+        row.submittedBy,
       ),
     })
   })
@@ -528,6 +548,7 @@ export async function eventsRoutes(app: FastifyInstance) {
           interestStatus: eventInterests.status,
           interestedCount: sql<number>`coalesce(${interestCounts.interestedCount}, 0)`,
           interestedPeople: sql<InterestedPersonSummary[]>`coalesce(${interestCounts.interestedPeople}, '[]'::json)`,
+          submittedBy: submittedByExpr(nextOccurrence.submittedByUserId),
           sortTime: nextOccurrence.sortTime,
         })
         .from(nextOccurrence)
@@ -566,6 +587,7 @@ export async function eventsRoutes(app: FastifyInstance) {
           row.interestedCount,
           row.interestedPeople,
           userId,
+          row.submittedBy,
         ),
       ),
       has_more: hasMore,
