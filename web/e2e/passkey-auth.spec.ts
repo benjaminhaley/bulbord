@@ -24,7 +24,10 @@ async function fillProfileAndContinue(page: Page, firstName: string, lastName: s
   await expect(page.getByRole('heading', { name: 'Set up your profile' })).toBeVisible({ timeout: 15000 })
   await page.locator('ion-item', { hasText: 'First name' }).locator('input').fill(firstName)
   await page.locator('ion-item', { hasText: 'Last name' }).locator('input').fill(lastName)
-  await page.locator('ion-item', { hasText: 'Email' }).locator('input').fill(email)
+  // Not `ion-item` filtered by hasText: 'Email' — the newsletter-subscribe
+  // checkbox's own item also matches ("Get weekly events email", feedback
+  // #45), so that locator resolves to two ion-items' worth of inputs.
+  await page.locator('input[type="email"]').fill(email)
   await page.getByRole('button', { name: 'Continue' }).click()
   await page.waitForSelector('ion-tab-bar', { timeout: 15000 })
 }

@@ -18,14 +18,16 @@ import {
   IonTitle,
   IonToast,
   IonToolbar,
+  useIonViewWillEnter,
 } from '@ionic/react'
-import { eyeOffOutline, listOutline, star } from 'ionicons/icons'
-import { useEffect, useMemo, useState } from 'react'
+import { addOutline, closeOutline, eyeOffOutline, listOutline, star } from 'ionicons/icons'
+import { useMemo, useState } from 'react'
 
 import { useAuth } from '../auth/AuthContext'
 import { InstitutionBanner } from '../app/InstitutionBanner'
 import { API_URL } from '../config'
-import { fetchEvents, type Event, type InterestStatus } from './api'
+import { createEvent, fetchEvents, type Event, type InterestStatus } from './api'
+import { EventForm } from './EventForm'
 import { formatWhen, locationLabel, teaser } from './format'
 import { InterestedBadge } from './InterestedBadge'
 import { useEventInterest } from './useEventInterest'
@@ -62,13 +64,35 @@ export function EventsPage() {
   const [viewMode, setViewMode] = useState<ViewMode>('new')
   const [swipeToast, setSwipeToast] = useState<SwipeToast | null>(null)
   const [multiTouch, setMultiTouch] = useState(false)
+  const [showForm, setShowForm] = useState(false)
+  // Occurrences the next-occurrence collapse is currently suppressing
+  // (feedback #48) — 0 once revealHidden() below has fetched everything.
+  const [hiddenCount, setHiddenCount] = useState(0)
   const { setInterest, clearInterest } = useEventInterest(updateEvent)
 
-  useEffect(() => {
+  // Ionic keeps this page's React state alive (hidden, not unmounted) when
+  // navigating to an event's detail page and back, for the back-swipe
+  // transition — a plain useEffect(fn, []) would only ever run once and
+  // never see an edit/delete made on the detail page. useIonViewWillEnter
+  // fires on that initial mount too, so it fully replaces useEffect here,
+  // not just supplements it.
+  useIonViewWillEnter(() => {
     fetchEvents()
-      .then(setEvents)
+      .then(({ events, hiddenCount }) => {
+        setEvents(events)
+        setHiddenCount(hiddenCount)
+      })
       .catch(() => setError(true))
-  }, [])
+  })
+
+  function revealHidden() {
+    fetchEvents({ includeHidden: true })
+      .then(({ events, hiddenCount }) => {
+        setEvents(events)
+        setHiddenCount(hiddenCount)
+      })
+      .catch(() => setError(true))
+  }
 
   const filteredEvents = useMemo(() => {
     if (!events) return []
@@ -118,6 +142,11 @@ export function EventsPage() {
         <IonToolbar>
           <IonTitle>Events</IonTitle>
           <IonButtons slot="end">
+            {user && (
+              <IonButton onClick={() => setShowForm((v) => !v)}>
+                <IonIcon slot="icon-only" icon={showForm ? closeOutline : addOutline} />
+              </IonButton>
+            )}
             <IonButton routerLink="/event-sources">
               <IonIcon slot="icon-only" icon={listOutline} />
             </IonButton>
@@ -140,6 +169,18 @@ export function EventsPage() {
         )}
       </IonHeader>
       <IonContent fullscreen onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd} onTouchCancel={handleTouchEnd}>
+        {showForm && (
+          <EventForm
+            submitLabel="Post"
+            errorMessage="Could not post this event"
+            onSubmit={async (input) => {
+              const created = await createEvent(input)
+              setEvents((prev) => [created, ...(prev ?? [])])
+              setShowForm(false)
+            }}
+            onCancel={() => setShowForm(false)}
+          />
+        )}
         {events === null && !error && (
           <div className="coming-soon">
             <IonSpinner name="dots" />
@@ -200,6 +241,13 @@ export function EventsPage() {
               )
             })}
           </IonList>
+        )}
+        {hiddenCount > 0 && viewMode === 'new' && (
+          <IonItem button lines="none" detail={false} onClick={revealHidden}>
+            <IonLabel color="medium" className="ion-text-center">
+              Show {hiddenCount} hidden repeating {hiddenCount === 1 ? 'event' : 'events'}
+            </IonLabel>
+          </IonItem>
         )}
       </IonContent>
       <IonToast

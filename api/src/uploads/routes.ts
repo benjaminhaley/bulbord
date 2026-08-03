@@ -6,7 +6,7 @@ import { getImageObject, imageUrl, uploadImage } from './storage.js'
 // Bucket objects are private (Railway buckets have no public-URL mode), so
 // every image is served through this proxy. Keys are content-addressed
 // (uuid-based), so a long, immutable cache is always safe.
-const UPLOAD_FOLDERS = ['feedback', 'profiles'] as const
+const UPLOAD_FOLDERS = ['feedback', 'profiles', 'events'] as const
 type UploadFolder = (typeof UPLOAD_FOLDERS)[number]
 
 function isUploadFolder(value: unknown): value is UploadFolder {
@@ -14,9 +14,11 @@ function isUploadFolder(value: unknown): value is UploadFolder {
 }
 
 export async function uploadsRoutes(app: FastifyInstance) {
-  // Feedback screenshots and profile photos today. Event images are
-  // populated by the ingestion pipeline directly via uploadImage(), not
-  // through this route.
+  // Feedback screenshots and profile photos, plus (feedback #46) photos a
+  // member attaches to their own event submission. Sourced/ingested event
+  // images still bypass this route entirely — populated directly via
+  // uploadImage() from the ingestion pipeline, which has no HTTP request to
+  // attach a file to.
   app.post('/uploads', { preHandler: requireAuth }, async (request, reply) => {
     const file = await request.file()
     if (!file) {

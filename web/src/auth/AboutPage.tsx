@@ -16,9 +16,9 @@ export function AboutPage() {
       <IonContent fullscreen className="ion-padding">
         <p>
           This app is built by Ben Haley and designed to help our community at Nettelhorst come together more
-          frequently, for the good of our kids and their families.
+          frequently, for the good of our kids and families.
         </p>
-        <p>Feedback welcome!</p>
+        <p>Feedback welcome! benjamin.haley@gmail.com · 630-297-9831</p>
       </IonContent>
     </IonPage>
   )

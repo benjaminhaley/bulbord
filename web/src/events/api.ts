@@ -21,6 +21,24 @@ export interface Event {
   // (feedback #43 — icon-stack teaser needs a photo/initials per person, not
   // just names).
   interested_people: { name: string; avatar_url: string | null }[]
+  // True only for the member who submitted this event (feedback #46) — never
+  // true for system-sourced events, which have no submitter to match.
+  can_edit: boolean
+}
+
+// Fields a member supplies when submitting or editing their own event
+// (feedback #46). Only title, address ("location"), and start_date are
+// required — enforced both here (disabled submit button) and server-side.
+export interface EventInput {
+  title: string
+  description: string
+  start_date: string
+  start_time: string
+  all_day: boolean
+  address: string
+  source_url: string
+  image_url: string | null
+  thumbnail_url: string | null
 }
 
 export interface InterestedUser {
@@ -74,6 +92,10 @@ interface EventsResponse {
   data: Event[]
   has_more: boolean
   next_cursor: string | null
+  // Occurrences suppressed by the next-occurrence collapse across the whole
+  // upcoming window (feedback #48), not just this page — 0 whenever
+  // include_hidden was requested, since nothing is left hidden in that case.
+  hidden_count: number
 }
 
 interface EventResponse {
@@ -102,18 +124,28 @@ interface EventSourceDetailResponse {
   data: EventSourceDetail
 }
 
+export interface FetchEventsResult {
+  events: Event[]
+  // hidden_count is the same total on every page, so only the first page's
+  // value is kept (feedback #48).
+  hiddenCount: number
+}
+
 // GET /events paginates (100/page max) — loop through every page rather than
 // silently showing only the chronologically-soonest page. Fine at this app's
 // scale (low hundreds of events at most); a true infinite-scroll UI would be
 // overkill for a family app's event list.
-export async function fetchEvents(): Promise<Event[]> {
+export async function fetchEvents(options?: { includeHidden?: boolean }): Promise<FetchEventsResult> {
   const all: Event[] = []
   let cursor: string | null = null
+  let hiddenCount = 0
+  let firstPage = true
 
   for (;;) {
     const url = new URL(`${API_URL}/events`)
     url.searchParams.set('limit', '100')
     if (cursor) url.searchParams.set('cursor', cursor)
+    if (options?.includeHidden) url.searchParams.set('include_hidden', 'true')
 
     const response = await fetch(url, { headers: authHeaders() })
     if (!response.ok) {
@@ -121,12 +153,52 @@ export async function fetchEvents(): Promise<Event[]> {
     }
     const body = (await response.json()) as EventsResponse
     all.push(...body.data)
+    if (firstPage) {
+      hiddenCount = body.hidden_count
+      firstPage = false
+    }
 
     if (!body.has_more || !body.next_cursor) break
     cursor = body.next_cursor
   }
 
-  return all
+  return { events: all, hiddenCount }
+}
+
+export async function createEvent(input: EventInput): Promise<Event> {
+  const response = await fetch(`${API_URL}/events`, {
+    method: 'POST',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  })
+  if (!response.ok) {
+    throw new Error(`Failed to create event: ${response.status}`)
+  }
+  const body = (await response.json()) as EventResponse
+  return body.data
+}
+
+export async function updateEvent(id: string, input: EventInput): Promise<Event> {
+  const response = await fetch(`${API_URL}/events/${id}`, {
+    method: 'PATCH',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  })
+  if (!response.ok) {
+    throw new Error(`Failed to update event: ${response.status}`)
+  }
+  const body = (await response.json()) as EventResponse
+  return body.data
+}
+
+export async function deleteEvent(id: string): Promise<void> {
+  const response = await fetch(`${API_URL}/events/${id}`, {
+    method: 'DELETE',
+    headers: authHeaders(),
+  })
+  if (!response.ok) {
+    throw new Error(`Failed to delete event: ${response.status}`)
+  }
 }
 
 export async function fetchEvent(id: string): Promise<Event> {

@@ -5,6 +5,7 @@ import { requireAuth } from '../auth/plugin.js'
 import { db } from '../db/client.js'
 import { events, eventSources, eventInterests, eventsLog, users } from '../db/schema.js'
 import { todayInChicago } from '../dates.js'
+import { canEditEvent } from './permissions.js'
 
 type InterestStatus = 'interested' | 'dismissed'
 
@@ -23,6 +24,7 @@ type SerializableEvent = Pick<
   | 'sourceUrl'
   | 'imageUrl'
   | 'thumbnailUrl'
+  | 'submittedByUserId'
 >
 
 // Small icon-stack teaser (feedback #43 — replaced a text-name teaser), so
@@ -34,6 +36,7 @@ function serializeEvent(
   interestStatus: InterestStatus | null,
   interestedCount: number,
   interestedPeople: InterestedPersonSummary[],
+  currentUserId: string | null,
 ) {
   return {
     id: e.id,
@@ -52,6 +55,9 @@ function serializeEvent(
     interest_status: interestStatus,
     interested_count: interestedCount,
     interested_people: interestedPeople,
+    // Creator-only edit/delete (feedback #46) — no admin override, same
+    // posture as feedback-post edits (feedback #39).
+    can_edit: currentUserId !== null && canEditEvent({ id: currentUserId }, e),
   }
 }
 
@@ -89,35 +95,207 @@ function isSourceStale(lastEventAddedAt: Date | null): boolean {
 }
 
 
+// Shared by GET /events/:id and the POST/PATCH /events responses below,
+// which need to hand back the same fully-hydrated (interest status/count/
+// people) shape a client would get from re-fetching the detail page.
+async function loadEventDetail(id: string, userId: string | null) {
+  const [row] = await db
+    .select({
+      ...getTableColumns(events),
+      interestStatus: eventInterests.status,
+      interestedCount: interestedCountExpr(events.id),
+      interestedPeople: interestedPeopleExpr(events.id, userId),
+    })
+    .from(events)
+    .leftJoin(
+      eventInterests,
+      userId
+        ? and(eq(eventInterests.eventId, events.id), eq(eventInterests.userId, userId), isNull(eventInterests.deletedAt))
+        : sql`false`,
+    )
+    .where(and(eq(events.id, id), eq(events.status, 'approved'), isNull(events.deletedAt)))
+    .limit(1)
+  return row ?? null
+}
+
 export async function eventsRoutes(app: FastifyInstance) {
   app.get('/events/:id', { preHandler: requireAuth }, async (request, reply) => {
     const { id } = request.params as { id: string }
     const userId = request.currentUser?.id ?? null
 
-    const [row] = await db
-      .select({
-        ...getTableColumns(events),
-        interestStatus: eventInterests.status,
-        interestedCount: interestedCountExpr(events.id),
-        interestedPeople: interestedPeopleExpr(events.id, userId),
-      })
-      .from(events)
-      .leftJoin(
-        eventInterests,
-        userId
-          ? and(eq(eventInterests.eventId, events.id), eq(eventInterests.userId, userId), isNull(eventInterests.deletedAt))
-          : sql`false`,
-      )
-      .where(and(eq(events.id, id), eq(events.status, 'approved'), isNull(events.deletedAt)))
-      .limit(1)
-
+    const row = await loadEventDetail(id, userId)
     if (!row) {
       return reply.code(404).send({ error: { message: 'Event not found' } })
     }
 
     return reply.send({
-      data: serializeEvent(row, row.interestStatus as InterestStatus | null, row.interestedCount, row.interestedPeople),
+      data: serializeEvent(
+        row,
+        row.interestStatus as InterestStatus | null,
+        row.interestedCount,
+        row.interestedPeople,
+        userId,
+      ),
     })
+  })
+
+  // Member self-service event posting (feedback #46) — goes live immediately,
+  // no pending/approval step, unlike sourced/admin-suggested events (see
+  // CLAUDE.md's Product shape vs. this route's own note in CLAUDE.md). Only
+  // title, address ("location"), and start_date are required; everything
+  // else is optional.
+  app.post('/events', { preHandler: requireAuth }, async (request, reply) => {
+    const body = request.body as {
+      title?: string
+      description?: string
+      start_date?: string
+      start_time?: string
+      all_day?: boolean
+      address?: string
+      location_name?: string
+      source_url?: string
+      image_url?: string
+      thumbnail_url?: string
+    }
+    const title = body.title?.trim()
+    const address = body.address?.trim()
+    const startDate = body.start_date?.trim()
+    if (!title || !address || !startDate) {
+      return reply.code(400).send({ error: { message: 'title, address, and start_date are required' } })
+    }
+
+    const currentUser = request.currentUser!
+    const allDay = !!body.all_day
+    const [created] = await db
+      .insert(events)
+      .values({
+        title,
+        description: body.description?.trim() || null,
+        startDate,
+        startTime: allDay ? null : body.start_time?.trim() || null,
+        allDay,
+        address,
+        locationName: body.location_name?.trim() || null,
+        sourceUrl: body.source_url?.trim() || null,
+        imageUrl: body.image_url || null,
+        thumbnailUrl: body.thumbnail_url || null,
+        status: 'approved',
+        submittedByUserId: currentUser.id,
+      })
+      .returning({ id: events.id })
+
+    await db.insert(eventsLog).values({
+      actor: currentUser.id,
+      action: 'event_created',
+      metadata: { eventId: created.id },
+    })
+
+    const row = (await loadEventDetail(created.id, currentUser.id))!
+    return reply.code(201).send({
+      data: serializeEvent(
+        row,
+        row.interestStatus as InterestStatus | null,
+        row.interestedCount,
+        row.interestedPeople,
+        currentUser.id,
+      ),
+    })
+  })
+
+  app.patch('/events/:id', { preHandler: requireAuth }, async (request, reply) => {
+    const { id } = request.params as { id: string }
+    const body = request.body as {
+      title?: string
+      description?: string
+      start_date?: string
+      start_time?: string
+      all_day?: boolean
+      address?: string
+      location_name?: string
+      source_url?: string
+      image_url?: string
+      thumbnail_url?: string
+    }
+
+    const currentUser = request.currentUser!
+    const [existing] = await db
+      .select({ submittedByUserId: events.submittedByUserId })
+      .from(events)
+      .where(and(eq(events.id, id), isNull(events.deletedAt)))
+      .limit(1)
+    if (!existing) {
+      return reply.code(404).send({ error: { message: 'Event not found' } })
+    }
+    if (!canEditEvent(currentUser, existing)) {
+      return reply.code(403).send({ error: { message: 'Forbidden' } })
+    }
+
+    const title = body.title?.trim()
+    const address = body.address?.trim()
+    const startDate = body.start_date?.trim()
+    if (!title || !address || !startDate) {
+      return reply.code(400).send({ error: { message: 'title, address, and start_date are required' } })
+    }
+
+    const allDay = !!body.all_day
+    await Promise.all([
+      db
+        .update(events)
+        .set({
+          title,
+          description: body.description?.trim() || null,
+          startDate,
+          startTime: allDay ? null : body.start_time?.trim() || null,
+          allDay,
+          address,
+          locationName: body.location_name?.trim() || null,
+          sourceUrl: body.source_url?.trim() || null,
+          imageUrl: body.image_url || null,
+          thumbnailUrl: body.thumbnail_url || null,
+          updatedAt: new Date(),
+        })
+        .where(eq(events.id, id)),
+      db.insert(eventsLog).values({
+        actor: currentUser.id,
+        action: 'event_updated',
+        metadata: { eventId: id },
+      }),
+    ])
+
+    const row = (await loadEventDetail(id, currentUser.id))!
+    return reply.send({
+      data: serializeEvent(
+        row,
+        row.interestStatus as InterestStatus | null,
+        row.interestedCount,
+        row.interestedPeople,
+        currentUser.id,
+      ),
+    })
+  })
+
+  app.delete('/events/:id', { preHandler: requireAuth }, async (request, reply) => {
+    const { id } = request.params as { id: string }
+    const currentUser = request.currentUser!
+
+    const [existing] = await db
+      .select({ submittedByUserId: events.submittedByUserId })
+      .from(events)
+      .where(and(eq(events.id, id), isNull(events.deletedAt)))
+      .limit(1)
+    if (!existing) {
+      return reply.code(404).send({ error: { message: 'Event not found' } })
+    }
+    if (!canEditEvent(currentUser, existing)) {
+      return reply.code(403).send({ error: { message: 'Forbidden' } })
+    }
+
+    await Promise.all([
+      db.update(events).set({ deletedAt: new Date(), updatedAt: new Date() }).where(eq(events.id, id)),
+      db.insert(eventsLog).values({ actor: currentUser.id, action: 'event_deleted', metadata: { eventId: id } }),
+    ])
+
+    return reply.code(204).send()
   })
 
   app.put('/events/:id/interest', { preHandler: requireAuth }, async (request, reply) => {
@@ -248,9 +426,14 @@ export async function eventsRoutes(app: FastifyInstance) {
   })
 
   app.get('/events', { preHandler: requireAuth }, async (request, reply) => {
-    const query = request.query as { limit?: string; cursor?: string }
+    const query = request.query as { limit?: string; cursor?: string; include_hidden?: string }
     const limit = Math.min(Number(query.limit) || 20, 100)
     const userId = request.currentUser?.id ?? null
+    // Feedback #48 — the next-occurrence collapse below hides later dates of
+    // a recurring series with no indicator; this flag bypasses the collapse
+    // so a client that's already shown the hidden count can ask for
+    // everything. Left off (the default), behavior is unchanged from before.
+    const includeHidden = query.include_hidden === 'true'
 
     let cursorStartDate: string | null = null
     let cursorSortTime: string | null = null
@@ -312,45 +495,62 @@ export async function eventsRoutes(app: FastifyInstance) {
         .groupBy(eventInterests.eventId),
     )
 
-    const rows = await db
-      .with(nextOccurrence, interestCounts)
-      .select({
-        id: nextOccurrence.id,
-        title: nextOccurrence.title,
-        description: nextOccurrence.description,
-        startDate: nextOccurrence.startDate,
-        startTime: nextOccurrence.startTime,
-        allDay: nextOccurrence.allDay,
-        address: nextOccurrence.address,
-        locationName: nextOccurrence.locationName,
-        latitude: nextOccurrence.latitude,
-        longitude: nextOccurrence.longitude,
-        sourceUrl: nextOccurrence.sourceUrl,
-        imageUrl: nextOccurrence.imageUrl,
-        thumbnailUrl: nextOccurrence.thumbnailUrl,
-        interestStatus: eventInterests.status,
-        interestedCount: sql<number>`coalesce(${interestCounts.interestedCount}, 0)`,
-        interestedPeople: sql<InterestedPersonSummary[]>`coalesce(${interestCounts.interestedPeople}, '[]'::json)`,
-        sortTime: nextOccurrence.sortTime,
-      })
-      .from(nextOccurrence)
-      .leftJoin(
-        eventInterests,
-        userId
-          ? and(eq(eventInterests.eventId, nextOccurrence.id), eq(eventInterests.userId, userId), isNull(eventInterests.deletedAt))
-          : sql`false`,
-      )
-      .leftJoin(interestCounts, eq(interestCounts.eventId, nextOccurrence.id))
-      .where(
-        cursorStartDate && cursorSortTime && cursorId
-          ? and(
-              eq(nextOccurrence.rn, 1),
-              sql`(${nextOccurrence.startDate}, ${nextOccurrence.sortTime}, ${nextOccurrence.id}) > (${cursorStartDate}, ${cursorSortTime}::time, ${cursorId})`,
-            )
-          : eq(nextOccurrence.rn, 1),
-      )
-      .orderBy(asc(nextOccurrence.startDate), asc(nextOccurrence.sortTime), asc(nextOccurrence.id))
-      .limit(limit + 1)
+    const cursorCondition =
+      cursorStartDate && cursorSortTime && cursorId
+        ? sql`(${nextOccurrence.startDate}, ${nextOccurrence.sortTime}, ${nextOccurrence.id}) > (${cursorStartDate}, ${cursorSortTime}::time, ${cursorId})`
+        : null
+    // includeHidden drops the rn=1 filter entirely (every occurrence, not
+    // just the soonest per series); with neither condition present (hidden
+    // included, no cursor) we need an explicit `true` since .where() can't
+    // take an empty condition.
+    const rnCondition = includeHidden ? null : eq(nextOccurrence.rn, 1)
+    const whereClause =
+      rnCondition && cursorCondition ? and(rnCondition, cursorCondition) : (rnCondition ?? cursorCondition ?? sql`true`)
+
+    const [rows, [hiddenCountRow]] = await Promise.all([
+      db
+        .with(nextOccurrence, interestCounts)
+        .select({
+          id: nextOccurrence.id,
+          title: nextOccurrence.title,
+          description: nextOccurrence.description,
+          startDate: nextOccurrence.startDate,
+          startTime: nextOccurrence.startTime,
+          allDay: nextOccurrence.allDay,
+          address: nextOccurrence.address,
+          locationName: nextOccurrence.locationName,
+          latitude: nextOccurrence.latitude,
+          longitude: nextOccurrence.longitude,
+          sourceUrl: nextOccurrence.sourceUrl,
+          imageUrl: nextOccurrence.imageUrl,
+          thumbnailUrl: nextOccurrence.thumbnailUrl,
+          submittedByUserId: nextOccurrence.submittedByUserId,
+          interestStatus: eventInterests.status,
+          interestedCount: sql<number>`coalesce(${interestCounts.interestedCount}, 0)`,
+          interestedPeople: sql<InterestedPersonSummary[]>`coalesce(${interestCounts.interestedPeople}, '[]'::json)`,
+          sortTime: nextOccurrence.sortTime,
+        })
+        .from(nextOccurrence)
+        .leftJoin(
+          eventInterests,
+          userId
+            ? and(eq(eventInterests.eventId, nextOccurrence.id), eq(eventInterests.userId, userId), isNull(eventInterests.deletedAt))
+            : sql`false`,
+        )
+        .leftJoin(interestCounts, eq(interestCounts.eventId, nextOccurrence.id))
+        .where(whereClause)
+        .orderBy(asc(nextOccurrence.startDate), asc(nextOccurrence.sortTime), asc(nextOccurrence.id))
+        .limit(limit + 1),
+      // Total suppressed-occurrence count across the whole upcoming window,
+      // not just this page — same nextOccurrence CTE, reused in a second,
+      // independent query rather than folded into the paginated one above.
+      includeHidden
+        ? Promise.resolve([{ count: 0 }])
+        : db
+            .with(nextOccurrence)
+            .select({ count: sql<number>`count(*) filter (where ${nextOccurrence.rn} > 1)::int` })
+            .from(nextOccurrence),
+    ])
 
     const hasMore = rows.length > limit
     const page = rows.slice(0, limit)
@@ -360,10 +560,17 @@ export async function eventsRoutes(app: FastifyInstance) {
 
     return reply.send({
       data: page.map((row) =>
-        serializeEvent(row, row.interestStatus as InterestStatus | null, row.interestedCount, row.interestedPeople),
+        serializeEvent(
+          row,
+          row.interestStatus as InterestStatus | null,
+          row.interestedCount,
+          row.interestedPeople,
+          userId,
+        ),
       ),
       has_more: hasMore,
       next_cursor: nextCursor,
+      hidden_count: hiddenCountRow?.count ?? 0,
     })
   })
 
