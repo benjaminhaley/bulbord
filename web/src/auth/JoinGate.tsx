@@ -83,7 +83,7 @@ function JoinScreen() {
 
   const signInSection = (
     <>
-      <p className="ion-margin-top">Already on Nettlehorst?</p>
+      <p className="ion-margin-top">Already on Nettelhorst?</p>
       <IonButton expand="block" fill="outline" disabled={busy} onClick={signIn}>
         Sign In With Passkey
       </IonButton>
@@ -103,13 +103,13 @@ function JoinScreen() {
       <CenteredMessage>
         {!hasInvite ? (
           <>
-            <h2>You need an invitation to join Nettlehorst</h2>
-            <p>Ask someone already using Nettlehorst to share their invite QR code with you.</p>
+            <h2>You need an invitation to join Nettelhorst</h2>
+            <p>Ask someone already using Nettelhorst to share their invite QR code with you.</p>
           </>
         ) : (
           <>
             <h2>This invite link isn't valid</h2>
-            <p>Ask for a fresh invite QR code from someone already using Nettlehorst.</p>
+            <p>Ask for a fresh invite QR code from someone already using Nettelhorst.</p>
           </>
         )}
         {error && (
@@ -125,7 +125,7 @@ function JoinScreen() {
   return (
     <CenteredMessage>
       <Avatar url={invite?.avatarUrl ?? null} size={64} />
-      <h2>{invite ? `${invite.name} invited you to Nettlehorst` : 'Set up Nettlehorst'}</h2>
+      <h2>{invite ? `${invite.name} invited you to Nettelhorst` : 'Set up Nettelhorst'}</h2>
       <p>Create a passkey to sign in — just your face, fingerprint, or screen lock. No password to remember.</p>
       {error && (
         <IonText color="danger">

@@ -9,7 +9,7 @@ UPDATE "feedback" SET "number" = numbered.rn
 FROM numbered
 WHERE "feedback"."id" = numbered.id;
 --> statement-breakpoint
-SELECT setval('feedback_number_seq', COALESCE((SELECT MAX("number") FROM "feedback"), 0));
+SELECT setval('feedback_number_seq', COALESCE((SELECT MAX("number") FROM "feedback"), 1), (SELECT MAX("number") FROM "feedback") IS NOT NULL);
 --> statement-breakpoint
 ALTER TABLE "feedback" ALTER COLUMN "number" SET DEFAULT nextval('feedback_number_seq');
 --> statement-breakpoint

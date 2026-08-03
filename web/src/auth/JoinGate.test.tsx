@@ -45,7 +45,7 @@ describe('JoinGate', () => {
   it('shows a dead end with no invite/rootSecret param and no session', () => {
     mockUseAuth.mockReturnValue({ user: null, isLoading: false })
     renderGate('/events')
-    expect(screen.getByText('You need an invitation to join Nettlehorst')).toBeInTheDocument()
+    expect(screen.getByText('You need an invitation to join Nettelhorst')).toBeInTheDocument()
     expect(screen.queryByText('the real app')).not.toBeInTheDocument()
   })
 
@@ -58,11 +58,11 @@ describe('JoinGate', () => {
   it('shows the inviter\'s name once the invite lookup resolves', async () => {
     mockUseAuth.mockReturnValue({ user: null, isLoading: false })
     renderGate('/events?invite=user-42')
-    expect(await screen.findByText('Sam Rivera invited you to Nettlehorst')).toBeInTheDocument()
+    expect(await screen.findByText('Sam Rivera invited you to Nettelhorst')).toBeInTheDocument()
   })
 
   it('shows the profile setup step for a signed-in user with no completed profile', () => {
-    mockUseAuth.mockReturnValue({ user: { id: 'u1', name: 'New Nettlehorst member', profileComplete: false }, isLoading: false })
+    mockUseAuth.mockReturnValue({ user: { id: 'u1', name: 'New Nettelhorst member', profileComplete: false }, isLoading: false })
     renderGate('/events')
     expect(screen.getByText('Set up your profile')).toBeInTheDocument()
     expect(screen.queryByText('the real app')).not.toBeInTheDocument()
@@ -75,7 +75,7 @@ describe('JoinGate', () => {
   })
 
   it('keeps Continue disabled on the profile setup step until first name, last name, and a valid email are all filled', () => {
-    mockUseAuth.mockReturnValue({ user: { id: 'u1', name: 'New Nettlehorst member', profileComplete: false }, isLoading: false })
+    mockUseAuth.mockReturnValue({ user: { id: 'u1', name: 'New Nettelhorst member', profileComplete: false }, isLoading: false })
     const { container } = renderGate('/events')
 
     const button = screen.getByText('Continue').closest('ion-button') as unknown as { disabled: boolean }
@@ -94,7 +94,7 @@ describe('JoinGate', () => {
   })
 
   it('submits the entered email along with the name', async () => {
-    mockUseAuth.mockReturnValue({ user: { id: 'u1', name: 'New Nettlehorst member', profileComplete: false }, isLoading: false })
+    mockUseAuth.mockReturnValue({ user: { id: 'u1', name: 'New Nettelhorst member', profileComplete: false }, isLoading: false })
     const { container } = renderGate('/events')
 
     const [firstNameInput, lastNameInput, emailInput] = container.querySelectorAll('ion-input')

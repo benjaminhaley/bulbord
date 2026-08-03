@@ -12,6 +12,6 @@ export async function newsletterRoutes(app: FastifyInstance) {
     if (result === 'invalid') {
       return reply.code(400).type('text/html').send('<p>This unsubscribe link is invalid.</p>')
     }
-    return reply.type('text/html').send("<p>You've been unsubscribed from the Nettlehorst weekly newsletter.</p>")
+    return reply.type('text/html').send("<p>You've been unsubscribed from the Nettelhorst weekly newsletter.</p>")
   })
 }

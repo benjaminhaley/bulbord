@@ -29,7 +29,7 @@ The goal of this project is to make those things easier. Finding care and activi
 
 1. Solve for Anna — Anna, my wife, schedules these activities for our family today. The first goal of this project will be to try to meet her needs around camps. It’s the smallest project I can think of and pretty easy to get feedback.
 2. Solve for friends — We know multiple people in the same boat as us, so after Anna, we will try to extend the service to close invited friends—maybe 10 different families we know.
-3. Solve for Nettlehorst — Nettlehorst is the school we go to. If we could solve it for Anna and solve it for some friends, maybe we can solve it for most of the families at that school. It will be easy to get feedback and a nice service for the neighborhood. And most of these things have very regional kinds of focuses. As in, solving it for Anna will go a long way toward solving it for the rest of the school community.
+3. Solve for Nettelhorst — Nettelhorst is the school we go to. If we could solve it for Anna and solve it for some friends, maybe we can solve it for most of the families at that school. It will be easy to get feedback and a nice service for the neighborhood. And most of these things have very regional kinds of focuses. As in, solving it for Anna will go a long way toward solving it for the rest of the school community.
 4. Generalize — If we can solve for one school, we could try to start solving for neighboring ones.
 
 ## Challenging parts and solutions

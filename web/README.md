@@ -1,4 +1,4 @@
-# Campy web
+# Bulbord web
 
 Ionic React + Vite frontend. See `/CLAUDE.md` at the repo root for architecture decisions.
 

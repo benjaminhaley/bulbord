@@ -17,8 +17,8 @@ const config: CapacitorConfig = {
     // calls underneath them. `cap sync` auto-wires the native association
     // config (iOS entitlements, Android asset_statements) from `domains`.
     CapacitorPasskey: {
-      origin: 'https://nettlehorst.bulbord.com',
-      domains: ['nettlehorst.bulbord.com'],
+      origin: 'https://nettelhorst.bulbord.com',
+      domains: ['nettelhorst.bulbord.com'],
       autoShim: true,
     },
   },

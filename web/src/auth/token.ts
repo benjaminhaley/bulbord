@@ -1,4 +1,4 @@
-const STORAGE_KEY = 'campy_session_token'
+const STORAGE_KEY = 'bulbord_session_token'
 
 export function getToken(): string | null {
   return localStorage.getItem(STORAGE_KEY)

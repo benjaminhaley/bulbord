@@ -1,5 +1,5 @@
 /*
- * Campy is designed for one viewport class: vertical phone (see CLAUDE.md).
+ * Bulbord is designed for one viewport class: vertical phone (see CLAUDE.md).
  * On wider screens (desktop browser), pin the app to a phone-sized column
  * instead of letting it stretch full-width, so the web and native-port
  * experiences stay visually identical without separate responsive work.

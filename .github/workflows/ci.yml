@@ -5,12 +5,12 @@ on:
   pull_request:
 
 env:
-  DATABASE_URL: postgres://campy:campy@localhost:5432/campy_test
+  DATABASE_URL: postgres://bulbord:bulbord@localhost:5432/bulbord_test
   PORT: 3001
   CORS_ORIGIN: http://localhost:5173
   SESSION_SECRET: ci-session-secret-not-used-anywhere-real
   WEBAUTHN_RP_ID: localhost
-  WEBAUTHN_RP_NAME: Nettlehorst
+  WEBAUTHN_RP_NAME: Nettelhorst
   WEBAUTHN_ORIGIN: http://localhost:5173
   ROOT_INVITE_SECRET: ci-root-invite-secret
   # storage.ts reads these at module load (server boot), even though no test
@@ -28,12 +28,12 @@ jobs:
       postgres:
         image: postgres:16-alpine
         env:
-          POSTGRES_USER: campy
-          POSTGRES_PASSWORD: campy
-          POSTGRES_DB: campy_test
+          POSTGRES_USER: bulbord
+          POSTGRES_PASSWORD: bulbord
+          POSTGRES_DB: bulbord_test
         ports: ['5432:5432']
         options: >-
-          --health-cmd "pg_isready -U campy"
+          --health-cmd "pg_isready -U bulbord"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
@@ -78,12 +78,12 @@ jobs:
       postgres:
         image: postgres:16-alpine
         env:
-          POSTGRES_USER: campy
-          POSTGRES_PASSWORD: campy
-          POSTGRES_DB: campy_test
+          POSTGRES_USER: bulbord
+          POSTGRES_PASSWORD: bulbord
+          POSTGRES_DB: bulbord_test
         ports: ['5432:5432']
         options: >-
-          --health-cmd "pg_isready -U campy"
+          --health-cmd "pg_isready -U bulbord"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10

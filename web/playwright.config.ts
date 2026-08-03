@@ -1,6 +1,6 @@
 import { defineConfig, devices } from '@playwright/test'
 
-// Campy targets one viewport class: vertical phone (see CLAUDE.md's Platform
+// Bulbord targets one viewport class: vertical phone (see CLAUDE.md's Platform
 // strategy) — Pixel 7 stands in for that here rather than any desktop profile.
 export default defineConfig({
   testDir: './e2e',

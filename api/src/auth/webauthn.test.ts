@@ -20,7 +20,7 @@ const { resolveInvitation } = await import('./webauthn.js')
 
 const baseEnv = {
   rpId: 'localhost',
-  rpName: 'Nettlehorst',
+  rpName: 'Nettelhorst',
   origins: ['http://localhost:5173'],
   rootInviteSecret: 'the-root-secret',
   sessionSecret: 'the-session-secret',
@@ -33,7 +33,7 @@ describe('resolveInvitation', () => {
 
   it('rejects when neither an inviter nor a root secret is given', async () => {
     const result = await resolveInvitation(baseEnv, {})
-    expect(result).toEqual({ ok: false, message: 'An invitation is required to join Nettlehorst' })
+    expect(result).toEqual({ ok: false, message: 'An invitation is required to join Nettelhorst' })
   })
 
   it('accepts a valid, active inviter', async () => {

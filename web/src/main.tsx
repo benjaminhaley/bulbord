@@ -21,7 +21,7 @@ import { LandingPage } from './landing/LandingPage.tsx'
 setupIonicReact({ mode: 'md' })
 
 // Bulbord is the platform brand; each institution's community lives at its
-// own subdomain (nettlehorst.bulbord.com today). The bare platform domain
+// own subdomain (nettelhorst.bulbord.com today). The bare platform domain
 // shows a simple pointer instead of the invite-gated app — see CLAUDE.md
 // Product shape.
 const isPlatformRoot = window.location.hostname === 'bulbord.com'

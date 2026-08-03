@@ -11,7 +11,7 @@ vi.mock('resend', () => {
 
 beforeEach(() => {
   vi.stubEnv('RESEND_API_KEY', 'test-key')
-  vi.stubEnv('RESEND_FROM_EMAIL', 'Nettlehorst <newsletter@bulbord.com>')
+  vi.stubEnv('RESEND_FROM_EMAIL', 'Nettelhorst <newsletter@bulbord.com>')
   sendMock.mockReset()
 })
 
@@ -20,12 +20,12 @@ describe('sendNewsletterEmail', () => {
     sendMock.mockResolvedValue({ data: { id: 'email-1' }, error: null })
     const { sendNewsletterEmail } = await import('./mailer.js')
 
-    await sendNewsletterEmail('ben@example.com', 'This week on Nettlehorst', '<p>hi</p>')
+    await sendNewsletterEmail('ben@example.com', 'This week on Nettelhorst', '<p>hi</p>')
 
     expect(sendMock).toHaveBeenCalledWith({
-      from: 'Nettlehorst <newsletter@bulbord.com>',
+      from: 'Nettelhorst <newsletter@bulbord.com>',
       to: 'ben@example.com',
-      subject: 'This week on Nettlehorst',
+      subject: 'This week on Nettelhorst',
       html: '<p>hi</p>',
     })
   })
