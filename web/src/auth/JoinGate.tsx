@@ -209,7 +209,11 @@ function capitalizeFirst(value: string) {
   return value.length ? value[0].toUpperCase() + value.slice(1) : value
 }
 
-function ProfileSetupScreen() {
+// Exported (not just used internally by JoinGate) so it can be previewed in
+// isolation via Storybook (feedback #44) with the same real component code
+// the actual sign-up flow renders — same reuse rationale as InviteAcceptCard
+// above, just for the next step in the flow.
+export function ProfileSetupScreen() {
   const { refresh } = useAuth()
   const [firstName, setFirstName] = useState('')
   const [lastName, setLastName] = useState('')

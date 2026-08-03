@@ -77,6 +77,11 @@ jobs:
         working-directory: web
       - run: npm run knip
         working-directory: web
+      # @storybook/addon-vitest runs story files (src/**/*.stories.tsx)
+      # through a real headless browser, not jsdom — needed before `npm
+      # test` below, which now also covers the storybook vitest project.
+      - run: npx playwright install --with-deps chromium
+        working-directory: web
       - run: npm test
         working-directory: web
 
