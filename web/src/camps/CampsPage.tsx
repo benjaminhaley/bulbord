@@ -7,7 +7,7 @@ export function CampsPage() {
     <IonPage>
       <IonHeader>
         <IonToolbar>
-          <IonTitle>Camps near Nettelhorst</IonTitle>
+          <IonTitle size="small">Camps near Nettelhorst</IonTitle>
           <IonButtons slot="end">
             <AccountButton />
           </IonButtons>
