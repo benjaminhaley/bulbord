@@ -26,9 +26,10 @@ const MAX_STACKED_ICONS = 5
 // Attendance-signal social proof (see CLAUDE.md's data classification: names
 // and avatars only, never contact/PII). Stops propagation on open so this can
 // sit inside an EventsPage row without also triggering the row's own
-// routerLink navigation to the event detail page. Closed state is a small
-// icon stack (feedback #43 — replaced a "3 interested: Alice, Bob and
-// Carol" text teaser, since faces read faster than names at a glance).
+// routerLink navigation to the event detail page. Closed state keeps the
+// "N interested:" label but swaps the name list for a small icon stack
+// (feedback #43, refined per follow-up feedback — bare icons with no label
+// read as unclear on their own).
 export function InterestedBadge({
   eventId,
   count,
@@ -59,8 +60,9 @@ export function InterestedBadge({
     <>
       <div
         onClick={show}
-        style={{ display: 'inline-flex', alignItems: 'center', cursor: 'pointer', marginTop: 4 }}
+        style={{ display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer', marginTop: 4 }}
       >
+        <IonNote>{count} interested:</IonNote>
         {shown.map((person, i) => (
           <div key={i} style={{ marginInlineStart: i === 0 ? 0 : -8, border: '2px solid var(--ion-background-color)', borderRadius: '50%' }}>
             <Avatar url={person.avatar_url} name={person.name} size={24} />
