@@ -32,3 +32,26 @@ export async function sendTestNewsletterEmail(): Promise<void> {
     throw new Error(body?.error?.message ?? `Failed to send test email: ${response.status}`)
   }
 }
+
+export interface ResourceReport {
+  sources_checked: number
+  total_added: number
+  total_skipped: number
+  results: { source_id: string; name: string; added: number; skipped: number; error?: string }[]
+}
+
+// Dev tool (feedback #41) — re-runs the ingestion pipeline against every
+// known active source on demand, instead of waiting for a manual sourcing
+// pass or a future daily job.
+export async function resourceEventSources(): Promise<ResourceReport> {
+  const response = await fetch(`${API_URL}/admin/events/resource`, {
+    method: 'POST',
+    headers: authHeaders(),
+  })
+  if (!response.ok) {
+    const body = (await response.json().catch(() => null)) as { error?: { message?: string } } | null
+    throw new Error(body?.error?.message ?? `Failed to re-run sourcing: ${response.status}`)
+  }
+  const body = (await response.json()) as { data: ResourceReport }
+  return body.data
+}

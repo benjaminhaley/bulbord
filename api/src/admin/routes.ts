@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify'
 
 import { requireRole } from '../auth/plugin.js'
 import { listUsersForAdmin } from '../auth/service.js'
+import { resourceActiveEventSources } from '../events/resourcing.js'
 import { sendTestNewsletterEmail } from '../newsletter/service.js'
 
 // First admin view in the app (see CLAUDE.md's Introspectability section) —
@@ -33,5 +34,27 @@ export async function adminRoutes(app: FastifyInstance) {
     }
     await sendTestNewsletterEmail({ id: user.id, name: user.name, email: user.email })
     return reply.send({ sent: true })
+  })
+
+  // Dev tool (feedback #41): re-runs the ingestion pipeline against every
+  // known active source on demand, instead of waiting for a manual sourcing
+  // pass. Scoped to known sources only, not new-source discovery — see
+  // resourcing.ts.
+  app.post('/admin/events/resource', { preHandler: requireRole('admin') }, async (request, reply) => {
+    const report = await resourceActiveEventSources(`admin:${request.currentUser!.id}`)
+    return reply.send({
+      data: {
+        sources_checked: report.sourcesChecked,
+        total_added: report.totalAdded,
+        total_skipped: report.totalSkipped,
+        results: report.results.map((r) => ({
+          source_id: r.sourceId,
+          name: r.name,
+          added: r.added,
+          skipped: r.skipped,
+          error: r.error,
+        })),
+      },
+    })
   })
 }
