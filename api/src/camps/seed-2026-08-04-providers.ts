@@ -172,7 +172,7 @@ const PROVIDERS: ProviderSpec[] = [
     name: 'BitSpace',
     url: 'https://bitspacechicago.com/day-off/',
     notes:
-      '"Day Off Camp" — a standing program for non-attendance days, separate from their week-long summer camp. Full-day rate ($150/day, ages 8+) found via a third-party listing search (their own booking calendar is JS-rendered) — treated as estimated, same as every other non-individually-dated price below.',
+      '"Day Off Camp" — a standing program for non-attendance days, separate from their week-long summer camp. Full-day rate ($150/day, ages 8+) corroborated across three independent searches as of 2026-08-04, but every specific booking page found for it (e.g. bitspacechicago.com/upcoming-events/dayoffcamp-*) is either JS-rendered or a since-expired per-date listing, so it could not be directly re-confirmed from a live, fetchable page the way Family Room\'s day-camp product page could — treated as estimated, same as every other non-individually-dated price below.',
     address: '2541 W Lawrence Ave, Chicago, IL 60625',
     lat: 41.9688,
     lng: -87.6896,
@@ -193,7 +193,7 @@ const PROVIDERS: ProviderSpec[] = [
     name: 'Chicago Park District — Gill Park',
     url: 'https://www.chicagoparkdistrict.com/camp-programs',
     notes:
-      'Runs a "1 Day Camp" program for non-attendance days plus named Spring/Summer break camps at Gill Park (already a known events source near Nettelhorst — see events/seed-2026-07-31-new-sources.ts). No genuine single-day price found — the district only publishes a whole-season summer spending average ($8.34/day across the 6-week program), which is a derived aggregate, not a real per-day rate for anything specific, so price is left unpublished rather than showing that average as if it were one.',
+      'Runs a "1 Day Camp" program for non-attendance days plus named Spring/Summer break camps at Gill Park (already a known events source near Nettelhorst — see events/seed-2026-07-31-new-sources.ts). No genuine single-day price found despite a repeated, targeted search as of 2026-08-04 (tried the district\'s ActiveNet program search, Gill Park\'s own facility page, and the "1 Day Camp" parent handbook — the handbook found was actually the 6-week summer program\'s, mislabeled in search results) — the only concrete figures published anywhere are a whole-season summer spending average ($8.34/day across the 6-week program) and 2018-era full-program fees for unrelated parks, neither a real per-day rate for Gill Park\'s own non-summer camp, so price is left unpublished rather than showing either as if it were one.',
     address: '825 W Sheridan Rd, Chicago, IL 60613',
     lat: 41.9516,
     lng: -87.6473,
@@ -212,21 +212,21 @@ const PROVIDERS: ProviderSpec[] = [
   {
     key: 'familyroom',
     name: 'Family Room Chicago (Broadway)',
-    url: 'https://familyroomchicago.com/membership/',
+    url: 'https://familyroomchicago.com/shop/camp/day-camp/one-day-camp/family-room-day-camp-single-day-drop-in-pass-lakeview-east/',
     notes:
-      'Not a structured day-camp curriculum — a drop-in supervised play/childcare space (Standard Daytime Hours 9am-6pm). Included per Ben\'s direction (feedback #50 review) despite the mismatch. This is their Broadway Clubhouse Suite location specifically (Ben asked for Broadway over the Southport Play Studio — familyroomchicago.com/membership/ lists three locations total). Price is their single "1 Day Pass" product ($35) — not the Flex Day Pass 10-pack ($520/10 = $52) an earlier pass of this script mistakenly divided down; per Ben\'s explicit instruction, only a genuinely published single-unit rate should be shown, never a bulk/weekly rate divided out. That $35 listing (familyroomchicago.com/product/drop-in-family-room-after-school-care-sy25-26/) is no longer live as of 2026-08-04 (likely a lapsed SY25-26 seasonal listing), so it\'s still treated as an estimate. States no age minimum (infants through active 5+ year-olds all accommodated), so age range is left open-ended rather than "not specified."',
+      'Not a fully structured multi-week curriculum like the other five, but genuinely has its own real "Day Camp: Single-Day Drop-In Pass" product line (confirmed 2026-08-04 — an earlier pass of this script under-researched this and used a generic membership page instead) — included per Ben\'s direction (feedback #50 review). This is their Broadway Clubhouse Suite location specifically (Ben asked for Broadway over the Southport Play Studio; familyroomchicago.com lists three locations total). Price is the real, currently published 9-hour Full-Day Pass rate ($95 non-member) from that product page — tiered pricing also exists for a 3-hour Express Pass ($45) and 5-hour Half-Day Pass ($65), plus member discounts, but the 9-hour rate is what\'s comparable to the other five providers\' full-day rates. Still marked estimated since it\'s a standing rate, not tied to one specific date. The product page has a real date-picker calendar, but as of 2026-08-04 it isn\'t populated with inventory for dates this far out — spots_available is left null/"unknown" for exactly that reason, not because we didn\'t check.',
     address: '3229 N Broadway, Chicago, IL 60657',
     lat: 41.94125,
     lng: -87.6447,
     ageMin: 0,
     ageMax: null,
-    pricePerDay: '35.00',
+    pricePerDay: '95.00',
     bookingInstructions:
-      'No reservation needed for general drop-in play — just walk in during open hours (9am-6pm daily). Download the Family Room app to book a Day Pass in advance or manage a membership.',
-    prepInstructions: 'None required — it\'s a drop-in play space, come as you are.',
+      'Book online at familyroomchicago.com (search "Day Camp: Single-Day Drop-In Pass") and pick a specific date — 3-hour, 5-hour, and full 9-hour options are available. Drop-off is flexible between 7:00am-4:30pm, with pick-up between 11:00am-6:00pm.',
+    prepInstructions: "Nothing to pack — healthy snacks and a whole-food lunch are included for the day.",
     description:
-      'Family Room Chicago — Broadway Clubhouse Suite. A drop-in supervised play/childcare space, not a structured camp curriculum (open 9am-6pm daily). No age minimum.',
-    sourceUrl: 'https://familyroomchicago.com/membership/',
+      'Family Room Chicago — Broadway Clubhouse Suite. "Day Camp: Single-Day Drop-In Pass" — up to 9 hours of supervised sports, free play, and creative activities with a 10:1 camper-to-staff ratio.',
+    sourceUrl: 'https://familyroomchicago.com/shop/camp/day-camp/one-day-camp/family-room-day-camp-single-day-drop-in-pass-lakeview-east/',
     // Same lazy-loaded-images issue as YMCA — familyroomchicago.com's own
     // pages only expose a blank placeholder SVG in raw HTML; their Facebook
     // page has a real, static photo instead.
