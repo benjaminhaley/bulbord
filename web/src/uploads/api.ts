@@ -11,9 +11,16 @@ interface UploadResponse {
 }
 
 export async function uploadImage(file: File | Blob, folder?: 'feedback' | 'profiles' | 'events' | 'camps'): Promise<UploadedImage> {
+  // Field order matters here: @fastify/multipart's request.file() only sees
+  // fields that arrived before the file part in the multipart stream, so a
+  // large enough file can make the server resolve the file before ever
+  // reaching 'folder' below it — silently defaulting to the 'feedback'
+  // folder regardless of what was actually requested (found 2026-08-04 while
+  // re-uploading camp images through this same route). 'folder' must be
+  // appended first.
   const form = new FormData()
-  form.append('file', file)
   if (folder) form.append('folder', folder)
+  form.append('file', file)
 
   const response = await fetch(`${API_URL}/uploads`, {
     method: 'POST',
