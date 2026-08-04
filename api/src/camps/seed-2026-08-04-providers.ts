@@ -47,6 +47,24 @@ import { enrichCampSourceImage } from './image-enrichment.js'
 // Development days and the two Parent-Teacher Conference days that an
 // earlier pass of this script skipped. Summer-week-specific candidates are
 // still a good follow-up for a later pass, not included here.
+//
+// Third follow-up pass (2026-08-04, per feedback): Family Room's price was
+// under-researched — Ben pointed directly at their real "Day Camp:
+// Single-Day Drop-In Pass" product page, corrected to the real $95 full-day
+// rate (see ProviderSpec.familyroom below). Separately, Ben checked Chicago
+// Park District's real live registration search (ActiveCommunities) for
+// Labor Day and found zero results — unlike the other four recurring-policy
+// providers, Park District never states a blanket "every non-attendance
+// day" promise, so speculatively generating 17 unverified camp candidates
+// for it was itself the mistake, not just the missing price.
+// `ProviderSpec.hasRecurringOffering: false` (Park District only) now
+// excludes a provider from candidate generation entirely rather than
+// guessing; it still gets a real camp_sources row with zero camps, ready to
+// be populated once specific dates are confirmed via that search tool.
+// Also: every source's URL now points to the actual page you'd go to book
+// from (not a generic marketing page) — BitSpace moved to its real
+// registration portal (education.bitspacechicago.com) and Park District to
+// the ActiveCommunities search itself.
 
 interface BreakInfo {
   name: string
@@ -100,6 +118,16 @@ interface ProviderSpec {
   // a different URL than sourceUrl (a booking/registration page rarely has
   // a usable og:image; a branch/location homepage usually does).
   imageSourceUrl: string
+  // Whether this provider has a genuine, stated "we run this program on
+  // every CPS non-attendance day" policy — true for the four providers whose
+  // own sites say exactly that (YMCA, ClimbZone, Fit City Kids, BitSpace),
+  // which is what justifies generating a speculative candidate for every
+  // break date below. Chicago Park District has no such standing claim —
+  // their offerings are per-specific-posted-session in a live registration
+  // system (ActiveCommunities), not a blanket promise — so it defaults to
+  // false and is inserted as a known camp_sources row with zero speculative
+  // camps rather than 17 unverified ones. See its own notes for detail.
+  hasRecurringOffering?: boolean
 }
 
 const PROVIDERS: ProviderSpec[] = [
@@ -170,9 +198,9 @@ const PROVIDERS: ProviderSpec[] = [
   {
     key: 'bitspace',
     name: 'BitSpace',
-    url: 'https://bitspacechicago.com/day-off/',
+    url: 'https://education.bitspacechicago.com/day-off-camps',
     notes:
-      '"Day Off Camp" — a standing program for non-attendance days, separate from their week-long summer camp. Full-day rate ($150/day, ages 8+) corroborated across three independent searches as of 2026-08-04, but every specific booking page found for it (e.g. bitspacechicago.com/upcoming-events/dayoffcamp-*) is either JS-rendered or a since-expired per-date listing, so it could not be directly re-confirmed from a live, fetchable page the way Family Room\'s day-camp product page could — treated as estimated, same as every other non-individually-dated price below.',
+      '"Day Off Camp" — a standing program for non-attendance days, separate from their week-long summer camp. Full-day rate ($150/day, ages 8+) corroborated across three independent searches as of 2026-08-04, but every specific booking page found for it (e.g. bitspacechicago.com/upcoming-events/dayoffcamp-*) is either JS-rendered or a since-expired per-date listing, so it could not be directly re-confirmed from a live, fetchable page the way Family Room\'s day-camp product page could — treated as estimated, same as every other non-individually-dated price below. Source URL is the actual registration portal (education.bitspacechicago.com/day-off-camps), not the marketing page (bitspacechicago.com/day-off/) — per Ben\'s direction, the source should be where you\'d actually go to book.',
     address: '2541 W Lawrence Ave, Chicago, IL 60625',
     lat: 41.9688,
     lng: -87.6896,
@@ -185,15 +213,17 @@ const PROVIDERS: ProviderSpec[] = [
       'Pack a nut-free sack lunch, snacks, and a water bottle. No open-toed shoes, crocs, loose jewelry, or loose clothing — bring a hair tie for long hair, and dress for mess (some days get messy). A phone is fine for emergencies but must stay zipped in the backpack.',
     description:
       'BitSpace "Day Off Camp" — design thinking, 3D printing, woodworking, and programmable electronics, 9am-4pm. Full day for ages 8+; a half-day option also exists for ages 7-12.',
-    sourceUrl: 'https://bitspacechicago.com/day-off/',
+    sourceUrl: 'https://education.bitspacechicago.com/day-off-camps',
     imageSourceUrl: 'https://bitspacechicago.com/',
   },
   {
     key: 'parkdistrict',
     name: 'Chicago Park District — Gill Park',
-    url: 'https://www.chicagoparkdistrict.com/camp-programs',
+    // The actual registration search tool, per Ben's direction that the
+    // source should be where you'd go to book — not the marketing page.
+    url: 'https://anc.apm.activecommunities.com/chicagoparkdistrict/activity/search',
     notes:
-      'Runs a "1 Day Camp" program for non-attendance days plus named Spring/Summer break camps at Gill Park (already a known events source near Nettelhorst — see events/seed-2026-07-31-new-sources.ts). No genuine single-day price found despite a repeated, targeted search as of 2026-08-04 (tried the district\'s ActiveNet program search, Gill Park\'s own facility page, and the "1 Day Camp" parent handbook — the handbook found was actually the 6-week summer program\'s, mislabeled in search results) — the only concrete figures published anywhere are a whole-season summer spending average ($8.34/day across the 6-week program) and 2018-era full-program fees for unrelated parks, neither a real per-day rate for Gill Park\'s own non-summer camp, so price is left unpublished rather than showing either as if it were one.',
+      `A known "1 Day Camp" program exists district-wide and is already a known events source near Nettelhorst (see events/seed-2026-07-31-new-sources.ts), but — unlike YMCA/ClimbZone/Fit City Kids/BitSpace — Chicago Park District never states a blanket "we run this on every non-attendance day" policy; real availability lives in their live ActiveCommunities registration search (anc.apm.activecommunities.com/chicagoparkdistrict/activity/search), which Ben checked directly for Labor Day 2026-09-07 and found zero results. That tool is a JS-rendered SPA this codebase's tooling can't query programmatically, so rather than guess at which (if any) of the seeded break dates might eventually have a real posted session, no speculative camps are generated for this source at all (see hasRecurringOffering below) — it exists here as a known, real source with zero current listings, ready to be populated by a future update script once specific dates are confirmed via that search tool. Also: no genuine single-day price was ever found for this program either — the only figures published anywhere were a whole-season summer spending average and unrelated 2018-era full-program fees for other parks, neither a real per-day rate for anything here.`,
     address: '825 W Sheridan Rd, Chicago, IL 60613',
     lat: 41.9516,
     lng: -87.6473,
@@ -201,13 +231,14 @@ const PROVIDERS: ProviderSpec[] = [
     ageMax: 12,
     pricePerDay: null,
     bookingInstructions:
-      'Create a free account at chicagoparkdistrict.com (Programs > Registration Information) and register online, or register in person at the Gill Park fieldhouse (825 W Sheridan Rd) — call ahead to confirm in-person registration hours.',
+      'Search anc.apm.activecommunities.com/chicagoparkdistrict/activity/search for a specific posted session (create a free account first), or register in person at the Gill Park fieldhouse (825 W Sheridan Rd) — call ahead to confirm in-person registration hours.',
     prepInstructions:
       'Bring a backpack, a change of clothes if needed, a water bottle, and sunscreen (apply before arrival). A free lunch and snack are provided district-wide, though kids are welcome to bring their own.',
     description:
       'Chicago Park District day camp at Gill Park (825 W Sheridan Rd) — recreational activities, arts and crafts, sports.',
-    sourceUrl: 'https://www.chicagoparkdistrict.com/camp-programs',
+    sourceUrl: 'https://anc.apm.activecommunities.com/chicagoparkdistrict/activity/search',
     imageSourceUrl: 'https://www.chicagoparkdistrict.com/parks-facilities/gill-joseph-park',
+    hasRecurringOffering: false,
   },
   {
     key: 'familyroom',
@@ -239,7 +270,7 @@ function distanceFromNettelhorst(lat: number, lng: number): string {
 }
 
 const candidates = breaks.flatMap((brk) =>
-  PROVIDERS.map((p) => ({
+  PROVIDERS.filter((p) => p.hasRecurringOffering ?? true).map((p) => ({
     sourceKey: p.key,
     // Just the provider name — feedback (2026-08-04): a title like "Labor Day
     // YMCA Camp" repeats info already shown as the accordion section header
