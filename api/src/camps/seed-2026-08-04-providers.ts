@@ -23,20 +23,24 @@ import { enrichCampSourceImage } from './image-enrichment.js'
 // A later pass should replace estimated prices with actual ones as
 // providers publish them for each specific date.
 //
-// Follow-up pass (2026-08-04, per feedback): every field is now always
-// populated with the best real number research could find, even when it's
-// an inferred/estimated one (never left blank when a reasonable real-world
-// figure exists) — Chicago Park District's price is the district's own
-// published summer-camp daily average ($8.34), not a Gill-Park-specific
-// figure, and BitSpace's is their published $150 full-day maker-camp rate
-// (found via a third-party listing search, not their own JS-rendered
-// calendar widget, which WebFetch can't execute) — both explicitly noted as
-// estimates below since neither is tied to a specific date. Family Room's
-// age range reflects their own stated "no age minimum... crawling infants"
-// to "high-energy 5-year-olds and up" policy (all ages welcome), not a gap.
-// spots_available is left null (unknown) for every row — no provider
-// publishes live availability — which the frontend always renders as
-// "Spots: unknown" rather than omitting (see camps/format.ts).
+// Second follow-up pass (2026-08-04, per feedback): a stricter rule on WHAT
+// counts as a real per-day price — never a rate derived by dividing a
+// weekly/bulk figure (e.g. a 10-pack price ÷ 10, or a whole-season spending
+// average ÷ days), only an actually-published single-day/single-session
+// rate. Under this rule: Family Room's price changed from $52 (its Flex Day
+// Pass 10-pack ÷ 10) to $35 (their actual, if since-unlisted, single "1 Day
+// Pass" product) — still marked estimated since it's not tied to a specific
+// date, and it also switched from the Southport location to the Broadway
+// location Ben asked for (3229 N Broadway — a few doors from Nettelhorst
+// itself). Chicago Park District's price was removed entirely (was $8.34,
+// the district's whole-season summer spending average — not a real
+// single-day rate for anything, let alone Gill Park's own non-summer "1 Day
+// Camp" program specifically) — `pricePerDay: null` is more honest than a
+// derived number here, matching the "never fabricate, leave unknown"
+// posture the rest of this codebase already follows for missing data.
+// Every provider also now has real bookingInstructions (when/how to
+// register) and prepInstructions (what to bring/prepare beforehand) —
+// researched per provider, not derived or invented.
 //
 // Also covers every non-attendance day seeded in
 // seed-2026-08-04-school-breaks.ts, including the six Professional
@@ -88,6 +92,8 @@ interface ProviderSpec {
   // defaults to true (the common case); only YMCA's Spring Break overrides
   // it to false, since that's the one page that names the exact date+price.
   priceIsEstimated?: (breakName: string) => boolean
+  bookingInstructions: string
+  prepInstructions: string
   title: (breakName: string) => string
   description: string
   sourceUrl: string
@@ -112,6 +118,10 @@ const PROVIDERS: ProviderSpec[] = [
     ageMax: 13,
     pricePerDay: '70.00',
     priceIsEstimated: (breakName) => breakName !== 'Spring Break',
+    bookingInstructions:
+      'Register online at ymcachicago.org/lake-view (look for "School Days Out"), call the Lake View Y at 773-248-3333, or sign up in person at the front desk.',
+    prepInstructions:
+      'Pack a lunch and a water bottle (no glass). Bring a swimsuit and towel if the day includes pool time, and dress for active play.',
     title: (breakName) => `${breakName} YMCA Camp`,
     description: 'Lake View YMCA "School Days Out" — full day of activities while school is out. Ages 5-13.',
     sourceUrl: 'https://www.ymcachicago.org/early-learning-education/school-age-care/school-days-out/',
@@ -133,6 +143,10 @@ const PROVIDERS: ProviderSpec[] = [
     ageMin: 5,
     ageMax: 12,
     pricePerDay: '120.00',
+    bookingInstructions:
+      'Sign up online at climbzone.us/chicago/camps for whichever specific day(s) you need — no minimum number of days required.',
+    prepInstructions:
+      'Wear sneakers or gym shoes. Grip socks are required in the soft-play area (bring your own or buy a pair on-site). Pack a lunch, or pre-order one from ClimbZone for $10/child.',
     title: (breakName) => `${breakName} ClimbZone Camp`,
     description: 'ClimbZone Chicago full-day camp — climbing walls, high ropes, laser tag, arts and crafts. Ages 5-12.',
     sourceUrl: 'https://www.climbzone.us/chicago/camps/',
@@ -149,6 +163,9 @@ const PROVIDERS: ProviderSpec[] = [
     ageMin: 4,
     ageMax: 12,
     pricePerDay: '80.00',
+    bookingInstructions:
+      'Register online at fitcitykids.com/camps. If a date you need isn\'t listed, email Camps@FitCityKids.com — they\'ll try to accommodate it.',
+    prepInstructions: 'Bring gym shoes, socks, a labeled water bottle, a snack, and a lunch.',
     title: (breakName) => `${breakName} Fit City Kids Camp`,
     description: `Fit City Kids "School's Out Camp" — fitness classes and active play, 8:30am-3pm. Ages 4-12.`,
     sourceUrl: 'https://www.fitcitykids.com/camps/',
@@ -166,6 +183,10 @@ const PROVIDERS: ProviderSpec[] = [
     ageMin: 8,
     ageMax: null,
     pricePerDay: '150.00',
+    bookingInstructions:
+      'Register online at education.bitspacechicago.com/day-off-camps. Each session needs a minimum of 8 campers to run, so register early.',
+    prepInstructions:
+      'Pack a nut-free sack lunch, snacks, and a water bottle. No open-toed shoes, crocs, loose jewelry, or loose clothing — bring a hair tie for long hair, and dress for mess (some days get messy). A phone is fine for emergencies but must stay zipped in the backpack.',
     title: (breakName) => `${breakName} BitSpace Day Off Camp`,
     description:
       'BitSpace "Day Off Camp" — design thinking, 3D printing, woodworking, and programmable electronics, 9am-4pm. Full day for ages 8+; a half-day option also exists for ages 7-12.',
@@ -177,13 +198,17 @@ const PROVIDERS: ProviderSpec[] = [
     name: 'Chicago Park District — Gill Park',
     url: 'https://www.chicagoparkdistrict.com/camp-programs',
     notes:
-      'Runs a "1 Day Camp" program for non-attendance days plus named Spring/Summer break camps at Gill Park (already a known events source near Nettelhorst — see events/seed-2026-07-31-new-sources.ts). Price is the district-wide published 2025 summer-camp daily average ($8.34/day, https://www.chicagoparkdistrict.com/about-us/news/chicago-park-district-outlines-improvements-2026-summer-day-camp-sign-process-and) — not a Gill-Park- or non-summer-specific figure, so treated as a rougher estimate than the other providers\' own quoted per-day rates.',
+      'Runs a "1 Day Camp" program for non-attendance days plus named Spring/Summer break camps at Gill Park (already a known events source near Nettelhorst — see events/seed-2026-07-31-new-sources.ts). No genuine single-day price found — the district only publishes a whole-season summer spending average ($8.34/day across the 6-week program), which is a derived aggregate, not a real per-day rate for anything specific, so price is left unpublished rather than showing that average as if it were one.',
     address: '825 W Sheridan Rd, Chicago, IL 60613',
     lat: 41.9516,
     lng: -87.6473,
     ageMin: 6,
     ageMax: 12,
-    pricePerDay: '8.34',
+    pricePerDay: null,
+    bookingInstructions:
+      'Create a free account at chicagoparkdistrict.com (Programs > Registration Information) and register online, or register in person at the Gill Park fieldhouse (825 W Sheridan Rd) — call ahead to confirm in-person registration hours.',
+    prepInstructions:
+      'Bring a backpack, a change of clothes if needed, a water bottle, and sunscreen (apply before arrival). A free lunch and snack are provided district-wide, though kids are welcome to bring their own.',
     title: (breakName) => `${breakName} Chicago Park District Camp (Gill Park)`,
     description:
       'Chicago Park District day camp at Gill Park (825 W Sheridan Rd) — recreational activities, arts and crafts, sports.',
@@ -192,19 +217,22 @@ const PROVIDERS: ProviderSpec[] = [
   },
   {
     key: 'familyroom',
-    name: 'Family Room Chicago',
+    name: 'Family Room Chicago (Broadway)',
     url: 'https://familyroomchicago.com/membership/',
     notes:
-      'Not a structured day-camp curriculum — a drop-in supervised play/childcare space (Standard Daytime Hours 8:30am-6pm). Included per Ben\'s direction (feedback #50 review) despite the mismatch. Flex Day Pass 10-pack ($520, i.e. $52/pass) is a real, currently published price. States no age minimum (infants through active 5+ year-olds all accommodated), so age range is left open-ended rather than "not specified."',
-    address: '3726 N Southport Ave, Chicago, IL 60613',
-    lat: 41.949784,
-    lng: -87.664458,
+      'Not a structured day-camp curriculum — a drop-in supervised play/childcare space (Standard Daytime Hours 9am-6pm). Included per Ben\'s direction (feedback #50 review) despite the mismatch. This is their Broadway Clubhouse Suite location specifically (Ben asked for Broadway over the Southport Play Studio — familyroomchicago.com/membership/ lists three locations total). Price is their single "1 Day Pass" product ($35) — not the Flex Day Pass 10-pack ($520/10 = $52) an earlier pass of this script mistakenly divided down; per Ben\'s explicit instruction, only a genuinely published single-unit rate should be shown, never a bulk/weekly rate divided out. That $35 listing (familyroomchicago.com/product/drop-in-family-room-after-school-care-sy25-26/) is no longer live as of 2026-08-04 (likely a lapsed SY25-26 seasonal listing), so it\'s still treated as an estimate. States no age minimum (infants through active 5+ year-olds all accommodated), so age range is left open-ended rather than "not specified."',
+    address: '3229 N Broadway, Chicago, IL 60657',
+    lat: 41.94125,
+    lng: -87.6447,
     ageMin: 0,
     ageMax: null,
-    pricePerDay: '52.00',
-    title: (breakName) => `${breakName} Family Room Day Pass`,
+    pricePerDay: '35.00',
+    bookingInstructions:
+      'No reservation needed for general drop-in play — just walk in during open hours (9am-6pm daily). Download the Family Room app to book a Day Pass in advance or manage a membership.',
+    prepInstructions: 'None required — it\'s a drop-in play space, come as you are.',
+    title: (breakName) => `${breakName} Family Room Day Pass (Broadway)`,
     description:
-      'Family Room Chicago — drop-in supervised play/childcare space, not a structured camp curriculum (Standard Daytime Hours 8:30am-6pm). Priced as a Flex Day Pass ($520/10-pack). No age minimum.',
+      'Family Room Chicago — Broadway Clubhouse Suite. A drop-in supervised play/childcare space, not a structured camp curriculum (open 9am-6pm daily). No age minimum.',
     sourceUrl: 'https://familyroomchicago.com/membership/',
     // Same lazy-loaded-images issue as YMCA — familyroomchicago.com's own
     // pages only expose a blank placeholder SVG in raw HTML; their Facebook
@@ -231,6 +259,8 @@ const candidates = breaks.flatMap((brk) =>
     priceIsEstimated: p.pricePerDay !== null && (p.priceIsEstimated?.(brk.name) ?? true),
     ageMin: p.ageMin,
     ageMax: p.ageMax,
+    bookingInstructions: p.bookingInstructions,
+    prepInstructions: p.prepInstructions,
     sourceUrl: p.sourceUrl,
   })),
 )
@@ -277,6 +307,8 @@ async function main() {
           ageMin: c.ageMin,
           ageMax: c.ageMax,
           spotsAvailable: null, // unknown for every seeded row — no provider publishes live availability
+          bookingInstructions: c.bookingInstructions,
+          prepInstructions: c.prepInstructions,
           sourceUrl: c.sourceUrl,
           sourceId: sourceIdByKey.get(c.sourceKey)!,
           imageUrl: image?.imageUrl ?? null,

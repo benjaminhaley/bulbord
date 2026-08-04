@@ -236,6 +236,12 @@ export const camps = pgTable('camps', {
   // means unknown, not zero. Always surfaced in the UI as "Unknown" rather
   // than hidden, same posture as price_is_estimated (never silently omitted).
   spotsAvailable: integer('spots_available'),
+  // When/how to register (e.g. "Register online at ymcachicago.org...") and
+  // what to bring/prepare beforehand (packing list, permission slips, forms)
+  // — free text, same "always shown, even if null" posture as the other
+  // optional fields above (see camps/format.ts).
+  bookingInstructions: text('booking_instructions'),
+  prepInstructions: text('prep_instructions'),
   sourceUrl: text('source_url'),
   sourceId: uuid('source_id').references(() => campSources.id),
   imageUrl: text('image_url'),

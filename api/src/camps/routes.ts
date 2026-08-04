@@ -31,6 +31,8 @@ type SerializableCamp = Pick<
   | 'ageMin'
   | 'ageMax'
   | 'spotsAvailable'
+  | 'bookingInstructions'
+  | 'prepInstructions'
   | 'sourceUrl'
   | 'imageUrl'
   | 'thumbnailUrl'
@@ -71,6 +73,8 @@ function serializeCamp(c: HydratedCamp, currentUserId: string | null) {
     // Real-time availability isn't tracked — null means unknown, not zero.
     // Only ever set by a seed script today; not on the self-service body.
     spots_available: c.spotsAvailable,
+    booking_instructions: c.bookingInstructions,
+    prep_instructions: c.prepInstructions,
     source_url: c.sourceUrl,
     image_url: c.imageUrl,
     thumbnail_url: c.thumbnailUrl,
@@ -189,6 +193,8 @@ export async function campsRoutes(app: FastifyInstance) {
       age_min?: number
       age_max?: number
       spots_available?: number
+      booking_instructions?: string
+      prep_instructions?: string
       source_url?: string
       image_url?: string
       thumbnail_url?: string
@@ -218,6 +224,8 @@ export async function campsRoutes(app: FastifyInstance) {
         ageMin: body.age_min != null ? Math.trunc(body.age_min) : null,
         ageMax: body.age_max != null ? Math.trunc(body.age_max) : null,
         spotsAvailable: body.spots_available != null ? Math.trunc(body.spots_available) : null,
+        bookingInstructions: body.booking_instructions?.trim() || null,
+        prepInstructions: body.prep_instructions?.trim() || null,
         sourceUrl: body.source_url?.trim() || null,
         imageUrl: body.image_url || null,
         thumbnailUrl: body.thumbnail_url || null,
@@ -245,6 +253,8 @@ export async function campsRoutes(app: FastifyInstance) {
       age_min?: number
       age_max?: number
       spots_available?: number
+      booking_instructions?: string
+      prep_instructions?: string
       source_url?: string
       image_url?: string
       thumbnail_url?: string
@@ -288,6 +298,8 @@ export async function campsRoutes(app: FastifyInstance) {
           ageMin: body.age_min != null ? Math.trunc(body.age_min) : null,
           ageMax: body.age_max != null ? Math.trunc(body.age_max) : null,
           spotsAvailable: body.spots_available != null ? Math.trunc(body.spots_available) : null,
+          bookingInstructions: body.booking_instructions?.trim() || null,
+          prepInstructions: body.prep_instructions?.trim() || null,
           sourceUrl: body.source_url?.trim() || null,
           imageUrl: body.image_url || null,
           thumbnailUrl: body.thumbnail_url || null,

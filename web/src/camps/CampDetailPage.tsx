@@ -138,6 +138,18 @@ export function CampDetailPage() {
             {camp.location_name && <p>{camp.location_name}</p>}
             {camp.address && <p>{camp.address}</p>}
             {camp.description && <p>{camp.description}</p>}
+            {camp.booking_instructions && (
+              <>
+                <h2>Booking</h2>
+                <p style={{ whiteSpace: 'pre-wrap' }}>{camp.booking_instructions}</p>
+              </>
+            )}
+            {camp.prep_instructions && (
+              <>
+                <h2>What to bring / prepare</h2>
+                <p style={{ whiteSpace: 'pre-wrap' }}>{camp.prep_instructions}</p>
+              </>
+            )}
             {camp.source_url && (
               <IonButton expand="block" href={camp.source_url} target="_blank" rel="noreferrer">
                 View source

@@ -127,6 +127,13 @@
       "when": 1785848998722,
       "tag": "0017_late_moon_knight",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1785864358217,
+      "tag": "0018_cultured_edwin_jarvis",
+      "breakpoints": true
     }
   ]
 }

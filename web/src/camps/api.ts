@@ -21,6 +21,10 @@ export interface Camp {
   age_max: number | null
   // Real-time availability isn't tracked — null means unknown, not zero.
   spots_available: number | null
+  // When/how to register, and what to bring/prepare beforehand (packing
+  // list, permission slips, forms) — free text, always shown when present.
+  booking_instructions: string | null
+  prep_instructions: string | null
   source_url: string | null
   image_url: string | null
   thumbnail_url: string | null
@@ -45,6 +49,8 @@ export interface CampInput {
   age_min: number | null
   age_max: number | null
   spots_available: number | null
+  booking_instructions: string
+  prep_instructions: string
   source_url: string
   image_url: string | null
   thumbnail_url: string | null

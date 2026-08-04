@@ -50,6 +50,8 @@ export function CampForm({
   const [ageMin, setAgeMin] = useState(initial?.age_min != null ? String(initial.age_min) : '')
   const [ageMax, setAgeMax] = useState(initial?.age_max != null ? String(initial.age_max) : '')
   const [spotsAvailable, setSpotsAvailable] = useState(initial?.spots_available != null ? String(initial.spots_available) : '')
+  const [bookingInstructions, setBookingInstructions] = useState(initial?.booking_instructions ?? '')
+  const [prepInstructions, setPrepInstructions] = useState(initial?.prep_instructions ?? '')
   const [sourceUrl, setSourceUrl] = useState(initial?.source_url ?? '')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -75,6 +77,8 @@ export function CampForm({
           age_min: ageMin.trim() ? Number(ageMin) : null,
           age_max: ageMax.trim() ? Number(ageMax) : null,
           spots_available: spotsAvailable.trim() ? Number(spotsAvailable) : null,
+          booking_instructions: bookingInstructions.trim(),
+          prep_instructions: prepInstructions.trim(),
           source_url: sourceUrl.trim(),
         }),
       )
@@ -131,6 +135,24 @@ export function CampForm({
           value={spotsAvailable}
           onIonInput={(e) => setSpotsAvailable(e.detail.value ?? '')}
           placeholder="Optional"
+        />
+      </IonItem>
+      <IonItem>
+        <IonLabel position="stacked">Booking instructions</IonLabel>
+        <IonTextarea
+          value={bookingInstructions}
+          onIonInput={(e) => setBookingInstructions(e.detail.value ?? '')}
+          placeholder="Optional — when and how to register"
+          autoGrow
+        />
+      </IonItem>
+      <IonItem>
+        <IonLabel position="stacked">Prep instructions</IonLabel>
+        <IonTextarea
+          value={prepInstructions}
+          onIonInput={(e) => setPrepInstructions(e.detail.value ?? '')}
+          placeholder="Optional — what to bring or prepare beforehand"
+          autoGrow
         />
       </IonItem>
       <IonItem>
