@@ -65,6 +65,24 @@ import { enrichCampSourceImage } from './image-enrichment.js'
 // from (not a generic marketing page) — BitSpace moved to its real
 // registration portal (education.bitspacechicago.com) and Park District to
 // the ActiveCommunities search itself.
+//
+// Fourth follow-up pass (2026-08-04, per feedback): Ben's own direct checks
+// of two more providers' real pages found the same "assumed every date is
+// open, but the real page says otherwise" problem — YMCA's School Days Out
+// page confirmed no Labor Day/Sep 25 offering (Oct 12 is the earliest
+// open date: see earliestConfirmedDate below), and Fit City Kids' real
+// dedicated page (fitcitykids.com/schools-out-camp/ — an earlier pass used
+// the generic /camps/ page instead) confirmed no Labor Day offering either,
+// with a corrected $120/day full-day (8am-6pm) rate. Applying the same
+// scrutiny proactively (not waiting for Ben to catch it) to the two
+// remaining recurring-policy providers found ClimbZone's page has no
+// evidence either way (their specific dates live behind an iClassPro
+// registration portal this codebase can't query, same as Fit City Kids'
+// parent portal), but BitSpace's own page explicitly says "Keep an eye out
+// for camp options for 2026-27 School Year!" — a stronger finding than a
+// partial-year gap, since it means NOTHING is confirmed open yet for any
+// seeded date. BitSpace was moved to hasRecurringOffering: false,
+// same treatment as Chicago Park District, rather than a partial-year cutoff.
 
 interface BreakInfo {
   name: string
@@ -128,6 +146,13 @@ interface ProviderSpec {
   // false and is inserted as a known camp_sources row with zero speculative
   // camps rather than 17 unverified ones. See its own notes for detail.
   hasRecurringOffering?: boolean
+  // Even a provider with a genuine recurring-offering policy can have a real
+  // registration system that simply hasn't opened bookings for the earliest
+  // break dates yet (found 2026-08-04: Lake View YMCA's own School Days Out
+  // page confirmed Labor Day and the Sept 25 PD day are not open for
+  // registration, with Oct 12 the earliest currently-open date) — no
+  // candidate is generated for any break starting before this date when set.
+  earliestConfirmedDate?: string
 }
 
 const PROVIDERS: ProviderSpec[] = [
@@ -137,7 +162,7 @@ const PROVIDERS: ProviderSpec[] = [
     url: 'https://www.ymcachicago.org/lake-view/',
     notes:
       '"School Days Out" program. Spring Break 2027 (Mar 22-26) individually published with real pricing: ' +
-      'https://www.ymcachicago.org/early-learning-education/school-age-care/school-days-out/. Other dates use the same stated recurring program/price.',
+      'https://www.ymcachicago.org/early-learning-education/school-age-care/school-days-out/. Other dates use the same stated recurring program/price. Ben checked that page directly (2026-08-04) and confirmed registration is not yet open for Labor Day or the Sep 25 PD day — Oct 12 (Indigenous Peoples\' Day) is the earliest date currently open, so no candidates are generated for the two dates before it (see earliestConfirmedDate below). This mirrors the Chicago Park District fix: a provider stating a general "every non-attendance day" policy doesn\'t guarantee its real registration system has actually opened bookings that far out yet.',
     address: '3333 N Marshfield Ave, Chicago, IL 60657',
     lat: 41.9422,
     lng: -87.6692,
@@ -145,6 +170,7 @@ const PROVIDERS: ProviderSpec[] = [
     ageMax: 13,
     pricePerDay: '70.00',
     priceIsEstimated: (breakName) => breakName !== 'Spring Break',
+    earliestConfirmedDate: '2026-10-12',
     bookingInstructions:
       'Register online at ymcachicago.org/lake-view (look for "School Days Out"), call the Lake View Y at 773-248-3333, or sign up in person at the front desk.',
     prepInstructions:
@@ -180,19 +206,21 @@ const PROVIDERS: ProviderSpec[] = [
   {
     key: 'fitcitykids',
     name: 'Fit City Kids',
-    url: 'https://www.fitcitykids.com/camps/',
-    notes: '"School\'s Out Camp" — "When school is not in session, we ARE!" Published day-camp pricing.',
+    url: 'https://www.fitcitykids.com/schools-out-camp/',
+    notes:
+      `"School's Out Camp" — real dedicated page, not the generic /camps/ page an earlier pass used (confirmed 2026-08-04). Full day (8am-6pm) is $85 for the 8am-3pm day camp block plus $35 for the 3pm-6pm after-camp extension, i.e. $120 total for the full 8am-6pm day — Ben's own stated comparison figure. The page says "26-27 School Year Dates Now LIVE!" but individual session dates are only listed on their parent portal (not fetchable as static HTML); Ben checked directly and confirmed there's no Labor Day offering — the schedule starts exactly Sep 25, 2026 (see earliestConfirmedDate below).`,
     address: '2540 W Lawrence Ave, Chicago, IL 60625',
     lat: 41.9688,
     lng: -87.6894,
     ageMin: 4,
     ageMax: 12,
-    pricePerDay: '80.00',
+    pricePerDay: '120.00',
+    earliestConfirmedDate: '2026-09-25',
     bookingInstructions:
-      'Register online at fitcitykids.com/camps. If a date you need isn\'t listed, email Camps@FitCityKids.com — they\'ll try to accommodate it.',
+      'Register through the parent portal at fitcitykids.com/schools-out-camp/. If a date you need isn\'t listed, email Camps@FitCityKids.com — they\'ll try to accommodate it.',
     prepInstructions: 'Bring gym shoes, socks, a labeled water bottle, a snack, and a lunch.',
-    description: `Fit City Kids "School's Out Camp" — fitness classes and active play, 8:30am-3pm. Ages 4-12.`,
-    sourceUrl: 'https://www.fitcitykids.com/camps/',
+    description: `Fit City Kids "School's Out Camp" — fitness classes and active play, 8am-6pm (day camp plus after-camp extension). Ages 4-12.`,
+    sourceUrl: 'https://www.fitcitykids.com/schools-out-camp/',
     imageSourceUrl: 'https://www.fitcitykids.com/',
   },
   {
@@ -200,13 +228,14 @@ const PROVIDERS: ProviderSpec[] = [
     name: 'BitSpace',
     url: 'https://education.bitspacechicago.com/day-off-camps',
     notes:
-      '"Day Off Camp" — a standing program for non-attendance days, separate from their week-long summer camp. Full-day rate ($150/day, ages 8+) corroborated across three independent searches as of 2026-08-04, but every specific booking page found for it (e.g. bitspacechicago.com/upcoming-events/dayoffcamp-*) is either JS-rendered or a since-expired per-date listing, so it could not be directly re-confirmed from a live, fetchable page the way Family Room\'s day-camp product page could — treated as estimated, same as every other non-individually-dated price below. Source URL is the actual registration portal (education.bitspacechicago.com/day-off-camps), not the marketing page (bitspacechicago.com/day-off/) — per Ben\'s direction, the source should be where you\'d actually go to book.',
+      `"Day Off Camp" — a standing program for non-attendance days, separate from their week-long summer camp, with a real full-day rate ($150/day, ages 8+) corroborated across three independent searches as of 2026-08-04. But their own bitspacechicago.com/day-off/ page explicitly states "Keep an eye out for camp options for 2026-27 School Year!" — meaning NOTHING is confirmed open yet for any of the seeded 2026-27 break dates (a stronger version of the YMCA/Fit City Kids "not open yet for early dates" finding — here it's the whole year, not just the earliest dates). Following the same principle as Chicago Park District: no speculative candidates are generated (hasRecurringOffering: false) until BitSpace actually opens registration and specific dates can be confirmed. Source URL is the actual registration portal (education.bitspacechicago.com/day-off-camps), not the marketing page — per Ben's direction, the source should be where you'd actually go to book.`,
     address: '2541 W Lawrence Ave, Chicago, IL 60625',
     lat: 41.9688,
     lng: -87.6896,
     ageMin: 8,
     ageMax: null,
     pricePerDay: '150.00',
+    hasRecurringOffering: false,
     bookingInstructions:
       'Register online at education.bitspacechicago.com/day-off-camps. Each session needs a minimum of 8 campers to run, so register early.',
     prepInstructions:
@@ -270,28 +299,30 @@ function distanceFromNettelhorst(lat: number, lng: number): string {
 }
 
 const candidates = breaks.flatMap((brk) =>
-  PROVIDERS.filter((p) => p.hasRecurringOffering ?? true).map((p) => ({
-    sourceKey: p.key,
-    // Just the provider name — feedback (2026-08-04): a title like "Labor Day
-    // YMCA Camp" repeats info already shown as the accordion section header
-    // (the break) and the date field below it, and "Camp" is redundant on
-    // the Camps tab itself. The provider name is the only genuinely
-    // differentiating information at this level.
-    title: p.name,
-    description: p.description,
-    startDate: brk.startDate,
-    endDate: brk.endDate,
-    address: p.address,
-    lat: p.lat,
-    lng: p.lng,
-    pricePerDay: p.pricePerDay,
-    priceIsEstimated: p.pricePerDay !== null && (p.priceIsEstimated?.(brk.name) ?? true),
-    ageMin: p.ageMin,
-    ageMax: p.ageMax,
-    bookingInstructions: p.bookingInstructions,
-    prepInstructions: p.prepInstructions,
-    sourceUrl: p.sourceUrl,
-  })),
+  PROVIDERS.filter((p) => p.hasRecurringOffering ?? true)
+    .filter((p) => !p.earliestConfirmedDate || brk.startDate >= p.earliestConfirmedDate)
+    .map((p) => ({
+      sourceKey: p.key,
+      // Just the provider name — feedback (2026-08-04): a title like "Labor
+      // Day YMCA Camp" repeats info already shown as the accordion section
+      // header (the break) and the date field below it, and "Camp" is
+      // redundant on the Camps tab itself. The provider name is the only
+      // genuinely differentiating information at this level.
+      title: p.name,
+      description: p.description,
+      startDate: brk.startDate,
+      endDate: brk.endDate,
+      address: p.address,
+      lat: p.lat,
+      lng: p.lng,
+      pricePerDay: p.pricePerDay,
+      priceIsEstimated: p.pricePerDay !== null && (p.priceIsEstimated?.(brk.name) ?? true),
+      ageMin: p.ageMin,
+      ageMax: p.ageMax,
+      bookingInstructions: p.bookingInstructions,
+      prepInstructions: p.prepInstructions,
+      sourceUrl: p.sourceUrl,
+    })),
 )
 
 async function main() {
