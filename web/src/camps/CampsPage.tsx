@@ -118,7 +118,7 @@ function CampRow({
           <h2>{camp.title}</h2>
           <p>{formatDateRange(camp.start_date, camp.end_date)}</p>
           {location && <IonNote>{location}</IonNote>}
-          {details && <p className="teaser">{details}</p>}
+          <p className="teaser">{details}</p>
           {description && <p className="teaser">{description}</p>}
           {camp.interested_count > 0 && (
             <InterestedBadge campId={camp.id} count={camp.interested_count} people={camp.interested_people} />

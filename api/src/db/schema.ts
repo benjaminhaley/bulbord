@@ -232,6 +232,10 @@ export const camps = pgTable('camps', {
   priceIsEstimated: boolean('price_is_estimated').notNull().default(false),
   ageMin: integer('age_min'), // years
   ageMax: integer('age_max'), // years
+  // Real-time availability isn't tracked (no live booking integration) — null
+  // means unknown, not zero. Always surfaced in the UI as "Unknown" rather
+  // than hidden, same posture as price_is_estimated (never silently omitted).
+  spotsAvailable: integer('spots_available'),
   sourceUrl: text('source_url'),
   sourceId: uuid('source_id').references(() => campSources.id),
   imageUrl: text('image_url'),

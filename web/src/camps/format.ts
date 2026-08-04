@@ -32,11 +32,16 @@ export function formatDateRange(startDate: string, endDate: string, now = new Da
   return `${shortDateLabel(startDate)} – ${shortDateLabel(endDate)}`
 }
 
-export function ageRangeLabel(ageMin: number | null, ageMax: number | null): string | null {
-  if (ageMin == null && ageMax == null) return null
-  if (ageMin != null && ageMax != null) return ageMin === ageMax ? `Age ${ageMin}` : `Ages ${ageMin}-${ageMax}`
-  if (ageMin != null) return `Ages ${ageMin}+`
-  return `Up to age ${ageMax}`
+// Every one of these always returns a labeled string, never null/empty —
+// feedback (2026-08-04): a camp missing a field (unpublished price, no
+// stated age range) should still show that field's line, explicitly marked
+// unknown, rather than silently omitting it. This applies uniformly across
+// every camp, hand-seeded or member-submitted.
+export function ageRangeLabel(ageMin: number | null, ageMax: number | null): string {
+  if (ageMin == null && ageMax == null) return 'Ages: not specified'
+  if (ageMin != null && ageMax != null) return ageMin === ageMax ? `Ages: ${ageMin}` : `Ages: ${ageMin}-${ageMax}`
+  if (ageMin != null) return `Ages: ${ageMin}+`
+  return `Ages: up to ${ageMax}`
 }
 
 // price_per_day comes back from the API as a numeric-column string (e.g.
@@ -45,39 +50,48 @@ export function ageRangeLabel(ageMin: number | null, ageMax: number | null): str
 // price inferred from a provider's stated recurring policy rather than an
 // individually published listing for this exact date — always surfaced to
 // the user, never silently shown as if confirmed.
-export function priceLabel(pricePerDay: string | null, isEstimated = false): string | null {
-  if (pricePerDay == null) return null
+export function priceLabel(pricePerDay: string | null, isEstimated = false): string {
+  if (pricePerDay == null) return 'Price: not published'
   const value = Number(pricePerDay)
-  if (Number.isNaN(value)) return null
-  const base = `$${Number.isInteger(value) ? value.toFixed(0) : value.toFixed(2)}/day`
-  return isEstimated ? `${base} (estimated)` : base
+  if (Number.isNaN(value)) return 'Price: not published'
+  const amount = `$${Number.isInteger(value) ? value.toFixed(0) : value.toFixed(2)}/day`
+  return isEstimated ? `Price: ${amount} (estimated)` : `Price: ${amount}`
 }
 
-export function distanceLabel(distanceMiles: string | null): string | null {
-  if (distanceMiles == null) return null
+export function distanceLabel(distanceMiles: string | null): string {
+  if (distanceMiles == null) return 'Distance: unknown'
   const value = Number(distanceMiles)
-  if (Number.isNaN(value)) return null
-  return `${value.toFixed(1)} mi away`
+  if (Number.isNaN(value)) return 'Distance: unknown'
+  return `Distance: ${value.toFixed(1)} mi`
 }
 
-export interface PriceableCamp {
+// Real-time availability isn't tracked (no live booking integration) — null
+// means unknown, not zero, and is shown as such rather than hidden.
+export function spotsLabel(spotsAvailable: number | null): string {
+  if (spotsAvailable == null) return 'Spots: unknown'
+  if (spotsAvailable <= 0) return 'Spots: full'
+  return `Spots: ${spotsAvailable} available`
+}
+
+export interface DetailedCamp {
   price_per_day: string | null
   price_is_estimated: boolean
   age_min: number | null
   age_max: number | null
   distance_miles: string | null
+  spots_available: number | null
 }
 
-// Price/age/distance, in that order, joined for the compact "$70/day ·
-// Ages 5-13 · 1.3 mi away" line shared by the list row and the detail page.
-export function campDetailsLine(camp: PriceableCamp): string {
+// Price/age/distance/spots, in that order, always all four regardless of
+// which are known — joined for the "Price: $70/day · Ages: 5-13 · Distance:
+// 1.3 mi · Spots: unknown" line shared by the list row and the detail page.
+export function campDetailsLine(camp: DetailedCamp): string {
   return [
     priceLabel(camp.price_per_day, camp.price_is_estimated),
     ageRangeLabel(camp.age_min, camp.age_max),
     distanceLabel(camp.distance_miles),
-  ]
-    .filter((v): v is string => v !== null)
-    .join(' · ')
+    spotsLabel(camp.spots_available),
+  ].join(' · ')
 }
 
 // Addresses are typically stored as "Street, Chicago, IL 60613" — everything

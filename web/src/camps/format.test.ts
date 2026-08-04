@@ -8,6 +8,7 @@ import {
   formatDateRange,
   locationLabel,
   priceLabel,
+  spotsLabel,
   teaser,
 } from './format'
 
@@ -32,72 +33,94 @@ describe('formatDateRange', () => {
 })
 
 describe('ageRangeLabel', () => {
-  it('returns null when neither bound is set', () => {
-    expect(ageRangeLabel(null, null)).toBeNull()
+  it('flags an unspecified age range explicitly rather than omitting it', () => {
+    expect(ageRangeLabel(null, null)).toBe('Ages: not specified')
   })
 
   it('shows a single age when min equals max', () => {
-    expect(ageRangeLabel(6, 6)).toBe('Age 6')
+    expect(ageRangeLabel(6, 6)).toBe('Ages: 6')
   })
 
   it('shows a range when both bounds are set and differ', () => {
-    expect(ageRangeLabel(5, 12)).toBe('Ages 5-12')
+    expect(ageRangeLabel(5, 12)).toBe('Ages: 5-12')
   })
 
   it('shows an open-ended range when only the minimum is set', () => {
-    expect(ageRangeLabel(8, null)).toBe('Ages 8+')
+    expect(ageRangeLabel(8, null)).toBe('Ages: 8+')
   })
 
   it('shows an upper bound only when only the maximum is set', () => {
-    expect(ageRangeLabel(null, 10)).toBe('Up to age 10')
+    expect(ageRangeLabel(null, 10)).toBe('Ages: up to 10')
   })
 })
 
 describe('priceLabel', () => {
-  it('returns null for no price', () => {
-    expect(priceLabel(null)).toBeNull()
+  it('flags an unpublished price explicitly rather than omitting it', () => {
+    expect(priceLabel(null)).toBe('Price: not published')
   })
 
   it('formats a whole-dollar price without decimals', () => {
-    expect(priceLabel('45.00')).toBe('$45/day')
+    expect(priceLabel('45.00')).toBe('Price: $45/day')
   })
 
   it('formats a fractional price with two decimals', () => {
-    expect(priceLabel('39.50')).toBe('$39.50/day')
+    expect(priceLabel('39.50')).toBe('Price: $39.50/day')
   })
 
   it('flags an inferred price as estimated rather than showing it as confirmed', () => {
-    expect(priceLabel('70.00', true)).toBe('$70/day (estimated)')
+    expect(priceLabel('70.00', true)).toBe('Price: $70/day (estimated)')
+  })
+})
+
+describe('spotsLabel', () => {
+  it('flags unknown availability explicitly rather than showing zero', () => {
+    expect(spotsLabel(null)).toBe('Spots: unknown')
+  })
+
+  it('shows a count when known', () => {
+    expect(spotsLabel(12)).toBe('Spots: 12 available')
+  })
+
+  it('shows full when zero or fewer', () => {
+    expect(spotsLabel(0)).toBe('Spots: full')
   })
 })
 
 describe('campDetailsLine', () => {
-  it('joins price, age range, and distance with a middle dot', () => {
+  it('always joins price, age range, distance, and spots — even when some are unknown', () => {
     expect(
-      campDetailsLine({ price_per_day: '70.00', price_is_estimated: false, age_min: 5, age_max: 13, distance_miles: '1.26' }),
-    ).toBe('$70/day · Ages 5-13 · 1.3 mi away')
+      campDetailsLine({
+        price_per_day: '70.00',
+        price_is_estimated: false,
+        age_min: 5,
+        age_max: 13,
+        distance_miles: '1.26',
+        spots_available: null,
+      }),
+    ).toBe('Price: $70/day · Ages: 5-13 · Distance: 1.3 mi · Spots: unknown')
   })
 
-  it('flags an estimated price and omits missing fields', () => {
+  it('shows explicit placeholders for every unknown field rather than omitting them', () => {
     expect(
-      campDetailsLine({ price_per_day: '70.00', price_is_estimated: true, age_min: null, age_max: null, distance_miles: null }),
-    ).toBe('$70/day (estimated)')
-  })
-
-  it('returns an empty string when nothing is known', () => {
-    expect(campDetailsLine({ price_per_day: null, price_is_estimated: false, age_min: null, age_max: null, distance_miles: null })).toBe(
-      '',
-    )
+      campDetailsLine({
+        price_per_day: null,
+        price_is_estimated: false,
+        age_min: null,
+        age_max: null,
+        distance_miles: null,
+        spots_available: null,
+      }),
+    ).toBe('Price: not published · Ages: not specified · Distance: unknown · Spots: unknown')
   })
 })
 
 describe('distanceLabel', () => {
-  it('returns null for no distance', () => {
-    expect(distanceLabel(null)).toBeNull()
+  it('flags unknown distance explicitly rather than omitting it', () => {
+    expect(distanceLabel(null)).toBe('Distance: unknown')
   })
 
   it('formats a distance to one decimal place', () => {
-    expect(distanceLabel('2.34')).toBe('2.3 mi away')
+    expect(distanceLabel('2.34')).toBe('Distance: 2.3 mi')
   })
 })
 

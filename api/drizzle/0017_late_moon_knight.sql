@@ -1,0 +1,1 @@
+ALTER TABLE "camps" ADD COLUMN "spots_available" integer;

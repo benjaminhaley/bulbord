@@ -16,6 +16,7 @@ function camp(overrides: Partial<Camp> = {}): Camp {
     price_per_day: null,
     price_is_estimated: false,
     age_min: null,
+    spots_available: null,
     age_max: null,
     source_url: null,
     image_url: null,

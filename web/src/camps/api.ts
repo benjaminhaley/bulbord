@@ -19,6 +19,8 @@ export interface Camp {
   price_is_estimated: boolean
   age_min: number | null
   age_max: number | null
+  // Real-time availability isn't tracked — null means unknown, not zero.
+  spots_available: number | null
   source_url: string | null
   image_url: string | null
   thumbnail_url: string | null
@@ -42,6 +44,7 @@ export interface CampInput {
   price_per_day: number | null
   age_min: number | null
   age_max: number | null
+  spots_available: number | null
   source_url: string
   image_url: string | null
   thumbnail_url: string | null

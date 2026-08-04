@@ -55,7 +55,7 @@ export function CampDetailPage() {
       .catch(() => setError(true))
   }, [id])
 
-  const details = camp ? campDetailsLine(camp) : ''
+  const details = camp ? campDetailsLine(camp) : null
 
   return (
     <IonPage>
@@ -131,7 +131,7 @@ export function CampDetailPage() {
             {camp.submitted_by && (
               <p style={{ color: 'var(--ion-color-medium)', marginTop: -8 }}>Posted by {camp.submitted_by.name}</p>
             )}
-            {details && <p>{details}</p>}
+            {details !== null && <p>{details}</p>}
             {camp.interested_count > 0 && (
               <InterestedBadge campId={camp.id} count={camp.interested_count} people={camp.interested_people} />
             )}

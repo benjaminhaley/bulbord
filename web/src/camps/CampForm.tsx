@@ -49,6 +49,7 @@ export function CampForm({
   const [pricePerDay, setPricePerDay] = useState(initial?.price_per_day ?? '')
   const [ageMin, setAgeMin] = useState(initial?.age_min != null ? String(initial.age_min) : '')
   const [ageMax, setAgeMax] = useState(initial?.age_max != null ? String(initial.age_max) : '')
+  const [spotsAvailable, setSpotsAvailable] = useState(initial?.spots_available != null ? String(initial.spots_available) : '')
   const [sourceUrl, setSourceUrl] = useState(initial?.source_url ?? '')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -73,6 +74,7 @@ export function CampForm({
           price_per_day: pricePerDay.trim() ? Number(pricePerDay) : null,
           age_min: ageMin.trim() ? Number(ageMin) : null,
           age_max: ageMax.trim() ? Number(ageMax) : null,
+          spots_available: spotsAvailable.trim() ? Number(spotsAvailable) : null,
           source_url: sourceUrl.trim(),
         }),
       )
@@ -121,6 +123,15 @@ export function CampForm({
       <IonItem>
         <IonLabel position="stacked">Maximum age</IonLabel>
         <IonInput type="number" value={ageMax} onIonInput={(e) => setAgeMax(e.detail.value ?? '')} placeholder="Optional" />
+      </IonItem>
+      <IonItem>
+        <IonLabel position="stacked">Spots available</IonLabel>
+        <IonInput
+          type="number"
+          value={spotsAvailable}
+          onIonInput={(e) => setSpotsAvailable(e.detail.value ?? '')}
+          placeholder="Optional"
+        />
       </IonItem>
       <IonItem>
         <IonLabel position="stacked">Source URL</IonLabel>

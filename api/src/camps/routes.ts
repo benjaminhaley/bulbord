@@ -30,6 +30,7 @@ type SerializableCamp = Pick<
   | 'priceIsEstimated'
   | 'ageMin'
   | 'ageMax'
+  | 'spotsAvailable'
   | 'sourceUrl'
   | 'imageUrl'
   | 'thumbnailUrl'
@@ -67,6 +68,9 @@ function serializeCamp(c: HydratedCamp, currentUserId: string | null) {
     price_is_estimated: c.priceIsEstimated,
     age_min: c.ageMin,
     age_max: c.ageMax,
+    // Real-time availability isn't tracked — null means unknown, not zero.
+    // Only ever set by a seed script today; not on the self-service body.
+    spots_available: c.spotsAvailable,
     source_url: c.sourceUrl,
     image_url: c.imageUrl,
     thumbnail_url: c.thumbnailUrl,
@@ -184,6 +188,7 @@ export async function campsRoutes(app: FastifyInstance) {
       price_per_day?: number
       age_min?: number
       age_max?: number
+      spots_available?: number
       source_url?: string
       image_url?: string
       thumbnail_url?: string
@@ -212,6 +217,7 @@ export async function campsRoutes(app: FastifyInstance) {
         pricePerDay: body.price_per_day != null ? String(body.price_per_day) : null,
         ageMin: body.age_min != null ? Math.trunc(body.age_min) : null,
         ageMax: body.age_max != null ? Math.trunc(body.age_max) : null,
+        spotsAvailable: body.spots_available != null ? Math.trunc(body.spots_available) : null,
         sourceUrl: body.source_url?.trim() || null,
         imageUrl: body.image_url || null,
         thumbnailUrl: body.thumbnail_url || null,
@@ -238,6 +244,7 @@ export async function campsRoutes(app: FastifyInstance) {
       price_per_day?: number
       age_min?: number
       age_max?: number
+      spots_available?: number
       source_url?: string
       image_url?: string
       thumbnail_url?: string
@@ -280,6 +287,7 @@ export async function campsRoutes(app: FastifyInstance) {
           pricePerDay: body.price_per_day != null ? String(body.price_per_day) : null,
           ageMin: body.age_min != null ? Math.trunc(body.age_min) : null,
           ageMax: body.age_max != null ? Math.trunc(body.age_max) : null,
+          spotsAvailable: body.spots_available != null ? Math.trunc(body.spots_available) : null,
           sourceUrl: body.source_url?.trim() || null,
           imageUrl: body.image_url || null,
           thumbnailUrl: body.thumbnail_url || null,
