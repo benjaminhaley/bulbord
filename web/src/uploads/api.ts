@@ -10,7 +10,7 @@ interface UploadResponse {
   data: UploadedImage
 }
 
-export async function uploadImage(file: File | Blob, folder?: 'feedback' | 'profiles' | 'events'): Promise<UploadedImage> {
+export async function uploadImage(file: File | Blob, folder?: 'feedback' | 'profiles' | 'events' | 'camps'): Promise<UploadedImage> {
   const form = new FormData()
   form.append('file', file)
   if (folder) form.append('folder', folder)

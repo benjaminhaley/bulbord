@@ -17,6 +17,9 @@ import { EventDetailPage } from '../events/EventDetailPage'
 import { SourcesPage } from '../events/SourcesPage'
 import { SourceDetailPage } from '../events/SourceDetailPage'
 import { CampsPage } from '../camps/CampsPage'
+import { CampDetailPage } from '../camps/CampDetailPage'
+import { CampSourcesPage } from '../camps/CampSourcesPage'
+import { CampSourceDetailPage } from '../camps/CampSourceDetailPage'
 import { FeedbackPage } from '../feedback/FeedbackPage'
 import { ShareButton } from '../sharing/ShareButton'
 
@@ -33,6 +36,9 @@ export function App() {
                 <Route exact path="/event-sources/:id" component={SourceDetailPage} />
                 <Route exact path="/events/:id" component={EventDetailPage} />
                 <Route exact path="/camps" component={CampsPage} />
+                <Route exact path="/camp-sources" component={CampSourcesPage} />
+                <Route exact path="/camp-sources/:id" component={CampSourceDetailPage} />
+                <Route exact path="/camps/:id" component={CampDetailPage} />
                 <Route exact path="/feedback" component={FeedbackPage} />
                 <Route exact path="/account" component={AccountPage} />
                 <Route exact path="/about" component={AboutPage} />

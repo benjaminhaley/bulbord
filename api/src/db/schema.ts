@@ -186,3 +186,103 @@ export const feedbackImages = pgTable('feedback_images', {
   position: integer('position').notNull().default(0),
   ...timestamps,
 })
+
+// Camps (feedback #50) is a deliberately fresh, non-shared clone of the
+// events tables above — camps and events are expected to diverge over time,
+// so this is its own set of tables rather than a reuse of events/eventSources.
+export const campSources = pgTable('camp_sources', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  name: text('name').notNull(),
+  url: text('url').notNull(),
+  type: text('type').notNull(), // 'provider_website' today
+  isActive: boolean('is_active').notNull().default(true),
+  lastCheckedAt: timestamp('last_checked_at', { withTimezone: true }),
+  notes: text('notes'),
+  ...timestamps,
+})
+
+export const camps = pgTable('camps', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  title: text('title').notNull(),
+  description: text('description'),
+  // Camps are date ranges, not single dates like events — endDate is NOT
+  // NULL because the application layer defaults it to startDate on write
+  // when omitted (a single-day camp), so every downstream date-range
+  // comparison (school-break overlap grouping) never needs to coalesce a
+  // null. No time-of-day fields (startTime/allDay) — camps aren't scheduled
+  // to the hour the way events are.
+  startDate: date('start_date').notNull(),
+  endDate: date('end_date').notNull(),
+  address: text('address'),
+  locationName: text('location_name'),
+  latitude: numeric('latitude', { precision: 9, scale: 6 }),
+  longitude: numeric('longitude', { precision: 9, scale: 6 }),
+  // Straight-line miles from Nettelhorst (see camps/geo.ts), populated
+  // opportunistically whenever latitude/longitude are known — same posture
+  // as latitude/longitude themselves, not a live lookup.
+  distanceMiles: numeric('distance_miles', { precision: 5, scale: 2 }),
+  pricePerDay: numeric('price_per_day', { precision: 6, scale: 2 }),
+  // True when pricePerDay was inferred from a provider's stated recurring
+  // policy (e.g. "we run camp on every CPS non-attendance day, $X/day")
+  // applied to a specific future break date, rather than an individually
+  // published listing for that date — surfaced to users (see camps/format.ts
+  // priceLabel) so an inferred price is never shown as if it were confirmed.
+  // A later pass should revisit these and replace inferred prices with
+  // actual published ones as they become available.
+  priceIsEstimated: boolean('price_is_estimated').notNull().default(false),
+  ageMin: integer('age_min'), // years
+  ageMax: integer('age_max'), // years
+  sourceUrl: text('source_url'),
+  sourceId: uuid('source_id').references(() => campSources.id),
+  imageUrl: text('image_url'),
+  thumbnailUrl: text('thumbnail_url'),
+  status: text('status').notNull().default('pending'), // 'pending' | 'approved' | 'rejected'
+  submittedByUserId: uuid('submitted_by_user_id'),
+  approvedByUserId: uuid('approved_by_user_id'),
+  ...timestamps,
+})
+
+// One row per (user, camp) ever swiped, toggled via deletedAt — same shape
+// as eventInterests above.
+export const campInterests = pgTable(
+  'camp_interests',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id),
+    campId: uuid('camp_id')
+      .notNull()
+      .references(() => camps.id),
+    status: text('status').notNull(), // 'interested' | 'dismissed'
+    ...timestamps,
+  },
+  (table) => [uniqueIndex('camp_interests_user_camp_idx').on(table.userId, table.campId)],
+)
+
+export const campComments = pgTable('camp_comments', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  campId: uuid('camp_id')
+    .notNull()
+    .references(() => camps.id),
+  userId: uuid('user_id')
+    .notNull()
+    .references(() => users.id),
+  body: text('body').notNull(),
+  ...timestamps,
+})
+
+// Nettelhorst/CPS school-break calendar, driving the Camps tab's
+// accordion-by-break browse view. No events equivalent.
+export const schoolBreaks = pgTable('school_breaks', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  name: text('name').notNull(), // "Thanksgiving Break", "Winter Break", "Spring Break", "Summer Break"
+  startDate: date('start_date').notNull(),
+  endDate: date('end_date').notNull(),
+  // True only for Summer Break today — tells the by-break grouping to split
+  // this break into weekly buckets for browsing instead of one section,
+  // since camps run week-by-week over the summer.
+  splitWeekly: boolean('split_weekly').notNull().default(false),
+  notes: text('notes'), // source citation, same convention as eventSources.notes
+  ...timestamps,
+})

@@ -1,0 +1,1 @@
+ALTER TABLE "camps" ADD COLUMN "price_is_estimated" boolean DEFAULT false NOT NULL;
