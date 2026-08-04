@@ -155,8 +155,8 @@ export function CampDetailPage() {
                 View source
               </IonButton>
             )}
-            <SourceNotesSection campId={camp.id} source={camp.source} />
             <CommentsSection campId={camp.id} />
+            <SourceNotesSection campId={camp.id} source={camp.source} />
           </>
         )}
       </IonContent>

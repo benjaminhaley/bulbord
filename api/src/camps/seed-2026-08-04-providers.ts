@@ -94,7 +94,6 @@ interface ProviderSpec {
   priceIsEstimated?: (breakName: string) => boolean
   bookingInstructions: string
   prepInstructions: string
-  title: (breakName: string) => string
   description: string
   sourceUrl: string
   // A real, image-rich page to pull a representative photo/logo from — often
@@ -122,7 +121,6 @@ const PROVIDERS: ProviderSpec[] = [
       'Register online at ymcachicago.org/lake-view (look for "School Days Out"), call the Lake View Y at 773-248-3333, or sign up in person at the front desk.',
     prepInstructions:
       'Pack a lunch and a water bottle (no glass). Bring a swimsuit and towel if the day includes pool time, and dress for active play.',
-    title: (breakName) => `${breakName} YMCA Camp`,
     description: 'Lake View YMCA "School Days Out" — full day of activities while school is out. Ages 5-13.',
     sourceUrl: 'https://www.ymcachicago.org/early-learning-education/school-age-care/school-days-out/',
     // ymcachicago.org's own pages lazy-load images via JS with no static
@@ -147,7 +145,6 @@ const PROVIDERS: ProviderSpec[] = [
       'Sign up online at climbzone.us/chicago/camps for whichever specific day(s) you need — no minimum number of days required.',
     prepInstructions:
       'Wear sneakers or gym shoes. Grip socks are required in the soft-play area (bring your own or buy a pair on-site). Pack a lunch, or pre-order one from ClimbZone for $10/child.',
-    title: (breakName) => `${breakName} ClimbZone Camp`,
     description: 'ClimbZone Chicago full-day camp — climbing walls, high ropes, laser tag, arts and crafts. Ages 5-12.',
     sourceUrl: 'https://www.climbzone.us/chicago/camps/',
     imageSourceUrl: 'https://www.climbzone.us/chicago/',
@@ -166,7 +163,6 @@ const PROVIDERS: ProviderSpec[] = [
     bookingInstructions:
       'Register online at fitcitykids.com/camps. If a date you need isn\'t listed, email Camps@FitCityKids.com — they\'ll try to accommodate it.',
     prepInstructions: 'Bring gym shoes, socks, a labeled water bottle, a snack, and a lunch.',
-    title: (breakName) => `${breakName} Fit City Kids Camp`,
     description: `Fit City Kids "School's Out Camp" — fitness classes and active play, 8:30am-3pm. Ages 4-12.`,
     sourceUrl: 'https://www.fitcitykids.com/camps/',
     imageSourceUrl: 'https://www.fitcitykids.com/',
@@ -187,7 +183,6 @@ const PROVIDERS: ProviderSpec[] = [
       'Register online at education.bitspacechicago.com/day-off-camps. Each session needs a minimum of 8 campers to run, so register early.',
     prepInstructions:
       'Pack a nut-free sack lunch, snacks, and a water bottle. No open-toed shoes, crocs, loose jewelry, or loose clothing — bring a hair tie for long hair, and dress for mess (some days get messy). A phone is fine for emergencies but must stay zipped in the backpack.',
-    title: (breakName) => `${breakName} BitSpace Day Off Camp`,
     description:
       'BitSpace "Day Off Camp" — design thinking, 3D printing, woodworking, and programmable electronics, 9am-4pm. Full day for ages 8+; a half-day option also exists for ages 7-12.',
     sourceUrl: 'https://bitspacechicago.com/day-off/',
@@ -209,7 +204,6 @@ const PROVIDERS: ProviderSpec[] = [
       'Create a free account at chicagoparkdistrict.com (Programs > Registration Information) and register online, or register in person at the Gill Park fieldhouse (825 W Sheridan Rd) — call ahead to confirm in-person registration hours.',
     prepInstructions:
       'Bring a backpack, a change of clothes if needed, a water bottle, and sunscreen (apply before arrival). A free lunch and snack are provided district-wide, though kids are welcome to bring their own.',
-    title: (breakName) => `${breakName} Chicago Park District Camp (Gill Park)`,
     description:
       'Chicago Park District day camp at Gill Park (825 W Sheridan Rd) — recreational activities, arts and crafts, sports.',
     sourceUrl: 'https://www.chicagoparkdistrict.com/camp-programs',
@@ -230,7 +224,6 @@ const PROVIDERS: ProviderSpec[] = [
     bookingInstructions:
       'No reservation needed for general drop-in play — just walk in during open hours (9am-6pm daily). Download the Family Room app to book a Day Pass in advance or manage a membership.',
     prepInstructions: 'None required — it\'s a drop-in play space, come as you are.',
-    title: (breakName) => `${breakName} Family Room Day Pass (Broadway)`,
     description:
       'Family Room Chicago — Broadway Clubhouse Suite. A drop-in supervised play/childcare space, not a structured camp curriculum (open 9am-6pm daily). No age minimum.',
     sourceUrl: 'https://familyroomchicago.com/membership/',
@@ -248,7 +241,12 @@ function distanceFromNettelhorst(lat: number, lng: number): string {
 const candidates = breaks.flatMap((brk) =>
   PROVIDERS.map((p) => ({
     sourceKey: p.key,
-    title: p.title(brk.name),
+    // Just the provider name — feedback (2026-08-04): a title like "Labor Day
+    // YMCA Camp" repeats info already shown as the accordion section header
+    // (the break) and the date field below it, and "Camp" is redundant on
+    // the Camps tab itself. The provider name is the only genuinely
+    // differentiating information at this level.
+    title: p.name,
     description: p.description,
     startDate: brk.startDate,
     endDate: brk.endDate,

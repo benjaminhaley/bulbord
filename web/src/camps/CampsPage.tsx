@@ -279,7 +279,6 @@ export function CampsPage() {
                       <IonNote>{formatDateRange(bucket.start_date, bucket.end_date)}</IonNote>
                     )}
                   </IonLabel>
-                  <IonNote slot="end">{bucket.camps.length}</IonNote>
                 </IonItem>
                 <div slot="content">
                   <IonList>

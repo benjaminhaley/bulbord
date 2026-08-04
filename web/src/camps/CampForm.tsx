@@ -5,17 +5,21 @@ import {
   IonItem,
   IonLabel,
   IonList,
+  IonSelect,
+  IonSelectOption,
   IonSpinner,
   IonText,
   IonTextarea,
 } from '@ionic/react'
 import { closeOutline, imageOutline } from 'ionicons/icons'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
 import { API_URL } from '../config'
 import type { UploadedImage } from '../uploads/api'
-import type { Camp, CampInput } from './api'
+import { fetchCampsByBreak, type BreakBucket, type Camp, type CampInput } from './api'
 import { useCampImageUpload } from './useCampImageUpload'
+
+const CUSTOM_DATE = 'custom'
 
 function toCampInput(image: UploadedImage | null, fields: Omit<CampInput, 'image_url' | 'thumbnail_url'>): CampInput {
   return { ...fields, image_url: image?.image_url ?? null, thumbnail_url: image?.thumbnail_url ?? null }
@@ -45,6 +49,30 @@ export function CampForm({
   const [description, setDescription] = useState(initial?.description ?? '')
   const [startDate, setStartDate] = useState(initial?.start_date ?? '')
   const [endDate, setEndDate] = useState(initial?.end_date ?? '')
+  // Every upcoming school-break/week bucket, offered as one-tap shortcuts to
+  // fill in start/end date (feedback, 2026-08-04: picking a known school day
+  // should be the easy path; a fully custom date must still be possible).
+  // Fetched independently rather than passed as a prop so this works the
+  // same whether the form is rendered from CampsPage (which already has
+  // this data loaded) or CampDetailPage (which doesn't) — a handful of rows,
+  // cheap to re-fetch.
+  const [breakBuckets, setBreakBuckets] = useState<BreakBucket[]>([])
+  const [selectedBucketId, setSelectedBucketId] = useState<string>(CUSTOM_DATE)
+
+  useEffect(() => {
+    fetchCampsByBreak()
+      .then((buckets) => setBreakBuckets(buckets.filter((b) => b.id !== 'other')))
+      .catch(() => setBreakBuckets([]))
+  }, [])
+
+  function selectBucket(bucketId: string) {
+    setSelectedBucketId(bucketId)
+    if (bucketId === CUSTOM_DATE) return
+    const bucket = breakBuckets.find((b) => b.id === bucketId)
+    if (!bucket) return
+    setStartDate(bucket.start_date)
+    setEndDate(bucket.end_date)
+  }
   const [address, setAddress] = useState(initial?.address ?? '')
   const [pricePerDay, setPricePerDay] = useState(initial?.price_per_day ?? '')
   const [ageMin, setAgeMin] = useState(initial?.age_min != null ? String(initial.age_min) : '')
@@ -100,12 +128,43 @@ export function CampForm({
         <IonTextarea value={description} onIonInput={(e) => setDescription(e.detail.value ?? '')} autoGrow />
       </IonItem>
       <IonItem>
+        <IonLabel position="stacked">School day</IonLabel>
+        <IonSelect
+          value={selectedBucketId}
+          onIonChange={(e) => selectBucket(e.detail.value as string)}
+          interface="action-sheet"
+        >
+          <IonSelectOption value={CUSTOM_DATE}>Custom date</IonSelectOption>
+          {breakBuckets.map((bucket) => (
+            <IonSelectOption key={bucket.id} value={bucket.id}>
+              {bucket.label}
+            </IonSelectOption>
+          ))}
+        </IonSelect>
+      </IonItem>
+      <IonItem>
         <IonLabel position="stacked">Start date</IonLabel>
-        <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} style={dateInputStyle} />
+        <input
+          type="date"
+          value={startDate}
+          onChange={(e) => {
+            setStartDate(e.target.value)
+            setSelectedBucketId(CUSTOM_DATE)
+          }}
+          style={dateInputStyle}
+        />
       </IonItem>
       <IonItem>
         <IonLabel position="stacked">End date (optional — defaults to start date)</IonLabel>
-        <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} style={dateInputStyle} />
+        <input
+          type="date"
+          value={endDate}
+          onChange={(e) => {
+            setEndDate(e.target.value)
+            setSelectedBucketId(CUSTOM_DATE)
+          }}
+          style={dateInputStyle}
+        />
       </IonItem>
       <IonItem>
         <IonLabel position="stacked">Location</IonLabel>
