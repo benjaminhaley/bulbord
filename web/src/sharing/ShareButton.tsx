@@ -10,7 +10,7 @@ import {
   IonTitle,
   IonToolbar,
 } from '@ionic/react'
-import { closeOutline, shareOutline } from 'ionicons/icons'
+import { closeOutline, paperPlaneOutline, shareOutline } from 'ionicons/icons'
 import { useEffect, useRef, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 import QRCode from 'qrcode'
@@ -74,6 +74,19 @@ export function ShareButton() {
           <div className="share-content">
             {qrDataUrl && <img src={qrDataUrl} alt="QR code for this page" className="share-qr" />}
             <IonNote>{shareUrl}</IonNote>
+            {/* Feature-detected (feedback #58: "make it easy to share over
+                text or email") — opens the phone's own share sheet with this
+                page's link, same real Messages/Mail/etc. apps a person would
+                pick from the OS itself. Supported on the mobile Safari/Chrome
+                this app actually targets (see CLAUDE.md's Platform strategy);
+                not rendered where it's unsupported (e.g. a plain desktop
+                browser) rather than showing a dead button. */}
+            {typeof navigator.share === 'function' && (
+              <IonButton expand="block" fill="outline" onClick={() => void navigator.share({ url: shareUrl }).catch(() => {})}>
+                <IonIcon slot="start" icon={paperPlaneOutline} />
+                Share via Text, Email, etc.
+              </IonButton>
+            )}
           </div>
         </IonContent>
       </IonModal>

@@ -170,6 +170,11 @@ export const feedback = pgTable('feedback', {
   completedAt: timestamp('completed_at', { withTimezone: true }),
   completionNote: text('completion_note'),
   completedByUserId: uuid('completed_by_user_id').references(() => users.id),
+  // A deliberately-deferred item — distinct from completedAt (which means
+  // "done"). Mutually exclusive with being in the default Open view; an
+  // admin can move an item to/from backlog independent of completion
+  // (feedback #52).
+  backloggedAt: timestamp('backlogged_at', { withTimezone: true }),
   ...timestamps,
 })
 

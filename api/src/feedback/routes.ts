@@ -11,7 +11,15 @@ type FeedbackImage = { imageUrl: string; thumbnailUrl: string }
 function serializeFeedback(
   f: Pick<
     typeof feedback.$inferSelect,
-    'id' | 'number' | 'title' | 'description' | 'createdAt' | 'completedAt' | 'completionNote' | 'createdByUserId'
+    | 'id'
+    | 'number'
+    | 'title'
+    | 'description'
+    | 'createdAt'
+    | 'completedAt'
+    | 'completionNote'
+    | 'backloggedAt'
+    | 'createdByUserId'
   >,
   authorName: string | null,
   images: FeedbackImage[],
@@ -27,6 +35,7 @@ function serializeFeedback(
     images: images.map((img) => ({ image_url: img.imageUrl, thumbnail_url: img.thumbnailUrl })),
     completed_at: f.completedAt,
     completion_note: f.completionNote,
+    backlogged_at: f.backloggedAt,
     can_edit: canEditFeedback(currentUser, f),
   }
 }
@@ -87,6 +96,7 @@ export async function feedbackRoutes(app: FastifyInstance) {
         createdAt: feedback.createdAt,
         completedAt: feedback.completedAt,
         completionNote: feedback.completionNote,
+        backloggedAt: feedback.backloggedAt,
         createdByUserId: feedback.createdByUserId,
         authorName: users.name,
       })
@@ -239,5 +249,51 @@ export async function feedbackRoutes(app: FastifyInstance) {
     return reply.send({
       data: serializeFeedback(updated, authorRow[0]?.name ?? null, images.get(id) ?? [], request.currentUser!),
     })
+  })
+
+  // Backlog is a third, independent state alongside open/completed (feedback
+  // #52) — a deliberately-deferred item, not a done one. Shares the
+  // set-timestamp-then-reload shape of /complete above, but factored into one
+  // helper since backlog/unbacklog are the same operation with the opposite
+  // value.
+  async function setBacklogged(id: string, currentUser: { id: string }, value: Date | null) {
+    const [updated] = await db
+      .update(feedback)
+      .set({ backloggedAt: value, updatedAt: new Date() })
+      .where(and(eq(feedback.id, id), isNull(feedback.deletedAt)))
+      .returning()
+
+    if (!updated) {
+      return null
+    }
+
+    await db.insert(eventsLog).values({
+      actor: currentUser.id,
+      action: value ? 'feedback_backlogged' : 'feedback_unbacklogged',
+      metadata: { feedbackId: id },
+    })
+
+    const [authorRow, images] = await Promise.all([
+      updated.createdByUserId
+        ? db.select({ name: users.name }).from(users).where(eq(users.id, updated.createdByUserId)).limit(1)
+        : Promise.resolve([]),
+      fetchImagesByFeedbackId([id]),
+    ])
+
+    return serializeFeedback(updated, authorRow[0]?.name ?? null, images.get(id) ?? [], currentUser)
+  }
+
+  app.post('/feedback/:id/backlog', { preHandler: requireRole('admin') }, async (request, reply) => {
+    const { id } = request.params as { id: string }
+    const data = await setBacklogged(id, request.currentUser!, new Date())
+    if (!data) return reply.code(404).send({ error: { message: 'Feedback not found' } })
+    return reply.send({ data })
+  })
+
+  app.post('/feedback/:id/unbacklog', { preHandler: requireRole('admin') }, async (request, reply) => {
+    const { id } = request.params as { id: string }
+    const data = await setBacklogged(id, request.currentUser!, null)
+    if (!data) return reply.code(404).send({ error: { message: 'Feedback not found' } })
+    return reply.send({ data })
   })
 }

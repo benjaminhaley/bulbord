@@ -16,6 +16,19 @@ function openShareModal(container: HTMLElement) {
   fireEvent.click(fab)
 }
 
+// Leaving IonModal open across a test boundary lets its present()/dismiss()
+// lifecycle promises resolve after testing-library's cleanup has already
+// torn the tree down, surfacing as an unrelated-looking "framework delegate
+// is missing" unhandled rejection in a later test — so every test below
+// closes it before finishing. It portals its content to document.body
+// rather than rendering inline under the component's own container, so the
+// close button has to be found document-wide, unlike the fab button above.
+function closeShareModal() {
+  const closeButton = document.querySelector('ion-header ion-button')
+  if (!closeButton) throw new Error('share modal close button not found')
+  fireEvent.click(closeButton)
+}
+
 describe('ShareButton', () => {
   it('shares a plain URL with no invite param when logged out', async () => {
     mockUseAuth.mockReturnValue({ user: null })
@@ -29,6 +42,7 @@ describe('ShareButton', () => {
     await waitFor(() => {
       expect(screen.getByText(/\/events\/abc123$/)).toBeInTheDocument()
     })
+    closeShareModal()
   })
 
   it('appends ?invite=<user id> to the shared URL when logged in', async () => {
@@ -43,5 +57,46 @@ describe('ShareButton', () => {
     await waitFor(() => {
       expect(screen.getByText(/\/events\/abc123\?invite=user-42$/)).toBeInTheDocument()
     })
+    closeShareModal()
+  })
+
+  // jsdom has no navigator.share, matching a plain desktop browser — the
+  // native share button (feedback #58) must not render a dead control there.
+  it('does not render the native share button when navigator.share is unsupported', () => {
+    mockUseAuth.mockReturnValue({ user: null })
+    const { container } = render(
+      <MemoryRouter initialEntries={['/events/abc123']}>
+        <ShareButton />
+      </MemoryRouter>,
+    )
+    openShareModal(container)
+
+    expect(screen.queryByText('Share via Text, Email, etc.')).not.toBeInTheDocument()
+    closeShareModal()
+  })
+
+  it('calls navigator.share with the current page URL when the native share button is tapped', async () => {
+    // Defining just the one method (rather than replacing the whole
+    // `navigator` object, e.g. via vi.stubGlobal) keeps every other property
+    // Ionic's own internals read from navigator (userAgent, platform
+    // detection, etc.) intact.
+    const shareMock = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, 'share', { value: shareMock, configurable: true })
+    mockUseAuth.mockReturnValue({ user: null })
+    const { container } = render(
+      <MemoryRouter initialEntries={['/events/abc123']}>
+        <ShareButton />
+      </MemoryRouter>,
+    )
+    openShareModal(container)
+
+    const shareButton = await screen.findByText('Share via Text, Email, etc.')
+    fireEvent.click(shareButton)
+
+    await waitFor(() => {
+      expect(shareMock).toHaveBeenCalledWith({ url: expect.stringContaining('/events/abc123') })
+    })
+    delete (navigator as { share?: unknown }).share
+    closeShareModal()
   })
 })

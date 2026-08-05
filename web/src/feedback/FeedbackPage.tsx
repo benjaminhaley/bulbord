@@ -18,7 +18,7 @@ import {
   IonTitle,
   IonToolbar,
 } from '@ionic/react'
-import { addOutline, checkmarkOutline, closeOutline, createOutline, imageOutline } from 'ionicons/icons'
+import { addOutline, arrowUndoOutline, checkmarkOutline, closeOutline, createOutline, imageOutline, timeOutline } from 'ionicons/icons'
 import { type ReactNode, useEffect, useState } from 'react'
 
 import { InstitutionBanner } from '../app/InstitutionBanner'
@@ -27,7 +27,15 @@ import { API_URL } from '../config'
 import { formatDate } from '../format'
 import { ImageLightbox } from '../uploads/ImageLightbox'
 import type { UploadedImage } from '../uploads/api'
-import { completeFeedback, createFeedback, fetchFeedback, updateFeedback, type FeedbackItem } from './api'
+import {
+  backlogFeedback,
+  completeFeedback,
+  createFeedback,
+  fetchFeedback,
+  unbacklogFeedback,
+  updateFeedback,
+  type FeedbackItem,
+} from './api'
 import { useMultiImageUpload } from './useMultiImageUpload'
 
 function FeedbackImages({ images, onImageClick }: { images: UploadedImage[]; onImageClick: (url: string) => void }) {
@@ -278,6 +286,10 @@ function FeedbackListItem({
     setMarkingDone(false)
   }
 
+  async function toggleBacklog() {
+    onUpdated(item.backlogged_at ? await unbacklogFeedback(item.id) : await backlogFeedback(item.id))
+  }
+
   if (editing) {
     return (
       <FeedbackForm
@@ -315,6 +327,11 @@ function FeedbackListItem({
                 <IonIcon slot="icon-only" icon={checkmarkOutline} />
               </IonButton>
             )}
+            {isAdmin && !item.completed_at && (
+              <IonButton fill="clear" onClick={toggleBacklog} title={item.backlogged_at ? 'Restore to open' : 'Move to backlog'}>
+                <IonIcon slot="icon-only" icon={item.backlogged_at ? arrowUndoOutline : timeOutline} />
+              </IonButton>
+            )}
           </div>
         )}
       </IonItem>
@@ -336,7 +353,8 @@ export function FeedbackPage() {
       .catch(() => setError(true))
   }, [])
 
-  const openItems = items?.filter((item) => !item.completed_at) ?? []
+  const openItems = items?.filter((item) => !item.completed_at && !item.backlogged_at) ?? []
+  const backlogItems = items?.filter((item) => item.backlogged_at && !item.completed_at) ?? []
   const closedItems = items?.filter((item) => item.completed_at) ?? []
 
   function handleUpdated(updated: FeedbackItem) {
@@ -407,6 +425,28 @@ export function FeedbackPage() {
                 </IonItem>
               )}
             </IonList>
+
+            {backlogItems.length > 0 && (
+              <IonAccordionGroup>
+                <IonAccordion value="backlog">
+                  <IonItem slot="header">
+                    <IonLabel>Backlog ({backlogItems.length})</IonLabel>
+                  </IonItem>
+                  <IonList slot="content">
+                    {backlogItems.map((item) => (
+                      <FeedbackListItem
+                        key={item.id}
+                        item={item}
+                        isAdmin={isAdmin}
+                        onCompleted={handleUpdated}
+                        onUpdated={handleUpdated}
+                        onImageClick={(url) => setLightboxSrc(`${API_URL}${url}`)}
+                      />
+                    ))}
+                  </IonList>
+                </IonAccordion>
+              </IonAccordionGroup>
+            )}
 
             {closedItems.length > 0 && (
               <IonAccordionGroup>

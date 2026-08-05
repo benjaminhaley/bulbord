@@ -12,6 +12,7 @@ export interface FeedbackItem {
   images: UploadedImage[]
   completed_at: string | null
   completion_note: string | null
+  backlogged_at: string | null
   can_edit: boolean
 }
 
@@ -65,4 +66,12 @@ export function updateFeedback(
 
 export function completeFeedback(id: string, note: string): Promise<FeedbackItem> {
   return authedRequest('POST', `/feedback/${id}/complete`, { note })
+}
+
+export function backlogFeedback(id: string): Promise<FeedbackItem> {
+  return authedRequest('POST', `/feedback/${id}/backlog`, {})
+}
+
+export function unbacklogFeedback(id: string): Promise<FeedbackItem> {
+  return authedRequest('POST', `/feedback/${id}/unbacklog`, {})
 }

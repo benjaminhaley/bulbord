@@ -14,15 +14,13 @@ import {
   IonList,
   IonNote,
   IonPage,
-  IonSegment,
-  IonSegmentButton,
   IonSpinner,
   IonTitle,
   IonToast,
   IonToolbar,
   useIonViewWillEnter,
 } from '@ionic/react'
-import { addOutline, closeOutline, eyeOffOutline, listOutline, star } from 'ionicons/icons'
+import { addOutline, closeOutline, eyeOffOutline, listOutline, star, starOutline } from 'ionicons/icons'
 import { useMemo, useState } from 'react'
 
 import { useAuth } from '../auth/AuthContext'
@@ -32,13 +30,9 @@ import { Avatar } from '../uploads/Avatar'
 import { createCamp, fetchCampsByBreak, type BreakBucket, type Camp, type InterestStatus } from './api'
 import { CampForm } from './CampForm'
 import { campDetailsLine, distanceLabel, formatDateRange, locationLabel, timeLabel } from './format'
-import { applyInterestUpdateAcrossBuckets, flattenAndDedupeCamps } from './grouping'
+import { applyInterestUpdateAcrossBuckets } from './grouping'
 import { InterestedBadge } from './InterestedBadge'
 import { useCampInterest } from './useCampInterest'
-
-// Same single-select rationale as EventsPage's ViewMode — mutually exclusive
-// views over interest_status, not AND-composable filters.
-type ViewMode = 'new' | 'starred' | 'dismissed'
 
 interface SwipeToast {
   camp: Camp
@@ -51,33 +45,6 @@ const TOAST_MESSAGES: Record<InterestStatus, string> = {
   dismissed: 'Dismissed',
 }
 
-// Shared by the Starred and Dismissed segments below, which only differ in
-// which flattened+deduped camps array they pass in.
-function FlatCampList({
-  camps,
-  multiTouch,
-  onSwipe,
-}: {
-  camps: Camp[]
-  multiTouch: boolean
-  onSwipe: (e: { target: EventTarget | null }, camp: Camp, status: InterestStatus) => void
-}) {
-  if (camps.length === 0) {
-    return (
-      <div className="coming-soon">
-        <p>No camps match this view</p>
-      </div>
-    )
-  }
-  return (
-    <IonList>
-      {camps.map((camp) => (
-        <CampRow key={camp.id} camp={camp} multiTouch={multiTouch} onSwipe={onSwipe} />
-      ))}
-    </IonList>
-  )
-}
-
 function closeSliding(target: EventTarget | null) {
   const sliding = (target as HTMLElement | null)?.closest('ion-item-sliding') as HTMLIonItemSlidingElement | null
   sliding?.close()
@@ -87,11 +54,16 @@ function CampRow({
   camp,
   multiTouch,
   onSwipe,
+  onToggleStar,
   hideDateIfMatches,
 }: {
   camp: Camp
   multiTouch: boolean
   onSwipe: (e: { target: EventTarget | null }, camp: Camp, status: InterestStatus) => void
+  // Tapping the star icon is a second, direct way to star/unstar a camp,
+  // alongside the existing swipe gesture (feedback #59 asked for the icon
+  // without removing swipe, since some people already rely on it).
+  onToggleStar: (e: React.MouseEvent, camp: Camp) => void
   // The enclosing accordion section's own date range, when one is shown in
   // its header (feedback, 2026-08-05: "don't bother showing the date on
   // each event in this preview view since that's already obvious from the
@@ -107,6 +79,8 @@ function CampRow({
   const details = campDetailsLine(camp)
   const showDate =
     !hideDateIfMatches || camp.start_date !== hideDateIfMatches.start_date || camp.end_date !== hideDateIfMatches.end_date
+  const isStarred = camp.interest_status === 'interested'
+  const isDismissed = camp.interest_status === 'dismissed'
 
   return (
     <IonItemSliding disabled={multiTouch}>
@@ -115,7 +89,11 @@ function CampRow({
           <IonIcon slot="icon-only" icon={star} />
         </IonItemOption>
       </IonItemOptions>
-      <IonItem routerLink={`/camps/${camp.id}`}>
+      {/* Dismissed camps stay in their normal alphabetical section (sunk to
+          the bottom by the caller, not filtered out) but read as
+          de-emphasized rather than an ordinary upcoming option (feedback
+          #59: "hide them at the bottom... in gray"). */}
+      <IonItem routerLink={`/camps/${camp.id}`} style={isDismissed ? { opacity: 0.55 } : undefined}>
         {camp.thumbnail_url ? (
           <img
             src={`${API_URL}${camp.thumbnail_url}`}
@@ -127,7 +105,12 @@ function CampRow({
           camp.submitted_by && <Avatar url={camp.submitted_by.avatar_url} name={camp.submitted_by.name} size={56} slot="start" />
         )}
         <IonLabel>
-          <h2>{camp.title}</h2>
+          <h2>
+            {camp.title}
+            {isDismissed && (
+              <IonNote style={{ marginLeft: 6, fontSize: '0.75em', textTransform: 'uppercase' }}>Dismissed</IonNote>
+            )}
+          </h2>
           {showDate && <p>{formatDateRange(camp.start_date, camp.end_date)}</p>}
           <p>{timeLabel(camp.start_time, camp.end_time)}</p>
           {/* Distance sits next to location, not in the price/age line below
@@ -143,6 +126,14 @@ function CampRow({
             <InterestedBadge campId={camp.id} count={camp.interested_count} people={camp.interested_people} />
           )}
         </IonLabel>
+        <IonButton
+          slot="end"
+          fill="clear"
+          onClick={(e) => onToggleStar(e, camp)}
+          aria-label={isStarred ? 'Unstar this camp' : 'Star this camp'}
+        >
+          <IonIcon slot="icon-only" icon={isStarred ? star : starOutline} color={isStarred ? 'warning' : 'medium'} />
+        </IonButton>
       </IonItem>
       <IonItemOptions side="end" onIonSwipe={(e) => onSwipe(e, camp, 'dismissed')}>
         <IonItemOption expandable color="medium" onClick={(e) => onSwipe(e, camp, 'dismissed')}>
@@ -157,7 +148,6 @@ export function CampsPage() {
   const { user } = useAuth()
   const [buckets, setBuckets] = useState<BreakBucket[] | null>(null)
   const [error, setError] = useState(false)
-  const [viewMode, setViewMode] = useState<ViewMode>('new')
   const [swipeToast, setSwipeToast] = useState<SwipeToast | null>(null)
   const [multiTouch, setMultiTouch] = useState(false)
   const [showForm, setShowForm] = useState(false)
@@ -178,28 +168,46 @@ export function CampsPage() {
   // the detail page is reflected when navigating back here.
   useIonViewWillEnter(reload)
 
-  // "New" groups by school break/week (only camps with no interest verdict
-  // yet, matching EventsPage's per-view filtering); a bucket with nothing new
-  // to show is omitted entirely rather than rendered empty. Starred/Dismissed
-  // flatten+dedupe across buckets instead — a multi-week camp shouldn't show
-  // up 3 times in a flat "starred" list.
-  const newBuckets = useMemo(() => {
+  // One list, grouped by school break/week, showing every camp regardless of
+  // interest state (feedback #59: dropped the separate New/Starred/Dismissed
+  // tabs) — dismissed camps sink to the bottom of their own bucket rather
+  // than being filtered out, with everything else keeping its existing
+  // (alphabetical) relative order. Array#filter preserves relative order, so
+  // concatenating the two partitions is a stable sort.
+  const displayBuckets = useMemo(() => {
     if (!buckets) return []
     return buckets
-      .map((bucket) => ({ ...bucket, camps: bucket.camps.filter((c) => c.interest_status === null) }))
+      .map((bucket) => ({
+        ...bucket,
+        camps: [
+          ...bucket.camps.filter((c) => c.interest_status !== 'dismissed'),
+          ...bucket.camps.filter((c) => c.interest_status === 'dismissed'),
+        ],
+      }))
       .filter((bucket) => bucket.camps.length > 0)
   }, [buckets])
 
-  const flatCamps = useMemo(() => (buckets ? flattenAndDedupeCamps(buckets) : []), [buckets])
-  const starredCamps = useMemo(() => flatCamps.filter((c) => c.interest_status === 'interested'), [flatCamps])
-  const dismissedCamps = useMemo(() => flatCamps.filter((c) => c.interest_status === 'dismissed'), [flatCamps])
-
-  const hasAnyCamps = flatCamps.length > 0
+  const hasAnyCamps = (buckets ?? []).some((bucket) => bucket.camps.length > 0)
 
   function handleSwipe(e: { target: EventTarget | null }, camp: Camp, status: InterestStatus) {
     closeSliding(e.target)
     setSwipeToast({ camp, previousStatus: camp.interest_status, newStatus: status })
     setInterest(camp, status)
+  }
+
+  // The star icon toggles: tapping it on an unstarred (or dismissed) camp
+  // stars it, same as swiping right, with the same undo toast; tapping it on
+  // an already-starred camp just clears it, no toast — the action is its own
+  // undo (tap again to re-star).
+  function handleStarTap(e: React.MouseEvent, camp: Camp) {
+    e.preventDefault()
+    e.stopPropagation()
+    if (camp.interest_status === 'interested') {
+      clearInterest(camp)
+    } else {
+      setSwipeToast({ camp, previousStatus: camp.interest_status, newStatus: 'interested' })
+      setInterest(camp, 'interested')
+    }
   }
 
   function undoSwipe() {
@@ -238,21 +246,6 @@ export function CampsPage() {
             </IonButton>
           </IonButtons>
         </IonToolbar>
-        {user && (
-          <IonToolbar>
-            <IonSegment value={viewMode} onIonChange={(e) => setViewMode(e.detail.value as ViewMode)}>
-              <IonSegmentButton value="new">
-                <IonLabel>New</IonLabel>
-              </IonSegmentButton>
-              <IonSegmentButton value="starred">
-                <IonLabel>Starred</IonLabel>
-              </IonSegmentButton>
-              <IonSegmentButton value="dismissed">
-                <IonLabel>Dismissed</IonLabel>
-              </IonSegmentButton>
-            </IonSegment>
-          </IonToolbar>
-        )}
       </IonHeader>
       <IonContent fullscreen onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd} onTouchCancel={handleTouchEnd}>
         {showForm && (
@@ -282,14 +275,9 @@ export function CampsPage() {
             <p>No upcoming camps yet</p>
           </div>
         )}
-        {buckets !== null && hasAnyCamps && viewMode === 'new' && newBuckets.length === 0 && (
-          <div className="coming-soon">
-            <p>No camps match this view</p>
-          </div>
-        )}
-        {viewMode === 'new' && newBuckets.length > 0 && (
+        {displayBuckets.length > 0 && (
           <IonAccordionGroup multiple>
-            {newBuckets.map((bucket) => (
+            {displayBuckets.map((bucket) => (
               <IonAccordion key={bucket.id} value={bucket.id}>
                 <IonItem slot="header">
                   <IonLabel>
@@ -307,6 +295,7 @@ export function CampsPage() {
                         camp={camp}
                         multiTouch={multiTouch}
                         onSwipe={handleSwipe}
+                        onToggleStar={handleStarTap}
                         hideDateIfMatches={
                           bucket.id !== 'other' ? { start_date: bucket.start_date, end_date: bucket.end_date } : undefined
                         }
@@ -318,8 +307,6 @@ export function CampsPage() {
             ))}
           </IonAccordionGroup>
         )}
-        {viewMode === 'starred' && <FlatCampList camps={starredCamps} multiTouch={multiTouch} onSwipe={handleSwipe} />}
-        {viewMode === 'dismissed' && <FlatCampList camps={dismissedCamps} multiTouch={multiTouch} onSwipe={handleSwipe} />}
       </IonContent>
       <IonToast
         isOpen={!!swipeToast}
