@@ -5,79 +5,93 @@ import { db } from '../db/client.js'
 import { campSources, camps, eventsLog } from '../db/schema.js'
 import { enrichCampSourceImage } from './image-enrichment.js'
 
-// One-off, rerunnable cleanup applying two fixes found from a real rendered
-// screenshot of Unicoi Art Studio's live detail page (feedback, 2026-08-05):
-// (1) description text was repeating the age range already shown in the
-// always-visible stat line ("Ages: 4-13" in the line above, then "Ages
-// 4-13." again in the description below it), and price_details was one
-// dense run-on paragraph instead of a scannable line per tier — both fixed
-// at the source in seed-2026-08-04-providers.ts's ProviderSpec entries and
-// backfill-2026-08-05-unicoi.ts's constants (see each file's own house-style
-// doc comments for the template this follows); this script re-applies that
-// corrected text to the camp rows already live in the database, the same
-// "fix the seed source AND backfill existing rows" split
-// backfill-2026-08-05-times.ts already established. (2) Unicoi's image was
-// missing entirely — enrichCampSourceImage was only given their Facebook
-// page, which turned out to have no usable og:image; now that it accepts
-// multiple candidate pages (see image-enrichment.ts), this re-runs
-// enrichment against unicoistudio.com/about-us/ first (a real WordPress
-// photo lives there) with Facebook still as a fallback.
+// One-off, rerunnable cleanup script — re-run a second time (2026-08-05,
+// same day) after a follow-up round of feedback on a rendered screenshot
+// found more issues than the first pass fixed. Both passes apply corrected
+// text/data to camp rows already live in the database, mirroring whatever
+// the current ProviderSpec/backfill-2026-08-05-unicoi.ts source constants
+// say — see those files' own house-style doc comments for the template.
+//
+// First pass: description was repeating the age range already shown in the
+// stat line, and price_details was one dense run-on paragraph instead of a
+// scannable line per tier. Unicoi's image was also missing entirely —
+// enrichCampSourceImage was only given their Facebook page (no usable
+// og:image there); fixed by making it accept multiple candidate pages.
+//
+// Second pass (feedback, 2026-08-05): (1) description was ALSO repeating
+// the venue name (already the page's own title) — trimmed further.
+// (2) price_details lines mixed colons/parens/commas inconsistently
+// ("haphazard") — reformatted to reuse the stat line's own "Label: value
+// · Label: value" convention. (3) The section heading itself was renamed
+// "Pricing" -> "Options" (a code change, not data — see CampDetailPage.tsx).
+// (4) Unicoi's age_min/age_max were the union of its two sessions (4-13);
+// corrected to 5-12, the range that actually qualifies for the full
+// bridged day (the intersection of Morning's 5-13 and Afternoon's 4-12) —
+// the wider per-session ranges stay visible in the Options breakdown.
 interface TextUpdate {
   sourceName: string
   description: string
   priceDetails?: string
+  ageMin?: number
+  ageMax?: number | null
 }
 
 const TEXT_UPDATES: TextUpdate[] = [
   {
     sourceName: 'Lake View YMCA',
-    description: 'Lake View YMCA "School Days Out" — full day of activities while school is out.',
+    description: '"School Days Out" — a full day of activities while school is out.',
   },
   {
     sourceName: 'ClimbZone Chicago',
-    description: 'ClimbZone Chicago full-day camp — climbing walls, high ropes, laser tag, and arts and crafts.',
+    description: 'Full-day camp — climbing walls, high ropes, laser tag, and arts and crafts.',
     priceDetails: [
-      'Full day (9:00am-3:30pm): $120/day, $540/week.',
-      'Add aftercare (3:30-5:30pm) for the full 9:00am-5:30pm day: $150/day total.',
-      'Morning half-day (9:00am-12:00pm): $70/day, $320/week.',
-      'Afternoon half-day (12:30pm-3:30pm): $70/day, $320/week.',
-      '5% sibling discount applies to camp fees.',
+      'Full day: 9:00 AM – 3:30 PM · $120/day ($540/week)',
+      'Full day + aftercare: 9:00 AM – 5:30 PM · $150/day total',
+      'Morning half-day: 9:00 AM – 12:00 PM · $70/day ($320/week)',
+      'Afternoon half-day: 12:30 PM – 3:30 PM · $70/day ($320/week)',
+      '5% sibling discount applies to camp fees',
     ].join('\n'),
   },
   {
     sourceName: 'Fit City Kids',
-    description: `Fit City Kids "School's Out Camp" — fitness classes and active play.`,
+    description: `"School's Out Camp" — fitness classes and active play.`,
     priceDetails: [
-      '8am-3pm day camp: $85/day.',
-      'Add the 3pm-6pm after-camp extension for the full 8am-6pm day: $120/day total.',
-      'Both options available for any date.',
+      'Day camp: 8:00 AM – 3:00 PM · $85/day',
+      'Full day + after-camp extension: 8:00 AM – 6:00 PM · $120/day total',
+      'Both options available for any date',
     ].join('\n'),
   },
   {
     sourceName: 'BitSpace',
-    description: 'BitSpace "Day Off Camp" — design thinking, 3D printing, woodworking, and programmable electronics.',
-    priceDetails: ['Full day (ages 8+): $150/day.', 'Half-day option (ages 7-12): price not yet published.'].join('\n'),
+    description: '"Day Off Camp" — design thinking, 3D printing, woodworking, and programmable electronics.',
+    priceDetails: ['Full day · Ages 8+ · $150/day', 'Half-day · Ages 7-12 · price not yet published'].join('\n'),
   },
   {
     sourceName: 'Family Room Chicago (Broadway)',
     description:
-      'Family Room Chicago — Broadway Clubhouse Suite. "Day Camp: Single-Day Drop-In Pass" — up to 9 hours of supervised sports, free play, and creative activities with a 10:1 camper-to-staff ratio.',
+      '"Day Camp: Single-Day Drop-In Pass" at the Broadway Clubhouse Suite — up to 9 hours of supervised sports, free play, and creative activities with a 10:1 camper-to-staff ratio.',
     priceDetails: [
-      '3-hour Express Pass: $45/day.',
-      '5-hour Half-Day Pass: $65/day.',
-      '9-hour Full-Day Pass: $95/day (shown above).',
-      'All three lengths available for any date.',
+      'Express Pass: 3 hours · $45/day',
+      'Half-Day Pass: 5 hours · $65/day',
+      'Full-Day Pass: 9 hours · $95/day (shown above)',
+      'All three lengths available for any date',
     ].join('\n'),
   },
   {
+    sourceName: 'Chicago Park District — Gill Park',
+    description: 'Recreational activities, arts and crafts, and sports at the Gill Park fieldhouse.',
+  },
+  {
     sourceName: 'Unicoi Art Studio',
-    description: 'Unicoi Art Studio — free play, structured art projects, and (weather permitting) park time.',
+    description: 'Free play, structured art projects, and (weather permitting) park time.',
     priceDetails: [
-      'Morning (9:00am-1:00pm, ages 5-13): $65/day.',
-      'Afternoon (1:30pm-5:00pm, ages 4-12): $55/day.',
-      "Register both for the studio's own bridged full day, 9:00am-5:00pm: $120/day total (shown above).",
-      'Weekly rates also available (vary by camp series).',
+      'Morning: 9:00 AM – 1:00 PM · $65/day · Ages 5-13',
+      'Afternoon: 1:30 PM – 5:00 PM · $55/day · Ages 4-12',
+      'Full day (register both): 9:00 AM – 5:00 PM · $120/day',
+      'Weekly rates also available (vary by camp series)',
     ].join('\n'),
+    ageMin: 5,
+    ageMax: 12,
   },
 ]
 
@@ -96,6 +110,8 @@ async function updateText() {
 
     const setValues: Partial<typeof camps.$inferInsert> = { description: update.description, updatedAt: new Date() }
     if (update.priceDetails !== undefined) setValues.priceDetails = update.priceDetails
+    if (update.ageMin !== undefined) setValues.ageMin = update.ageMin
+    if (update.ageMax !== undefined) setValues.ageMax = update.ageMax
 
     const updatedRows = await db
       .update(camps)
@@ -117,6 +133,16 @@ async function fixUnicoiImage() {
     .limit(1)
   if (!source) {
     console.log('No camp_sources row found for "Unicoi Art Studio" — skipping image fix')
+    return 0
+  }
+
+  const [existing] = await db
+    .select({ imageUrl: camps.imageUrl })
+    .from(camps)
+    .where(and(eq(camps.sourceId, source.id), isNull(camps.deletedAt)))
+    .limit(1)
+  if (existing?.imageUrl) {
+    console.log('Unicoi Art Studio: already has an image — skipping re-enrichment')
     return 0
   }
 

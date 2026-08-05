@@ -128,7 +128,7 @@ export function CampDetailPage() {
             )}
             <h1>{camp.title}</h1>
             <p>{formatDateRange(camp.start_date, camp.end_date)}</p>
-            <p style={{ fontWeight: 600 }}>{timeLabel(camp.start_time, camp.end_time)}</p>
+            <p>{timeLabel(camp.start_time, camp.end_time)}</p>
             {camp.submitted_by && (
               <p style={{ color: 'var(--ion-color-medium)', marginTop: -8 }}>Posted by {camp.submitted_by.name}</p>
             )}
@@ -141,7 +141,7 @@ export function CampDetailPage() {
             {camp.description && <p>{camp.description}</p>}
             {camp.price_details && (
               <>
-                <h2>Pricing</h2>
+                <h2>Options</h2>
                 <ul style={{ margin: '4px 0', paddingLeft: 20 }}>
                   {camp.price_details.split('\n').map((line) => line.trim()).filter(Boolean).map((line) => (
                     <li key={line} style={{ marginBottom: 4 }}>
@@ -151,6 +151,14 @@ export function CampDetailPage() {
                 </ul>
               </>
             )}
+            {camp.prep_instructions && (
+              <>
+                <h2>What to bring / prepare</h2>
+                <p style={{ whiteSpace: 'pre-wrap' }}>{camp.prep_instructions}</p>
+              </>
+            )}
+            <CommentsSection campId={camp.id} />
+            <SourceNotesSection campId={camp.id} source={camp.source} />
             {(camp.booking_instructions || camp.source_url) && (
               <>
                 <h2>Booking</h2>
@@ -162,14 +170,6 @@ export function CampDetailPage() {
                 )}
               </>
             )}
-            {camp.prep_instructions && (
-              <>
-                <h2>What to bring / prepare</h2>
-                <p style={{ whiteSpace: 'pre-wrap' }}>{camp.prep_instructions}</p>
-              </>
-            )}
-            <CommentsSection campId={camp.id} />
-            <SourceNotesSection campId={camp.id} source={camp.source} />
           </>
         )}
       </IonContent>

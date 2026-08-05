@@ -207,34 +207,43 @@ interface ProviderSpec {
   // Fit City Kids' $85 half-day + $35 after-camp extension = $120 full day)
   // — pricePerDay stays the single full-day number shown in the compact
   // list/preview line; this expanded detail only shows on the camp detail
-  // page (feedback, 2026-08-05: "give an overall single number... but when
-  // you click on the event, you should see more information").
+  // page's "Options" section (renamed from "Pricing" 2026-08-05 — feedback:
+  // "pricing isn't the correct heading here based on the information you're
+  // providing," since a line can carry time/age alongside the price).
   //
-  // TEMPLATE (feedback, 2026-08-05: "ages four to thirteen is repeated...
-  // the pricing looks like a long run-on... check your work"): one tier or
-  // note per LINE, joined with '\n' — `.join('\n')` on an array literal
-  // reads most clearly at the call site and is what every provider below
-  // does. CampDetailPage.tsx renders each line as its own bullet, so a
-  // run-on paragraph here becomes a wall of text there. Each line follows
-  // "Label (time range if relevant): $amount/unit.": e.g.
+  // TEMPLATE, revised 2026-08-05 (feedback: "why do you sometimes use dots
+  // as separators, em dashes and colons — it looks haphazard"; the original
+  // free-prose-per-line version mixed parens/commas/colons within a single
+  // line): one tier or note per LINE, joined with '\n' —
+  // `.join('\n')` on an array literal reads most clearly at the call site.
+  // CampDetailPage.tsx renders each line as its own bullet. Each line reuses
+  // the SAME "Label: value" + " · " between-fields convention the stat line
+  // above it already uses (campDetailsLine/format.ts) — not a new format:
   //   [
-  //     'Morning (9:00am-1:00pm): $65/day.',
-  //     'Afternoon (1:30pm-5:00pm): $55/day.',
-  //     'Register both for the full day: $120/day total.',
+  //     'Morning: 9:00 AM – 1:00 PM · $65/day',
+  //     'Afternoon: 1:30 PM – 5:00 PM · $55/day',
+  //     'Full day (register both): 9:00 AM – 5:00 PM · $120/day',
+  //     'Weekly rates also available',
   //   ].join('\n')
-  // Only mention an age range on a line here if it's genuinely DIFFERENT
-  // from the camp's own ageMin/ageMax below (e.g. BitSpace's half-day option
-  // covers a different age band than its full-day rate) — never restate the
-  // same range, since ageRangeLabel already shows it in the always-visible
-  // stat line above this section.
+  // A trailing note with no natural "Label: value" shape (like the last line
+  // above) is just its own plain sentence — don't force structure onto it.
+  // Only add an "· Ages X-Y" segment when that tier's age range is
+  // genuinely DIFFERENT from the camp's own ageMin/ageMax below (e.g.
+  // BitSpace's half-day option covers a different age band than its
+  // full-day rate) — never restate the same range the stat line already
+  // shows above.
   priceDetails?: string
   bookingInstructions: string
   prepInstructions: string
-  // One tight sentence: venue/program name + what campers actually do.
-  // Never restate age range, hours, or price here — age_min/age_max,
-  // start_time/end_time, and price_per_day already have their own
-  // always-shown fields (the stat line and the bold time line above this),
-  // so repeating them here is redundant, not helpful (feedback, 2026-08-05).
+  // One tight sentence or two: what campers actually do. Never restate the
+  // venue/provider name (it's already the page's `<h1>` title), age range,
+  // hours, price, or address — age_min/age_max, start_time/end_time,
+  // price_per_day, and address all already have their own always-shown
+  // fields on the page, so repeating any of them here is redundant, not
+  // helpful (feedback, 2026-08-05, after a screenshot showed "Unicoi Art
+  // Studio" as both the title AND the first two words of its own
+  // description, and "Ages 4-13" appearing both in the stat line and the
+  // description right below it).
   description: string
   sourceUrl: string
   // Real, image-rich page(s) to pull a representative photo/logo from, tried
@@ -299,7 +308,7 @@ const PROVIDERS: ProviderSpec[] = [
     bookingInstructions: 'Register online, by phone (773-248-3333), or in person at the front desk.',
     prepInstructions:
       'Pack a lunch and a water bottle (no glass). Bring a swimsuit and towel if the day includes pool time, and dress for active play.',
-    description: 'Lake View YMCA "School Days Out" — full day of activities while school is out.',
+    description: '"School Days Out" — a full day of activities while school is out.',
     sourceUrl: 'https://www.ymcachicago.org/early-learning-education/school-age-care/school-days-out/',
     // ymcachicago.org's own pages lazy-load images via JS with no static
     // <img>/og:image in the raw HTML (extractPageImageCandidates found
@@ -328,16 +337,16 @@ const PROVIDERS: ProviderSpec[] = [
     endTime: '17:30',
     pricePerDay: '150.00',
     priceDetails: [
-      'Full day (9:00am-3:30pm): $120/day, $540/week.',
-      'Add aftercare (3:30-5:30pm) for the full 9:00am-5:30pm day: $150/day total.',
-      'Morning half-day (9:00am-12:00pm): $70/day, $320/week.',
-      'Afternoon half-day (12:30pm-3:30pm): $70/day, $320/week.',
-      '5% sibling discount applies to camp fees.',
+      'Full day: 9:00 AM – 3:30 PM · $120/day ($540/week)',
+      'Full day + aftercare: 9:00 AM – 5:30 PM · $150/day total',
+      'Morning half-day: 9:00 AM – 12:00 PM · $70/day ($320/week)',
+      'Afternoon half-day: 12:30 PM – 3:30 PM · $70/day ($320/week)',
+      '5% sibling discount applies to camp fees',
     ].join('\n'),
     bookingInstructions: 'Sign up online for whichever day(s) you need — no minimum required.',
     prepInstructions:
       'Wear sneakers or gym shoes. Grip socks are required in the soft-play area (bring your own or buy a pair on-site). Pack a lunch, or pre-order one from ClimbZone for $10/child.',
-    description: 'ClimbZone Chicago full-day camp — climbing walls, high ropes, laser tag, and arts and crafts.',
+    description: 'Full-day camp — climbing walls, high ropes, laser tag, and arts and crafts.',
     sourceUrl: 'https://www.climbzone.us/chicago/camps/',
     imageSourceUrls: ['https://www.climbzone.us/chicago/'],
   },
@@ -359,14 +368,14 @@ const PROVIDERS: ProviderSpec[] = [
     endTime: '18:00',
     pricePerDay: '120.00',
     priceDetails: [
-      '8am-3pm day camp: $85/day.',
-      'Add the 3pm-6pm after-camp extension for the full 8am-6pm day: $120/day total.',
-      'Both options available for any date.',
+      'Day camp: 8:00 AM – 3:00 PM · $85/day',
+      'Full day + after-camp extension: 8:00 AM – 6:00 PM · $120/day total',
+      'Both options available for any date',
     ].join('\n'),
     earliestConfirmedDate: '2026-09-25',
     bookingInstructions: 'Register through the parent portal. Email Camps@FitCityKids.com if your date isn\'t listed.',
     prepInstructions: 'Bring gym shoes, socks, a labeled water bottle, a snack, and a lunch.',
-    description: `Fit City Kids "School's Out Camp" — fitness classes and active play.`,
+    description: `"School's Out Camp" — fitness classes and active play.`,
     sourceUrl: 'https://www.fitcitykids.com/schools-out-camp/',
     imageSourceUrls: ['https://www.fitcitykids.com/'],
   },
@@ -382,15 +391,12 @@ const PROVIDERS: ProviderSpec[] = [
     ageMin: 8,
     ageMax: null,
     pricePerDay: '150.00',
-    priceDetails: [
-      'Full day (ages 8+): $150/day.',
-      'Half-day option (ages 7-12): price not yet published.',
-    ].join('\n'),
+    priceDetails: ['Full day · Ages 8+ · $150/day', 'Half-day · Ages 7-12 · price not yet published'].join('\n'),
     hasRecurringOffering: false,
     bookingInstructions: 'Register online. Each session needs a minimum of 8 campers to run — register early.',
     prepInstructions:
       'Pack a nut-free sack lunch, snacks, and a water bottle. No open-toed shoes, crocs, loose jewelry, or loose clothing — bring a hair tie for long hair, and dress for mess (some days get messy). A phone is fine for emergencies but must stay zipped in the backpack.',
-    description: 'BitSpace "Day Off Camp" — design thinking, 3D printing, woodworking, and programmable electronics.',
+    description: '"Day Off Camp" — design thinking, 3D printing, woodworking, and programmable electronics.',
     sourceUrl: 'https://education.bitspacechicago.com/day-off-camps',
     imageSourceUrls: ['https://bitspacechicago.com/'],
   },
@@ -411,8 +417,7 @@ const PROVIDERS: ProviderSpec[] = [
     bookingInstructions: 'Search the registration portal for a posted session, or register in person at the Gill Park fieldhouse.',
     prepInstructions:
       'Bring a backpack, a change of clothes if needed, a water bottle, and sunscreen (apply before arrival). A free lunch and snack are provided district-wide, though kids are welcome to bring their own.',
-    description:
-      'Chicago Park District day camp at Gill Park (825 W Sheridan Rd) — recreational activities, arts and crafts, sports.',
+    description: 'Recreational activities, arts and crafts, and sports at the Gill Park fieldhouse.',
     sourceUrl: 'https://anc.apm.activecommunities.com/chicagoparkdistrict/activity/search',
     imageSourceUrls: ['https://www.chicagoparkdistrict.com/parks-facilities/gill-joseph-park'],
     hasRecurringOffering: false,
@@ -430,15 +435,15 @@ const PROVIDERS: ProviderSpec[] = [
     ageMax: null,
     pricePerDay: '95.00',
     priceDetails: [
-      '3-hour Express Pass: $45/day.',
-      '5-hour Half-Day Pass: $65/day.',
-      '9-hour Full-Day Pass: $95/day (shown above).',
-      'All three lengths available for any date.',
+      'Express Pass: 3 hours · $45/day',
+      'Half-Day Pass: 5 hours · $65/day',
+      'Full-Day Pass: 9 hours · $95/day (shown above)',
+      'All three lengths available for any date',
     ].join('\n'),
     bookingInstructions: 'Book online and pick a date. Drop-off 7:00am-4:30pm, pick-up 11:00am-6:00pm.',
     prepInstructions: "Nothing to pack — healthy snacks and a whole-food lunch are included for the day.",
     description:
-      'Family Room Chicago — Broadway Clubhouse Suite. "Day Camp: Single-Day Drop-In Pass" — up to 9 hours of supervised sports, free play, and creative activities with a 10:1 camper-to-staff ratio.',
+      '"Day Camp: Single-Day Drop-In Pass" at the Broadway Clubhouse Suite — up to 9 hours of supervised sports, free play, and creative activities with a 10:1 camper-to-staff ratio.',
     sourceUrl: 'https://familyroomchicago.com/shop/camp/day-camp/one-day-camp/family-room-day-camp-single-day-drop-in-pass-lakeview-east/',
     // Same lazy-loaded-images issue as YMCA — familyroomchicago.com's own
     // pages only expose a blank placeholder SVG in raw HTML; their Facebook

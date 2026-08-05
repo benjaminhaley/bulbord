@@ -62,24 +62,37 @@ const LNG = -87.68
 
 const SOURCE_URL = 'https://www.hisawyer.com/uni-coi-art-studio/schedules/widget_calendar?schedule_id=all'
 const PRICE_PER_DAY = '120.00'
-// One tier/note per line — see seed-2026-08-04-providers.ts's ProviderSpec
-// priceDetails doc comment for the house style this follows. Morning/
+// One tier/note per line, reusing the stat line's own "Label: value · Label:
+// value" convention — see seed-2026-08-04-providers.ts's ProviderSpec
+// priceDetails doc comment for the full house-style rationale (feedback,
+// 2026-08-05: mixed colons/parens/commas read as "haphazard"). Morning/
 // afternoon age ranges are kept here (unlike a plain age restatement)
-// because they're genuinely narrower than the camp's own 4-13 ageMin/ageMax
-// union below, not a duplicate of it.
+// because they're genuinely narrower than the camp's own 5-12 ageMin/ageMax
+// below (the full-day-covering range — see AGE_MIN/AGE_MAX), not a
+// duplicate of it.
 const PRICE_DETAILS = [
-  'Morning (9:00am-1:00pm, ages 5-13): $65/day.',
-  'Afternoon (1:30pm-5:00pm, ages 4-12): $55/day.',
-  "Register both for the studio's own bridged full day, 9:00am-5:00pm: $120/day total (shown above).",
-  'Weekly rates also available (vary by camp series).',
+  'Morning: 9:00 AM – 1:00 PM · $65/day · Ages 5-13',
+  'Afternoon: 1:30 PM – 5:00 PM · $55/day · Ages 4-12',
+  'Full day (register both): 9:00 AM – 5:00 PM · $120/day',
+  'Weekly rates also available (vary by camp series)',
 ].join('\n')
 const BOOKING_INSTRUCTIONS = 'Register online via the Sawyer booking calendar — choose Morning, Afternoon, or both for a full day.'
 const PREP_INSTRUCTIONS =
   'Pack a labeled lunch and a water bottle. Art projects can get messy — dress for it or bring a smock/old shirt. ' +
   'Weather permitting, campers walk to nearby Hamlin Park for outdoor time.'
-// No age range here — age_min/age_max already show it in the always-visible
-// stat line (see house style doc comment referenced above).
-const DESCRIPTION = 'Unicoi Art Studio — free play, structured art projects, and (weather permitting) park time.'
+// No venue name or age range here — the title already says "Unicoi Art
+// Studio" and age_min/age_max already show the range in the always-visible
+// stat line (feedback, 2026-08-05, from a screenshot: the description
+// literally started with the venue name a second time, right under the
+// title that already said it).
+const DESCRIPTION = 'Free play, structured art projects, and (weather permitting) park time.'
+// The range that covers the FULL bridged day (9am-5pm), i.e. the
+// intersection of Morning's 5-13 and Afternoon's 4-12 — not the union
+// (feedback, 2026-08-05: "Unicoi's age range should be... five to twelve
+// since that is the option that covers the full day"). The wider per-tier
+// ranges stay visible in PRICE_DETAILS above.
+const AGE_MIN = 5
+const AGE_MAX = 12
 
 interface DateRange {
   startDate: string
@@ -161,8 +174,8 @@ async function main() {
         pricePerDay: PRICE_PER_DAY,
         priceIsEstimated: false,
         priceDetails: PRICE_DETAILS,
-        ageMin: 4,
-        ageMax: 13,
+        ageMin: AGE_MIN,
+        ageMax: AGE_MAX,
         spotsAvailable: null,
         bookingInstructions: BOOKING_INSTRUCTIONS,
         prepInstructions: PREP_INSTRUCTIONS,
