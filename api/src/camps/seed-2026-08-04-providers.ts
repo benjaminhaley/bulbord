@@ -234,7 +234,16 @@ interface ProviderSpec {
   // genuinely DIFFERENT from the camp's own ageMin/ageMax below (e.g.
   // BitSpace's half-day option covers a different age band than its
   // full-day rate) — never restate the same range the stat line already
-  // shows above.
+  // shows above. Never add a note about which DATES a tier is available on
+  // (e.g. "both options available for any date") — every camp row is
+  // already scoped to one specific date (see Camps' fresh-clone-of-events
+  // decision), so a viewer looking at this listing was never choosing
+  // between dates in the first place; that note answers a question nobody
+  // is asking here (feedback, 2026-08-05: "it doesn't make sense to show
+  // availability here... each listing is just about a single day"). A note
+  // about a genuinely different purchase option that spans MULTIPLE dates
+  // (e.g. Unicoi's "Weekly rates: also available") is fine to keep — that's
+  // real upsell information, not a same-listing date-availability note.
   priceDetails?: string
   bookingInstructions: string
   // TEMPLATE — see "Bulleted-list content" in CLAUDE.md's Camps section
@@ -392,7 +401,6 @@ const PROVIDERS: ProviderSpec[] = [
     priceDetails: [
       'Day camp: 8:00 AM – 3:00 PM · $85/day',
       'Full day + after-camp extension: 8:00 AM – 6:00 PM · $120/day total',
-      'Availability: both options available for any date',
     ].join('\n'),
     earliestConfirmedDate: '2026-09-25',
     bookingInstructions: 'Register through the parent portal. Email Camps@FitCityKids.com if your date isn\'t listed.',
@@ -472,7 +480,6 @@ const PROVIDERS: ProviderSpec[] = [
       'Express Pass: 3 hours · $45/day',
       'Half-Day Pass: 5 hours · $65/day',
       'Full-Day Pass: 9 hours · $95/day (shown above)',
-      'Availability: all three lengths available for any date',
     ].join('\n'),
     bookingInstructions: 'Book online and pick a date. Drop-off 7:00am-4:30pm, pick-up 11:00am-6:00pm.',
     prepInstructions: 'Nothing to pack: healthy snacks and a whole-food lunch are included for the day.',

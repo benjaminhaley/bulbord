@@ -61,6 +61,18 @@ import { enrichCampSourceImage } from './image-enrichment.js'
 // providers, and a real bug this surfaced: BitSpace's two priceDetails
 // lines used "·" as their only separator with no leading colon at all, so
 // neither one was bolding.
+//
+// Sixth pass (feedback, 2026-08-05, same session): Fit City Kids' and
+// Family Room's trailing "Availability: ... available for any date" lines
+// don't make sense in context — every camp row is already scoped to one
+// specific date, so a viewer looking at a listing was never choosing
+// between dates in the first place ("it doesn't make sense to show
+// availability here... each listing is just about a single day"). Removed
+// both entirely rather than reworded, since there's no real information
+// left to convey once the date-availability framing is gone. Unicoi's
+// "Weekly rates: also available" line is NOT the same thing and was kept —
+// that's a genuinely different purchase option spanning multiple dates
+// (real upsell information), not a same-listing date-availability note.
 interface TextUpdate {
   sourceName: string
   description: string
@@ -102,7 +114,6 @@ const TEXT_UPDATES: TextUpdate[] = [
     priceDetails: [
       'Day camp: 8:00 AM – 3:00 PM · $85/day',
       'Full day + after-camp extension: 8:00 AM – 6:00 PM · $120/day total',
-      'Availability: both options available for any date',
     ].join('\n'),
     prepInstructions: [
       'Footwear: gym shoes and socks',
@@ -129,7 +140,6 @@ const TEXT_UPDATES: TextUpdate[] = [
       'Express Pass: 3 hours · $45/day',
       'Half-Day Pass: 5 hours · $65/day',
       'Full-Day Pass: 9 hours · $95/day (shown above)',
-      'Availability: all three lengths available for any date',
     ].join('\n'),
     prepInstructions: 'Nothing to pack: healthy snacks and a whole-food lunch are included for the day.',
   },

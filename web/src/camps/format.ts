@@ -72,19 +72,27 @@ export function ageRangeLabel(ageMin: number | null, ageMax: number | null): str
 // price inferred from a provider's stated recurring policy rather than an
 // individually published listing for this exact date — always surfaced to
 // the user, never silently shown as if confirmed.
+//
+// No "Price:" label when a real amount is known (feedback, 2026-08-05: "you
+// don't need the word price... price is implied by the fact that there's a
+// dollar sign there") — the label is kept only for the unpublished case,
+// where there's no $ sign to imply what "not published" refers to.
 export function priceLabel(pricePerDay: string | null, isEstimated = false): string {
   if (pricePerDay == null) return 'Price: not published'
   const value = Number(pricePerDay)
   if (Number.isNaN(value)) return 'Price: not published'
   const amount = `$${Number.isInteger(value) ? value.toFixed(0) : value.toFixed(2)}/day`
-  return isEstimated ? `Price: ${amount} (estimated)` : `Price: ${amount}`
+  return isEstimated ? `${amount} (estimated)` : amount
 }
 
+// Same "drop the label when the unit already implies it" rule as priceLabel
+// above — "mi" makes a known distance self-evident; "unknown" alone would
+// not be, so the label stays for that case only.
 export function distanceLabel(distanceMiles: string | null): string {
   if (distanceMiles == null) return 'Distance: unknown'
   const value = Number(distanceMiles)
   if (Number.isNaN(value)) return 'Distance: unknown'
-  return `Distance: ${value.toFixed(1)} mi`
+  return `${value.toFixed(1)} mi`
 }
 
 // Real-time availability isn't tracked (no live booking integration), so

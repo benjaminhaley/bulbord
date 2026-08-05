@@ -23,6 +23,18 @@ import { campDetailsLine, formatDateRange, mapUrl, shortAddress, timeLabel } fro
 import { InterestedBadge } from './InterestedBadge'
 import { useCampInterest } from './useCampInterest'
 
+// One consistent rhythm for every short fact line above the Options section
+// (date, time, stat line, address, description, etc.) — feedback,
+// 2026-08-05: "the line spacing here is inconsistent... should only change
+// when you want to display the information in a noticeably different way."
+// Plain <p> tags with no override fall back to the browser's default ~1em
+// margin, which reads as loose next to the tight 4px rhythm the bulleted
+// lists below already use (LabeledBulletList) — this constant matches that
+// same rhythm so the whole page (not just each section in isolation) feels
+// like one consistent block, with real headings (<h1>/<h2>) staying the
+// only intentionally larger gaps, since those mark genuine section breaks.
+const FACT_LINE_STYLE = { margin: '4px 0' } as const
+
 // Shared by the Options and "What to bring / prepare" sections below — each
 // line (from a '\n'-joined price_details/prep_instructions string) becomes
 // its own bullet, and a leading "Label:" segment (if present) is bolded to
@@ -158,24 +170,24 @@ export function CampDetailPage() {
               )
             )}
             <h1>{camp.title}</h1>
-            <p>{formatDateRange(camp.start_date, camp.end_date)}</p>
-            <p>{timeLabel(camp.start_time, camp.end_time)}</p>
+            <p style={FACT_LINE_STYLE}>{formatDateRange(camp.start_date, camp.end_date)}</p>
+            <p style={FACT_LINE_STYLE}>{timeLabel(camp.start_time, camp.end_time)}</p>
             {camp.submitted_by && (
-              <p style={{ color: 'var(--ion-color-medium)', marginTop: -8 }}>Posted by {camp.submitted_by.name}</p>
+              <p style={{ ...FACT_LINE_STYLE, color: 'var(--ion-color-medium)' }}>Posted by {camp.submitted_by.name}</p>
             )}
-            {details !== null && <p>{details}</p>}
+            {details !== null && <p style={FACT_LINE_STYLE}>{details}</p>}
             {camp.interested_count > 0 && (
               <InterestedBadge campId={camp.id} count={camp.interested_count} people={camp.interested_people} />
             )}
-            {camp.location_name && <p>{camp.location_name}</p>}
+            {camp.location_name && <p style={FACT_LINE_STYLE}>{camp.location_name}</p>}
             {camp.address && (
-              <p>
+              <p style={FACT_LINE_STYLE}>
                 <a href={mapUrl(camp.address)} target="_blank" rel="noreferrer">
                   {shortAddress(camp.address)}
                 </a>
               </p>
             )}
-            {camp.description && <p>{camp.description}</p>}
+            {camp.description && <p style={FACT_LINE_STYLE}>{camp.description}</p>}
             {camp.price_details && (
               <>
                 <h2>Options</h2>
@@ -192,7 +204,9 @@ export function CampDetailPage() {
             {(camp.booking_instructions || camp.source_url) && (
               <>
                 <h2>Booking</h2>
-                {camp.booking_instructions && <p style={{ whiteSpace: 'pre-wrap' }}>{camp.booking_instructions}</p>}
+                {camp.booking_instructions && (
+                  <p style={{ ...FACT_LINE_STYLE, whiteSpace: 'pre-wrap' }}>{camp.booking_instructions}</p>
+                )}
                 {camp.source_url && (
                   <IonButton expand="block" href={camp.source_url} target="_blank" rel="noreferrer">
                     View Booking Page

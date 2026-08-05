@@ -59,16 +59,16 @@ describe('priceLabel', () => {
     expect(priceLabel(null)).toBe('Price: not published')
   })
 
-  it('formats a whole-dollar price without decimals', () => {
-    expect(priceLabel('45.00')).toBe('Price: $45/day')
+  it('drops the redundant "Price:" label once a dollar amount is known', () => {
+    expect(priceLabel('45.00')).toBe('$45/day')
   })
 
   it('formats a fractional price with two decimals', () => {
-    expect(priceLabel('39.50')).toBe('Price: $39.50/day')
+    expect(priceLabel('39.50')).toBe('$39.50/day')
   })
 
   it('flags an inferred price as estimated rather than showing it as confirmed', () => {
-    expect(priceLabel('70.00', true)).toBe('Price: $70/day (estimated)')
+    expect(priceLabel('70.00', true)).toBe('$70/day (estimated)')
   })
 })
 
@@ -115,7 +115,7 @@ describe('campDetailsLine', () => {
         distance_miles: '1.26',
         spots_available: null,
       }),
-    ).toBe('Price: $70/day · Ages: 5-13 · Distance: 1.3 mi')
+    ).toBe('$70/day · Ages: 5-13 · 1.3 mi')
   })
 
   it('includes spots once known, appended after the always-shown fields', () => {
@@ -128,7 +128,7 @@ describe('campDetailsLine', () => {
         distance_miles: '1.26',
         spots_available: 12,
       }),
-    ).toBe('Price: $70/day · Ages: 5-13 · Distance: 1.3 mi · Spots: 12 available')
+    ).toBe('$70/day · Ages: 5-13 · 1.3 mi · Spots: 12 available')
   })
 
   it('shows explicit placeholders for every unknown field except spots, which is omitted', () => {
@@ -150,8 +150,8 @@ describe('distanceLabel', () => {
     expect(distanceLabel(null)).toBe('Distance: unknown')
   })
 
-  it('formats a distance to one decimal place', () => {
-    expect(distanceLabel('2.34')).toBe('Distance: 2.3 mi')
+  it('drops the redundant "Distance:" label once a real distance is known', () => {
+    expect(distanceLabel('2.34')).toBe('2.3 mi')
   })
 })
 
