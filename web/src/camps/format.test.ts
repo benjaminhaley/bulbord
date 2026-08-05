@@ -77,16 +77,16 @@ describe('timeLabel', () => {
     expect(timeLabel(null, null)).toBe('Time: not specified')
   })
 
-  it('shows just a start time when no end time is known', () => {
-    expect(timeLabel('09:00:00', null)).toBe('Time: 9:00 AM')
+  it('drops the redundant "Time:" label once a real time is known, showing just a start time when no end time is known', () => {
+    expect(timeLabel('09:00:00', null)).toBe('9:00 AM')
   })
 
-  it('formats a full start-to-end range', () => {
-    expect(timeLabel('09:00:00', '17:30:00')).toBe('Time: 9:00 AM – 5:30 PM')
+  it('formats a full start-to-end range with no label', () => {
+    expect(timeLabel('09:00:00', '17:30:00')).toBe('9:00 AM – 5:30 PM')
   })
 
   it('formats midday and midnight-adjacent times correctly', () => {
-    expect(timeLabel('12:00:00', '13:00:00')).toBe('Time: 12:00 PM – 1:00 PM')
+    expect(timeLabel('12:00:00', '13:00:00')).toBe('12:00 PM – 1:00 PM')
   })
 })
 

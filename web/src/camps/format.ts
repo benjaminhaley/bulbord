@@ -46,12 +46,16 @@ function formatClockTime(time: string): string {
 // Always a labeled string, same "never silently omit" posture as
 // price/age/distance below — a camp with no fixed hours (a flexible
 // drop-in pass, or a provider whose hours just aren't confirmed) shows "not
-// specified" rather than a fabricated time.
+// specified" rather than a fabricated time. Same "drop the label once the
+// value is self-evident" rule as priceLabel/distanceLabel below (feedback,
+// 2026-08-05: "get rid of Time, colon, here? It's redundant because AM and
+// PM is shown") — the "Time:" prefix stays only for the unknown case, where
+// there's no AM/PM to imply what "not specified" refers to.
 export function timeLabel(startTime: string | null, endTime: string | null): string {
   if (!startTime) return 'Time: not specified'
   const start = formatClockTime(startTime)
-  if (!endTime) return `Time: ${start}`
-  return `Time: ${start} – ${formatClockTime(endTime)}`
+  if (!endTime) return start
+  return `${start} – ${formatClockTime(endTime)}`
 }
 
 // Every one of these always returns a labeled string, never null/empty —

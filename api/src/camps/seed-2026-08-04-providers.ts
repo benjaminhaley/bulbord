@@ -130,13 +130,15 @@ import { enrichCampSourceImage } from './image-enrichment.js'
 // weekly rates, 5% sibling discount) in priceDetails for the new detail-page
 // Pricing section. Lake View YMCA (7:00am-6:00pm) and Fit City Kids
 // (8:00am-6:00pm, already the $120 max-time total) were confirmed via their
-// own real pages/search results and needed no price change. BitSpace and
-// Family Room's real hours are NOT one fixed start/end (BitSpace's own page
-// gives no times at all, only a FULL DAY/HALF DAY age split; Family Room's
-// drop-in pass lets the customer pick their own drop-off/pick-up time within
-// a window rather than running a fixed schedule) — startTime/endTime are
-// left unset for both rather than fabricating a time, same "never invent,
-// leave unknown" posture as every other honesty rule in this file. Chicago
+// own real pages/search results and needed no price change. BitSpace's own
+// page gives no times at all, only a FULL DAY/HALF DAY age split —
+// startTime/endTime are left unset rather than fabricating a time, same
+// "never invent, leave unknown" posture as every other honesty rule in this
+// file. (Family Room's drop-in pass similarly lets the customer pick their
+// own drop-off/pick-up time within a window rather than a fixed schedule —
+// startTime/endTime were left unset here too under this same reasoning
+// initially, then reversed 2026-08-05: see Family Room's own ProviderSpec
+// notes for why its published max-window is now shown instead.) Chicago
 // Park District generates no candidates at all today (hasRecurringOffering:
 // false), so its hours are moot until real dates are confirmed.
 //
@@ -440,19 +442,27 @@ const PROVIDERS: ProviderSpec[] = [
     name: 'Family Room Chicago (Broadway)',
     url: 'https://familyroomchicago.com/shop/camp/day-camp/one-day-camp/family-room-day-camp-single-day-drop-in-pass-lakeview-east/',
     notes:
-      'Not a fully structured multi-week curriculum like the other five, but genuinely has its own real "Day Camp: Single-Day Drop-In Pass" product line (confirmed 2026-08-04 — an earlier pass of this script under-researched this and used a generic membership page instead) — included per Ben\'s direction (feedback #50 review). This is their Broadway Clubhouse Suite location specifically (Ben asked for Broadway over the Southport Play Studio; familyroomchicago.com lists three locations total). Price is the real, currently published 9-hour Full-Day Pass rate ($95 non-member) from that product page — tiered pricing also exists for a 3-hour Express Pass ($45) and 5-hour Half-Day Pass ($65), plus member discounts, but the 9-hour rate is what\'s comparable to the other five providers\' full-day rates. Treated as confirmed, not estimated (feedback, 2026-08-05) — the $95 rate itself is plainly published for this exact pass, regardless of which date on the calendar is picked, so there\'s nothing actually unclear about it. The product page has a real date-picker calendar, but as of 2026-08-04 it isn\'t populated with inventory for dates this far out — spots_available is left null/"unknown" for exactly that reason, not because we didn\'t check. No single fixed start/end time is set (confirmed 2026-08-05) — the product page itself says drop-off/pick-up times are chosen by the family in a follow-up registration form (bookingInstructions below already gives the real drop-off 7:00am-4:30pm/pick-up 11:00am-6:00pm window), so a specific "start_time"/"end_time" would misrepresent a genuinely flexible, family-picked schedule as a fixed one.',
+      'Not a fully structured multi-week curriculum like the other five, but genuinely has its own real "Day Camp: Single-Day Drop-In Pass" product line (confirmed 2026-08-04 — an earlier pass of this script under-researched this and used a generic membership page instead) — included per Ben\'s direction (feedback #50 review). This is their Broadway Clubhouse Suite location specifically (Ben asked for Broadway over the Southport Play Studio; familyroomchicago.com lists three locations total). Price is the real, currently published 9-hour Full-Day Pass rate ($95 non-member) from that product page — tiered pricing also exists for a 3-hour Express Pass ($45) and 5-hour Half-Day Pass ($65), plus member discounts, but the 9-hour rate is what\'s comparable to the other five providers\' full-day rates. Treated as confirmed, not estimated (feedback, 2026-08-05) — the $95 rate itself is plainly published for this exact pass, regardless of which date on the calendar is picked, so there\'s nothing actually unclear about it. The product page has a real date-picker calendar, but as of 2026-08-04 it isn\'t populated with inventory for dates this far out — spots_available is left null/"unknown" for exactly that reason, not because we didn\'t check. `startTime`/`endTime` are set to the provider\'s own published max-window (7:00am drop-off to 6:00pm pick-up) rather than left unset (feedback, 2026-08-05, reversing an earlier "genuinely flexible, don\'t fabricate a time" call: "Family room\'s time definitely should be specified. It\'s clear in the booking text.") — same "show the maximum possible extent" convention ClimbZone\'s time/price already follow, even though the family picks their own exact drop-off/pick-up within that window rather than a single fixed schedule.',
     address: '3229 N Broadway, Chicago, IL 60657',
     lat: 41.94125,
     lng: -87.6447,
     ageMin: 0,
     ageMax: null,
+    // The provider's own published max window (see notes above) — drop-off
+    // as early as 7:00am, pick-up as late as 6:00pm.
+    startTime: '07:00',
+    endTime: '18:00',
     pricePerDay: '95.00',
     options: [
       { label: 'Express Pass', detail: '3 hours · $45/day' },
       { label: 'Half-Day Pass', detail: '5 hours · $65/day' },
-      { label: 'Full-Day Pass', detail: '9 hours · $95/day (shown above)' },
+      { label: 'Full-Day Pass', detail: '9 hours · $95/day' },
     ],
-    bookingInstructions: 'Book online and pick a date. Drop-off 7:00am-4:30pm, pick-up 11:00am-6:00pm.',
+    // Drop-off/pick-up hours moved to startTime/endTime above (feedback,
+    // 2026-08-05: "the part of bookings that's talking about pickup and
+    // drop off hours... belong above instead") — this section is now just
+    // the actual booking action, not a repeat of the hours.
+    bookingInstructions: 'Book online and pick a date.',
     prepItems: [{ label: 'Nothing to pack', detail: 'healthy snacks and a whole-food lunch are included for the day.' }],
     description:
       '"Day Camp: Single-Day Drop-In Pass" at the Broadway Clubhouse Suite — up to 9 hours of supervised sports, free play, and creative activities with a 10:1 camper-to-staff ratio.',
