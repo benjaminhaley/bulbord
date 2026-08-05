@@ -234,6 +234,20 @@ interface ProviderSpec {
   // shows above.
   priceDetails?: string
   bookingInstructions: string
+  // TEMPLATE (feedback, 2026-08-05: "can you make what to bring a bulleted
+  // list... the general format is that it should be a bullet, the item,
+  // and then, optionally, a description of the item... set apart from the
+  // description, which is less important"): same one-thing-per-LINE shape
+  // as priceDetails above, `.join('\n')` on an array literal. Each line is
+  // either "Item: why/detail" (CampDetailPage.tsx bolds everything before
+  // the first colon) or just a plain note with no colon when there's no
+  // natural "item" being introduced (e.g. "A free lunch and snack are
+  // provided district-wide"). e.g.:
+  //   [
+  //     'Labeled lunch',
+  //     'Water bottle',
+  //     'Clothes that can get messy: art projects can get messy — dress for it or bring a smock/old shirt',
+  //   ].join('\n')
   prepInstructions: string
   // One tight sentence or two: what campers actually do. Never restate the
   // venue/provider name (it's already the page's `<h1>` title), age range,
@@ -306,8 +320,12 @@ const PROVIDERS: ProviderSpec[] = [
       '2026-11-23': { startDate: '2026-11-23', endDate: '2026-11-24' },
     },
     bookingInstructions: 'Register online, by phone (773-248-3333), or in person at the front desk.',
-    prepInstructions:
-      'Pack a lunch and a water bottle (no glass). Bring a swimsuit and towel if the day includes pool time, and dress for active play.',
+    prepInstructions: [
+      'Lunch',
+      'Water bottle: no glass',
+      'Swimsuit and towel: if the day includes pool time',
+      'Comfortable clothes for active play',
+    ].join('\n'),
     description: '"School Days Out" — a full day of activities while school is out.',
     sourceUrl: 'https://www.ymcachicago.org/early-learning-education/school-age-care/school-days-out/',
     // ymcachicago.org's own pages lazy-load images via JS with no static
@@ -344,8 +362,11 @@ const PROVIDERS: ProviderSpec[] = [
       '5% sibling discount applies to camp fees',
     ].join('\n'),
     bookingInstructions: 'Sign up online for whichever day(s) you need — no minimum required.',
-    prepInstructions:
-      'Wear sneakers or gym shoes. Grip socks are required in the soft-play area (bring your own or buy a pair on-site). Pack a lunch, or pre-order one from ClimbZone for $10/child.',
+    prepInstructions: [
+      'Sneakers or gym shoes',
+      'Grip socks: required in the soft-play area — bring your own or buy a pair on-site',
+      'Lunch: or pre-order one from ClimbZone for $10/child',
+    ].join('\n'),
     description: 'Full-day camp — climbing walls, high ropes, laser tag, and arts and crafts.',
     sourceUrl: 'https://www.climbzone.us/chicago/camps/',
     imageSourceUrls: ['https://www.climbzone.us/chicago/'],
@@ -374,7 +395,7 @@ const PROVIDERS: ProviderSpec[] = [
     ].join('\n'),
     earliestConfirmedDate: '2026-09-25',
     bookingInstructions: 'Register through the parent portal. Email Camps@FitCityKids.com if your date isn\'t listed.',
-    prepInstructions: 'Bring gym shoes, socks, a labeled water bottle, a snack, and a lunch.',
+    prepInstructions: ['Gym shoes and socks', 'Labeled water bottle', 'Snack and lunch'].join('\n'),
     description: `"School's Out Camp" — fitness classes and active play.`,
     sourceUrl: 'https://www.fitcitykids.com/schools-out-camp/',
     imageSourceUrls: ['https://www.fitcitykids.com/'],
@@ -394,8 +415,13 @@ const PROVIDERS: ProviderSpec[] = [
     priceDetails: ['Full day · Ages 8+ · $150/day', 'Half-day · Ages 7-12 · price not yet published'].join('\n'),
     hasRecurringOffering: false,
     bookingInstructions: 'Register online. Each session needs a minimum of 8 campers to run — register early.',
-    prepInstructions:
-      'Pack a nut-free sack lunch, snacks, and a water bottle. No open-toed shoes, crocs, loose jewelry, or loose clothing — bring a hair tie for long hair, and dress for mess (some days get messy). A phone is fine for emergencies but must stay zipped in the backpack.',
+    prepInstructions: [
+      'Nut-free sack lunch, snacks, and a water bottle',
+      'Closed-toe shoes: no open-toed shoes or crocs',
+      'Hair tie: for long hair',
+      'Clothes that can get messy: no loose jewelry or loose clothing — some days get messy',
+      'Phone: fine for emergencies but must stay zipped in the backpack',
+    ].join('\n'),
     description: '"Day Off Camp" — design thinking, 3D printing, woodworking, and programmable electronics.',
     sourceUrl: 'https://education.bitspacechicago.com/day-off-camps',
     imageSourceUrls: ['https://bitspacechicago.com/'],
@@ -415,8 +441,13 @@ const PROVIDERS: ProviderSpec[] = [
     ageMax: 12,
     pricePerDay: null,
     bookingInstructions: 'Search the registration portal for a posted session, or register in person at the Gill Park fieldhouse.',
-    prepInstructions:
-      'Bring a backpack, a change of clothes if needed, a water bottle, and sunscreen (apply before arrival). A free lunch and snack are provided district-wide, though kids are welcome to bring their own.',
+    prepInstructions: [
+      'Backpack',
+      'Change of clothes: if needed',
+      'Water bottle',
+      'Sunscreen: apply before arrival',
+      'A free lunch and snack are provided district-wide, though kids are welcome to bring their own',
+    ].join('\n'),
     description: 'Recreational activities, arts and crafts, and sports at the Gill Park fieldhouse.',
     sourceUrl: 'https://anc.apm.activecommunities.com/chicagoparkdistrict/activity/search',
     imageSourceUrls: ['https://www.chicagoparkdistrict.com/parks-facilities/gill-joseph-park'],

@@ -1,18 +1,74 @@
 import { IonButton, IonIcon, IonSpinner, IonTextarea } from '@ionic/react'
 import { trashOutline } from 'ionicons/icons'
 import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 
 import { formatDate } from '../format'
 import { Avatar } from '../uploads/Avatar'
-import { createCampComment, deleteCampComment, fetchCampComments, updateCampComment, type CampComment } from './api'
+import {
+  createCampComment,
+  deleteCampComment,
+  fetchCampComments,
+  fetchCampSourceNotes,
+  updateCampComment,
+  type CampComment,
+  type SourceNote,
+} from './api'
+import { formatDateRange } from './format'
+
+// This camp's own comments and cross-listing notes from other camps sharing
+// the same source (feedback #50) are normalized into one shape and rendered
+// as a single, uniformly-styled list — feedback, 2026-08-05: "no longer
+// designate whether a comment is from this camp or another date... just
+// include all comments... down here... if there is a comment, specify which
+// date it came from" (the two used to be visually separate sections with
+// different font sizes, which read as "messy and incoherent"). date_label is
+// null for a comment on the camp currently being viewed (redundant — the
+// whole page is already about that date) and a short date range for a
+// comment from a sibling camp at the same source; can_edit/can_delete are
+// only ever true for the viewer's own comments on the current camp, never on
+// another occurrence's.
+interface DisplayComment {
+  id: string
+  camp_id: string
+  body: string
+  created_at: string
+  author_name: string | null
+  author_avatar_url: string | null
+  can_edit: boolean
+  can_delete: boolean
+  date_label: string | null
+}
+
+function fromOwnComment(c: CampComment): DisplayComment {
+  return { ...c, date_label: null }
+}
+
+function fromSourceNote(n: SourceNote): DisplayComment {
+  return {
+    id: n.id,
+    camp_id: n.camp_id,
+    body: n.body,
+    created_at: n.created_at,
+    author_name: n.author_name,
+    author_avatar_url: n.author_avatar_url,
+    can_edit: false,
+    can_delete: false,
+    date_label: formatDateRange(n.camp_start_date, n.camp_end_date),
+  }
+}
+
+function byNewestFirst(a: DisplayComment, b: DisplayComment): number {
+  return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+}
 
 function CommentItem({
   comment,
   onUpdated,
   onDeleted,
 }: {
-  comment: CampComment
-  onUpdated: (updated: CampComment) => void
+  comment: DisplayComment
+  onUpdated: (updated: DisplayComment) => void
   onDeleted: (id: string) => void
 }) {
   const [editing, setEditing] = useState(false)
@@ -28,7 +84,7 @@ function CommentItem({
     }
     setSaving(true)
     try {
-      onUpdated(await updateCampComment(comment.camp_id, comment.id, trimmed))
+      onUpdated(fromOwnComment(await updateCampComment(comment.camp_id, comment.id, trimmed)))
       setEditing(false)
     } catch {
       // leave the form open with the user's text so nothing typed is lost
@@ -54,6 +110,14 @@ function CommentItem({
         <p style={{ margin: 0 }}>
           <strong>{comment.author_name ?? 'Member'}</strong>{' '}
           <span style={{ color: 'var(--ion-color-medium)' }}>{formatDate(comment.created_at)}</span>
+          {comment.date_label && (
+            <>
+              {' · '}
+              <Link to={`/camps/${comment.camp_id}`} style={{ color: 'var(--ion-color-medium)' }}>
+                {comment.date_label}
+              </Link>
+            </>
+          )}
         </p>
         {editing ? (
           <>
@@ -98,8 +162,8 @@ function CommentItem({
   )
 }
 
-export function CommentsSection({ campId }: { campId: string }) {
-  const [comments, setComments] = useState<CampComment[] | null>(null)
+export function CommentsSection({ campId, source }: { campId: string; source: { id: string; name: string } | null }) {
+  const [comments, setComments] = useState<DisplayComment[] | null>(null)
   const [error, setError] = useState(false)
   const [newBody, setNewBody] = useState('')
   const [posting, setPosting] = useState(false)
@@ -107,10 +171,12 @@ export function CommentsSection({ campId }: { campId: string }) {
   useEffect(() => {
     setComments(null)
     setError(false)
-    fetchCampComments(campId)
-      .then(setComments)
+    Promise.all([fetchCampComments(campId), source ? fetchCampSourceNotes(campId) : Promise.resolve([])])
+      .then(([own, notes]) => {
+        setComments([...own.map(fromOwnComment), ...notes.map(fromSourceNote)].sort(byNewestFirst))
+      })
       .catch(() => setError(true))
-  }, [campId])
+  }, [campId, source])
 
   async function post() {
     const trimmed = newBody.trim()
@@ -118,7 +184,7 @@ export function CommentsSection({ campId }: { campId: string }) {
     setPosting(true)
     try {
       const created = await createCampComment(campId, trimmed)
-      setComments((prev) => [created, ...(prev ?? [])])
+      setComments((prev) => [fromOwnComment(created), ...(prev ?? [])])
       setNewBody('')
     } catch {
       setError(true)

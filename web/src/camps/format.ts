@@ -138,6 +138,22 @@ export function locationLabel(camp: LocatableCamp): string | null {
   return camp.address ? camp.address.replace(CITY_STATE_ZIP, '').trim() : null
 }
 
+// Same reasoning as locationLabel above, applied to the detail page's own
+// address line (feedback, 2026-08-05: "no reason to include Chicago,
+// Illinois there") — the displayed text drops city/state/zip, but the map
+// link itself (mapUrl below) always gets the full, untrimmed address, since
+// dropping city/state there would risk mismatched geocoding.
+export function shortAddress(address: string): string {
+  return address.replace(CITY_STATE_ZIP, '').trim()
+}
+
+// Google Maps' web search URL works universally (opens the native Maps app
+// on both iOS and Android when installed, else falls back to the web) —
+// simpler than branching on platform for an Apple Maps deep link.
+export function mapUrl(address: string): string {
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`
+}
+
 function joinWithAnd(names: string[]): string {
   if (names.length === 1) return names[0]
   return `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`

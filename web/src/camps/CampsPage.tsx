@@ -116,7 +116,7 @@ function CampRow({
         <IonLabel>
           <h2>{camp.title}</h2>
           <p>{formatDateRange(camp.start_date, camp.end_date)}</p>
-          <h3>{timeLabel(camp.start_time, camp.end_time)}</h3>
+          <p>{timeLabel(camp.start_time, camp.end_time)}</p>
           {location && <IonNote>{location}</IonNote>}
           <p className="teaser">{details}</p>
           {camp.interested_count > 0 && (

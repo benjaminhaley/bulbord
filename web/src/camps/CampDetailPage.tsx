@@ -19,10 +19,41 @@ import { Avatar } from '../uploads/Avatar'
 import { deleteCamp, fetchCamp, updateCamp, type Camp } from './api'
 import { CampForm } from './CampForm'
 import { CommentsSection } from './CommentsSection'
-import { campDetailsLine, formatDateRange, timeLabel } from './format'
+import { campDetailsLine, formatDateRange, mapUrl, shortAddress, timeLabel } from './format'
 import { InterestedBadge } from './InterestedBadge'
-import { SourceNotesSection } from './SourceNotesSection'
 import { useCampInterest } from './useCampInterest'
+
+// Shared by the Options and "What to bring / prepare" sections below — each
+// line (from a '\n'-joined price_details/prep_instructions string) becomes
+// its own bullet, and a leading "Label:" segment (if present) is bolded to
+// set it apart from the rest of the line (feedback, 2026-08-05: "the item
+// should probably be somehow set apart from the description, which is less
+// important"). A line with no colon — a general note with no natural
+// "item" shape, e.g. a sibling discount — renders as a plain, un-bolded
+// bullet instead of forcing structure onto it.
+function LabeledBulletList({ text }: { text: string }) {
+  const lines = text
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+  return (
+    <ul style={{ margin: '4px 0', paddingLeft: 20 }}>
+      {lines.map((line) => {
+        const colonIndex = line.indexOf(':')
+        return (
+          <li key={line} style={{ marginBottom: 4 }}>
+            {colonIndex === -1 ? line : (
+              <>
+                <strong>{line.slice(0, colonIndex)}</strong>
+                {line.slice(colonIndex)}
+              </>
+            )}
+          </li>
+        )
+      })}
+    </ul>
+  )
+}
 
 export function CampDetailPage() {
   const { id } = useParams<{ id: string }>()
@@ -137,28 +168,27 @@ export function CampDetailPage() {
               <InterestedBadge campId={camp.id} count={camp.interested_count} people={camp.interested_people} />
             )}
             {camp.location_name && <p>{camp.location_name}</p>}
-            {camp.address && <p>{camp.address}</p>}
+            {camp.address && (
+              <p>
+                <a href={mapUrl(camp.address)} target="_blank" rel="noreferrer">
+                  {shortAddress(camp.address)}
+                </a>
+              </p>
+            )}
             {camp.description && <p>{camp.description}</p>}
             {camp.price_details && (
               <>
                 <h2>Options</h2>
-                <ul style={{ margin: '4px 0', paddingLeft: 20 }}>
-                  {camp.price_details.split('\n').map((line) => line.trim()).filter(Boolean).map((line) => (
-                    <li key={line} style={{ marginBottom: 4 }}>
-                      {line}
-                    </li>
-                  ))}
-                </ul>
+                <LabeledBulletList text={camp.price_details} />
               </>
             )}
             {camp.prep_instructions && (
               <>
                 <h2>What to bring / prepare</h2>
-                <p style={{ whiteSpace: 'pre-wrap' }}>{camp.prep_instructions}</p>
+                <LabeledBulletList text={camp.prep_instructions} />
               </>
             )}
-            <CommentsSection campId={camp.id} />
-            <SourceNotesSection campId={camp.id} source={camp.source} />
+            <CommentsSection campId={camp.id} source={camp.source} />
             {(camp.booking_instructions || camp.source_url) && (
               <>
                 <h2>Booking</h2>

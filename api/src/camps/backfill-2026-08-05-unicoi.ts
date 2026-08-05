@@ -77,9 +77,16 @@ const PRICE_DETAILS = [
   'Weekly rates also available (vary by camp series)',
 ].join('\n')
 const BOOKING_INSTRUCTIONS = 'Register online via the Sawyer booking calendar — choose Morning, Afternoon, or both for a full day.'
-const PREP_INSTRUCTIONS =
-  'Pack a labeled lunch and a water bottle. Art projects can get messy — dress for it or bring a smock/old shirt. ' +
-  'Weather permitting, campers walk to nearby Hamlin Park for outdoor time.'
+// One item per line, item bolded up to the first colon — see
+// seed-2026-08-04-providers.ts's ProviderSpec prepInstructions doc comment
+// for the house style (feedback, 2026-08-05: "can you make what to bring a
+// bulleted list... bullet, the item, and then, optionally, a description").
+const PREP_INSTRUCTIONS = [
+  'Labeled lunch',
+  'Water bottle',
+  'Clothes that can get messy: art projects can get messy — dress for it or bring a smock/old shirt',
+  'Weather permitting, campers walk to nearby Hamlin Park for outdoor time',
+].join('\n')
 // No venue name or age range here — the title already says "Unicoi Art
 // Studio" and age_min/age_max already show the range in the always-visible
 // stat line (feedback, 2026-08-05, from a screenshot: the description

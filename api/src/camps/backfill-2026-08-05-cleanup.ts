@@ -28,18 +28,31 @@ import { enrichCampSourceImage } from './image-enrichment.js'
 // corrected to 5-12, the range that actually qualifies for the full
 // bridged day (the intersection of Morning's 5-13 and Afternoon's 4-12) —
 // the wider per-session ranges stay visible in the Options breakdown.
+//
+// Third pass (feedback, 2026-08-05): prep_instructions rewritten the same
+// one-item-per-line way as price_details — "can you make what to bring a
+// bulleted list... bullet, the item, and then, optionally, a description
+// of the item... set apart from the description" — CampDetailPage.tsx's
+// LabeledBulletList bolds everything before the first colon on each line.
 interface TextUpdate {
   sourceName: string
   description: string
   priceDetails?: string
   ageMin?: number
   ageMax?: number | null
+  prepInstructions?: string
 }
 
 const TEXT_UPDATES: TextUpdate[] = [
   {
     sourceName: 'Lake View YMCA',
     description: '"School Days Out" — a full day of activities while school is out.',
+    prepInstructions: [
+      'Lunch',
+      'Water bottle: no glass',
+      'Swimsuit and towel: if the day includes pool time',
+      'Comfortable clothes for active play',
+    ].join('\n'),
   },
   {
     sourceName: 'ClimbZone Chicago',
@@ -51,6 +64,11 @@ const TEXT_UPDATES: TextUpdate[] = [
       'Afternoon half-day: 12:30 PM – 3:30 PM · $70/day ($320/week)',
       '5% sibling discount applies to camp fees',
     ].join('\n'),
+    prepInstructions: [
+      'Sneakers or gym shoes',
+      'Grip socks: required in the soft-play area — bring your own or buy a pair on-site',
+      'Lunch: or pre-order one from ClimbZone for $10/child',
+    ].join('\n'),
   },
   {
     sourceName: 'Fit City Kids',
@@ -60,11 +78,19 @@ const TEXT_UPDATES: TextUpdate[] = [
       'Full day + after-camp extension: 8:00 AM – 6:00 PM · $120/day total',
       'Both options available for any date',
     ].join('\n'),
+    prepInstructions: ['Gym shoes and socks', 'Labeled water bottle', 'Snack and lunch'].join('\n'),
   },
   {
     sourceName: 'BitSpace',
     description: '"Day Off Camp" — design thinking, 3D printing, woodworking, and programmable electronics.',
     priceDetails: ['Full day · Ages 8+ · $150/day', 'Half-day · Ages 7-12 · price not yet published'].join('\n'),
+    prepInstructions: [
+      'Nut-free sack lunch, snacks, and a water bottle',
+      'Closed-toe shoes: no open-toed shoes or crocs',
+      'Hair tie: for long hair',
+      'Clothes that can get messy: no loose jewelry or loose clothing — some days get messy',
+      'Phone: fine for emergencies but must stay zipped in the backpack',
+    ].join('\n'),
   },
   {
     sourceName: 'Family Room Chicago (Broadway)',
@@ -80,6 +106,13 @@ const TEXT_UPDATES: TextUpdate[] = [
   {
     sourceName: 'Chicago Park District — Gill Park',
     description: 'Recreational activities, arts and crafts, and sports at the Gill Park fieldhouse.',
+    prepInstructions: [
+      'Backpack',
+      'Change of clothes: if needed',
+      'Water bottle',
+      'Sunscreen: apply before arrival',
+      'A free lunch and snack are provided district-wide, though kids are welcome to bring their own',
+    ].join('\n'),
   },
   {
     sourceName: 'Unicoi Art Studio',
@@ -92,6 +125,12 @@ const TEXT_UPDATES: TextUpdate[] = [
     ].join('\n'),
     ageMin: 5,
     ageMax: 12,
+    prepInstructions: [
+      'Labeled lunch',
+      'Water bottle',
+      'Clothes that can get messy: art projects can get messy — dress for it or bring a smock/old shirt',
+      'Weather permitting, campers walk to nearby Hamlin Park for outdoor time',
+    ].join('\n'),
   },
 ]
 
@@ -112,6 +151,7 @@ async function updateText() {
     if (update.priceDetails !== undefined) setValues.priceDetails = update.priceDetails
     if (update.ageMin !== undefined) setValues.ageMin = update.ageMin
     if (update.ageMax !== undefined) setValues.ageMax = update.ageMax
+    if (update.prepInstructions !== undefined) setValues.prepInstructions = update.prepInstructions
 
     const updatedRows = await db
       .update(camps)

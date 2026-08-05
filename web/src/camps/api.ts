@@ -94,7 +94,8 @@ export interface SourceNote {
   author_name: string | null
   author_avatar_url: string | null
   camp_id: string
-  camp_title: string
+  camp_start_date: string
+  camp_end_date: string
 }
 
 export interface CampSource {

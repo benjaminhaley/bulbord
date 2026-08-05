@@ -475,7 +475,14 @@ export async function campsRoutes(app: FastifyInstance) {
   // Cross-listing notes (feedback #50): comments left on OTHER camps that
   // share this camp's source, so e.g. viewing one YMCA camp surfaces notes
   // people left about other YMCA camps too. A self-submitted camp has no
-  // source, so it always returns empty rather than querying.
+  // source, so it always returns empty rather than querying. Returns each
+  // note's origin camp's start_date/end_date rather than its title
+  // (feedback, 2026-08-05: "specify which date it came from") — camp_title
+  // was always identical to the current page's own title (titles are just
+  // the provider name — see Camps data model & sourcing in CLAUDE.md), so
+  // it never actually distinguished one occurrence from another; the date
+  // does. The frontend merges these into the same list as this camp's own
+  // comments (CommentsSection.tsx) rather than a visually separate section.
   app.get('/camps/:id/source-notes', { preHandler: requireAuth }, async (request, reply) => {
     const { id } = request.params as { id: string }
 
@@ -499,7 +506,8 @@ export async function campsRoutes(app: FastifyInstance) {
         authorName: users.name,
         authorAvatarUrl: users.avatarUrl,
         campId: camps.id,
-        campTitle: camps.title,
+        campStartDate: camps.startDate,
+        campEndDate: camps.endDate,
       })
       .from(campComments)
       .innerJoin(camps, eq(camps.id, campComments.campId))
@@ -522,7 +530,8 @@ export async function campsRoutes(app: FastifyInstance) {
         author_name: row.authorName,
         author_avatar_url: row.authorAvatarUrl,
         camp_id: row.campId,
-        camp_title: row.campTitle,
+        camp_start_date: row.campStartDate,
+        camp_end_date: row.campEndDate,
       })),
       has_more: false,
       next_cursor: null,
