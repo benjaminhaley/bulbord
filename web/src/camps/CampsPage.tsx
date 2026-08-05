@@ -31,7 +31,7 @@ import { API_URL } from '../config'
 import { Avatar } from '../uploads/Avatar'
 import { createCamp, fetchCampsByBreak, type BreakBucket, type Camp, type InterestStatus } from './api'
 import { CampForm } from './CampForm'
-import { campDetailsLine, formatDateRange, locationLabel, teaser } from './format'
+import { campDetailsLine, formatDateRange, locationLabel } from './format'
 import { applyInterestUpdateAcrossBuckets, flattenAndDedupeCamps } from './grouping'
 import { InterestedBadge } from './InterestedBadge'
 import { useCampInterest } from './useCampInterest'
@@ -93,7 +93,6 @@ function CampRow({
   onSwipe: (e: { target: EventTarget | null }, camp: Camp, status: InterestStatus) => void
 }) {
   const location = locationLabel({ locationName: camp.location_name, address: camp.address })
-  const description = teaser(camp.description)
   const details = campDetailsLine(camp)
 
   return (
@@ -119,7 +118,6 @@ function CampRow({
           <p>{formatDateRange(camp.start_date, camp.end_date)}</p>
           {location && <IonNote>{location}</IonNote>}
           <p className="teaser">{details}</p>
-          {description && <p className="teaser">{description}</p>}
           {camp.interested_count > 0 && (
             <InterestedBadge campId={camp.id} count={camp.interested_count} people={camp.interested_people} />
           )}

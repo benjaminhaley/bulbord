@@ -65,10 +65,14 @@ export function distanceLabel(distanceMiles: string | null): string {
   return `Distance: ${value.toFixed(1)} mi`
 }
 
-// Real-time availability isn't tracked (no live booking integration) — null
-// means unknown, not zero, and is shown as such rather than hidden.
-export function spotsLabel(spotsAvailable: number | null): string {
-  if (spotsAvailable == null) return 'Spots: unknown'
+// Real-time availability isn't tracked (no live booking integration), so
+// spots_available is null for nearly every camp — unlike price/age/distance
+// above, an "unknown" spots line reads as noise rather than useful honesty
+// when it's the overwhelming common case (feedback, 2026-08-05: "very
+// distracting"). Omitted entirely (null) when unknown; still shown, same as
+// before, once a member or provider actually knows a real number.
+export function spotsLabel(spotsAvailable: number | null): string | null {
+  if (spotsAvailable == null) return null
   if (spotsAvailable <= 0) return 'Spots: full'
   return `Spots: ${spotsAvailable} available`
 }
@@ -82,16 +86,19 @@ export interface DetailedCamp {
   spots_available: number | null
 }
 
-// Price/age/distance/spots, in that order, always all four regardless of
-// which are known — joined for the "Price: $70/day · Ages: 5-13 · Distance:
-// 1.3 mi · Spots: unknown" line shared by the list row and the detail page.
+// Price/age/distance, in that order, always shown — joined for the
+// "Price: $70/day · Ages: 5-13 · Distance: 1.3 mi" line shared by the list
+// row and the detail page. Spots is appended only when actually known (see
+// spotsLabel) — unlike the other three, "unknown" isn't shown for it.
 export function campDetailsLine(camp: DetailedCamp): string {
   return [
     priceLabel(camp.price_per_day, camp.price_is_estimated),
     ageRangeLabel(camp.age_min, camp.age_max),
     distanceLabel(camp.distance_miles),
     spotsLabel(camp.spots_available),
-  ].join(' · ')
+  ]
+    .filter((label): label is string => label !== null)
+    .join(' · ')
 }
 
 // Addresses are typically stored as "Street, Chicago, IL 60613" — everything
@@ -107,12 +114,6 @@ export interface LocatableCamp {
 export function locationLabel(camp: LocatableCamp): string | null {
   if (camp.locationName) return camp.locationName
   return camp.address ? camp.address.replace(CITY_STATE_ZIP, '').trim() : null
-}
-
-export function teaser(description: string | null, maxLength = 90): string | null {
-  if (!description) return null
-  if (description.length <= maxLength) return description
-  return `${description.slice(0, maxLength).trimEnd()}…`
 }
 
 function joinWithAnd(names: string[]): string {

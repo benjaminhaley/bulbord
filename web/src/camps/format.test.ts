@@ -9,7 +9,6 @@ import {
   locationLabel,
   priceLabel,
   spotsLabel,
-  teaser,
 } from './format'
 
 describe('formatDateRange', () => {
@@ -73,8 +72,8 @@ describe('priceLabel', () => {
 })
 
 describe('spotsLabel', () => {
-  it('flags unknown availability explicitly rather than showing zero', () => {
-    expect(spotsLabel(null)).toBe('Spots: unknown')
+  it('omits unknown availability rather than showing a distracting placeholder', () => {
+    expect(spotsLabel(null)).toBe(null)
   })
 
   it('shows a count when known', () => {
@@ -87,7 +86,7 @@ describe('spotsLabel', () => {
 })
 
 describe('campDetailsLine', () => {
-  it('always joins price, age range, distance, and spots — even when some are unknown', () => {
+  it('always joins price, age range, and distance — even when some are unknown — and omits spots when unknown', () => {
     expect(
       campDetailsLine({
         price_per_day: '70.00',
@@ -97,10 +96,23 @@ describe('campDetailsLine', () => {
         distance_miles: '1.26',
         spots_available: null,
       }),
-    ).toBe('Price: $70/day · Ages: 5-13 · Distance: 1.3 mi · Spots: unknown')
+    ).toBe('Price: $70/day · Ages: 5-13 · Distance: 1.3 mi')
   })
 
-  it('shows explicit placeholders for every unknown field rather than omitting them', () => {
+  it('includes spots once known, appended after the always-shown fields', () => {
+    expect(
+      campDetailsLine({
+        price_per_day: '70.00',
+        price_is_estimated: false,
+        age_min: 5,
+        age_max: 13,
+        distance_miles: '1.26',
+        spots_available: 12,
+      }),
+    ).toBe('Price: $70/day · Ages: 5-13 · Distance: 1.3 mi · Spots: 12 available')
+  })
+
+  it('shows explicit placeholders for every unknown field except spots, which is omitted', () => {
     expect(
       campDetailsLine({
         price_per_day: null,
@@ -110,7 +122,7 @@ describe('campDetailsLine', () => {
         distance_miles: null,
         spots_available: null,
       }),
-    ).toBe('Price: not published · Ages: not specified · Distance: unknown · Spots: unknown')
+    ).toBe('Price: not published · Ages: not specified · Distance: unknown')
   })
 })
 
@@ -137,19 +149,6 @@ describe('locationLabel', () => {
 
   it('returns null when neither is present', () => {
     expect(locationLabel({ locationName: null, address: null })).toBeNull()
-  })
-})
-
-describe('teaser', () => {
-  it('returns null for no description', () => {
-    expect(teaser(null)).toBeNull()
-  })
-
-  it('truncates long descriptions with a trailing ellipsis', () => {
-    const long = 'x'.repeat(120)
-    const result = teaser(long)
-    expect(result).toHaveLength(91)
-    expect(result?.endsWith('…')).toBe(true)
   })
 })
 
