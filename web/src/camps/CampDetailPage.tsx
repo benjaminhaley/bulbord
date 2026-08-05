@@ -132,16 +132,24 @@ export function CampDetailPage() {
               <p style={{ color: 'var(--ion-color-medium)', marginTop: -8 }}>Posted by {camp.submitted_by.name}</p>
             )}
             {details !== null && <p>{details}</p>}
+            {camp.price_details && (
+              <p style={{ color: 'var(--ion-color-medium)', marginTop: -8, whiteSpace: 'pre-wrap' }}>{camp.price_details}</p>
+            )}
             {camp.interested_count > 0 && (
               <InterestedBadge campId={camp.id} count={camp.interested_count} people={camp.interested_people} />
             )}
             {camp.location_name && <p>{camp.location_name}</p>}
             {camp.address && <p>{camp.address}</p>}
             {camp.description && <p>{camp.description}</p>}
-            {camp.booking_instructions && (
+            {(camp.booking_instructions || camp.source_url) && (
               <>
                 <h2>Booking</h2>
-                <p style={{ whiteSpace: 'pre-wrap' }}>{camp.booking_instructions}</p>
+                {camp.booking_instructions && <p style={{ whiteSpace: 'pre-wrap' }}>{camp.booking_instructions}</p>}
+                {camp.source_url && (
+                  <IonButton expand="block" href={camp.source_url} target="_blank" rel="noreferrer">
+                    View Booking Page
+                  </IonButton>
+                )}
               </>
             )}
             {camp.prep_instructions && (
@@ -149,11 +157,6 @@ export function CampDetailPage() {
                 <h2>What to bring / prepare</h2>
                 <p style={{ whiteSpace: 'pre-wrap' }}>{camp.prep_instructions}</p>
               </>
-            )}
-            {camp.source_url && (
-              <IonButton expand="block" href={camp.source_url} target="_blank" rel="noreferrer">
-                View Booking Page
-              </IonButton>
             )}
             <CommentsSection campId={camp.id} />
             <SourceNotesSection campId={camp.id} source={camp.source} />

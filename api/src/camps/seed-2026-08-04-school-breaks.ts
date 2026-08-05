@@ -63,19 +63,17 @@ const breaks: (typeof schoolBreaks.$inferInsert)[] = [
       'Teacher/staff training, no students. CPS 2026-27 calendar. https://calendars.school/il-cps-chicago-school-calendar-2026-27',
   },
   {
-    name: 'Parent-Teacher Conference Day',
+    // Merged into one row (feedback, 2026-08-05): Parent-Teacher Conference
+    // Day (Nov 2) and Election Day (Nov 3) are consecutive dates, so they're
+    // one combined non-attendance window rather than two separate one-day
+    // breaks — same "overlap, don't need full coverage" logic already
+    // applies to camps spanning it.
+    name: 'Parent-Teacher Conference Day & Election Day',
     startDate: '2026-11-02',
-    endDate: '2026-11-02',
-    splitWeekly: false,
-    notes: 'No school for students. CPS 2026-27 calendar. https://calendars.school/il-cps-chicago-school-calendar-2026-27',
-  },
-  {
-    name: 'Election Day',
-    startDate: '2026-11-03',
     endDate: '2026-11-03',
     splitWeekly: false,
     notes:
-      'General (midterm) election day, observed in lieu of Veterans Day this year. CPS 2026-27 calendar. https://calendars.school/il-cps-chicago-school-calendar-2026-27',
+      'Nov 2: no school for students (Parent-Teacher Conference Day). Nov 3: General (midterm) election day, observed in lieu of Veterans Day this year. Both CPS 2026-27 calendar, consecutive dates merged into one row. https://calendars.school/il-cps-chicago-school-calendar-2026-27',
   },
   {
     name: 'Professional Development Day',

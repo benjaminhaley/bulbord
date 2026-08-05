@@ -1,0 +1,1 @@
+ALTER TABLE "camps" ADD COLUMN "price_details" text;

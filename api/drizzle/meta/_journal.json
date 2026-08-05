@@ -134,6 +134,13 @@
       "when": 1785864358217,
       "tag": "0018_cultured_edwin_jarvis",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1785890071544,
+      "tag": "0019_sparkling_warhawk",
+      "breakpoints": true
     }
   ]
 }

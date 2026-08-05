@@ -98,6 +98,25 @@ import { enrichCampSourceImage } from './image-enrichment.js'
 // just applied across every seeded date rather than individually
 // re-announced for each. Reserve priceIsEstimated: true for a genuinely
 // inferred/derived/uncertain price if one comes up later.
+//
+// Sixth follow-up pass (2026-08-05, same day, per feedback): three changes.
+// (1) pricePerDay stays a single full-day number for the compact list/quick-
+// preview line, but a provider with real tiered/add-on pricing (Fit City
+// Kids' $85 half-day + $35 extension = $120 full day; Family Room's
+// 3/5/9-hour tiers; BitSpace's full-day-vs-half-day age split) now also
+// carries `priceDetails`, a short breakdown shown only on the camp detail
+// page, making clear which options are actually available rather than
+// collapsing them into one number. (2) `breakDateOverrides` lets a provider's
+// real hours diverge from a break's full CPS date range — added after Ben
+// checked Lake View YMCA's own page directly and found they're only open
+// Nov 23-24 during Thanksgiving week, not the full Nov 23-27 break. (3) Every
+// provider's `bookingInstructions` was trimmed to a short line — the detail
+// page's "Booking" section now pairs brief info with the actual booking link
+// prominently alongside it, rather than a paragraph standing in for the link.
+// Also: Parent-Teacher Conference Day (Nov 2) and Election Day (Nov 3) are
+// merged into one break entry in the `breaks` array below, matching the
+// equivalent merge in seed-2026-08-04-school-breaks.ts, since they're
+// consecutive dates.
 
 interface BreakInfo {
   name: string
@@ -112,8 +131,10 @@ interface BreakInfo {
 // Day, Memorial Day). See that file's own header comment for why.
 const breaks: BreakInfo[] = [
   { name: 'Professional Development Day', startDate: '2026-09-25', endDate: '2026-09-25' },
-  { name: 'Parent-Teacher Conference Day', startDate: '2026-11-02', endDate: '2026-11-02' },
-  { name: 'Election Day', startDate: '2026-11-03', endDate: '2026-11-03' },
+  // Merged (feedback, 2026-08-05): Parent-Teacher Conference Day (Nov 2) and
+  // Election Day (Nov 3) are consecutive dates — see
+  // seed-2026-08-04-school-breaks.ts for the matching merged school_breaks row.
+  { name: 'Parent-Teacher Conference Day & Election Day', startDate: '2026-11-02', endDate: '2026-11-03' },
   { name: 'Professional Development Day', startDate: '2026-11-11', endDate: '2026-11-11' },
   { name: 'Thanksgiving Break', startDate: '2026-11-23', endDate: '2026-11-27' },
   { name: 'Winter Break', startDate: '2026-12-21', endDate: '2027-01-01' },
@@ -145,6 +166,13 @@ interface ProviderSpec {
   // not for the common case of "this is the provider's real stated rate,
   // just not re-announced for this exact date."
   priceIsEstimated?: boolean
+  // Optional breakdown for a provider with real tiered/add-on pricing (e.g.
+  // Fit City Kids' $85 half-day + $35 after-camp extension = $120 full day)
+  // — pricePerDay stays the single full-day number shown in the compact
+  // list/preview line; this expanded detail only shows on the camp detail
+  // page (feedback, 2026-08-05: "give an overall single number... but when
+  // you click on the event, you should see more information").
+  priceDetails?: string
   bookingInstructions: string
   prepInstructions: string
   description: string
@@ -170,6 +198,15 @@ interface ProviderSpec {
   // registration, with Oct 12 the earliest currently-open date) — no
   // candidate is generated for any break starting before this date when set.
   earliestConfirmedDate?: string
+  // Overrides this provider's actual camp date range for one specific break,
+  // keyed by that break's startDate (unique — several breaks share the
+  // "Professional Development Day" name) — for when a provider's real hours
+  // don't cover a whole multi-day break (found 2026-08-05: Lake View YMCA's
+  // own School Days Out page confirmed they're only open Nov 23-24 during
+  // Thanksgiving week, not the CPS break's full Nov 23-27 span). Same "trust
+  // the provider's real page over an assumed blanket policy" principle as
+  // earliestConfirmedDate above, just mid-break instead of at the start.
+  breakDateOverrides?: Record<string, { startDate: string; endDate: string }>
 }
 
 const PROVIDERS: ProviderSpec[] = [
@@ -179,7 +216,7 @@ const PROVIDERS: ProviderSpec[] = [
     url: 'https://www.ymcachicago.org/lake-view/',
     notes:
       '"School Days Out" program, $70/day is the program\'s own clearly stated standing rate (not derived or guessed) at ' +
-      'https://www.ymcachicago.org/early-learning-education/school-age-care/school-days-out/ — same price named for Spring Break 2027 (Mar 22-26) and every other date, so it\'s treated as confirmed (not estimated) throughout (feedback, 2026-08-05: "estimated" should mean the price itself is unclear, not merely "not individually re-announced for this date"). Ben checked that page directly (2026-08-04) and confirmed registration is not yet open for Labor Day or the Sep 25 PD day — Oct 12 (Indigenous Peoples\' Day) is the earliest date currently open, so no candidates are generated for the two dates before it (see earliestConfirmedDate below). This mirrors the Chicago Park District fix: a provider stating a general "every non-attendance day" policy doesn\'t guarantee its real registration system has actually opened bookings that far out yet.',
+      'https://www.ymcachicago.org/early-learning-education/school-age-care/school-days-out/ — same price named for Spring Break 2027 (Mar 22-26) and every other date, so it\'s treated as confirmed (not estimated) throughout (feedback, 2026-08-05: "estimated" should mean the price itself is unclear, not merely "not individually re-announced for this date"). Ben checked that page directly (2026-08-04) and confirmed registration is not yet open for Labor Day or the Sep 25 PD day — Oct 12 (Indigenous Peoples\' Day) is the earliest date currently open, so no candidates are generated for the two dates before it (see earliestConfirmedDate below). This mirrors the Chicago Park District fix: a provider stating a general "every non-attendance day" policy doesn\'t guarantee its real registration system has actually opened bookings that far out yet. Ben also checked their Thanksgiving-week hours directly (2026-08-05) and confirmed they only run Nov 23-24, not the full CPS Nov 23-27 break — see breakDateOverrides below.',
     address: '3333 N Marshfield Ave, Chicago, IL 60657',
     lat: 41.9422,
     lng: -87.6692,
@@ -187,8 +224,10 @@ const PROVIDERS: ProviderSpec[] = [
     ageMax: 13,
     pricePerDay: '70.00',
     earliestConfirmedDate: '2026-10-12',
-    bookingInstructions:
-      'Register online at ymcachicago.org/lake-view (look for "School Days Out"), call the Lake View Y at 773-248-3333, or sign up in person at the front desk.',
+    breakDateOverrides: {
+      '2026-11-23': { startDate: '2026-11-23', endDate: '2026-11-24' },
+    },
+    bookingInstructions: 'Register online, by phone (773-248-3333), or in person at the front desk.',
     prepInstructions:
       'Pack a lunch and a water bottle (no glass). Bring a swimsuit and towel if the day includes pool time, and dress for active play.',
     description: 'Lake View YMCA "School Days Out" — full day of activities while school is out. Ages 5-13.',
@@ -211,8 +250,7 @@ const PROVIDERS: ProviderSpec[] = [
     ageMin: 5,
     ageMax: 12,
     pricePerDay: '120.00',
-    bookingInstructions:
-      'Sign up online at climbzone.us/chicago/camps for whichever specific day(s) you need — no minimum number of days required.',
+    bookingInstructions: 'Sign up online for whichever day(s) you need — no minimum required.',
     prepInstructions:
       'Wear sneakers or gym shoes. Grip socks are required in the soft-play area (bring your own or buy a pair on-site). Pack a lunch, or pre-order one from ClimbZone for $10/child.',
     description: 'ClimbZone Chicago full-day camp — climbing walls, high ropes, laser tag, arts and crafts. Ages 5-12.',
@@ -231,9 +269,10 @@ const PROVIDERS: ProviderSpec[] = [
     ageMin: 4,
     ageMax: 12,
     pricePerDay: '120.00',
+    priceDetails:
+      '8am-3pm day camp: $85. Add the 3pm-6pm after-camp extension for a full 8am-6pm day: $120 total. Both options are available for any date.',
     earliestConfirmedDate: '2026-09-25',
-    bookingInstructions:
-      'Register through the parent portal at fitcitykids.com/schools-out-camp/. If a date you need isn\'t listed, email Camps@FitCityKids.com — they\'ll try to accommodate it.',
+    bookingInstructions: 'Register through the parent portal. Email Camps@FitCityKids.com if your date isn\'t listed.',
     prepInstructions: 'Bring gym shoes, socks, a labeled water bottle, a snack, and a lunch.',
     description: `Fit City Kids "School's Out Camp" — fitness classes and active play, 8am-6pm (day camp plus after-camp extension). Ages 4-12.`,
     sourceUrl: 'https://www.fitcitykids.com/schools-out-camp/',
@@ -251,9 +290,10 @@ const PROVIDERS: ProviderSpec[] = [
     ageMin: 8,
     ageMax: null,
     pricePerDay: '150.00',
+    priceDetails:
+      '$150/day full-day rate is for ages 8+. A half-day option also exists for ages 7-12 (price not yet published).',
     hasRecurringOffering: false,
-    bookingInstructions:
-      'Register online at education.bitspacechicago.com/day-off-camps. Each session needs a minimum of 8 campers to run, so register early.',
+    bookingInstructions: 'Register online. Each session needs a minimum of 8 campers to run — register early.',
     prepInstructions:
       'Pack a nut-free sack lunch, snacks, and a water bottle. No open-toed shoes, crocs, loose jewelry, or loose clothing — bring a hair tie for long hair, and dress for mess (some days get messy). A phone is fine for emergencies but must stay zipped in the backpack.',
     description:
@@ -275,8 +315,7 @@ const PROVIDERS: ProviderSpec[] = [
     ageMin: 6,
     ageMax: 12,
     pricePerDay: null,
-    bookingInstructions:
-      'Search anc.apm.activecommunities.com/chicagoparkdistrict/activity/search for a specific posted session (create a free account first), or register in person at the Gill Park fieldhouse (825 W Sheridan Rd) — call ahead to confirm in-person registration hours.',
+    bookingInstructions: 'Search the registration portal for a posted session, or register in person at the Gill Park fieldhouse.',
     prepInstructions:
       'Bring a backpack, a change of clothes if needed, a water bottle, and sunscreen (apply before arrival). A free lunch and snack are provided district-wide, though kids are welcome to bring their own.',
     description:
@@ -297,8 +336,9 @@ const PROVIDERS: ProviderSpec[] = [
     ageMin: 0,
     ageMax: null,
     pricePerDay: '95.00',
-    bookingInstructions:
-      'Book online at familyroomchicago.com (search "Day Camp: Single-Day Drop-In Pass") and pick a specific date — 3-hour, 5-hour, and full 9-hour options are available. Drop-off is flexible between 7:00am-4:30pm, with pick-up between 11:00am-6:00pm.',
+    priceDetails:
+      '3-hour Express Pass: $45. 5-hour Half-Day Pass: $65. 9-hour Full-Day Pass: $95 (shown above). All three lengths are available for any date.',
+    bookingInstructions: 'Book online and pick a date. Drop-off 7:00am-4:30pm, pick-up 11:00am-6:00pm.',
     prepInstructions: "Nothing to pack — healthy snacks and a whole-food lunch are included for the day.",
     description:
       'Family Room Chicago — Broadway Clubhouse Suite. "Day Camp: Single-Day Drop-In Pass" — up to 9 hours of supervised sports, free play, and creative activities with a 10:1 camper-to-staff ratio.',
@@ -317,28 +357,32 @@ function distanceFromNettelhorst(lat: number, lng: number): string {
 const candidates = breaks.flatMap((brk) =>
   PROVIDERS.filter((p) => p.hasRecurringOffering ?? true)
     .filter((p) => !p.earliestConfirmedDate || brk.startDate >= p.earliestConfirmedDate)
-    .map((p) => ({
-      sourceKey: p.key,
-      // Just the provider name — feedback (2026-08-04): a title like "Labor
-      // Day YMCA Camp" repeats info already shown as the accordion section
-      // header (the break) and the date field below it, and "Camp" is
-      // redundant on the Camps tab itself. The provider name is the only
-      // genuinely differentiating information at this level.
-      title: p.name,
-      description: p.description,
-      startDate: brk.startDate,
-      endDate: brk.endDate,
-      address: p.address,
-      lat: p.lat,
-      lng: p.lng,
-      pricePerDay: p.pricePerDay,
-      priceIsEstimated: p.pricePerDay !== null && (p.priceIsEstimated ?? false),
-      ageMin: p.ageMin,
-      ageMax: p.ageMax,
-      bookingInstructions: p.bookingInstructions,
-      prepInstructions: p.prepInstructions,
-      sourceUrl: p.sourceUrl,
-    })),
+    .map((p) => {
+      const override = p.breakDateOverrides?.[brk.startDate]
+      return {
+        sourceKey: p.key,
+        // Just the provider name — feedback (2026-08-04): a title like "Labor
+        // Day YMCA Camp" repeats info already shown as the accordion section
+        // header (the break) and the date field below it, and "Camp" is
+        // redundant on the Camps tab itself. The provider name is the only
+        // genuinely differentiating information at this level.
+        title: p.name,
+        description: p.description,
+        startDate: override?.startDate ?? brk.startDate,
+        endDate: override?.endDate ?? brk.endDate,
+        address: p.address,
+        lat: p.lat,
+        lng: p.lng,
+        pricePerDay: p.pricePerDay,
+        priceIsEstimated: p.pricePerDay !== null && (p.priceIsEstimated ?? false),
+        priceDetails: p.priceDetails ?? null,
+        ageMin: p.ageMin,
+        ageMax: p.ageMax,
+        bookingInstructions: p.bookingInstructions,
+        prepInstructions: p.prepInstructions,
+        sourceUrl: p.sourceUrl,
+      }
+    }),
 )
 
 async function main() {
@@ -380,6 +424,7 @@ async function main() {
           distanceMiles: distanceFromNettelhorst(c.lat, c.lng),
           pricePerDay: c.pricePerDay,
           priceIsEstimated: c.priceIsEstimated,
+          priceDetails: c.priceDetails,
           ageMin: c.ageMin,
           ageMax: c.ageMax,
           spotsAvailable: null, // unknown for every seeded row — no provider publishes live availability

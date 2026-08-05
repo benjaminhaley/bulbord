@@ -230,6 +230,12 @@ export const camps = pgTable('camps', {
   // A later pass should revisit these and replace inferred prices with
   // actual published ones as they become available.
   priceIsEstimated: boolean('price_is_estimated').notNull().default(false),
+  // Free-text breakdown for a provider with tiered/add-on pricing (e.g.
+  // "8am-3pm: $85. Add the 3pm-6pm after-camp extension for $120 total.").
+  // pricePerDay/priceLabel always shows one single full-day number for the
+  // compact list/preview line (feedback, 2026-08-05); this is the expanded
+  // detail shown only on the camp detail page, never in the compact line.
+  priceDetails: text('price_details'),
   ageMin: integer('age_min'), // years
   ageMax: integer('age_max'), // years
   // Real-time availability isn't tracked (no live booking integration) — null

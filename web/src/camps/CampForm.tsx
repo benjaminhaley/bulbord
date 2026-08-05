@@ -75,6 +75,7 @@ export function CampForm({
   }
   const [address, setAddress] = useState(initial?.address ?? '')
   const [pricePerDay, setPricePerDay] = useState(initial?.price_per_day ?? '')
+  const [priceDetails, setPriceDetails] = useState(initial?.price_details ?? '')
   const [ageMin, setAgeMin] = useState(initial?.age_min != null ? String(initial.age_min) : '')
   const [ageMax, setAgeMax] = useState(initial?.age_max != null ? String(initial.age_max) : '')
   const [spotsAvailable, setSpotsAvailable] = useState(initial?.spots_available != null ? String(initial.spots_available) : '')
@@ -102,6 +103,7 @@ export function CampForm({
           end_date: endDate.trim() || startDate,
           address: address.trim(),
           price_per_day: pricePerDay.trim() ? Number(pricePerDay) : null,
+          price_details: priceDetails.trim(),
           age_min: ageMin.trim() ? Number(ageMin) : null,
           age_max: ageMax.trim() ? Number(ageMax) : null,
           spots_available: spotsAvailable.trim() ? Number(spotsAvailable) : null,
@@ -177,6 +179,15 @@ export function CampForm({
           value={pricePerDay}
           onIonInput={(e) => setPricePerDay(e.detail.value ?? '')}
           placeholder="Optional"
+        />
+      </IonItem>
+      <IonItem>
+        <IonLabel position="stacked">Price details</IonLabel>
+        <IonTextarea
+          value={priceDetails}
+          onIonInput={(e) => setPriceDetails(e.detail.value ?? '')}
+          placeholder="Optional — a breakdown for tiered pricing (e.g. 8am-3pm: $85; 8am-6pm: $120)"
+          autoGrow
         />
       </IonItem>
       <IonItem>

@@ -17,6 +17,10 @@ export interface Camp {
   // policy rather than an individually published listing for this exact
   // date — see api/src/camps/routes.ts. Always render this to the user.
   price_is_estimated: boolean
+  // Optional breakdown for tiered/add-on pricing (e.g. "8am-3pm: $85. Add
+  // the after-camp extension for $120 total.") — shown on the detail page
+  // only, never in the compact price_per_day line.
+  price_details: string | null
   age_min: number | null
   age_max: number | null
   // Real-time availability isn't tracked — null means unknown, not zero.
@@ -46,6 +50,7 @@ export interface CampInput {
   end_date: string
   address: string
   price_per_day: number | null
+  price_details: string
   age_min: number | null
   age_max: number | null
   spots_available: number | null
