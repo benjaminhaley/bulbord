@@ -7,6 +7,9 @@ import {
   distanceLabel,
   formatDateRange,
   locationLabel,
+  optionAgeCell,
+  optionPriceCell,
+  optionTimeCell,
   priceLabel,
   spotsLabel,
   timeLabel,
@@ -78,15 +81,23 @@ describe('timeLabel', () => {
   })
 
   it('drops the redundant "Time:" label once a real time is known, showing just a start time when no end time is known', () => {
-    expect(timeLabel('09:00:00', null)).toBe('9:00 AM')
+    expect(timeLabel('09:00:00', null)).toBe('9 am')
   })
 
-  it('formats a full start-to-end range with no label', () => {
-    expect(timeLabel('09:00:00', '17:30:00')).toBe('9:00 AM – 5:30 PM')
+  it('omits minutes on the hour but keeps them when non-zero, showing am/pm on both ends when they differ', () => {
+    expect(timeLabel('09:00:00', '13:00:00')).toBe('9 am – 1 pm')
   })
 
-  it('formats midday and midnight-adjacent times correctly', () => {
-    expect(timeLabel('12:00:00', '13:00:00')).toBe('12:00 PM – 1:00 PM')
+  it('shows am/pm once, on the end only, when both ends share the same side', () => {
+    expect(timeLabel('09:30:00', '11:00:00')).toBe('9:30 – 11 am')
+  })
+
+  it('uses "noon" instead of "12 pm", with no meridiem needed since the word implies it', () => {
+    expect(timeLabel('12:00:00', '15:30:00')).toBe('noon – 3:30 pm')
+  })
+
+  it('uses "midnight" instead of "12 am"', () => {
+    expect(timeLabel('00:00:00', '06:00:00')).toBe('midnight – 6 am')
   })
 })
 
@@ -142,6 +153,56 @@ describe('campDetailsLine', () => {
         spots_available: null,
       }),
     ).toBe('Price: not published · Ages: not specified · Distance: unknown')
+  })
+
+  it('drops price and age when a camp has an Options table covering them instead, keeping distance/spots', () => {
+    expect(
+      campDetailsLine(
+        {
+          price_per_day: '70.00',
+          price_is_estimated: false,
+          age_min: 5,
+          age_max: 13,
+          distance_miles: '1.26',
+          spots_available: 12,
+        },
+        { includePrice: false, includeAge: false },
+      ),
+    ).toBe('1.3 mi · Spots: 12 available')
+  })
+})
+
+describe('optionTimeCell', () => {
+  it('shows a dash for an option with no fixed time', () => {
+    expect(optionTimeCell(null, null)).toBe('—')
+  })
+
+  it('formats a range using the same house time style as timeLabel', () => {
+    expect(optionTimeCell('09:00:00', '15:30:00')).toBe('9 am – 3:30 pm')
+  })
+})
+
+describe('optionAgeCell', () => {
+  it('shows a dash when no age override is set for this option', () => {
+    expect(optionAgeCell(null, null)).toBe('—')
+  })
+
+  it('shows a range when set', () => {
+    expect(optionAgeCell(7, 12)).toBe('7-12')
+  })
+})
+
+describe('optionPriceCell', () => {
+  it('shows a dash when this option has no fixed price', () => {
+    expect(optionPriceCell(null)).toBe('—')
+  })
+
+  it('formats a whole-dollar amount with no decimals', () => {
+    expect(optionPriceCell('120.00')).toBe('$120')
+  })
+
+  it('formats a fractional amount with two decimals', () => {
+    expect(optionPriceCell('39.50')).toBe('$39.50')
   })
 })
 

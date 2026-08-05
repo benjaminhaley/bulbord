@@ -2,7 +2,7 @@ import 'dotenv/config'
 import { eq } from 'drizzle-orm'
 
 import { db } from '../db/client.js'
-import { campSources, camps, eventsLog, type CampOptionLine } from '../db/schema.js'
+import { campSources, camps, eventsLog, type CampOptionLine, type CampPrepLine } from '../db/schema.js'
 import { haversineMiles, NETTELHORST_COORDS } from './geo.js'
 import { enrichCampSourceImage } from './image-enrichment.js'
 
@@ -68,16 +68,17 @@ const PRICE_PER_DAY = '120.00'
 // ageMin/ageMax below (the full-day-covering range — see AGE_MIN/AGE_MAX),
 // not a duplicate of it.
 const OPTIONS: CampOptionLine[] = [
-  { label: 'Morning', detail: '9:00 AM – 1:00 PM · $65/day · Ages 5-13' },
-  { label: 'Afternoon', detail: '1:30 PM – 5:00 PM · $55/day · Ages 4-12' },
-  { label: 'Full day (register both)', detail: '9:00 AM – 5:00 PM · $120/day' },
-  { label: 'Weekly rates', detail: 'also available (vary by camp series)' },
+  { label: 'Morning', start_time: '09:00', end_time: '13:00', price: '65.00', age_min: 5, age_max: 13, note: null },
+  { label: 'Afternoon', start_time: '13:30', end_time: '17:00', price: '55.00', age_min: 4, age_max: 12, note: null },
+  { label: 'Full day (register both)', start_time: '09:00', end_time: '17:00', price: '120.00', age_min: null, age_max: null, note: null },
+  { label: 'Weekly rates', start_time: null, end_time: null, price: null, age_min: null, age_max: null, note: 'vary by camp series' },
 ]
 const BOOKING_INSTRUCTIONS = 'Register online via the Sawyer booking calendar — choose Morning, Afternoon, or both for a full day.'
-// Structured "What to bring / prepare" checklist — same CampOptionLine
-// shape as OPTIONS above. The weather/park note is commentary on the
-// clothes item, not its own line — consolidated into one.
-const PREP_ITEMS: CampOptionLine[] = [
+// Structured "What to bring / prepare" checklist — see CampPrepLine (a
+// simpler shape than OPTIONS above, which now carries per-field
+// time/age/price). The weather/park note is commentary on the clothes
+// item, not its own line — consolidated into one.
+const PREP_ITEMS: CampPrepLine[] = [
   { label: 'Food and drink', detail: 'a labeled lunch and a water bottle' },
   { label: 'Clothes that can get messy', detail: 'for art projects and, weather permitting, a walk to nearby Hamlin Park' },
 ]

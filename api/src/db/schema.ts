@@ -201,23 +201,48 @@ export const campSources = pgTable('camp_sources', {
   ...timestamps,
 })
 
-// One line of the camp detail page's "Options" or "What to bring / prepare"
-// section (feedback, 2026-08-05: after a full day of formatting corrections
-// to hand-typed price_details/prep_instructions strings — inconsistent
-// bold treatment, mixed separators, a missing colon that silently broke
-// bolding entirely — Ben asked for this to become real structured data
-// instead of free text policed by convention). `label` is always rendered
-// bold; `detail` is free text scoped to just that one line's specifics
-// (e.g. "9:00 AM – 1:00 PM · $65/day · Ages 5-13") — deliberately NOT
-// decomposed further into separate time/price/age columns, since tiers
-// genuinely vary in shape across providers (a day+week price, a duration
-// only, an age band only) and forcing them into identical typed fields
-// would be over-structuring for a two-line, ~5-provider dataset. Stored as
-// JSONB directly on the row rather than a child table — neither list is
-// ever queried independently of its camp, so a real relational table would
-// add join complexity (especially to the by-break bulk fetch) without a
-// real query need driving it.
+// One row of the camp detail page's "Options" section — a real bookable
+// tier (full day, half-day, a discount). `label` is always rendered bold.
+// Originally label+detail with `detail` a hand-formatted string encoding
+// time/price/age together (e.g. "9:00 AM – 1:00 PM · $65/day · Ages
+// 5-13") — after a full day of formatting corrections to that hand-typed
+// convention (inconsistent bold treatment, mixed separators, a missing
+// colon that silently broke bolding entirely), promoted to real per-field
+// structure 2026-08-05 (feedback: "every option should include an age
+// range, a time, and a price... consistent structured fields for each
+// option") specifically so the detail page can render every tier as an
+// aligned, scannable table (see CampDetailPage.tsx's OptionsTable) instead
+// of parsing a flat string. start_time/end_time/price/age_min/age_max are
+// each independently nullable — not every option has a fixed clock time (a
+// flexible drop-in pass) or a per-tier age override (most tiers just share
+// the camp's own age_min/age_max) — a table cell shows "—" for a null
+// field rather than fabricating one. `note` is the deliberate escape hatch
+// for anything that doesn't fit those columns (a weekly rate, a sibling
+// discount, a duration for a pass with no fixed clock time) — a
+// label+note-only row with every other field null is a normal, expected
+// shape, not a degraded case. snake_case field names (unlike the rest of
+// this file's camelCase columns) because this object is stored/returned as
+// one raw JSONB blob with no per-field mapping in routes.ts — matches the
+// snake_case convention every top-level API field already uses. Stored as
+// JSONB directly on the row rather than a child table — this list is never
+// queried independently of its camp, so a real relational table would add
+// join complexity (especially to the by-break bulk fetch) without a real
+// query need driving it.
 export interface CampOptionLine {
+  label: string
+  start_time: string | null
+  end_time: string | null
+  price: string | null
+  age_min: number | null
+  age_max: number | null
+  note: string | null
+}
+
+// One line of the "What to bring / prepare" section — deliberately kept at
+// this simpler label+detail shape (unlike CampOptionLine above), since a
+// packing-list item genuinely has no time/age/price to decompose into; only
+// `options`' bookable tiers needed that structure.
+export interface CampPrepLine {
   label: string
   detail: string
 }
@@ -288,9 +313,8 @@ export const camps = pgTable('camps', {
   // sourceUrl "View Booking Page" button, so there's no repeating shape here
   // worth extracting the way there was for options/prepItems.
   bookingInstructions: text('booking_instructions'),
-  // Structured "what to bring / prepare" checklist — same CampOptionLine
-  // shape and same rationale as `options` above.
-  prepItems: jsonb('prep_items').$type<CampOptionLine[]>(),
+  // Structured "what to bring / prepare" checklist — see CampPrepLine above.
+  prepItems: jsonb('prep_items').$type<CampPrepLine[]>(),
   // Member-submitted-camp equivalent of optionsNote above, for the same
   // "keep it simple" reason — a single free-text aside, not a structured list.
   prepNote: text('prep_note'),

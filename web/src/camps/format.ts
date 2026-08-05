@@ -32,11 +32,40 @@ export function formatDateRange(startDate: string, endDate: string, now = new Da
   return `${shortDateLabel(startDate)} – ${shortDateLabel(endDate)}`
 }
 
-function formatClockTime(time: string): string {
-  const [hours, minutes] = time.split(':')
-  const date = new Date()
-  date.setHours(Number(hours), Number(minutes))
-  return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+interface TimeParts {
+  hour12: number
+  minute: number
+  isPM: boolean
+}
+
+function parseTime(time: string): TimeParts {
+  const [hourStr, minuteStr] = time.split(':')
+  const hour = Number(hourStr)
+  const hour12 = hour % 12 === 0 ? 12 : hour % 12
+  return { hour12, minute: Number(minuteStr), isPM: hour >= 12 }
+}
+
+// House time-formatting style (feedback, 2026-08-05: "9 am - 1 pm", "9:30 -
+// 11 am", "noon - 3:30 pm" — see the mark-inferred-data-as-inferred-shaped
+// memory for the permanent rule this codifies for any future clock-time
+// display, not just camps). Three rules: (1) omit minutes entirely when
+// they're :00 — "9 am", not "9:00 am"; (2) "noon"/"midnight" instead of "12
+// pm"/"12 am"; (3) am/pm is shown on both ends of a range only when they
+// actually differ (e.g. morning into afternoon) — when both ends share the
+// same side, it's shown once, on the end only, since repeating it on the
+// start too is redundant ("9:30 – 11 am", not "9:30 am – 11 am").
+function formatSingleTime(time: string, showMeridiem: boolean): string {
+  const { hour12, minute, isPM } = parseTime(time)
+  if (hour12 === 12 && minute === 0) return isPM ? 'noon' : 'midnight'
+  const minutePart = minute === 0 ? '' : `:${String(minute).padStart(2, '0')}`
+  const meridiemPart = showMeridiem ? (isPM ? ' pm' : ' am') : ''
+  return `${hour12}${minutePart}${meridiemPart}`
+}
+
+function formatTimeRange(startTime: string, endTime: string | null): string {
+  if (!endTime) return formatSingleTime(startTime, true)
+  const sameMeridiem = parseTime(startTime).isPM === parseTime(endTime).isPM
+  return `${formatSingleTime(startTime, !sameMeridiem)} – ${formatSingleTime(endTime, true)}`
 }
 
 // Exact camp hours (feedback, 2026-08-05: "make sure all camps list the
@@ -53,9 +82,7 @@ function formatClockTime(time: string): string {
 // there's no AM/PM to imply what "not specified" refers to.
 export function timeLabel(startTime: string | null, endTime: string | null): string {
   if (!startTime) return 'Time: not specified'
-  const start = formatClockTime(startTime)
-  if (!endTime) return start
-  return `${start} – ${formatClockTime(endTime)}`
+  return formatTimeRange(startTime, endTime)
 }
 
 // Every one of these always returns a labeled string, never null/empty —
@@ -124,15 +151,53 @@ export interface DetailedCamp {
 // "Price: $70/day · Ages: 5-13 · Distance: 1.3 mi" line shared by the list
 // row and the detail page. Spots is appended only when actually known (see
 // spotsLabel) — unlike the other three, "unknown" isn't shown for it.
-export function campDetailsLine(camp: DetailedCamp): string {
+//
+// includePrice/includeAge default to true (the list row always wants both —
+// there's no options table there to fall back on) — CampDetailPage passes
+// false for a camp with a populated `options` breakdown (feedback,
+// 2026-08-05: "we don't need to list age[,] time[,] and price up top
+// because we're really just highlighting... the most expansive of the
+// options" — once every option row shows its own time/age/price, repeating
+// the max-time summary again above the table is redundant). A camp with no
+// options (a member-submitted camp, or any provider with just a flat rate
+// and no real tiers) still needs both here, since the table isn't shown at
+// all for it.
+export function campDetailsLine(camp: DetailedCamp, opts: { includePrice?: boolean; includeAge?: boolean } = {}): string {
+  const { includePrice = true, includeAge = true } = opts
   return [
-    priceLabel(camp.price_per_day, camp.price_is_estimated),
-    ageRangeLabel(camp.age_min, camp.age_max),
+    includePrice ? priceLabel(camp.price_per_day, camp.price_is_estimated) : null,
+    includeAge ? ageRangeLabel(camp.age_min, camp.age_max) : null,
     distanceLabel(camp.distance_miles),
     spotsLabel(camp.spots_available),
   ]
     .filter((label): label is string => label !== null)
     .join(' · ')
+}
+
+// Compact, unlabeled cell formatters for the Options table (see
+// CampDetailPage.tsx's OptionsTable) — deliberately distinct from
+// timeLabel/ageRangeLabel/priceLabel above, which spell out a full
+// "not specified"/"unknown" sentence appropriate for a standalone line, not
+// a table cell where that much text would break the aligned layout. A null
+// field here just reads as "—", matching how a real printed schedule shows
+// a blank/inapplicable cell rather than a placeholder sentence.
+export function optionTimeCell(startTime: string | null, endTime: string | null): string {
+  if (!startTime) return '—'
+  return formatTimeRange(startTime, endTime)
+}
+
+export function optionAgeCell(ageMin: number | null, ageMax: number | null): string {
+  if (ageMin == null && ageMax == null) return '—'
+  if (ageMin != null && ageMax != null) return ageMin === ageMax ? `${ageMin}` : `${ageMin}-${ageMax}`
+  if (ageMin != null) return `${ageMin}+`
+  return `up to ${ageMax}`
+}
+
+export function optionPriceCell(price: string | null): string {
+  if (price == null) return '—'
+  const value = Number(price)
+  if (Number.isNaN(value)) return '—'
+  return `$${Number.isInteger(value) ? value.toFixed(0) : value.toFixed(2)}`
 }
 
 // Addresses are typically stored as "Street, Chicago, IL 60613" — everything

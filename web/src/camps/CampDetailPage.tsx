@@ -16,10 +16,10 @@ import { useHistory, useParams } from 'react-router-dom'
 
 import { API_URL } from '../config'
 import { Avatar } from '../uploads/Avatar'
-import { deleteCamp, fetchCamp, updateCamp, type Camp, type CampOptionLine } from './api'
+import { deleteCamp, fetchCamp, updateCamp, type Camp, type CampOptionLine, type CampPrepLine } from './api'
 import { CampForm } from './CampForm'
 import { CommentsSection } from './CommentsSection'
-import { campDetailsLine, formatDateRange, mapUrl, shortAddress, timeLabel } from './format'
+import { campDetailsLine, formatDateRange, mapUrl, optionAgeCell, optionPriceCell, optionTimeCell, shortAddress, timeLabel } from './format'
 import { InterestedBadge } from './InterestedBadge'
 import { useCampInterest } from './useCampInterest'
 
@@ -35,14 +35,16 @@ import { useCampInterest } from './useCampInterest'
 // only intentionally larger gaps, since those mark genuine section breaks.
 const FACT_LINE_STYLE = { margin: '4px 0' } as const
 
-// Shared by the Options and "What to bring / prepare" sections below — each
-// CampOptionLine becomes its own bullet, label always bold, detail always
-// plain (feedback, 2026-08-05: "the item should probably be somehow set
-// apart from the description"; then later that same day: real structured
-// data instead of a hand-formatted string, so this can never again drift
-// into the inconsistent-bolding bugs a free-text version needed a whole
-// session of corrections to catch — see CampOptionLine in api.ts).
-function LabeledBulletList({ lines }: { lines: CampOptionLine[] }) {
+// "What to bring / prepare" section — each CampPrepLine becomes its own
+// bullet, label always bold, detail always plain (feedback, 2026-08-05:
+// "the item should probably be somehow set apart from the description";
+// then later that same day: real structured data instead of a
+// hand-formatted string, so this can never again drift into the
+// inconsistent-bolding bugs a free-text version needed a whole session of
+// corrections to catch — see CampPrepLine in api.ts). Options has its own
+// OptionsTable below instead — a packing-list item has no time/age/price to
+// line up in columns, so a table would add structure with nothing to show.
+function LabeledBulletList({ lines }: { lines: CampPrepLine[] }) {
   return (
     <ul style={{ margin: '4px 0', paddingLeft: 20 }}>
       {lines.map((line) => (
@@ -52,6 +54,60 @@ function LabeledBulletList({ lines }: { lines: CampOptionLine[] }) {
         </li>
       ))}
     </ul>
+  )
+}
+
+// A blank/inapplicable table cell — same visual convention as a real
+// printed schedule, deliberately quieter than the row's own text so the eye
+// lands on the cells that actually have data.
+function OptionCell({ value }: { value: string }) {
+  return value === '—' ? <span style={{ color: 'var(--ion-color-medium)' }}>—</span> : <>{value}</>
+}
+
+// The Options section's primary rendering (feedback, 2026-08-05: "look a
+// little more tabular and easier to scan... aligned and skimmable... fits
+// on the screen well") — a real 4-column table (Option / Time / Ages /
+// Price) rather than the flowing bulleted-sub-line format this replaced,
+// since every option now carries the same structured fields and a genuine
+// table is what makes same-column values (all the prices, all the ages)
+// comparable at a glance. `note` renders as a small subtext line under the
+// label rather than its own column, since it's free text of varying
+// length that would break a fixed-width column. Wrapped in a horizontally-
+// scrolling div as a safety net for an unusually long label, not because
+// the table is expected to overflow a normal phone width.
+function OptionsTable({ options }: { options: CampOptionLine[] }) {
+  return (
+    <div style={{ overflowX: 'auto', margin: '4px 0' }}>
+      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
+        <thead>
+          <tr style={{ color: 'var(--ion-color-medium)', fontSize: 12 }}>
+            <th style={{ textAlign: 'left', fontWeight: 'normal', padding: '0 6px 4px 0' }}>Option</th>
+            <th style={{ textAlign: 'left', fontWeight: 'normal', padding: '0 6px 4px' }}>Time</th>
+            <th style={{ textAlign: 'left', fontWeight: 'normal', padding: '0 6px 4px' }}>Ages</th>
+            <th style={{ textAlign: 'right', fontWeight: 'normal', padding: '0 0 4px 6px' }}>Price</th>
+          </tr>
+        </thead>
+        <tbody>
+          {options.map((option) => (
+            <tr key={option.label} style={{ borderTop: '1px solid var(--ion-color-step-150, #d9d9d9)' }}>
+              <td style={{ verticalAlign: 'top', padding: '6px 6px 6px 0' }}>
+                <strong>{option.label}</strong>
+                {option.note && <div style={{ fontSize: 12, color: 'var(--ion-color-medium)' }}>{option.note}</div>}
+              </td>
+              <td style={{ verticalAlign: 'top', padding: '6px' }}>
+                <OptionCell value={optionTimeCell(option.start_time, option.end_time)} />
+              </td>
+              <td style={{ verticalAlign: 'top', padding: '6px' }}>
+                <OptionCell value={optionAgeCell(option.age_min, option.age_max)} />
+              </td>
+              <td style={{ verticalAlign: 'top', textAlign: 'right', padding: '6px 0 6px 6px' }}>
+                <OptionCell value={optionPriceCell(option.price)} />
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   )
 }
 
@@ -86,7 +142,13 @@ export function CampDetailPage() {
       .catch(() => setError(true))
   }, [id])
 
-  const details = camp ? campDetailsLine(camp) : null
+  // Once a camp has a real Options breakdown, every option row shows its
+  // own time/age/price — repeating the max-time summary above the table
+  // again would be redundant (feedback, 2026-08-05). A camp with no
+  // options (member-submitted, or a provider with just a flat rate) has no
+  // table to fall back on, so it keeps the full top summary.
+  const hasOptions = camp?.options != null && camp.options.length > 0
+  const details = camp ? campDetailsLine(camp, { includePrice: !hasOptions, includeAge: !hasOptions }) : null
 
   return (
     <IonPage>
@@ -159,7 +221,7 @@ export function CampDetailPage() {
             )}
             <h1>{camp.title}</h1>
             <p style={FACT_LINE_STYLE}>{formatDateRange(camp.start_date, camp.end_date)}</p>
-            <p style={FACT_LINE_STYLE}>{timeLabel(camp.start_time, camp.end_time)}</p>
+            {!hasOptions && <p style={FACT_LINE_STYLE}>{timeLabel(camp.start_time, camp.end_time)}</p>}
             {camp.submitted_by && (
               <p style={{ ...FACT_LINE_STYLE, color: 'var(--ion-color-medium)' }}>Posted by {camp.submitted_by.name}</p>
             )}
@@ -179,7 +241,7 @@ export function CampDetailPage() {
             {camp.options && camp.options.length > 0 ? (
               <>
                 <h2>Options</h2>
-                <LabeledBulletList lines={camp.options} />
+                <OptionsTable options={camp.options} />
               </>
             ) : (
               camp.options_note && (

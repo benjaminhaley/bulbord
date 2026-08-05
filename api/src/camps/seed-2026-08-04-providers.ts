@@ -1,7 +1,7 @@
 import 'dotenv/config'
 
 import { db } from '../db/client.js'
-import { camps, campSources, eventsLog, type CampOptionLine } from '../db/schema.js'
+import { camps, campSources, eventsLog, type CampOptionLine, type CampPrepLine } from '../db/schema.js'
 import { haversineMiles, NETTELHORST_COORDS } from './geo.js'
 import { enrichCampSourceImage } from './image-enrichment.js'
 
@@ -205,31 +205,29 @@ interface ProviderSpec {
   // not for the common case of "this is the provider's real stated rate,
   // just not re-announced for this exact date."
   priceIsEstimated?: boolean
-  // Structured tiered/add-on pricing breakdown (e.g. Fit City Kids' $85
-  // half-day + $35 after-camp extension = $120 full day) — pricePerDay
-  // stays the single full-day number shown in the compact list/preview
-  // line; this expanded detail only shows on the camp detail page's
-  // "Options" section. See CampOptionLine in db/schema.ts for the
-  // {label, detail} shape (2026-08-05: promoted from a hand-formatted
-  // `\n`-joined string, which needed a whole session of "please fix the
-  // formatting" corrections, to real structured data — see CLAUDE.md's
-  // Camps section for that history). Two content rules survive the move to
-  // structured data, since they're judgment calls, not formatting: (1) only
-  // give a tier's `detail` an age callout when that tier's range is
-  // genuinely different from the camp's own ageMin/ageMax below — never
-  // restate the same range the stat line already shows; (2) never mention
-  // which DATES a tier is available on (e.g. "available for any date") —
-  // every camp row is already scoped to one specific date, so that answers
-  // a question nobody is asking on this page. A note about a genuinely
-  // different option spanning MULTIPLE dates (e.g. Unicoi's weekly rate) is
-  // real upsell information and still belongs here.
+  // Structured, per-tier breakdown (e.g. Fit City Kids' $85 half-day + $35
+  // after-camp extension = $120 full day) — pricePerDay stays the single
+  // full-day number shown in the compact list/preview line; this expanded
+  // detail only shows on the camp detail page's "Options" section, now a
+  // real table (see CampOptionLine in db/schema.ts — 2026-08-05: promoted
+  // from a hand-formatted `label`+`detail` string, which itself had earlier
+  // replaced a `\n`-joined free-text blob, to real per-field time/age/price
+  // structure so every tier lines up in a scannable column — see CLAUDE.md's
+  // Camps section for that history). One content rule survives the move to
+  // structured fields, since it's a judgment call, not formatting: only
+  // give a tier its own age_min/age_max when that tier's range is genuinely
+  // different from the camp's own ageMin/ageMax below — otherwise leave it
+  // null and let the table show "—", since restating the same range on
+  // every row adds nothing.
   options?: CampOptionLine[]
   bookingInstructions: string
-  // Structured "what to bring / prepare" checklist — same CampOptionLine
-  // shape as options above. Consolidate related items into one line rather
-  // than fragmenting (e.g. lunch + water bottle → one "Food and drink"
-  // item) — fewer, richer items read cleaner than many thin ones.
-  prepItems: CampOptionLine[]
+  // Structured "what to bring / prepare" checklist — see CampPrepLine in
+  // db/schema.ts (a simpler label+detail shape than options above — a
+  // packing-list item has no time/age/price to decompose into). Consolidate
+  // related items into one line rather than fragmenting (e.g. lunch + water
+  // bottle → one "Food and drink" item) — fewer, richer items read cleaner
+  // than many thin ones.
+  prepItems: CampPrepLine[]
   // One tight sentence or two: what campers actually do. Never restate the
   // venue/provider name (it's already the page's `<h1>` title), age range,
   // hours, price, or address — age_min/age_max, start_time/end_time,
@@ -296,6 +294,12 @@ const PROVIDERS: ProviderSpec[] = [
     startTime: '07:00',
     endTime: '18:00',
     pricePerDay: '70.00',
+    // A single flat rate, no real tiers — still expressed as a one-row
+    // options table (2026-08-05) so the detail page always has the table
+    // as its one source of time/age/price once any options exist, rather
+    // than YMCA being a special case with none. age_min/age_max left null
+    // since they match the camp-level 5-13 above.
+    options: [{ label: 'Full day', start_time: '07:00', end_time: '18:00', price: '70.00', age_min: null, age_max: null, note: null }],
     earliestConfirmedDate: '2026-10-12',
     breakDateOverrides: {
       '2026-11-23': { startDate: '2026-11-23', endDate: '2026-11-24' },
@@ -335,11 +339,11 @@ const PROVIDERS: ProviderSpec[] = [
     endTime: '17:30',
     pricePerDay: '150.00',
     options: [
-      { label: 'Full day', detail: '9:00 AM – 3:30 PM · $120/day ($540/week)' },
-      { label: 'Full day + aftercare', detail: '9:00 AM – 5:30 PM · $150/day total' },
-      { label: 'Morning half-day', detail: '9:00 AM – 12:00 PM · $70/day ($320/week)' },
-      { label: 'Afternoon half-day', detail: '12:30 PM – 3:30 PM · $70/day ($320/week)' },
-      { label: 'Sibling discount', detail: '5% off camp fees' },
+      { label: 'Full day', start_time: '09:00', end_time: '15:30', price: '120.00', age_min: null, age_max: null, note: '$540/week' },
+      { label: 'Full day + aftercare', start_time: '09:00', end_time: '17:30', price: '150.00', age_min: null, age_max: null, note: null },
+      { label: 'Morning half-day', start_time: '09:00', end_time: '12:00', price: '70.00', age_min: null, age_max: null, note: '$320/week' },
+      { label: 'Afternoon half-day', start_time: '12:30', end_time: '15:30', price: '70.00', age_min: null, age_max: null, note: '$320/week' },
+      { label: 'Sibling discount', start_time: null, end_time: null, price: null, age_min: null, age_max: null, note: '5% off camp fees' },
     ],
     bookingInstructions: 'Sign up online for whichever day(s) you need — no minimum required.',
     prepItems: [
@@ -369,8 +373,16 @@ const PROVIDERS: ProviderSpec[] = [
     endTime: '18:00',
     pricePerDay: '120.00',
     options: [
-      { label: 'Day camp', detail: '8:00 AM – 3:00 PM · $85/day' },
-      { label: 'Full day + after-camp extension', detail: '8:00 AM – 6:00 PM · $120/day total' },
+      { label: 'Day camp', start_time: '08:00', end_time: '15:00', price: '85.00', age_min: null, age_max: null, note: null },
+      {
+        label: 'Full day + after-camp extension',
+        start_time: '08:00',
+        end_time: '18:00',
+        price: '120.00',
+        age_min: null,
+        age_max: null,
+        note: null,
+      },
     ],
     earliestConfirmedDate: '2026-09-25',
     bookingInstructions: 'Register through the parent portal. Email Camps@FitCityKids.com if your date isn\'t listed.',
@@ -395,8 +407,8 @@ const PROVIDERS: ProviderSpec[] = [
     ageMax: null,
     pricePerDay: '150.00',
     options: [
-      { label: 'Full day', detail: 'Ages 8+ · $150/day' },
-      { label: 'Half-day', detail: 'Ages 7-12 · price not yet published' },
+      { label: 'Full day', start_time: null, end_time: null, price: '150.00', age_min: null, age_max: null, note: null },
+      { label: 'Half-day', start_time: null, end_time: null, price: null, age_min: 7, age_max: 12, note: null },
     ],
     hasRecurringOffering: false,
     bookingInstructions: 'Register online. Each session needs a minimum of 8 campers to run — register early.',
@@ -454,9 +466,9 @@ const PROVIDERS: ProviderSpec[] = [
     endTime: '18:00',
     pricePerDay: '95.00',
     options: [
-      { label: 'Express Pass', detail: '3 hours · $45/day' },
-      { label: 'Half-Day Pass', detail: '5 hours · $65/day' },
-      { label: 'Full-Day Pass', detail: '9 hours · $95/day' },
+      { label: 'Express Pass', start_time: null, end_time: null, price: '45.00', age_min: null, age_max: null, note: '3 hours' },
+      { label: 'Half-Day Pass', start_time: null, end_time: null, price: '65.00', age_min: null, age_max: null, note: '5 hours' },
+      { label: 'Full-Day Pass', start_time: null, end_time: null, price: '95.00', age_min: null, age_max: null, note: '9 hours' },
     ],
     // Drop-off/pick-up hours moved to startTime/endTime above (feedback,
     // 2026-08-05: "the part of bookings that's talking about pickup and

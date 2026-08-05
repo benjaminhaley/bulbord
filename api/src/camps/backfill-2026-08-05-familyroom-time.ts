@@ -18,9 +18,9 @@ import { campSources, camps, eventsLog, type CampOptionLine } from '../db/schema
 // Full-Day Pass option line since it's redundant with the compact price
 // line regardless.
 const OPTIONS: CampOptionLine[] = [
-  { label: 'Express Pass', detail: '3 hours · $45/day' },
-  { label: 'Half-Day Pass', detail: '5 hours · $65/day' },
-  { label: 'Full-Day Pass', detail: '9 hours · $95/day' },
+  { label: 'Express Pass', start_time: null, end_time: null, price: '45.00', age_min: null, age_max: null, note: '3 hours' },
+  { label: 'Half-Day Pass', start_time: null, end_time: null, price: '65.00', age_min: null, age_max: null, note: '5 hours' },
+  { label: 'Full-Day Pass', start_time: null, end_time: null, price: '95.00', age_min: null, age_max: null, note: '9 hours' },
 ]
 
 async function main() {

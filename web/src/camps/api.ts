@@ -3,13 +3,29 @@ import { authHeaders } from '../auth/token'
 
 export type InterestStatus = 'interested' | 'dismissed'
 
-// One line of the "Options" or "What to bring / prepare" section — label is
-// always rendered bold, detail is free text scoped to just that line (see
-// api/src/db/schema.ts's CampOptionLine for the full rationale: this
-// replaced a hand-formatted free-text blob that needed a whole session of
-// "please fix the formatting" corrections before becoming real structured
-// data).
+// One bookable tier of the "Options" section — label is always rendered
+// bold; start_time/end_time/price/age_min/age_max are independently
+// nullable (a table cell shows "—" when unknown), and `note` is a short
+// freeform aside for anything that doesn't fit those columns (a weekly
+// rate, a sibling discount). See api/src/db/schema.ts's CampOptionLine for
+// the full rationale — this replaced a hand-formatted free-text `detail`
+// blob (2026-08-05: "every option should include an age range, a time, and
+// a price... consistent structured fields for each option").
 export interface CampOptionLine {
+  label: string
+  start_time: string | null
+  end_time: string | null
+  price: string | null
+  age_min: number | null
+  age_max: number | null
+  note: string | null
+}
+
+// One line of the "What to bring / prepare" section — label always bold,
+// detail always plain. Deliberately kept simpler than CampOptionLine above
+// (see api/src/db/schema.ts's CampPrepLine) since a packing-list item has
+// no time/age/price to decompose into.
+export interface CampPrepLine {
   label: string
   detail: string
 }
@@ -45,9 +61,10 @@ export interface Camp {
   spots_available: number | null
   // When/how to register — free text, always shown when present.
   booking_instructions: string | null
-  // Structured "what to bring / prepare" checklist — same shape/posture as
-  // options above. prep_note is the member self-service equivalent.
-  prep_items: CampOptionLine[] | null
+  // Structured "what to bring / prepare" checklist — same posture as
+  // options above, simpler shape (see CampPrepLine). prep_note is the
+  // member self-service equivalent.
+  prep_items: CampPrepLine[] | null
   prep_note: string | null
   source_url: string | null
   image_url: string | null
