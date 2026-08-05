@@ -219,19 +219,25 @@ export function CommentsSection({ campId, source }: { campId: string; source: { 
             (feedback, 2026-08-05, after two attempts: "plus in comments is
             still not centered"). Same pattern already used elsewhere in
             this app (e.g. AccountPage.tsx, DevToolsPage.tsx).
-            Still wasn't enough on its own — measured the real gap with
-            Playwright (feedback, 2026-08-05, a third time: "still not
-            vertically aligned... strange spacing between them") and found
-            ion-textarea's native <textarea> carries an 18px top padding
-            with a much smaller bottom padding, baked in for its usual
-            floating/stacked-label layouts. That pushes the placeholder
-            text well below the item's true vertical center, which is what
-            the icon actually centers against — no label is used here, so
-            that reserved space just reads as dead air. Overriding
-            --padding-top/--padding-bottom to a small, equal value removes
-            that asymmetry so the item's real center and the text's center
-            coincide, and shrinks the excess whitespace between the icon
-            row and the item above it in the same move. */}
+            Still wasn't enough on its own, even after also equalizing
+            --padding-top/--padding-bottom (feedback, 2026-08-05, a fourth
+            time: "still isn't vertically aligned... I would expect them to
+            be vertically centered as in... a horizontal line down the
+            middle"). Eyeballing screenshots wasn't precise enough to catch
+            a few-pixel offset, so this was finally measured directly:
+            cropped a 4x-devicePixelRatio screenshot of just this row and
+            computed each glyph's real ink centroid (brightness-weighted
+            row average, not a bounding-box trim, which is noisy against
+            anti-aliased edges) for the "+" icon and the "Add a comment"
+            text separately. Equal padding still left the text sitting
+            ~6.5px above the icon's center — the browser's own line-height
+            leading isn't symmetric around the glyphs even when the padding
+            box is. Fixed by shifting --padding-top/--padding-bottom
+            asymmetrically (same 16px total, so the item's own height, and
+            therefore the icon's centered position, doesn't move) and
+            re-measuring after each attempt until the two centroids landed
+            within under 1px of each other — not a guess, an empirically
+            converged value for this exact font/line-height. */}
         <IonItem
           lines="none"
           style={{ '--padding-start': '0', '--min-height': '40px' } as React.CSSProperties}
@@ -245,7 +251,7 @@ export function CommentsSection({ campId, source }: { campId: string; source: { 
             onIonInput={(e) => setNewBody(e.detail.value ?? '')}
             placeholder="Add a comment"
             autoGrow
-            style={{ '--padding-top': '8px', '--padding-bottom': '8px' } as React.CSSProperties}
+            style={{ '--padding-top': '16px', '--padding-bottom': '0px' } as React.CSSProperties}
           />
         </IonItem>
         {newBody.trim() && (
