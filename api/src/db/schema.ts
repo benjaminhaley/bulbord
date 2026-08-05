@@ -294,11 +294,15 @@ export const camps = pgTable('camps', {
   // camp with no real tiered structure to show (including every
   // member-submitted camp — see optionsNote below).
   options: jsonb('options').$type<CampOptionLine[]>(),
-  // A single free-text aside for a member-submitted camp — deliberately NOT
-  // the structured `options` list above (feedback, 2026-08-05: "let's keep
-  // it simple for now" on the member-posting form). Renders as one plain
-  // sentence in the Options section when `options` itself is empty; never
-  // set by a seed script, only by CampForm.tsx.
+  // A short free-text aside shown under the Options table (or, for a
+  // member-submitted camp, in place of it — see CampForm.tsx's "keep it
+  // simple" posture, feedback 2026-08-05). Two roles: (1) a hand-seeded
+  // provider's asides that genuinely don't belong as their own bookable
+  // table row — a sibling discount, a weekly rate — moved here from the
+  // `options` array itself (feedback, 2026-08-05: "don't include it in the
+  // list of options table... there should be some sort of notes field at
+  // the bottom"); (2) the member self-service equivalent of the whole
+  // `options` table when a member has no real tiers to structure.
   optionsNote: text('options_note'),
   ageMin: integer('age_min'), // years
   ageMax: integer('age_max'), // years

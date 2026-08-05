@@ -213,13 +213,35 @@ interface ProviderSpec {
   // from a hand-formatted `label`+`detail` string, which itself had earlier
   // replaced a `\n`-joined free-text blob, to real per-field time/age/price
   // structure so every tier lines up in a scannable column — see CLAUDE.md's
-  // Camps section for that history). One content rule survives the move to
-  // structured fields, since it's a judgment call, not formatting: only
-  // give a tier its own age_min/age_max when that tier's range is genuinely
-  // different from the camp's own ageMin/ageMax below — otherwise leave it
-  // null and let the table show "—", since restating the same range on
-  // every row adds nothing.
+  // Camps section for that history).
+  //
+  // Every real bookable tier gets an explicit age_min/age_max — including
+  // when it's the same range as the camp's own ageMin/ageMax below
+  // (feedback, 2026-08-05: "whatever in ClimbZone have ages in this table,
+  // they do overall. That should be fixed" — an earlier pass left a tier's
+  // age null whenever it matched the camp-level range, which just made the
+  // table show a misleading "—" for real, known data). ageMin/ageMax below
+  // must always equal whichever option anchors pricePerDay/startTime/
+  // endTime (the "most expansive" option — the same one those two fields
+  // are already keyed to) — never a separately hand-typed number that
+  // could drift out of alignment with the table.
+  //
+  // Every row here is a real bookable tier — a sibling discount or a
+  // "weekly rates also available" aside doesn't belong as its own row
+  // (feedback, 2026-08-05: "for a thing like sibling discount, don't
+  // include it in the list of options table. Instead, there should be some
+  // sort of notes field at the bottom of options"); put that in
+  // optionsNote below instead. The table itself is sorted most-expensive-
+  // first at render time (web/src/camps/format.ts's sortOptionsByPrice),
+  // not by this array's own order — no need to hand-sort these.
   options?: CampOptionLine[]
+  // A short aside for anything that isn't its own bookable tier — a
+  // sibling discount, a weekly rate — shown under the Options table
+  // (feedback, 2026-08-05, same as above). Same field a member's own
+  // free-text Options note uses (see optionsNote in db/schema.ts);
+  // ordinarily member-only, but nothing stops a seed script from using it
+  // too.
+  optionsNote?: string
   bookingInstructions: string
   // Structured "what to bring / prepare" checklist — see CampPrepLine in
   // db/schema.ts (a simpler label+detail shape than options above — a
@@ -297,9 +319,8 @@ const PROVIDERS: ProviderSpec[] = [
     // A single flat rate, no real tiers — still expressed as a one-row
     // options table (2026-08-05) so the detail page always has the table
     // as its one source of time/age/price once any options exist, rather
-    // than YMCA being a special case with none. age_min/age_max left null
-    // since they match the camp-level 5-13 above.
-    options: [{ label: 'Full day', start_time: '07:00', end_time: '18:00', price: '70.00', age_min: null, age_max: null, note: null }],
+    // than YMCA being a special case with none.
+    options: [{ label: 'Full day', start_time: '07:00', end_time: '18:00', price: '70.00', age_min: 5, age_max: 13, note: null }],
     earliestConfirmedDate: '2026-10-12',
     breakDateOverrides: {
       '2026-11-23': { startDate: '2026-11-23', endDate: '2026-11-24' },
@@ -339,12 +360,12 @@ const PROVIDERS: ProviderSpec[] = [
     endTime: '17:30',
     pricePerDay: '150.00',
     options: [
-      { label: 'Full day', start_time: '09:00', end_time: '15:30', price: '120.00', age_min: null, age_max: null, note: '$540/week' },
-      { label: 'Full day + aftercare', start_time: '09:00', end_time: '17:30', price: '150.00', age_min: null, age_max: null, note: null },
-      { label: 'Morning half-day', start_time: '09:00', end_time: '12:00', price: '70.00', age_min: null, age_max: null, note: '$320/week' },
-      { label: 'Afternoon half-day', start_time: '12:30', end_time: '15:30', price: '70.00', age_min: null, age_max: null, note: '$320/week' },
-      { label: 'Sibling discount', start_time: null, end_time: null, price: null, age_min: null, age_max: null, note: '5% off camp fees' },
+      { label: 'Full day', start_time: '09:00', end_time: '15:30', price: '120.00', age_min: 5, age_max: 12, note: null },
+      { label: 'Full day + aftercare', start_time: '09:00', end_time: '17:30', price: '150.00', age_min: 5, age_max: 12, note: null },
+      { label: 'Morning half-day', start_time: '09:00', end_time: '12:00', price: '70.00', age_min: 5, age_max: 12, note: null },
+      { label: 'Afternoon half-day', start_time: '12:30', end_time: '15:30', price: '70.00', age_min: 5, age_max: 12, note: null },
     ],
+    optionsNote: 'Weekly rates also available: $540 (full day), $320 (half-day). A 5% sibling discount applies to camp fees.',
     bookingInstructions: 'Sign up online for whichever day(s) you need — no minimum required.',
     prepItems: [
       { label: 'Footwear', detail: 'sneakers or gym shoes' },
@@ -514,6 +535,7 @@ const candidates = breaks.flatMap((brk) =>
         pricePerDay: p.pricePerDay,
         priceIsEstimated: p.pricePerDay !== null && (p.priceIsEstimated ?? false),
         options: p.options ?? null,
+        optionsNote: p.optionsNote ?? null,
         ageMin: p.ageMin,
         ageMax: p.ageMax,
         bookingInstructions: p.bookingInstructions,
@@ -565,6 +587,7 @@ async function main() {
           pricePerDay: c.pricePerDay,
           priceIsEstimated: c.priceIsEstimated,
           options: c.options,
+          optionsNote: c.optionsNote,
           ageMin: c.ageMin,
           ageMax: c.ageMax,
           spotsAvailable: null, // unknown for every seeded row — no provider publishes live availability

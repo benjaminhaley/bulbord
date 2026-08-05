@@ -24,16 +24,25 @@ import { campSources, camps, eventsLog, type CampOptionLine, type CampPrepLine }
 // options table for Lake View YMCA (a flat rate, no real tiers, but still
 // needs a table row now that the detail page's top summary hides
 // price/age/time once any options exist — see CampDetailPage.tsx).
+//
+// Updated again 2026-08-05 (same day, a further round of feedback): every
+// real tier now gets an explicit age_min/age_max, even when it's the same
+// as the camp's own — no more leaving it null just because it matches (see
+// seed-2026-08-04-providers.ts's ProviderSpec.options doc comment for the
+// full rule). Sibling discount and weekly-rate asides (ClimbZone, Unicoi)
+// are no longer their own options row at all — moved to optionsNote,
+// rendered as a short line under the Options table instead.
 interface StructuredUpdate {
   sourceName: string
   options?: CampOptionLine[]
+  optionsNote?: string
   prepItems: CampPrepLine[]
 }
 
 const UPDATES: StructuredUpdate[] = [
   {
     sourceName: 'Lake View YMCA',
-    options: [{ label: 'Full day', start_time: '07:00', end_time: '18:00', price: '70.00', age_min: null, age_max: null, note: null }],
+    options: [{ label: 'Full day', start_time: '07:00', end_time: '18:00', price: '70.00', age_min: 5, age_max: 13, note: null }],
     prepItems: [
       { label: 'Food and drink', detail: 'a lunch and a water bottle (no glass)' },
       { label: 'Swimsuit and towel', detail: 'if the day includes pool time' },
@@ -43,12 +52,12 @@ const UPDATES: StructuredUpdate[] = [
   {
     sourceName: 'ClimbZone Chicago',
     options: [
-      { label: 'Full day', start_time: '09:00', end_time: '15:30', price: '120.00', age_min: null, age_max: null, note: '$540/week' },
-      { label: 'Full day + aftercare', start_time: '09:00', end_time: '17:30', price: '150.00', age_min: null, age_max: null, note: null },
-      { label: 'Morning half-day', start_time: '09:00', end_time: '12:00', price: '70.00', age_min: null, age_max: null, note: '$320/week' },
-      { label: 'Afternoon half-day', start_time: '12:30', end_time: '15:30', price: '70.00', age_min: null, age_max: null, note: '$320/week' },
-      { label: 'Sibling discount', start_time: null, end_time: null, price: null, age_min: null, age_max: null, note: '5% off camp fees' },
+      { label: 'Full day', start_time: '09:00', end_time: '15:30', price: '120.00', age_min: 5, age_max: 12, note: null },
+      { label: 'Full day + aftercare', start_time: '09:00', end_time: '17:30', price: '150.00', age_min: 5, age_max: 12, note: null },
+      { label: 'Morning half-day', start_time: '09:00', end_time: '12:00', price: '70.00', age_min: 5, age_max: 12, note: null },
+      { label: 'Afternoon half-day', start_time: '12:30', end_time: '15:30', price: '70.00', age_min: 5, age_max: 12, note: null },
     ],
+    optionsNote: 'Weekly rates also available: $540 (full day), $320 (half-day). A 5% sibling discount applies to camp fees.',
     prepItems: [
       { label: 'Footwear', detail: 'sneakers or gym shoes' },
       { label: 'Grip socks', detail: 'required in the soft-play area — bring your own or buy a pair on-site' },
@@ -58,14 +67,14 @@ const UPDATES: StructuredUpdate[] = [
   {
     sourceName: 'Fit City Kids',
     options: [
-      { label: 'Day camp', start_time: '08:00', end_time: '15:00', price: '85.00', age_min: null, age_max: null, note: null },
+      { label: 'Day camp', start_time: '08:00', end_time: '15:00', price: '85.00', age_min: 4, age_max: 12, note: null },
       {
         label: 'Full day + after-camp extension',
         start_time: '08:00',
         end_time: '18:00',
         price: '120.00',
-        age_min: null,
-        age_max: null,
+        age_min: 4,
+        age_max: 12,
         note: null,
       },
     ],
@@ -77,7 +86,7 @@ const UPDATES: StructuredUpdate[] = [
   {
     sourceName: 'BitSpace',
     options: [
-      { label: 'Full day', start_time: null, end_time: null, price: '150.00', age_min: null, age_max: null, note: null },
+      { label: 'Full day', start_time: null, end_time: null, price: '150.00', age_min: 8, age_max: null, note: null },
       { label: 'Half-day', start_time: null, end_time: null, price: null, age_min: 7, age_max: 12, note: null },
     ],
     prepItems: [
@@ -100,9 +109,9 @@ const UPDATES: StructuredUpdate[] = [
   {
     sourceName: 'Family Room Chicago (Broadway)',
     options: [
-      { label: 'Express Pass', start_time: null, end_time: null, price: '45.00', age_min: null, age_max: null, note: '3 hours' },
-      { label: 'Half-Day Pass', start_time: null, end_time: null, price: '65.00', age_min: null, age_max: null, note: '5 hours' },
-      { label: 'Full-Day Pass', start_time: null, end_time: null, price: '95.00', age_min: null, age_max: null, note: '9 hours' },
+      { label: 'Express Pass', start_time: null, end_time: null, price: '45.00', age_min: 0, age_max: null, note: '3 hours' },
+      { label: 'Half-Day Pass', start_time: null, end_time: null, price: '65.00', age_min: 0, age_max: null, note: '5 hours' },
+      { label: 'Full-Day Pass', start_time: null, end_time: null, price: '95.00', age_min: 0, age_max: null, note: '9 hours' },
     ],
     prepItems: [{ label: 'Nothing to pack', detail: 'healthy snacks and a whole-food lunch are included for the day.' }],
   },
@@ -116,12 +125,12 @@ const UPDATES: StructuredUpdate[] = [
         start_time: '09:00',
         end_time: '17:00',
         price: '120.00',
-        age_min: null,
-        age_max: null,
+        age_min: 5,
+        age_max: 12,
         note: null,
       },
-      { label: 'Weekly rates', start_time: null, end_time: null, price: null, age_min: null, age_max: null, note: 'vary by camp series' },
     ],
+    optionsNote: 'Weekly rates also available (vary by camp series).',
     prepItems: [
       { label: 'Food and drink', detail: 'a labeled lunch and a water bottle' },
       { label: 'Clothes that can get messy', detail: 'for art projects and, weather permitting, a walk to nearby Hamlin Park' },
@@ -144,7 +153,12 @@ async function main() {
 
     const updatedRows = await db
       .update(camps)
-      .set({ options: update.options ?? null, prepItems: update.prepItems, updatedAt: new Date() })
+      .set({
+        options: update.options ?? null,
+        optionsNote: update.optionsNote ?? null,
+        prepItems: update.prepItems,
+        updatedAt: new Date(),
+      })
       .where(and(eq(camps.sourceId, source.id), isNull(camps.deletedAt)))
       .returning({ id: camps.id })
 

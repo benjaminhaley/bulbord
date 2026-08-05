@@ -200,6 +200,21 @@ export function optionPriceCell(price: string | null): string {
   return `$${Number.isInteger(value) ? value.toFixed(0) : value.toFixed(2)}`
 }
 
+// Most-expensive-first (feedback, 2026-08-05: "sort for most expensive to
+// cheapest") — computed at render time from each option's own `price`
+// rather than trusting hand-authored array order in the seed data, so a
+// future provider's options are never accidentally out of order. An
+// unpublished price (null, or unparseable) sorts last, same as it not being
+// confidently comparable to a real dollar amount.
+export function sortOptionsByPrice<T extends { price: string | null }>(options: T[]): T[] {
+  const priceValue = (price: string | null) => {
+    if (price == null) return -Infinity
+    const value = Number(price)
+    return Number.isNaN(value) ? -Infinity : value
+  }
+  return [...options].sort((a, b) => priceValue(b.price) - priceValue(a.price))
+}
+
 // Addresses are typically stored as "Street, Chicago, IL 60613" — everything
 // in this app is Chicago-area, so the city/state/zip is redundant noise in
 // the abbreviated list view.

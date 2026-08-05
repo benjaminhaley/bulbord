@@ -52,8 +52,12 @@ export interface Camp {
   // Structured tiered/add-on pricing breakdown (e.g. Fit City Kids' Day
   // camp vs. Full day + extension) — shown on the detail page's "Options"
   // section only, never in the compact price_per_day line. Only ever set by
-  // a seed script; options_note is the member self-service equivalent.
+  // a seed script.
   options: CampOptionLine[] | null
+  // A short aside shown under the Options table — a sibling discount, a
+  // weekly rate — for anything that isn't its own bookable tier (see
+  // CampOptionLine above). Also the member self-service equivalent of the
+  // whole table when a member has no real tiers to structure.
   options_note: string | null
   age_min: number | null
   age_max: number | null

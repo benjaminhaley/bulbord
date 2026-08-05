@@ -62,17 +62,24 @@ const LNG = -87.68
 
 const SOURCE_URL = 'https://www.hisawyer.com/uni-coi-art-studio/schedules/widget_calendar?schedule_id=all'
 const PRICE_PER_DAY = '120.00'
-// Structured Options breakdown — see CampOptionLine in db/schema.ts.
+// Structured Options breakdown — see CampOptionLine in db/schema.ts. Every
+// row is a real bookable tier, sorted most-expensive-first at render time
+// (not by this array's own order — see sortOptionsByPrice in
+// web/src/camps/format.ts); "Weekly rates" isn't its own bookable tier, so
+// it lives in OPTIONS_NOTE below instead (feedback, 2026-08-05: "don't
+// include it in the list of options table... notes field at the bottom").
 // Morning/afternoon age callouts are kept here (unlike a plain age
 // restatement) because they're genuinely narrower than the camp's own 5-12
-// ageMin/ageMax below (the full-day-covering range — see AGE_MIN/AGE_MAX),
-// not a duplicate of it.
+// ageMin/ageMax below (the full-day-covering range — see AGE_MIN/AGE_MAX);
+// Full day's own age matches that same 5-12 range and is stated explicitly
+// too, since every real tier gets an explicit age now, not just the ones
+// that differ.
 const OPTIONS: CampOptionLine[] = [
   { label: 'Morning', start_time: '09:00', end_time: '13:00', price: '65.00', age_min: 5, age_max: 13, note: null },
   { label: 'Afternoon', start_time: '13:30', end_time: '17:00', price: '55.00', age_min: 4, age_max: 12, note: null },
-  { label: 'Full day (register both)', start_time: '09:00', end_time: '17:00', price: '120.00', age_min: null, age_max: null, note: null },
-  { label: 'Weekly rates', start_time: null, end_time: null, price: null, age_min: null, age_max: null, note: 'vary by camp series' },
+  { label: 'Full day (register both)', start_time: '09:00', end_time: '17:00', price: '120.00', age_min: 5, age_max: 12, note: null },
 ]
+const OPTIONS_NOTE = 'Weekly rates also available (vary by camp series).'
 const BOOKING_INSTRUCTIONS = 'Register online via the Sawyer booking calendar — choose Morning, Afternoon, or both for a full day.'
 // Structured "What to bring / prepare" checklist — see CampPrepLine (a
 // simpler shape than OPTIONS above, which now carries per-field
@@ -176,6 +183,7 @@ async function main() {
         pricePerDay: PRICE_PER_DAY,
         priceIsEstimated: false,
         options: OPTIONS,
+        optionsNote: OPTIONS_NOTE,
         ageMin: AGE_MIN,
         ageMax: AGE_MAX,
         spotsAvailable: null,

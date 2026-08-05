@@ -11,6 +11,7 @@ import {
   optionPriceCell,
   optionTimeCell,
   priceLabel,
+  sortOptionsByPrice,
   spotsLabel,
   timeLabel,
 } from './format'
@@ -203,6 +204,24 @@ describe('optionPriceCell', () => {
 
   it('formats a fractional amount with two decimals', () => {
     expect(optionPriceCell('39.50')).toBe('$39.50')
+  })
+})
+
+describe('sortOptionsByPrice', () => {
+  it('orders options most-expensive-first', () => {
+    const options = [{ price: '70.00' }, { price: '150.00' }, { price: '120.00' }]
+    expect(sortOptionsByPrice(options).map((o) => o.price)).toEqual(['150.00', '120.00', '70.00'])
+  })
+
+  it('sorts an unpublished price to the end rather than treating it as free', () => {
+    const options = [{ price: '65.00' }, { price: null }, { price: '95.00' }]
+    expect(sortOptionsByPrice(options).map((o) => o.price)).toEqual(['95.00', '65.00', null])
+  })
+
+  it('does not mutate the input array', () => {
+    const options = [{ price: '10.00' }, { price: '20.00' }]
+    sortOptionsByPrice(options)
+    expect(options.map((o) => o.price)).toEqual(['10.00', '20.00'])
   })
 })
 

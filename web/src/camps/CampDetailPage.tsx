@@ -19,7 +19,17 @@ import { Avatar } from '../uploads/Avatar'
 import { deleteCamp, fetchCamp, updateCamp, type Camp, type CampOptionLine, type CampPrepLine } from './api'
 import { CampForm } from './CampForm'
 import { CommentsSection } from './CommentsSection'
-import { campDetailsLine, formatDateRange, mapUrl, optionAgeCell, optionPriceCell, optionTimeCell, shortAddress, timeLabel } from './format'
+import {
+  campDetailsLine,
+  formatDateRange,
+  mapUrl,
+  optionAgeCell,
+  optionPriceCell,
+  optionTimeCell,
+  shortAddress,
+  sortOptionsByPrice,
+  timeLabel,
+} from './format'
 import { InterestedBadge } from './InterestedBadge'
 import { useCampInterest } from './useCampInterest'
 
@@ -67,15 +77,24 @@ function OptionCell({ value }: { value: string }) {
 // The Options section's primary rendering (feedback, 2026-08-05: "look a
 // little more tabular and easier to scan... aligned and skimmable... fits
 // on the screen well") — a real 4-column table (Option / Time / Ages /
-// Price) rather than the flowing bulleted-sub-line format this replaced,
-// since every option now carries the same structured fields and a genuine
-// table is what makes same-column values (all the prices, all the ages)
-// comparable at a glance. `note` renders as a small subtext line under the
-// label rather than its own column, since it's free text of varying
-// length that would break a fixed-width column. Wrapped in a horizontally-
-// scrolling div as a safety net for an unusually long label, not because
-// the table is expected to overflow a normal phone width.
+// Price/day) rather than the flowing bulleted-sub-line format this
+// replaced, since every option now carries the same structured fields and
+// a genuine table is what makes same-column values (all the prices, all
+// the ages) comparable at a glance. `note` renders as a small subtext line
+// under the label rather than its own column, since it's free text of
+// varying length that would break a fixed-width column — reserved for a
+// genuine per-tier detail (e.g. Family Room's duration, which has no fixed
+// clock time to show in the Time column), not a multi-date/bulk aside like
+// a weekly rate (that belongs in the Options section's general notes
+// instead — see CampDetailPage's use of camp.options_note below). Rows are
+// sorted most-expensive-first (sortOptionsByPrice) rather than trusting
+// the seed data's own array order. Wrapped in a horizontally-scrolling div
+// as a safety net for an unusually long label, not because the table is
+// expected to overflow a normal phone width. Column header says
+// "Price/day" (not just "Price") so the unit stays clear now that a
+// per-tier "/week" aside is never shown alongside it in the same cell.
 function OptionsTable({ options }: { options: CampOptionLine[] }) {
+  const sorted = sortOptionsByPrice(options)
   return (
     <div style={{ overflowX: 'auto', margin: '4px 0' }}>
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
@@ -84,11 +103,11 @@ function OptionsTable({ options }: { options: CampOptionLine[] }) {
             <th style={{ textAlign: 'left', fontWeight: 'normal', padding: '0 6px 4px 0' }}>Option</th>
             <th style={{ textAlign: 'left', fontWeight: 'normal', padding: '0 6px 4px' }}>Time</th>
             <th style={{ textAlign: 'left', fontWeight: 'normal', padding: '0 6px 4px' }}>Ages</th>
-            <th style={{ textAlign: 'right', fontWeight: 'normal', padding: '0 0 4px 6px' }}>Price</th>
+            <th style={{ textAlign: 'right', fontWeight: 'normal', padding: '0 0 4px 6px' }}>Price/day</th>
           </tr>
         </thead>
         <tbody>
-          {options.map((option) => (
+          {sorted.map((option) => (
             <tr key={option.label} style={{ borderTop: '1px solid var(--ion-color-step-150, #d9d9d9)' }}>
               <td style={{ verticalAlign: 'top', padding: '6px 6px 6px 0' }}>
                 <strong>{option.label}</strong>
@@ -238,19 +257,20 @@ export function CampDetailPage() {
               </p>
             )}
             {camp.description && <p style={FACT_LINE_STYLE}>{camp.description}</p>}
-            {camp.options && camp.options.length > 0 ? (
+            {(camp.options && camp.options.length > 0) || camp.options_note ? (
               <>
                 <h2>Options</h2>
-                <OptionsTable options={camp.options} />
+                {camp.options && camp.options.length > 0 && <OptionsTable options={camp.options} />}
+                {/* A hand-seeded provider's asides that don't belong as their own
+                    bookable table row — a sibling discount, a weekly rate — live
+                    here instead (feedback, 2026-08-05: "don't include it in the
+                    list of options table. Instead, there should be some sort of
+                    notes field at the bottom"). Doubles as the member
+                    self-service fallback (the only thing shown when there's no
+                    options table at all) — same field, same posture either way. */}
+                {camp.options_note && <p style={FACT_LINE_STYLE}>{camp.options_note}</p>}
               </>
-            ) : (
-              camp.options_note && (
-                <>
-                  <h2>Options</h2>
-                  <p style={FACT_LINE_STYLE}>{camp.options_note}</p>
-                </>
-              )
-            )}
+            ) : null}
             {camp.prep_items && camp.prep_items.length > 0 ? (
               <>
                 <h2>What to bring / prepare</h2>
