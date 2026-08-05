@@ -30,12 +30,14 @@ type SerializableCamp = Pick<
   | 'distanceMiles'
   | 'pricePerDay'
   | 'priceIsEstimated'
-  | 'priceDetails'
+  | 'options'
+  | 'optionsNote'
   | 'ageMin'
   | 'ageMax'
   | 'spotsAvailable'
   | 'bookingInstructions'
-  | 'prepInstructions'
+  | 'prepItems'
+  | 'prepNote'
   | 'sourceUrl'
   | 'imageUrl'
   | 'thumbnailUrl'
@@ -76,17 +78,23 @@ function serializeCamp(c: HydratedCamp, currentUserId: string | null) {
     // member self-service POST/PATCH body below, since a member always
     // knows their own listing's real price.
     price_is_estimated: c.priceIsEstimated,
-    // Optional breakdown for a provider with tiered/add-on pricing (e.g.
-    // "8am-3pm: $85. Add the after-camp extension for $120 total.") — shown
-    // only on the detail page, never in the compact price_per_day line.
-    price_details: c.priceDetails,
+    // Structured tiered/add-on pricing breakdown (e.g. [{label: "Day camp",
+    // detail: "8:00 AM – 3:00 PM · $85/day"}, ...]) — shown only on the
+    // detail page's "Options" section, never in the compact price_per_day
+    // line. Only ever set by a seed script; options_note (below) is the
+    // member self-service equivalent instead.
+    options: c.options,
+    options_note: c.optionsNote,
     age_min: c.ageMin,
     age_max: c.ageMax,
     // Real-time availability isn't tracked — null means unknown, not zero.
     // Only ever set by a seed script today; not on the self-service body.
     spots_available: c.spotsAvailable,
     booking_instructions: c.bookingInstructions,
-    prep_instructions: c.prepInstructions,
+    // Structured "what to bring / prepare" checklist — same shape/posture
+    // as options above. prep_note is the member self-service equivalent.
+    prep_items: c.prepItems,
+    prep_note: c.prepNote,
     source_url: c.sourceUrl,
     image_url: c.imageUrl,
     thumbnail_url: c.thumbnailUrl,
@@ -210,12 +218,12 @@ export async function campsRoutes(app: FastifyInstance) {
       address?: string
       location_name?: string
       price_per_day?: number
-      price_details?: string
+      options_note?: string
       age_min?: number
       age_max?: number
       spots_available?: number
       booking_instructions?: string
-      prep_instructions?: string
+      prep_note?: string
       source_url?: string
       image_url?: string
       thumbnail_url?: string
@@ -244,12 +252,12 @@ export async function campsRoutes(app: FastifyInstance) {
         address,
         locationName: body.location_name?.trim() || null,
         pricePerDay: body.price_per_day != null ? String(body.price_per_day) : null,
-        priceDetails: body.price_details?.trim() || null,
+        optionsNote: body.options_note?.trim() || null,
         ageMin: body.age_min != null ? Math.trunc(body.age_min) : null,
         ageMax: body.age_max != null ? Math.trunc(body.age_max) : null,
         spotsAvailable: body.spots_available != null ? Math.trunc(body.spots_available) : null,
         bookingInstructions: body.booking_instructions?.trim() || null,
-        prepInstructions: body.prep_instructions?.trim() || null,
+        prepNote: body.prep_note?.trim() || null,
         sourceUrl: body.source_url?.trim() || null,
         imageUrl: body.image_url || null,
         thumbnailUrl: body.thumbnail_url || null,
@@ -276,12 +284,12 @@ export async function campsRoutes(app: FastifyInstance) {
       address?: string
       location_name?: string
       price_per_day?: number
-      price_details?: string
+      options_note?: string
       age_min?: number
       age_max?: number
       spots_available?: number
       booking_instructions?: string
-      prep_instructions?: string
+      prep_note?: string
       source_url?: string
       image_url?: string
       thumbnail_url?: string
@@ -324,12 +332,12 @@ export async function campsRoutes(app: FastifyInstance) {
           address,
           locationName: body.location_name?.trim() || null,
           pricePerDay: body.price_per_day != null ? String(body.price_per_day) : null,
-          priceDetails: body.price_details?.trim() || null,
+          optionsNote: body.options_note?.trim() || null,
           ageMin: body.age_min != null ? Math.trunc(body.age_min) : null,
           ageMax: body.age_max != null ? Math.trunc(body.age_max) : null,
           spotsAvailable: body.spots_available != null ? Math.trunc(body.spots_available) : null,
           bookingInstructions: body.booking_instructions?.trim() || null,
-          prepInstructions: body.prep_instructions?.trim() || null,
+          prepNote: body.prep_note?.trim() || null,
           sourceUrl: body.source_url?.trim() || null,
           imageUrl: body.image_url || null,
           thumbnailUrl: body.thumbnail_url || null,

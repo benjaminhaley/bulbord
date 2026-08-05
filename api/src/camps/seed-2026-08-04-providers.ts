@@ -1,7 +1,7 @@
 import 'dotenv/config'
 
 import { db } from '../db/client.js'
-import { camps, campSources, eventsLog } from '../db/schema.js'
+import { camps, campSources, eventsLog, type CampOptionLine } from '../db/schema.js'
 import { haversineMiles, NETTELHORST_COORDS } from './geo.js'
 import { enrichCampSourceImage } from './image-enrichment.js'
 
@@ -203,63 +203,31 @@ interface ProviderSpec {
   // not for the common case of "this is the provider's real stated rate,
   // just not re-announced for this exact date."
   priceIsEstimated?: boolean
-  // Optional breakdown for a provider with real tiered/add-on pricing (e.g.
-  // Fit City Kids' $85 half-day + $35 after-camp extension = $120 full day)
-  // — pricePerDay stays the single full-day number shown in the compact
-  // list/preview line; this expanded detail only shows on the camp detail
-  // page's "Options" section (renamed from "Pricing" 2026-08-05 — feedback:
-  // "pricing isn't the correct heading here based on the information you're
-  // providing," since a line can carry time/age alongside the price).
-  //
-  // TEMPLATE — see "Bulleted-list content" in CLAUDE.md's Camps section for
-  // the canonical, up-to-date version of this rule; summarized here too so
-  // it's visible at the point of use. One tier or note per LINE, joined
-  // with '\n' (`.join('\n')` on an array literal reads most clearly at the
-  // call site) — CampDetailPage.tsx's LabeledBulletList renders each line
-  // as its own bullet and bolds everything before its first colon.
-  // EVERY line gets an explicit "Label: value" shape — no exceptions, not
-  // even a trailing general-availability note (feedback, 2026-08-05: "the
-  // bolt [bold] should either be in every bullet or none of the bullets";
-  // an earlier version of this rule allowed a colon-less line for a
-  // "general note," which produced exactly the 3-bold-1-plain mix Ben
-  // flagged). Between fields within one line, reuse the stat line's own
-  // " · " convention (campDetailsLine/format.ts) — not a new format:
-  //   [
-  //     'Morning: 9:00 AM – 1:00 PM · $65/day',
-  //     'Afternoon: 1:30 PM – 5:00 PM · $55/day',
-  //     'Full day (register both): 9:00 AM – 5:00 PM · $120/day',
-  //     'Weekly rates: also available',
-  //   ].join('\n')
-  // Only add an "· Ages X-Y" segment when that tier's age range is
-  // genuinely DIFFERENT from the camp's own ageMin/ageMax below (e.g.
-  // BitSpace's half-day option covers a different age band than its
-  // full-day rate) — never restate the same range the stat line already
-  // shows above. Never add a note about which DATES a tier is available on
-  // (e.g. "both options available for any date") — every camp row is
-  // already scoped to one specific date (see Camps' fresh-clone-of-events
-  // decision), so a viewer looking at this listing was never choosing
-  // between dates in the first place; that note answers a question nobody
-  // is asking here (feedback, 2026-08-05: "it doesn't make sense to show
-  // availability here... each listing is just about a single day"). A note
-  // about a genuinely different purchase option that spans MULTIPLE dates
-  // (e.g. Unicoi's "Weekly rates: also available") is fine to keep — that's
-  // real upsell information, not a same-listing date-availability note.
-  priceDetails?: string
+  // Structured tiered/add-on pricing breakdown (e.g. Fit City Kids' $85
+  // half-day + $35 after-camp extension = $120 full day) — pricePerDay
+  // stays the single full-day number shown in the compact list/preview
+  // line; this expanded detail only shows on the camp detail page's
+  // "Options" section. See CampOptionLine in db/schema.ts for the
+  // {label, detail} shape (2026-08-05: promoted from a hand-formatted
+  // `\n`-joined string, which needed a whole session of "please fix the
+  // formatting" corrections, to real structured data — see CLAUDE.md's
+  // Camps section for that history). Two content rules survive the move to
+  // structured data, since they're judgment calls, not formatting: (1) only
+  // give a tier's `detail` an age callout when that tier's range is
+  // genuinely different from the camp's own ageMin/ageMax below — never
+  // restate the same range the stat line already shows; (2) never mention
+  // which DATES a tier is available on (e.g. "available for any date") —
+  // every camp row is already scoped to one specific date, so that answers
+  // a question nobody is asking on this page. A note about a genuinely
+  // different option spanning MULTIPLE dates (e.g. Unicoi's weekly rate) is
+  // real upsell information and still belongs here.
+  options?: CampOptionLine[]
   bookingInstructions: string
-  // TEMPLATE — see "Bulleted-list content" in CLAUDE.md's Camps section
-  // (same rule priceDetails follows above: EVERY line gets an explicit
-  // "Item: detail" label, no exceptions — give a short generic label
-  // ("Food and drink:", "Footwear:", "Bring:") even when there's nothing
-  // more specific to say, rather than leaving any single line colon-less
-  // next to others that are bolded). Also consolidate related items into
-  // one bullet rather than fragmenting (e.g. lunch + water bottle → one
-  // "Food and drink" line) — fewer, richer bullets read cleaner than many
-  // thin ones. e.g.:
-  //   [
-  //     'Food and drink: a labeled lunch and a water bottle',
-  //     'Clothes that can get messy: for art projects and, weather permitting, a walk to the park',
-  //   ].join('\n')
-  prepInstructions: string
+  // Structured "what to bring / prepare" checklist — same CampOptionLine
+  // shape as options above. Consolidate related items into one line rather
+  // than fragmenting (e.g. lunch + water bottle → one "Food and drink"
+  // item) — fewer, richer items read cleaner than many thin ones.
+  prepItems: CampOptionLine[]
   // One tight sentence or two: what campers actually do. Never restate the
   // venue/provider name (it's already the page's `<h1>` title), age range,
   // hours, price, or address — age_min/age_max, start_time/end_time,
@@ -331,11 +299,11 @@ const PROVIDERS: ProviderSpec[] = [
       '2026-11-23': { startDate: '2026-11-23', endDate: '2026-11-24' },
     },
     bookingInstructions: 'Register online, by phone (773-248-3333), or in person at the front desk.',
-    prepInstructions: [
-      'Food and drink: a lunch and a water bottle (no glass)',
-      'Swimsuit and towel: if the day includes pool time',
-      'Comfortable clothes: for active play',
-    ].join('\n'),
+    prepItems: [
+      { label: 'Food and drink', detail: 'a lunch and a water bottle (no glass)' },
+      { label: 'Swimsuit and towel', detail: 'if the day includes pool time' },
+      { label: 'Comfortable clothes', detail: 'for active play' },
+    ],
     description: '"School Days Out" — a full day of activities while school is out.',
     sourceUrl: 'https://www.ymcachicago.org/early-learning-education/school-age-care/school-days-out/',
     // ymcachicago.org's own pages lazy-load images via JS with no static
@@ -364,19 +332,19 @@ const PROVIDERS: ProviderSpec[] = [
     startTime: '09:00',
     endTime: '17:30',
     pricePerDay: '150.00',
-    priceDetails: [
-      'Full day: 9:00 AM – 3:30 PM · $120/day ($540/week)',
-      'Full day + aftercare: 9:00 AM – 5:30 PM · $150/day total',
-      'Morning half-day: 9:00 AM – 12:00 PM · $70/day ($320/week)',
-      'Afternoon half-day: 12:30 PM – 3:30 PM · $70/day ($320/week)',
-      'Sibling discount: 5% off camp fees',
-    ].join('\n'),
+    options: [
+      { label: 'Full day', detail: '9:00 AM – 3:30 PM · $120/day ($540/week)' },
+      { label: 'Full day + aftercare', detail: '9:00 AM – 5:30 PM · $150/day total' },
+      { label: 'Morning half-day', detail: '9:00 AM – 12:00 PM · $70/day ($320/week)' },
+      { label: 'Afternoon half-day', detail: '12:30 PM – 3:30 PM · $70/day ($320/week)' },
+      { label: 'Sibling discount', detail: '5% off camp fees' },
+    ],
     bookingInstructions: 'Sign up online for whichever day(s) you need — no minimum required.',
-    prepInstructions: [
-      'Footwear: sneakers or gym shoes',
-      'Grip socks: required in the soft-play area — bring your own or buy a pair on-site',
-      'Lunch: or pre-order one from ClimbZone for $10/child',
-    ].join('\n'),
+    prepItems: [
+      { label: 'Footwear', detail: 'sneakers or gym shoes' },
+      { label: 'Grip socks', detail: 'required in the soft-play area — bring your own or buy a pair on-site' },
+      { label: 'Lunch', detail: 'or pre-order one from ClimbZone for $10/child' },
+    ],
     description: 'Full-day camp — climbing walls, high ropes, laser tag, and arts and crafts.',
     sourceUrl: 'https://www.climbzone.us/chicago/camps/',
     imageSourceUrls: ['https://www.climbzone.us/chicago/'],
@@ -398,16 +366,16 @@ const PROVIDERS: ProviderSpec[] = [
     startTime: '08:00',
     endTime: '18:00',
     pricePerDay: '120.00',
-    priceDetails: [
-      'Day camp: 8:00 AM – 3:00 PM · $85/day',
-      'Full day + after-camp extension: 8:00 AM – 6:00 PM · $120/day total',
-    ].join('\n'),
+    options: [
+      { label: 'Day camp', detail: '8:00 AM – 3:00 PM · $85/day' },
+      { label: 'Full day + after-camp extension', detail: '8:00 AM – 6:00 PM · $120/day total' },
+    ],
     earliestConfirmedDate: '2026-09-25',
     bookingInstructions: 'Register through the parent portal. Email Camps@FitCityKids.com if your date isn\'t listed.',
-    prepInstructions: [
-      'Footwear: gym shoes and socks',
-      'Food and drink: a labeled water bottle, a snack, and a lunch',
-    ].join('\n'),
+    prepItems: [
+      { label: 'Footwear', detail: 'gym shoes and socks' },
+      { label: 'Food and drink', detail: 'a labeled water bottle, a snack, and a lunch' },
+    ],
     description: `"School's Out Camp" — fitness classes and active play.`,
     sourceUrl: 'https://www.fitcitykids.com/schools-out-camp/',
     imageSourceUrls: ['https://www.fitcitykids.com/'],
@@ -424,16 +392,19 @@ const PROVIDERS: ProviderSpec[] = [
     ageMin: 8,
     ageMax: null,
     pricePerDay: '150.00',
-    priceDetails: ['Full day: Ages 8+ · $150/day', 'Half-day: Ages 7-12 · price not yet published'].join('\n'),
+    options: [
+      { label: 'Full day', detail: 'Ages 8+ · $150/day' },
+      { label: 'Half-day', detail: 'Ages 7-12 · price not yet published' },
+    ],
     hasRecurringOffering: false,
     bookingInstructions: 'Register online. Each session needs a minimum of 8 campers to run — register early.',
-    prepInstructions: [
-      'Food and drink: a nut-free sack lunch, snacks, and a water bottle',
-      'Closed-toe shoes: no open-toed shoes or crocs',
-      'Hair tie: for long hair',
-      'Clothes that can get messy: no loose jewelry or loose clothing — some days get messy',
-      'Phone: fine for emergencies but must stay zipped in the backpack',
-    ].join('\n'),
+    prepItems: [
+      { label: 'Food and drink', detail: 'a nut-free sack lunch, snacks, and a water bottle' },
+      { label: 'Closed-toe shoes', detail: 'no open-toed shoes or crocs' },
+      { label: 'Hair tie', detail: 'for long hair' },
+      { label: 'Clothes that can get messy', detail: 'no loose jewelry or loose clothing — some days get messy' },
+      { label: 'Phone', detail: 'fine for emergencies but must stay zipped in the backpack' },
+    ],
     description: '"Day Off Camp" — design thinking, 3D printing, woodworking, and programmable electronics.',
     sourceUrl: 'https://education.bitspacechicago.com/day-off-camps',
     imageSourceUrls: ['https://bitspacechicago.com/'],
@@ -453,12 +424,12 @@ const PROVIDERS: ProviderSpec[] = [
     ageMax: 12,
     pricePerDay: null,
     bookingInstructions: 'Search the registration portal for a posted session, or register in person at the Gill Park fieldhouse.',
-    prepInstructions: [
-      'Bring: a backpack and a water bottle',
-      'Change of clothes: if needed',
-      'Sunscreen: apply before arrival',
-      'Food: a free lunch and snack are provided district-wide, though kids are welcome to bring their own',
-    ].join('\n'),
+    prepItems: [
+      { label: 'Bring', detail: 'a backpack and a water bottle' },
+      { label: 'Change of clothes', detail: 'if needed' },
+      { label: 'Sunscreen', detail: 'apply before arrival' },
+      { label: 'Food', detail: 'a free lunch and snack are provided district-wide, though kids are welcome to bring their own' },
+    ],
     description: 'Recreational activities, arts and crafts, and sports at the Gill Park fieldhouse.',
     sourceUrl: 'https://anc.apm.activecommunities.com/chicagoparkdistrict/activity/search',
     imageSourceUrls: ['https://www.chicagoparkdistrict.com/parks-facilities/gill-joseph-park'],
@@ -476,13 +447,13 @@ const PROVIDERS: ProviderSpec[] = [
     ageMin: 0,
     ageMax: null,
     pricePerDay: '95.00',
-    priceDetails: [
-      'Express Pass: 3 hours · $45/day',
-      'Half-Day Pass: 5 hours · $65/day',
-      'Full-Day Pass: 9 hours · $95/day (shown above)',
-    ].join('\n'),
+    options: [
+      { label: 'Express Pass', detail: '3 hours · $45/day' },
+      { label: 'Half-Day Pass', detail: '5 hours · $65/day' },
+      { label: 'Full-Day Pass', detail: '9 hours · $95/day (shown above)' },
+    ],
     bookingInstructions: 'Book online and pick a date. Drop-off 7:00am-4:30pm, pick-up 11:00am-6:00pm.',
-    prepInstructions: 'Nothing to pack: healthy snacks and a whole-food lunch are included for the day.',
+    prepItems: [{ label: 'Nothing to pack', detail: 'healthy snacks and a whole-food lunch are included for the day.' }],
     description:
       '"Day Camp: Single-Day Drop-In Pass" at the Broadway Clubhouse Suite — up to 9 hours of supervised sports, free play, and creative activities with a 10:1 camper-to-staff ratio.',
     sourceUrl: 'https://familyroomchicago.com/shop/camp/day-camp/one-day-camp/family-room-day-camp-single-day-drop-in-pass-lakeview-east/',
@@ -520,11 +491,11 @@ const candidates = breaks.flatMap((brk) =>
         lng: p.lng,
         pricePerDay: p.pricePerDay,
         priceIsEstimated: p.pricePerDay !== null && (p.priceIsEstimated ?? false),
-        priceDetails: p.priceDetails ?? null,
+        options: p.options ?? null,
         ageMin: p.ageMin,
         ageMax: p.ageMax,
         bookingInstructions: p.bookingInstructions,
-        prepInstructions: p.prepInstructions,
+        prepItems: p.prepItems,
         sourceUrl: p.sourceUrl,
       }
     }),
@@ -571,12 +542,12 @@ async function main() {
           endTime: c.endTime,
           pricePerDay: c.pricePerDay,
           priceIsEstimated: c.priceIsEstimated,
-          priceDetails: c.priceDetails,
+          options: c.options,
           ageMin: c.ageMin,
           ageMax: c.ageMax,
           spotsAvailable: null, // unknown for every seeded row — no provider publishes live availability
           bookingInstructions: c.bookingInstructions,
-          prepInstructions: c.prepInstructions,
+          prepItems: c.prepItems,
           sourceUrl: c.sourceUrl,
           sourceId: sourceIdByKey.get(c.sourceKey)!,
           imageUrl: image?.imageUrl ?? null,

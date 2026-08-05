@@ -2,7 +2,7 @@ import 'dotenv/config'
 import { eq } from 'drizzle-orm'
 
 import { db } from '../db/client.js'
-import { campSources, camps, eventsLog } from '../db/schema.js'
+import { campSources, camps, eventsLog, type CampOptionLine } from '../db/schema.js'
 import { haversineMiles, NETTELHORST_COORDS } from './geo.js'
 import { enrichCampSourceImage } from './image-enrichment.js'
 
@@ -62,32 +62,25 @@ const LNG = -87.68
 
 const SOURCE_URL = 'https://www.hisawyer.com/uni-coi-art-studio/schedules/widget_calendar?schedule_id=all'
 const PRICE_PER_DAY = '120.00'
-// One tier/note per line, reusing the stat line's own "Label: value · Label:
-// value" convention — see seed-2026-08-04-providers.ts's ProviderSpec
-// priceDetails doc comment for the full house-style rationale (feedback,
-// 2026-08-05: mixed colons/parens/commas read as "haphazard"). Morning/
-// afternoon age ranges are kept here (unlike a plain age restatement)
-// because they're genuinely narrower than the camp's own 5-12 ageMin/ageMax
-// below (the full-day-covering range — see AGE_MIN/AGE_MAX), not a
-// duplicate of it.
-const PRICE_DETAILS = [
-  'Morning: 9:00 AM – 1:00 PM · $65/day · Ages 5-13',
-  'Afternoon: 1:30 PM – 5:00 PM · $55/day · Ages 4-12',
-  'Full day (register both): 9:00 AM – 5:00 PM · $120/day',
-  'Weekly rates: also available (vary by camp series)',
-].join('\n')
+// Structured Options breakdown — see CampOptionLine in db/schema.ts.
+// Morning/afternoon age callouts are kept here (unlike a plain age
+// restatement) because they're genuinely narrower than the camp's own 5-12
+// ageMin/ageMax below (the full-day-covering range — see AGE_MIN/AGE_MAX),
+// not a duplicate of it.
+const OPTIONS: CampOptionLine[] = [
+  { label: 'Morning', detail: '9:00 AM – 1:00 PM · $65/day · Ages 5-13' },
+  { label: 'Afternoon', detail: '1:30 PM – 5:00 PM · $55/day · Ages 4-12' },
+  { label: 'Full day (register both)', detail: '9:00 AM – 5:00 PM · $120/day' },
+  { label: 'Weekly rates', detail: 'also available (vary by camp series)' },
+]
 const BOOKING_INSTRUCTIONS = 'Register online via the Sawyer booking calendar — choose Morning, Afternoon, or both for a full day.'
-// One item per line, item bolded up to the first colon — see
-// seed-2026-08-04-providers.ts's ProviderSpec prepInstructions doc comment
-// for the house style (feedback, 2026-08-05: "can you make what to bring a
-// bulleted list... bullet, the item, and then, optionally, a description";
-// revised same day: every item needs a bolded label for consistency, and
-// the weather/park note is just commentary on the clothes item, not its
-// own bullet — consolidated into one line).
-const PREP_INSTRUCTIONS = [
-  'Food and drink: a labeled lunch and a water bottle',
-  'Clothes that can get messy: for art projects and, weather permitting, a walk to nearby Hamlin Park',
-].join('\n')
+// Structured "What to bring / prepare" checklist — same CampOptionLine
+// shape as OPTIONS above. The weather/park note is commentary on the
+// clothes item, not its own line — consolidated into one.
+const PREP_ITEMS: CampOptionLine[] = [
+  { label: 'Food and drink', detail: 'a labeled lunch and a water bottle' },
+  { label: 'Clothes that can get messy', detail: 'for art projects and, weather permitting, a walk to nearby Hamlin Park' },
+]
 // No venue name or age range here — the title already says "Unicoi Art
 // Studio" and age_min/age_max already show the range in the always-visible
 // stat line (feedback, 2026-08-05, from a screenshot: the description
@@ -98,7 +91,7 @@ const DESCRIPTION = 'Free play, structured art projects, and (weather permitting
 // intersection of Morning's 5-13 and Afternoon's 4-12 — not the union
 // (feedback, 2026-08-05: "Unicoi's age range should be... five to twelve
 // since that is the option that covers the full day"). The wider per-tier
-// ranges stay visible in PRICE_DETAILS above.
+// ranges stay visible in OPTIONS above.
 const AGE_MIN = 5
 const AGE_MAX = 12
 
@@ -154,12 +147,12 @@ async function main() {
     .returning({ id: campSources.id })
 
   // Facebook alone (tried first, per every other provider's precedent) had
-  // no usable og:image for this page — real fix landed in
-  // backfill-2026-08-05-cleanup.ts, which re-ran enrichment against
-  // unicoistudio.com/about-us/ too (a real WordPress photo lives there) once
-  // enrichCampSourceImage started accepting multiple candidate pages. Left
-  // here as single-URL for historical accuracy — this script has an
-  // existing-source guard and won't be re-run.
+  // no usable og:image for this page — real fix landed in a later one-off
+  // script, which re-ran enrichment against unicoistudio.com/about-us/ too
+  // (a real WordPress photo lives there) once enrichCampSourceImage started
+  // accepting multiple candidate pages. Left here as single-URL for
+  // historical accuracy — this script has an existing-source guard and
+  // won't be re-run.
   const image = await enrichCampSourceImage(['https://www.facebook.com/UnicoiStudio/'])
   console.log(image ? 'Found a real image via Facebook' : 'No usable image found')
 
@@ -181,12 +174,12 @@ async function main() {
         distanceMiles,
         pricePerDay: PRICE_PER_DAY,
         priceIsEstimated: false,
-        priceDetails: PRICE_DETAILS,
+        options: OPTIONS,
         ageMin: AGE_MIN,
         ageMax: AGE_MAX,
         spotsAvailable: null,
         bookingInstructions: BOOKING_INSTRUCTIONS,
-        prepInstructions: PREP_INSTRUCTIONS,
+        prepItems: PREP_ITEMS,
         sourceUrl: SOURCE_URL,
         sourceId: source.id,
         imageUrl: image?.imageUrl ?? null,

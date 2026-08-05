@@ -16,7 +16,7 @@ import { useHistory, useParams } from 'react-router-dom'
 
 import { API_URL } from '../config'
 import { Avatar } from '../uploads/Avatar'
-import { deleteCamp, fetchCamp, updateCamp, type Camp } from './api'
+import { deleteCamp, fetchCamp, updateCamp, type Camp, type CampOptionLine } from './api'
 import { CampForm } from './CampForm'
 import { CommentsSection } from './CommentsSection'
 import { campDetailsLine, formatDateRange, mapUrl, shortAddress, timeLabel } from './format'
@@ -36,33 +36,21 @@ import { useCampInterest } from './useCampInterest'
 const FACT_LINE_STYLE = { margin: '4px 0' } as const
 
 // Shared by the Options and "What to bring / prepare" sections below — each
-// line (from a '\n'-joined price_details/prep_instructions string) becomes
-// its own bullet, and a leading "Label:" segment (if present) is bolded to
-// set it apart from the rest of the line (feedback, 2026-08-05: "the item
-// should probably be somehow set apart from the description, which is less
-// important"). A line with no colon — a general note with no natural
-// "item" shape, e.g. a sibling discount — renders as a plain, un-bolded
-// bullet instead of forcing structure onto it.
-function LabeledBulletList({ text }: { text: string }) {
-  const lines = text
-    .split('\n')
-    .map((line) => line.trim())
-    .filter(Boolean)
+// CampOptionLine becomes its own bullet, label always bold, detail always
+// plain (feedback, 2026-08-05: "the item should probably be somehow set
+// apart from the description"; then later that same day: real structured
+// data instead of a hand-formatted string, so this can never again drift
+// into the inconsistent-bolding bugs a free-text version needed a whole
+// session of corrections to catch — see CampOptionLine in api.ts).
+function LabeledBulletList({ lines }: { lines: CampOptionLine[] }) {
   return (
     <ul style={{ margin: '4px 0', paddingLeft: 20 }}>
-      {lines.map((line) => {
-        const colonIndex = line.indexOf(':')
-        return (
-          <li key={line} style={{ marginBottom: 4 }}>
-            {colonIndex === -1 ? line : (
-              <>
-                <strong>{line.slice(0, colonIndex)}</strong>
-                {line.slice(colonIndex)}
-              </>
-            )}
-          </li>
-        )
-      })}
+      {lines.map((line) => (
+        <li key={line.label} style={{ marginBottom: 4 }}>
+          <strong>{line.label}</strong>
+          {line.detail && `: ${line.detail}`}
+        </li>
+      ))}
     </ul>
   )
 }
@@ -188,17 +176,31 @@ export function CampDetailPage() {
               </p>
             )}
             {camp.description && <p style={FACT_LINE_STYLE}>{camp.description}</p>}
-            {camp.price_details && (
+            {camp.options && camp.options.length > 0 ? (
               <>
                 <h2>Options</h2>
-                <LabeledBulletList text={camp.price_details} />
+                <LabeledBulletList lines={camp.options} />
               </>
+            ) : (
+              camp.options_note && (
+                <>
+                  <h2>Options</h2>
+                  <p style={FACT_LINE_STYLE}>{camp.options_note}</p>
+                </>
+              )
             )}
-            {camp.prep_instructions && (
+            {camp.prep_items && camp.prep_items.length > 0 ? (
               <>
                 <h2>What to bring / prepare</h2>
-                <LabeledBulletList text={camp.prep_instructions} />
+                <LabeledBulletList lines={camp.prep_items} />
               </>
+            ) : (
+              camp.prep_note && (
+                <>
+                  <h2>What to bring / prepare</h2>
+                  <p style={FACT_LINE_STYLE}>{camp.prep_note}</p>
+                </>
+              )
             )}
             <CommentsSection campId={camp.id} source={camp.source} />
             {(camp.booking_instructions || camp.source_url) && (

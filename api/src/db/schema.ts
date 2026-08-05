@@ -201,6 +201,27 @@ export const campSources = pgTable('camp_sources', {
   ...timestamps,
 })
 
+// One line of the camp detail page's "Options" or "What to bring / prepare"
+// section (feedback, 2026-08-05: after a full day of formatting corrections
+// to hand-typed price_details/prep_instructions strings — inconsistent
+// bold treatment, mixed separators, a missing colon that silently broke
+// bolding entirely — Ben asked for this to become real structured data
+// instead of free text policed by convention). `label` is always rendered
+// bold; `detail` is free text scoped to just that one line's specifics
+// (e.g. "9:00 AM – 1:00 PM · $65/day · Ages 5-13") — deliberately NOT
+// decomposed further into separate time/price/age columns, since tiers
+// genuinely vary in shape across providers (a day+week price, a duration
+// only, an age band only) and forcing them into identical typed fields
+// would be over-structuring for a two-line, ~5-provider dataset. Stored as
+// JSONB directly on the row rather than a child table — neither list is
+// ever queried independently of its camp, so a real relational table would
+// add join complexity (especially to the by-break bulk fetch) without a
+// real query need driving it.
+export interface CampOptionLine {
+  label: string
+  detail: string
+}
+
 export const camps = pgTable('camps', {
   id: uuid('id').primaryKey().defaultRandom(),
   title: text('title').notNull(),
@@ -239,24 +260,40 @@ export const camps = pgTable('camps', {
   // A later pass should revisit these and replace inferred prices with
   // actual published ones as they become available.
   priceIsEstimated: boolean('price_is_estimated').notNull().default(false),
-  // Free-text breakdown for a provider with tiered/add-on pricing (e.g.
-  // "8am-3pm: $85. Add the 3pm-6pm after-camp extension for $120 total.").
-  // pricePerDay/priceLabel always shows one single full-day number for the
-  // compact list/preview line (feedback, 2026-08-05); this is the expanded
-  // detail shown only on the camp detail page, never in the compact line.
-  priceDetails: text('price_details'),
+  // Structured breakdown for a provider with tiered/add-on pricing (e.g.
+  // [{label: "Day camp", detail: "8:00 AM – 3:00 PM · $85/day"}, ...]) — see
+  // CampOptionLine above. pricePerDay/priceLabel always shows one single
+  // full-day number for the compact list/preview line (feedback,
+  // 2026-08-05); this is the expanded detail shown only on the camp detail
+  // page's "Options" section, never in the compact line. Null/empty for a
+  // camp with no real tiered structure to show (including every
+  // member-submitted camp — see optionsNote below).
+  options: jsonb('options').$type<CampOptionLine[]>(),
+  // A single free-text aside for a member-submitted camp — deliberately NOT
+  // the structured `options` list above (feedback, 2026-08-05: "let's keep
+  // it simple for now" on the member-posting form). Renders as one plain
+  // sentence in the Options section when `options` itself is empty; never
+  // set by a seed script, only by CampForm.tsx.
+  optionsNote: text('options_note'),
   ageMin: integer('age_min'), // years
   ageMax: integer('age_max'), // years
   // Real-time availability isn't tracked (no live booking integration) — null
   // means unknown, not zero. Always surfaced in the UI as "Unknown" rather
   // than hidden, same posture as price_is_estimated (never silently omitted).
   spotsAvailable: integer('spots_available'),
-  // When/how to register (e.g. "Register online at ymcachicago.org...") and
-  // what to bring/prepare beforehand (packing list, permission slips, forms)
-  // — free text, same "always shown, even if null" posture as the other
-  // optional fields above (see camps/format.ts).
+  // When/how to register (e.g. "Register online at ymcachicago.org...") —
+  // free text, same "always shown, even if null" posture as the other
+  // optional fields above (see camps/format.ts). Not structured — phrasing
+  // varies too much per provider and pairs with the already-structured
+  // sourceUrl "View Booking Page" button, so there's no repeating shape here
+  // worth extracting the way there was for options/prepItems.
   bookingInstructions: text('booking_instructions'),
-  prepInstructions: text('prep_instructions'),
+  // Structured "what to bring / prepare" checklist — same CampOptionLine
+  // shape and same rationale as `options` above.
+  prepItems: jsonb('prep_items').$type<CampOptionLine[]>(),
+  // Member-submitted-camp equivalent of optionsNote above, for the same
+  // "keep it simple" reason — a single free-text aside, not a structured list.
+  prepNote: text('prep_note'),
   sourceUrl: text('source_url'),
   sourceId: uuid('source_id').references(() => campSources.id),
   imageUrl: text('image_url'),

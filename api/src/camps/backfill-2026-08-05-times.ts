@@ -13,12 +13,16 @@ import { campSources, camps, eventsLog } from '../db/schema.js'
 // same convention as events/backfill-2026-08-02-simplify-titles.ts, not a
 // live re-derivation — this must match exactly what was researched and
 // reviewed, not whatever a fresh lookup happens to produce.
+// The priceDetails value this script originally also set for ClimbZone was
+// removed 2026-08-05 when price_details was retired in favor of the
+// structured `options` column (see the "structured Options/What-to-bring"
+// migration) — that data now lives in seed-2026-08-04-providers.ts's
+// ProviderSpec.options and the backfill that applies it to existing rows.
 interface SourceUpdate {
   sourceName: string
   startTime: string | null
   endTime: string | null
   pricePerDay?: string | null
-  priceDetails?: string | null
 }
 
 const UPDATES: SourceUpdate[] = [
@@ -32,10 +36,6 @@ const UPDATES: SourceUpdate[] = [
     startTime: '09:00',
     endTime: '17:30',
     pricePerDay: '150.00',
-    priceDetails:
-      'Full day (9:00am-3:30pm): $120/day, $540/week. Add aftercare (3:30-5:30pm) for the full 9:00am-5:30pm day: ' +
-      '$150/day total. Morning half-day (9:00am-12:00pm): $70/day, $320/week. Afternoon half-day (12:30pm-3:30pm): ' +
-      '$70/day, $320/week. A 5% sibling discount applies to camp fees.',
   },
   {
     sourceName: 'Fit City Kids',
@@ -63,7 +63,6 @@ async function main() {
       updatedAt: new Date(),
     }
     if (update.pricePerDay !== undefined) setValues.pricePerDay = update.pricePerDay
-    if (update.priceDetails !== undefined) setValues.priceDetails = update.priceDetails
 
     const updatedRows = await db
       .update(camps)

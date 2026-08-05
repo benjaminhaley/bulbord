@@ -81,12 +81,12 @@ export function CampForm({
   const [endTime, setEndTime] = useState(initial?.end_time?.slice(0, 5) ?? '')
   const [address, setAddress] = useState(initial?.address ?? '')
   const [pricePerDay, setPricePerDay] = useState(initial?.price_per_day ?? '')
-  const [priceDetails, setPriceDetails] = useState(initial?.price_details ?? '')
+  const [optionsNote, setOptionsNote] = useState(initial?.options_note ?? '')
   const [ageMin, setAgeMin] = useState(initial?.age_min != null ? String(initial.age_min) : '')
   const [ageMax, setAgeMax] = useState(initial?.age_max != null ? String(initial.age_max) : '')
   const [spotsAvailable, setSpotsAvailable] = useState(initial?.spots_available != null ? String(initial.spots_available) : '')
   const [bookingInstructions, setBookingInstructions] = useState(initial?.booking_instructions ?? '')
-  const [prepInstructions, setPrepInstructions] = useState(initial?.prep_instructions ?? '')
+  const [prepNote, setPrepNote] = useState(initial?.prep_note ?? '')
   const [sourceUrl, setSourceUrl] = useState(initial?.source_url ?? '')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -111,12 +111,12 @@ export function CampForm({
           end_time: endTime.trim(),
           address: address.trim(),
           price_per_day: pricePerDay.trim() ? Number(pricePerDay) : null,
-          price_details: priceDetails.trim(),
+          options_note: optionsNote.trim(),
           age_min: ageMin.trim() ? Number(ageMin) : null,
           age_max: ageMax.trim() ? Number(ageMax) : null,
           spots_available: spotsAvailable.trim() ? Number(spotsAvailable) : null,
           booking_instructions: bookingInstructions.trim(),
-          prep_instructions: prepInstructions.trim(),
+          prep_note: prepNote.trim(),
           source_url: sourceUrl.trim(),
         }),
       )
@@ -198,11 +198,11 @@ export function CampForm({
         />
       </IonItem>
       <IonItem>
-        <IonLabel position="stacked">Price details</IonLabel>
+        <IonLabel position="stacked">Price note</IonLabel>
         <IonTextarea
-          value={priceDetails}
-          onIonInput={(e) => setPriceDetails(e.detail.value ?? '')}
-          placeholder="Optional — a breakdown for tiered pricing (e.g. 8am-3pm: $85; 8am-6pm: $120)"
+          value={optionsNote}
+          onIonInput={(e) => setOptionsNote(e.detail.value ?? '')}
+          placeholder="Optional — a short aside, e.g. a sibling discount"
           autoGrow
         />
       </IonItem>
@@ -233,10 +233,10 @@ export function CampForm({
         />
       </IonItem>
       <IonItem>
-        <IonLabel position="stacked">Prep instructions</IonLabel>
+        <IonLabel position="stacked">Prep note</IonLabel>
         <IonTextarea
-          value={prepInstructions}
-          onIonInput={(e) => setPrepInstructions(e.detail.value ?? '')}
+          value={prepNote}
+          onIonInput={(e) => setPrepNote(e.detail.value ?? '')}
           placeholder="Optional — what to bring or prepare beforehand"
           autoGrow
         />

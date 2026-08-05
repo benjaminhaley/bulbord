@@ -3,6 +3,17 @@ import { authHeaders } from '../auth/token'
 
 export type InterestStatus = 'interested' | 'dismissed'
 
+// One line of the "Options" or "What to bring / prepare" section — label is
+// always rendered bold, detail is free text scoped to just that line (see
+// api/src/db/schema.ts's CampOptionLine for the full rationale: this
+// replaced a hand-formatted free-text blob that needed a whole session of
+// "please fix the formatting" corrections before becoming real structured
+// data).
+export interface CampOptionLine {
+  label: string
+  detail: string
+}
+
 export interface Camp {
   id: string
   title: string
@@ -22,18 +33,22 @@ export interface Camp {
   // policy rather than an individually published listing for this exact
   // date — see api/src/camps/routes.ts. Always render this to the user.
   price_is_estimated: boolean
-  // Optional breakdown for tiered/add-on pricing (e.g. "8am-3pm: $85. Add
-  // the after-camp extension for $120 total.") — shown on the detail page
-  // only, never in the compact price_per_day line.
-  price_details: string | null
+  // Structured tiered/add-on pricing breakdown (e.g. Fit City Kids' Day
+  // camp vs. Full day + extension) — shown on the detail page's "Options"
+  // section only, never in the compact price_per_day line. Only ever set by
+  // a seed script; options_note is the member self-service equivalent.
+  options: CampOptionLine[] | null
+  options_note: string | null
   age_min: number | null
   age_max: number | null
   // Real-time availability isn't tracked — null means unknown, not zero.
   spots_available: number | null
-  // When/how to register, and what to bring/prepare beforehand (packing
-  // list, permission slips, forms) — free text, always shown when present.
+  // When/how to register — free text, always shown when present.
   booking_instructions: string | null
-  prep_instructions: string | null
+  // Structured "what to bring / prepare" checklist — same shape/posture as
+  // options above. prep_note is the member self-service equivalent.
+  prep_items: CampOptionLine[] | null
+  prep_note: string | null
   source_url: string | null
   image_url: string | null
   thumbnail_url: string | null
@@ -48,6 +63,12 @@ export interface Camp {
 // Fields a member supplies when submitting or editing their own camp. Only
 // title, address ("location"), and start_date are required — end_date
 // defaults to start_date server-side when left blank (a single-day camp).
+// Deliberately simpler than the full Camp shape (feedback, 2026-08-05:
+// "let's keep it simple for now") — a member gets one free-text aside per
+// section (options_note/prep_note) rather than the structured multi-row
+// options/prep_items editor a hand-seeded provider's data uses; tiered
+// pricing and multi-item packing lists are a "real provider with a
+// structured program" thing, not a "parent posting a one-off camp" thing.
 export interface CampInput {
   title: string
   description: string
@@ -57,12 +78,12 @@ export interface CampInput {
   end_time: string
   address: string
   price_per_day: number | null
-  price_details: string
+  options_note: string
   age_min: number | null
   age_max: number | null
   spots_available: number | null
   booking_instructions: string
-  prep_instructions: string
+  prep_note: string
   source_url: string
   image_url: string | null
   thumbnail_url: string | null
