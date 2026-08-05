@@ -209,15 +209,43 @@ interface ProviderSpec {
   // list/preview line; this expanded detail only shows on the camp detail
   // page (feedback, 2026-08-05: "give an overall single number... but when
   // you click on the event, you should see more information").
+  //
+  // TEMPLATE (feedback, 2026-08-05: "ages four to thirteen is repeated...
+  // the pricing looks like a long run-on... check your work"): one tier or
+  // note per LINE, joined with '\n' — `.join('\n')` on an array literal
+  // reads most clearly at the call site and is what every provider below
+  // does. CampDetailPage.tsx renders each line as its own bullet, so a
+  // run-on paragraph here becomes a wall of text there. Each line follows
+  // "Label (time range if relevant): $amount/unit.": e.g.
+  //   [
+  //     'Morning (9:00am-1:00pm): $65/day.',
+  //     'Afternoon (1:30pm-5:00pm): $55/day.',
+  //     'Register both for the full day: $120/day total.',
+  //   ].join('\n')
+  // Only mention an age range on a line here if it's genuinely DIFFERENT
+  // from the camp's own ageMin/ageMax below (e.g. BitSpace's half-day option
+  // covers a different age band than its full-day rate) — never restate the
+  // same range, since ageRangeLabel already shows it in the always-visible
+  // stat line above this section.
   priceDetails?: string
   bookingInstructions: string
   prepInstructions: string
+  // One tight sentence: venue/program name + what campers actually do.
+  // Never restate age range, hours, or price here — age_min/age_max,
+  // start_time/end_time, and price_per_day already have their own
+  // always-shown fields (the stat line and the bold time line above this),
+  // so repeating them here is redundant, not helpful (feedback, 2026-08-05).
   description: string
   sourceUrl: string
-  // A real, image-rich page to pull a representative photo/logo from — often
-  // a different URL than sourceUrl (a booking/registration page rarely has
-  // a usable og:image; a branch/location homepage usually does).
-  imageSourceUrl: string
+  // Real, image-rich page(s) to pull a representative photo/logo from, tried
+  // in order (see enrichCampSourceImage) — often different from sourceUrl (a
+  // booking/registration page rarely has a usable og:image; a branch/
+  // location homepage or About page usually does). A list, not a single URL
+  // (2026-08-05, after Unicoi's Facebook fallback turned out to have no
+  // usable og:image at all) — always give at least one real fallback beyond
+  // a provider's own homepage/booking page when one is known, so a single
+  // page's extraction failure doesn't silently leave the camp imageless.
+  imageSourceUrls: string[]
   // Whether this provider has a genuine, stated "we run this program on
   // every CPS non-attendance day" policy — true for the four providers whose
   // own sites say exactly that (YMCA, ClimbZone, Fit City Kids, BitSpace),
@@ -271,13 +299,13 @@ const PROVIDERS: ProviderSpec[] = [
     bookingInstructions: 'Register online, by phone (773-248-3333), or in person at the front desk.',
     prepInstructions:
       'Pack a lunch and a water bottle (no glass). Bring a swimsuit and towel if the day includes pool time, and dress for active play.',
-    description: 'Lake View YMCA "School Days Out" — full day of activities while school is out. Ages 5-13.',
+    description: 'Lake View YMCA "School Days Out" — full day of activities while school is out.',
     sourceUrl: 'https://www.ymcachicago.org/early-learning-education/school-age-care/school-days-out/',
     // ymcachicago.org's own pages lazy-load images via JS with no static
     // <img>/og:image in the raw HTML (extractPageImageCandidates found
     // nothing on any of their pages) — their official Facebook page has a
     // real, static og:image instead.
-    imageSourceUrl: 'https://www.facebook.com/LakeViewYMCA/',
+    imageSourceUrls: ['https://www.facebook.com/LakeViewYMCA/'],
   },
   {
     key: 'climbzone',
@@ -299,16 +327,19 @@ const PROVIDERS: ProviderSpec[] = [
     startTime: '09:00',
     endTime: '17:30',
     pricePerDay: '150.00',
-    priceDetails:
-      'Full day (9:00am-3:30pm): $120/day, $540/week. Add aftercare (3:30-5:30pm) for the full 9:00am-5:30pm day: ' +
-      '$150/day total. Morning half-day (9:00am-12:00pm): $70/day, $320/week. Afternoon half-day (12:30pm-3:30pm): ' +
-      '$70/day, $320/week. A 5% sibling discount applies to camp fees.',
+    priceDetails: [
+      'Full day (9:00am-3:30pm): $120/day, $540/week.',
+      'Add aftercare (3:30-5:30pm) for the full 9:00am-5:30pm day: $150/day total.',
+      'Morning half-day (9:00am-12:00pm): $70/day, $320/week.',
+      'Afternoon half-day (12:30pm-3:30pm): $70/day, $320/week.',
+      '5% sibling discount applies to camp fees.',
+    ].join('\n'),
     bookingInstructions: 'Sign up online for whichever day(s) you need — no minimum required.',
     prepInstructions:
       'Wear sneakers or gym shoes. Grip socks are required in the soft-play area (bring your own or buy a pair on-site). Pack a lunch, or pre-order one from ClimbZone for $10/child.',
-    description: 'ClimbZone Chicago full-day camp — climbing walls, high ropes, laser tag, arts and crafts. Ages 5-12.',
+    description: 'ClimbZone Chicago full-day camp — climbing walls, high ropes, laser tag, and arts and crafts.',
     sourceUrl: 'https://www.climbzone.us/chicago/camps/',
-    imageSourceUrl: 'https://www.climbzone.us/chicago/',
+    imageSourceUrls: ['https://www.climbzone.us/chicago/'],
   },
   {
     key: 'fitcitykids',
@@ -327,14 +358,17 @@ const PROVIDERS: ProviderSpec[] = [
     startTime: '08:00',
     endTime: '18:00',
     pricePerDay: '120.00',
-    priceDetails:
-      '8am-3pm day camp: $85. Add the 3pm-6pm after-camp extension for a full 8am-6pm day: $120 total. Both options are available for any date.',
+    priceDetails: [
+      '8am-3pm day camp: $85/day.',
+      'Add the 3pm-6pm after-camp extension for the full 8am-6pm day: $120/day total.',
+      'Both options available for any date.',
+    ].join('\n'),
     earliestConfirmedDate: '2026-09-25',
     bookingInstructions: 'Register through the parent portal. Email Camps@FitCityKids.com if your date isn\'t listed.',
     prepInstructions: 'Bring gym shoes, socks, a labeled water bottle, a snack, and a lunch.',
-    description: `Fit City Kids "School's Out Camp" — fitness classes and active play, 8am-6pm (day camp plus after-camp extension). Ages 4-12.`,
+    description: `Fit City Kids "School's Out Camp" — fitness classes and active play.`,
     sourceUrl: 'https://www.fitcitykids.com/schools-out-camp/',
-    imageSourceUrl: 'https://www.fitcitykids.com/',
+    imageSourceUrls: ['https://www.fitcitykids.com/'],
   },
   {
     key: 'bitspace',
@@ -348,16 +382,17 @@ const PROVIDERS: ProviderSpec[] = [
     ageMin: 8,
     ageMax: null,
     pricePerDay: '150.00',
-    priceDetails:
-      '$150/day full-day rate is for ages 8+. A half-day option also exists for ages 7-12 (price not yet published).',
+    priceDetails: [
+      'Full day (ages 8+): $150/day.',
+      'Half-day option (ages 7-12): price not yet published.',
+    ].join('\n'),
     hasRecurringOffering: false,
     bookingInstructions: 'Register online. Each session needs a minimum of 8 campers to run — register early.',
     prepInstructions:
       'Pack a nut-free sack lunch, snacks, and a water bottle. No open-toed shoes, crocs, loose jewelry, or loose clothing — bring a hair tie for long hair, and dress for mess (some days get messy). A phone is fine for emergencies but must stay zipped in the backpack.',
-    description:
-      'BitSpace "Day Off Camp" — design thinking, 3D printing, woodworking, and programmable electronics. Full day for ages 8+; a half-day option also exists for ages 7-12.',
+    description: 'BitSpace "Day Off Camp" — design thinking, 3D printing, woodworking, and programmable electronics.',
     sourceUrl: 'https://education.bitspacechicago.com/day-off-camps',
-    imageSourceUrl: 'https://bitspacechicago.com/',
+    imageSourceUrls: ['https://bitspacechicago.com/'],
   },
   {
     key: 'parkdistrict',
@@ -379,7 +414,7 @@ const PROVIDERS: ProviderSpec[] = [
     description:
       'Chicago Park District day camp at Gill Park (825 W Sheridan Rd) — recreational activities, arts and crafts, sports.',
     sourceUrl: 'https://anc.apm.activecommunities.com/chicagoparkdistrict/activity/search',
-    imageSourceUrl: 'https://www.chicagoparkdistrict.com/parks-facilities/gill-joseph-park',
+    imageSourceUrls: ['https://www.chicagoparkdistrict.com/parks-facilities/gill-joseph-park'],
     hasRecurringOffering: false,
   },
   {
@@ -394,8 +429,12 @@ const PROVIDERS: ProviderSpec[] = [
     ageMin: 0,
     ageMax: null,
     pricePerDay: '95.00',
-    priceDetails:
-      '3-hour Express Pass: $45. 5-hour Half-Day Pass: $65. 9-hour Full-Day Pass: $95 (shown above). All three lengths are available for any date.',
+    priceDetails: [
+      '3-hour Express Pass: $45/day.',
+      '5-hour Half-Day Pass: $65/day.',
+      '9-hour Full-Day Pass: $95/day (shown above).',
+      'All three lengths available for any date.',
+    ].join('\n'),
     bookingInstructions: 'Book online and pick a date. Drop-off 7:00am-4:30pm, pick-up 11:00am-6:00pm.',
     prepInstructions: "Nothing to pack — healthy snacks and a whole-food lunch are included for the day.",
     description:
@@ -404,7 +443,7 @@ const PROVIDERS: ProviderSpec[] = [
     // Same lazy-loaded-images issue as YMCA — familyroomchicago.com's own
     // pages only expose a blank placeholder SVG in raw HTML; their Facebook
     // page has a real, static photo instead.
-    imageSourceUrl: 'https://www.facebook.com/familyroomchicago/',
+    imageSourceUrls: ['https://www.facebook.com/familyroomchicago/'],
   },
 ]
 
@@ -463,7 +502,7 @@ async function main() {
   // handful of one-time network fetches at seed time, not a hot path.
   const imageByKey = new Map<string, { imageUrl: string; thumbnailUrl: string } | null>()
   for (const p of PROVIDERS) {
-    const enriched = await enrichCampSourceImage(p.imageSourceUrl)
+    const enriched = await enrichCampSourceImage(p.imageSourceUrls)
     imageByKey.set(p.key, enriched)
     console.log(`${p.name}: ${enriched ? 'found a real image' : 'no usable image found'}`)
   }

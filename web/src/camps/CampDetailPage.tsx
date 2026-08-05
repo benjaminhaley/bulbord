@@ -142,7 +142,13 @@ export function CampDetailPage() {
             {camp.price_details && (
               <>
                 <h2>Pricing</h2>
-                <p style={{ whiteSpace: 'pre-wrap' }}>{camp.price_details}</p>
+                <ul style={{ margin: '4px 0', paddingLeft: 20 }}>
+                  {camp.price_details.split('\n').map((line) => line.trim()).filter(Boolean).map((line) => (
+                    <li key={line} style={{ marginBottom: 4 }}>
+                      {line}
+                    </li>
+                  ))}
+                </ul>
               </>
             )}
             {(camp.booking_instructions || camp.source_url) && (

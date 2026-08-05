@@ -62,16 +62,24 @@ const LNG = -87.68
 
 const SOURCE_URL = 'https://www.hisawyer.com/uni-coi-art-studio/schedules/widget_calendar?schedule_id=all'
 const PRICE_PER_DAY = '120.00'
-const PRICE_DETAILS =
-  'Morning (9:00am-1:00pm, ages 5-13): $65/day. Afternoon (1:30pm-5:00pm, ages 4-12): $55/day. Register both for ' +
-  "the studio's own bridged full day, 9:00am-5:00pm: $120/day total (shown above). Weekly rates are also available " +
-  '(vary by camp series).'
+// One tier/note per line — see seed-2026-08-04-providers.ts's ProviderSpec
+// priceDetails doc comment for the house style this follows. Morning/
+// afternoon age ranges are kept here (unlike a plain age restatement)
+// because they're genuinely narrower than the camp's own 4-13 ageMin/ageMax
+// union below, not a duplicate of it.
+const PRICE_DETAILS = [
+  'Morning (9:00am-1:00pm, ages 5-13): $65/day.',
+  'Afternoon (1:30pm-5:00pm, ages 4-12): $55/day.',
+  "Register both for the studio's own bridged full day, 9:00am-5:00pm: $120/day total (shown above).",
+  'Weekly rates also available (vary by camp series).',
+].join('\n')
 const BOOKING_INSTRUCTIONS = 'Register online via the Sawyer booking calendar — choose Morning, Afternoon, or both for a full day.'
 const PREP_INSTRUCTIONS =
   'Pack a labeled lunch and a water bottle. Art projects can get messy — dress for it or bring a smock/old shirt. ' +
   'Weather permitting, campers walk to nearby Hamlin Park for outdoor time.'
-const DESCRIPTION =
-  'Unicoi Art Studio — free play, structured art projects, and (weather permitting) park time. Ages 4-13.'
+// No age range here — age_min/age_max already show it in the always-visible
+// stat line (see house style doc comment referenced above).
+const DESCRIPTION = 'Unicoi Art Studio — free play, structured art projects, and (weather permitting) park time.'
 
 interface DateRange {
   startDate: string
@@ -124,7 +132,14 @@ async function main() {
     })
     .returning({ id: campSources.id })
 
-  const image = await enrichCampSourceImage('https://www.facebook.com/UnicoiStudio/')
+  // Facebook alone (tried first, per every other provider's precedent) had
+  // no usable og:image for this page — real fix landed in
+  // backfill-2026-08-05-cleanup.ts, which re-ran enrichment against
+  // unicoistudio.com/about-us/ too (a real WordPress photo lives there) once
+  // enrichCampSourceImage started accepting multiple candidate pages. Left
+  // here as single-URL for historical accuracy — this script has an
+  // existing-source guard and won't be re-run.
+  const image = await enrichCampSourceImage(['https://www.facebook.com/UnicoiStudio/'])
   console.log(image ? 'Found a real image via Facebook' : 'No usable image found')
 
   const distanceMiles = distanceFromNettelhorst()

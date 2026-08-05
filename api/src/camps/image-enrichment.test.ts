@@ -26,7 +26,7 @@ describe('enrichCampSourceImage', () => {
     isLowQualityImageMock.mockResolvedValueOnce(true).mockResolvedValueOnce(false)
     const { enrichCampSourceImage } = await import('./image-enrichment.js')
 
-    const result = await enrichCampSourceImage('https://example.com/page')
+    const result = await enrichCampSourceImage(['https://example.com/page'])
 
     expect(result).toEqual({ imageUrl: '/uploads/camps/final.jpg', thumbnailUrl: '/uploads/camps/final-thumb.jpg' })
     expect(fetchExternalImageMock).toHaveBeenNthCalledWith(1, 'https://example.com/logo.png')
@@ -40,7 +40,7 @@ describe('enrichCampSourceImage', () => {
     isLowQualityImageMock.mockResolvedValueOnce(false)
     const { enrichCampSourceImage } = await import('./image-enrichment.js')
 
-    const result = await enrichCampSourceImage('https://example.com/page')
+    const result = await enrichCampSourceImage(['https://example.com/page'])
 
     expect(result).not.toBeNull()
     expect(uploadImageMock).toHaveBeenCalledWith(Buffer.from('ok-bytes'), 'camps')
@@ -52,7 +52,7 @@ describe('enrichCampSourceImage', () => {
     isLowQualityImageMock.mockResolvedValueOnce(true)
     const { enrichCampSourceImage } = await import('./image-enrichment.js')
 
-    const result = await enrichCampSourceImage('https://example.com/page')
+    const result = await enrichCampSourceImage(['https://example.com/page'])
 
     expect(result).toBeNull()
     expect(uploadImageMock).not.toHaveBeenCalled()
@@ -62,8 +62,23 @@ describe('enrichCampSourceImage', () => {
     extractPageImageCandidatesMock.mockResolvedValue([])
     const { enrichCampSourceImage } = await import('./image-enrichment.js')
 
-    const result = await enrichCampSourceImage('https://example.com/page')
+    const result = await enrichCampSourceImage(['https://example.com/page'])
 
     expect(result).toBeNull()
+  })
+
+  it('falls through to a second source page when the first has no usable candidates', async () => {
+    extractPageImageCandidatesMock.mockImplementation(async (url: string) =>
+      url === 'https://example.com/facebook' ? [] : ['https://example.com/about-real-photo.jpg'],
+    )
+    fetchExternalImageMock.mockResolvedValueOnce(Buffer.from('real-photo-bytes'))
+    isLowQualityImageMock.mockResolvedValueOnce(false)
+    const { enrichCampSourceImage } = await import('./image-enrichment.js')
+
+    const result = await enrichCampSourceImage(['https://example.com/facebook', 'https://example.com/about'])
+
+    expect(result).toEqual({ imageUrl: '/uploads/camps/final.jpg', thumbnailUrl: '/uploads/camps/final-thumb.jpg' })
+    expect(extractPageImageCandidatesMock).toHaveBeenCalledWith('https://example.com/facebook')
+    expect(extractPageImageCandidatesMock).toHaveBeenCalledWith('https://example.com/about')
   })
 })
