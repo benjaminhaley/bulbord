@@ -23,9 +23,16 @@ function openShareModal(container: HTMLElement) {
 // closes it before finishing. It portals its content to document.body
 // rather than rendering inline under the component's own container, so the
 // close button has to be found document-wide, unlike the fab button above.
-function closeShareModal() {
-  const closeButton = document.querySelector('ion-header ion-button')
-  if (!closeButton) throw new Error('share modal close button not found')
+async function closeShareModal() {
+  // The modal's real DOM attachment happens asynchronously (Stencil watches
+  // the isOpen prop and calls present() outside the current tick), so a
+  // synchronous querySelector right after opening can race it — wait for the
+  // close button to actually exist rather than assuming it already does.
+  const closeButton = await waitFor(() => {
+    const el = document.querySelector('ion-header ion-button')
+    if (!el) throw new Error('share modal close button not found')
+    return el
+  })
   fireEvent.click(closeButton)
 }
 
@@ -39,10 +46,13 @@ describe('ShareButton', () => {
     )
     openShareModal(container)
 
+    // The URL itself is never rendered as visible text (feedback, 2026-08-05:
+    // "no reason for an HTTPS URL written out as plain text") — it's only
+    // encoded in the QR image, so assert against that image's alt text.
     await waitFor(() => {
-      expect(screen.getByText(/\/events\/abc123$/)).toBeInTheDocument()
+      expect(screen.getByAltText(/\/events\/abc123$/)).toBeInTheDocument()
     })
-    closeShareModal()
+    await closeShareModal()
   })
 
   it('appends ?invite=<user id> to the shared URL when logged in', async () => {
@@ -55,14 +65,14 @@ describe('ShareButton', () => {
     openShareModal(container)
 
     await waitFor(() => {
-      expect(screen.getByText(/\/events\/abc123\?invite=user-42$/)).toBeInTheDocument()
+      expect(screen.getByAltText(/\/events\/abc123\?invite=user-42$/)).toBeInTheDocument()
     })
-    closeShareModal()
+    await closeShareModal()
   })
 
   // jsdom has no navigator.share, matching a plain desktop browser — the
   // native share button (feedback #58) must not render a dead control there.
-  it('does not render the native share button when navigator.share is unsupported', () => {
+  it('does not render the native share button when navigator.share is unsupported', async () => {
     mockUseAuth.mockReturnValue({ user: null })
     const { container } = render(
       <MemoryRouter initialEntries={['/events/abc123']}>
@@ -72,7 +82,7 @@ describe('ShareButton', () => {
     openShareModal(container)
 
     expect(screen.queryByText('Share via Text, Email, etc.')).not.toBeInTheDocument()
-    closeShareModal()
+    await closeShareModal()
   })
 
   it('calls navigator.share with the current page URL when the native share button is tapped', async () => {
@@ -97,6 +107,6 @@ describe('ShareButton', () => {
       expect(shareMock).toHaveBeenCalledWith({ url: expect.stringContaining('/events/abc123') })
     })
     delete (navigator as { share?: unknown }).share
-    closeShareModal()
+    await closeShareModal()
   })
 })

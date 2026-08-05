@@ -6,7 +6,6 @@ import {
   IonHeader,
   IonIcon,
   IonModal,
-  IonNote,
   IonTitle,
   IonToolbar,
 } from '@ionic/react'
@@ -72,13 +71,20 @@ export function ShareButton() {
         </IonHeader>
         <IonContent className="ion-padding">
           <div className="share-content">
-            {qrDataUrl && <img src={qrDataUrl} alt="QR code for this page" className="share-qr" />}
-            {/* Feedback, 2026-08-05: a bare technical URL isn't a friendly
-                primary message for a non-technical parent — lead with what
-                to actually do, and keep the link itself as a secondary
-                detail underneath rather than the only thing shown. */}
-            <p style={{ fontWeight: 600, textAlign: 'center', margin: 0 }}>Have your friend scan this QR code to join</p>
-            <IonNote>{shareUrl}</IonNote>
+            {/* Feedback, 2026-08-05: no reason to spell out a raw https://
+                URL as plain text for a non-technical parent — the QR code,
+                the instruction, and the share button below are the whole
+                surface now. The link itself still lives in the QR encoding
+                and the alt text (for accessibility/testing), just not
+                rendered as visible text. */}
+            {qrDataUrl && <img src={qrDataUrl} alt={`QR code for ${shareUrl}`} className="share-qr" />}
+            {/* "Nettelhorst Bulbord", not bare "Nettelhorst" — same app-name
+                convention as the join screen's own copy (see CLAUDE.md's
+                Login section): naming both the community and the platform
+                it runs on. */}
+            <p style={{ fontWeight: 600, textAlign: 'center', margin: 0 }}>
+              Have your friend scan this QR code to join Nettelhorst Bulbord
+            </p>
             {/* Feature-detected (feedback #58: "make it easy to share over
                 text or email") — opens the phone's own share sheet with this
                 page's link, same real Messages/Mail/etc. apps a person would
