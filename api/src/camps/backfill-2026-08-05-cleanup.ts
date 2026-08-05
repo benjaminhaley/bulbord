@@ -34,6 +34,18 @@ import { enrichCampSourceImage } from './image-enrichment.js'
 // bulleted list... bullet, the item, and then, optionally, a description
 // of the item... set apart from the description" — CampDetailPage.tsx's
 // LabeledBulletList bolds everything before the first colon on each line.
+//
+// Fourth pass (feedback, 2026-08-05, same session): the third pass still
+// left some bring-items colon-less (plain "Labeled lunch" next to bolded
+// "Clothes that can get messy: ...") — "you're gonna use bold here, please
+// be consistent... across all bullets." Every actual bring-item now gets a
+// short generic label ("Food and drink:", "Footwear:", "Bring:") so every
+// bullet bolds consistently; a genuinely general note that isn't a personal
+// item (e.g. Park District's "a free lunch is provided") stays colon-less,
+// since that's a different kind of information, not an inconsistency.
+// Also consolidated related items into fewer, richer bullets — Unicoi's
+// separate "weather permitting, walk to the park" bullet was really just
+// commentary on why to dress a certain way, folded into the clothes line.
 interface TextUpdate {
   sourceName: string
   description: string
@@ -48,10 +60,9 @@ const TEXT_UPDATES: TextUpdate[] = [
     sourceName: 'Lake View YMCA',
     description: '"School Days Out" — a full day of activities while school is out.',
     prepInstructions: [
-      'Lunch',
-      'Water bottle: no glass',
+      'Food and drink: a lunch and a water bottle (no glass)',
       'Swimsuit and towel: if the day includes pool time',
-      'Comfortable clothes for active play',
+      'Comfortable clothes: for active play',
     ].join('\n'),
   },
   {
@@ -65,7 +76,7 @@ const TEXT_UPDATES: TextUpdate[] = [
       '5% sibling discount applies to camp fees',
     ].join('\n'),
     prepInstructions: [
-      'Sneakers or gym shoes',
+      'Footwear: sneakers or gym shoes',
       'Grip socks: required in the soft-play area — bring your own or buy a pair on-site',
       'Lunch: or pre-order one from ClimbZone for $10/child',
     ].join('\n'),
@@ -78,14 +89,17 @@ const TEXT_UPDATES: TextUpdate[] = [
       'Full day + after-camp extension: 8:00 AM – 6:00 PM · $120/day total',
       'Both options available for any date',
     ].join('\n'),
-    prepInstructions: ['Gym shoes and socks', 'Labeled water bottle', 'Snack and lunch'].join('\n'),
+    prepInstructions: [
+      'Footwear: gym shoes and socks',
+      'Food and drink: a labeled water bottle, a snack, and a lunch',
+    ].join('\n'),
   },
   {
     sourceName: 'BitSpace',
     description: '"Day Off Camp" — design thinking, 3D printing, woodworking, and programmable electronics.',
     priceDetails: ['Full day · Ages 8+ · $150/day', 'Half-day · Ages 7-12 · price not yet published'].join('\n'),
     prepInstructions: [
-      'Nut-free sack lunch, snacks, and a water bottle',
+      'Food and drink: a nut-free sack lunch, snacks, and a water bottle',
       'Closed-toe shoes: no open-toed shoes or crocs',
       'Hair tie: for long hair',
       'Clothes that can get messy: no loose jewelry or loose clothing — some days get messy',
@@ -102,14 +116,14 @@ const TEXT_UPDATES: TextUpdate[] = [
       'Full-Day Pass: 9 hours · $95/day (shown above)',
       'All three lengths available for any date',
     ].join('\n'),
+    prepInstructions: 'Nothing to pack: healthy snacks and a whole-food lunch are included for the day.',
   },
   {
     sourceName: 'Chicago Park District — Gill Park',
     description: 'Recreational activities, arts and crafts, and sports at the Gill Park fieldhouse.',
     prepInstructions: [
-      'Backpack',
+      'Bring: a backpack and a water bottle',
       'Change of clothes: if needed',
-      'Water bottle',
       'Sunscreen: apply before arrival',
       'A free lunch and snack are provided district-wide, though kids are welcome to bring their own',
     ].join('\n'),
@@ -126,10 +140,8 @@ const TEXT_UPDATES: TextUpdate[] = [
     ageMin: 5,
     ageMax: 12,
     prepInstructions: [
-      'Labeled lunch',
-      'Water bottle',
-      'Clothes that can get messy: art projects can get messy — dress for it or bring a smock/old shirt',
-      'Weather permitting, campers walk to nearby Hamlin Park for outdoor time',
+      'Food and drink: a labeled lunch and a water bottle',
+      'Clothes that can get messy: for art projects and, weather permitting, a walk to nearby Hamlin Park',
     ].join('\n'),
   },
 ]

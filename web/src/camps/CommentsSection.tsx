@@ -1,5 +1,5 @@
 import { IonButton, IonIcon, IonSpinner, IonTextarea } from '@ionic/react'
-import { trashOutline } from 'ionicons/icons'
+import { addOutline, trashOutline } from 'ionicons/icons'
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 
@@ -198,7 +198,6 @@ export function CommentsSection({ campId, source }: { campId: string; source: { 
       <h2>Comments</h2>
       {comments === null && !error && <IonSpinner name="dots" />}
       {error && comments === null && <p>Couldn't load comments</p>}
-      {comments !== null && comments.length === 0 && <p style={{ color: 'var(--ion-color-medium)' }}>No comments yet</p>}
       {comments?.map((comment) => (
         <CommentItem
           key={comment.id}
@@ -207,11 +206,16 @@ export function CommentsSection({ campId, source }: { campId: string; source: { 
           onDeleted={(id) => setComments((prev) => prev?.filter((c) => c.id !== id) ?? null)}
         />
       ))}
-      <div style={{ marginTop: 12 }}>
-        <IonTextarea value={newBody} onIonInput={(e) => setNewBody(e.detail.value ?? '')} placeholder="Add a comment" autoGrow />
-        <IonButton fill="outline" disabled={posting || !newBody.trim()} onClick={post}>
-          Post
-        </IonButton>
+      <div style={{ marginTop: 12, display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+        <IonIcon icon={addOutline} style={{ color: 'var(--ion-color-medium)', flexShrink: 0, marginTop: 10 }} />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <IonTextarea value={newBody} onIonInput={(e) => setNewBody(e.detail.value ?? '')} placeholder="Add a comment" autoGrow />
+          {newBody.trim() && (
+            <IonButton fill="outline" disabled={posting} onClick={post}>
+              Post
+            </IonButton>
+          )}
+        </div>
       </div>
     </div>
   )

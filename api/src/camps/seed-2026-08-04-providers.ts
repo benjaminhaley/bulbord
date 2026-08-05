@@ -237,16 +237,25 @@ interface ProviderSpec {
   // TEMPLATE (feedback, 2026-08-05: "can you make what to bring a bulleted
   // list... the general format is that it should be a bullet, the item,
   // and then, optionally, a description of the item... set apart from the
-  // description, which is less important"): same one-thing-per-LINE shape
-  // as priceDetails above, `.join('\n')` on an array literal. Each line is
-  // either "Item: why/detail" (CampDetailPage.tsx bolds everything before
-  // the first colon) or just a plain note with no colon when there's no
-  // natural "item" being introduced (e.g. "A free lunch and snack are
-  // provided district-wide"). e.g.:
+  // description"; revised same day: "you're gonna use bold here, please be
+  // consistent... across all bullets" — an earlier version left some
+  // bring-items colon-less, e.g. plain "Labeled lunch" next to bolded
+  // "Clothes that can get messy: ...", which read as arbitrary): same
+  // one-thing-per-LINE shape as priceDetails above, `.join('\n')` on an
+  // array literal. EVERY actual bring-item gets an "Item: detail" line
+  // (CampDetailPage.tsx bolds everything before the first colon) — give it
+  // a short generic label ("Food and drink:", "Footwear:", "Bring:") even
+  // when there's nothing more specific to say, rather than leaving it
+  // colon-less. Reserve a colon-less plain line for a genuinely general
+  // note that isn't a personal checklist item at all (e.g. "A free lunch
+  // and snack are provided district-wide, though kids are welcome to bring
+  // their own") — that's a different kind of information, not an
+  // inconsistency. Also consolidate related items into one bullet rather
+  // than fragmenting (e.g. lunch + water bottle → one "Food and drink"
+  // line) — fewer, richer bullets read cleaner than many thin ones. e.g.:
   //   [
-  //     'Labeled lunch',
-  //     'Water bottle',
-  //     'Clothes that can get messy: art projects can get messy — dress for it or bring a smock/old shirt',
+  //     'Food and drink: a labeled lunch and a water bottle',
+  //     'Clothes that can get messy: for art projects and, weather permitting, a walk to the park',
   //   ].join('\n')
   prepInstructions: string
   // One tight sentence or two: what campers actually do. Never restate the
@@ -321,10 +330,9 @@ const PROVIDERS: ProviderSpec[] = [
     },
     bookingInstructions: 'Register online, by phone (773-248-3333), or in person at the front desk.',
     prepInstructions: [
-      'Lunch',
-      'Water bottle: no glass',
+      'Food and drink: a lunch and a water bottle (no glass)',
       'Swimsuit and towel: if the day includes pool time',
-      'Comfortable clothes for active play',
+      'Comfortable clothes: for active play',
     ].join('\n'),
     description: '"School Days Out" — a full day of activities while school is out.',
     sourceUrl: 'https://www.ymcachicago.org/early-learning-education/school-age-care/school-days-out/',
@@ -363,7 +371,7 @@ const PROVIDERS: ProviderSpec[] = [
     ].join('\n'),
     bookingInstructions: 'Sign up online for whichever day(s) you need — no minimum required.',
     prepInstructions: [
-      'Sneakers or gym shoes',
+      'Footwear: sneakers or gym shoes',
       'Grip socks: required in the soft-play area — bring your own or buy a pair on-site',
       'Lunch: or pre-order one from ClimbZone for $10/child',
     ].join('\n'),
@@ -395,7 +403,10 @@ const PROVIDERS: ProviderSpec[] = [
     ].join('\n'),
     earliestConfirmedDate: '2026-09-25',
     bookingInstructions: 'Register through the parent portal. Email Camps@FitCityKids.com if your date isn\'t listed.',
-    prepInstructions: ['Gym shoes and socks', 'Labeled water bottle', 'Snack and lunch'].join('\n'),
+    prepInstructions: [
+      'Footwear: gym shoes and socks',
+      'Food and drink: a labeled water bottle, a snack, and a lunch',
+    ].join('\n'),
     description: `"School's Out Camp" — fitness classes and active play.`,
     sourceUrl: 'https://www.fitcitykids.com/schools-out-camp/',
     imageSourceUrls: ['https://www.fitcitykids.com/'],
@@ -416,7 +427,7 @@ const PROVIDERS: ProviderSpec[] = [
     hasRecurringOffering: false,
     bookingInstructions: 'Register online. Each session needs a minimum of 8 campers to run — register early.',
     prepInstructions: [
-      'Nut-free sack lunch, snacks, and a water bottle',
+      'Food and drink: a nut-free sack lunch, snacks, and a water bottle',
       'Closed-toe shoes: no open-toed shoes or crocs',
       'Hair tie: for long hair',
       'Clothes that can get messy: no loose jewelry or loose clothing — some days get messy',
@@ -442,9 +453,8 @@ const PROVIDERS: ProviderSpec[] = [
     pricePerDay: null,
     bookingInstructions: 'Search the registration portal for a posted session, or register in person at the Gill Park fieldhouse.',
     prepInstructions: [
-      'Backpack',
+      'Bring: a backpack and a water bottle',
       'Change of clothes: if needed',
-      'Water bottle',
       'Sunscreen: apply before arrival',
       'A free lunch and snack are provided district-wide, though kids are welcome to bring their own',
     ].join('\n'),
@@ -472,7 +482,7 @@ const PROVIDERS: ProviderSpec[] = [
       'All three lengths available for any date',
     ].join('\n'),
     bookingInstructions: 'Book online and pick a date. Drop-off 7:00am-4:30pm, pick-up 11:00am-6:00pm.',
-    prepInstructions: "Nothing to pack — healthy snacks and a whole-food lunch are included for the day.",
+    prepInstructions: 'Nothing to pack: healthy snacks and a whole-food lunch are included for the day.',
     description:
       '"Day Camp: Single-Day Drop-In Pass" at the Broadway Clubhouse Suite — up to 9 hours of supervised sports, free play, and creative activities with a 10:1 camper-to-staff ratio.',
     sourceUrl: 'https://familyroomchicago.com/shop/camp/day-camp/one-day-camp/family-room-day-camp-single-day-drop-in-pass-lakeview-east/',

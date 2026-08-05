@@ -80,12 +80,13 @@ const BOOKING_INSTRUCTIONS = 'Register online via the Sawyer booking calendar �
 // One item per line, item bolded up to the first colon — see
 // seed-2026-08-04-providers.ts's ProviderSpec prepInstructions doc comment
 // for the house style (feedback, 2026-08-05: "can you make what to bring a
-// bulleted list... bullet, the item, and then, optionally, a description").
+// bulleted list... bullet, the item, and then, optionally, a description";
+// revised same day: every item needs a bolded label for consistency, and
+// the weather/park note is just commentary on the clothes item, not its
+// own bullet — consolidated into one line).
 const PREP_INSTRUCTIONS = [
-  'Labeled lunch',
-  'Water bottle',
-  'Clothes that can get messy: art projects can get messy — dress for it or bring a smock/old shirt',
-  'Weather permitting, campers walk to nearby Hamlin Park for outdoor time',
+  'Food and drink: a labeled lunch and a water bottle',
+  'Clothes that can get messy: for art projects and, weather permitting, a walk to nearby Hamlin Park',
 ].join('\n')
 // No venue name or age range here — the title already says "Unicoi Art
 // Studio" and age_min/age_max already show the range in the always-visible
