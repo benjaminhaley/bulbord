@@ -166,7 +166,13 @@ async function loadUpcomingCamps(userId: string | null) {
         : sql`false`,
     )
     .where(and(eq(camps.status, 'approved'), isNull(camps.deletedAt), gte(camps.endDate, todayInChicago())))
-    .orderBy(asc(camps.startDate))
+    // Alphabetical by title (feedback, 2026-08-05: "give camps a clear
+    // ordering... alphabetical is appropriate") — groupCampsByBreak's own
+    // bucket ordering is chronological and independent of this, but the
+    // camps *within* each bucket keep whatever relative order they arrive
+    // in here (Array.filter preserves order), so this is what actually
+    // determines display order within a break/week section.
+    .orderBy(asc(camps.title))
 }
 
 export async function campsRoutes(app: FastifyInstance) {
