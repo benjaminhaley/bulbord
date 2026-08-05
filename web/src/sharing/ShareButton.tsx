@@ -73,6 +73,11 @@ export function ShareButton() {
         <IonContent className="ion-padding">
           <div className="share-content">
             {qrDataUrl && <img src={qrDataUrl} alt="QR code for this page" className="share-qr" />}
+            {/* Feedback, 2026-08-05: a bare technical URL isn't a friendly
+                primary message for a non-technical parent — lead with what
+                to actually do, and keep the link itself as a secondary
+                detail underneath rather than the only thing shown. */}
+            <p style={{ fontWeight: 600, textAlign: 'center', margin: 0 }}>Have your friend scan this QR code to join</p>
             <IonNote>{shareUrl}</IonNote>
             {/* Feature-detected (feedback #58: "make it easy to share over
                 text or email") — opens the phone's own share sheet with this

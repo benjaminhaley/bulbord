@@ -170,22 +170,34 @@ export function CampsPage() {
 
   // One list, grouped by school break/week, showing every camp regardless of
   // interest state (feedback #59: dropped the separate New/Starred/Dismissed
-  // tabs) — dismissed camps sink to the bottom of their own bucket rather
-  // than being filtered out, with everything else keeping its existing
-  // (alphabetical) relative order. Array#filter preserves relative order, so
-  // concatenating the two partitions is a stable sort.
+  // tabs). Starred camps float to the top of their bucket; dismissed camps
+  // are held out entirely (not just grayed inline — feedback, 2026-08-05
+  // follow-up: "dismissed items should not appear here... hidden, and there
+  // should be a little gray text... that when you click on it, has them
+  // reappear") behind a per-bucket reveal row, same pattern as Events'
+  // "Show N hidden repeating events". Array#filter preserves relative order
+  // within each partition, so concatenating them is a stable sort.
   const displayBuckets = useMemo(() => {
     if (!buckets) return []
     return buckets
       .map((bucket) => ({
         ...bucket,
-        camps: [
-          ...bucket.camps.filter((c) => c.interest_status !== 'dismissed'),
-          ...bucket.camps.filter((c) => c.interest_status === 'dismissed'),
+        visibleCamps: [
+          ...bucket.camps.filter((c) => c.interest_status === 'interested'),
+          ...bucket.camps.filter((c) => c.interest_status === null),
         ],
+        dismissedCamps: bucket.camps.filter((c) => c.interest_status === 'dismissed'),
       }))
       .filter((bucket) => bucket.camps.length > 0)
   }, [buckets])
+
+  // Which buckets' dismissed camps have been revealed — a one-time reveal
+  // for the current page view (matches EventsPage's revealHidden), not a
+  // persisted preference.
+  const [revealedBuckets, setRevealedBuckets] = useState<Set<string>>(new Set())
+  function revealDismissed(bucketId: string) {
+    setRevealedBuckets((prev) => new Set(prev).add(bucketId))
+  }
 
   const hasAnyCamps = (buckets ?? []).some((bucket) => bucket.camps.length > 0)
 
@@ -289,7 +301,7 @@ export function CampsPage() {
                 </IonItem>
                 <div slot="content">
                   <IonList>
-                    {bucket.camps.map((camp) => (
+                    {bucket.visibleCamps.map((camp) => (
                       <CampRow
                         key={camp.id}
                         camp={camp}
@@ -301,6 +313,26 @@ export function CampsPage() {
                         }
                       />
                     ))}
+                    {bucket.dismissedCamps.length > 0 && !revealedBuckets.has(bucket.id) && (
+                      <IonItem button lines="none" detail={false} onClick={() => revealDismissed(bucket.id)}>
+                        <IonLabel color="medium" className="ion-text-center">
+                          Show {bucket.dismissedCamps.length} dismissed {bucket.dismissedCamps.length === 1 ? 'item' : 'items'}
+                        </IonLabel>
+                      </IonItem>
+                    )}
+                    {revealedBuckets.has(bucket.id) &&
+                      bucket.dismissedCamps.map((camp) => (
+                        <CampRow
+                          key={camp.id}
+                          camp={camp}
+                          multiTouch={multiTouch}
+                          onSwipe={handleSwipe}
+                          onToggleStar={handleStarTap}
+                          hideDateIfMatches={
+                            bucket.id !== 'other' ? { start_date: bucket.start_date, end_date: bucket.end_date } : undefined
+                          }
+                        />
+                      ))}
                   </IonList>
                 </div>
               </IonAccordion>
