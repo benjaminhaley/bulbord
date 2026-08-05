@@ -9,6 +9,11 @@ export interface Camp {
   description: string | null
   start_date: string
   end_date: string
+  // Exact hours the camp runs — null means not confirmed/fixed (e.g. a
+  // flexible drop-in pass), shown as "Time: not specified" rather than
+  // omitted (see camps/format.ts timeLabel).
+  start_time: string | null
+  end_time: string | null
   address: string | null
   location_name: string | null
   distance_miles: string | null
@@ -48,6 +53,8 @@ export interface CampInput {
   description: string
   start_date: string
   end_date: string
+  start_time: string
+  end_time: string
   address: string
   price_per_day: number | null
   price_details: string

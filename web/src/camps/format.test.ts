@@ -9,6 +9,7 @@ import {
   locationLabel,
   priceLabel,
   spotsLabel,
+  timeLabel,
 } from './format'
 
 describe('formatDateRange', () => {
@@ -68,6 +69,24 @@ describe('priceLabel', () => {
 
   it('flags an inferred price as estimated rather than showing it as confirmed', () => {
     expect(priceLabel('70.00', true)).toBe('Price: $70/day (estimated)')
+  })
+})
+
+describe('timeLabel', () => {
+  it('flags unspecified hours explicitly rather than omitting the line', () => {
+    expect(timeLabel(null, null)).toBe('Time: not specified')
+  })
+
+  it('shows just a start time when no end time is known', () => {
+    expect(timeLabel('09:00:00', null)).toBe('Time: 9:00 AM')
+  })
+
+  it('formats a full start-to-end range', () => {
+    expect(timeLabel('09:00:00', '17:30:00')).toBe('Time: 9:00 AM – 5:30 PM')
+  })
+
+  it('formats midday and midnight-adjacent times correctly', () => {
+    expect(timeLabel('12:00:00', '13:00:00')).toBe('Time: 12:00 PM – 1:00 PM')
   })
 })
 

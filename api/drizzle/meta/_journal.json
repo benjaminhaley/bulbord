@@ -141,6 +141,13 @@
       "when": 1785890071544,
       "tag": "0019_sparkling_warhawk",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1785937795752,
+      "tag": "0020_late_sabretooth",
+      "breakpoints": true
     }
   ]
 }

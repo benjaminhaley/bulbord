@@ -31,7 +31,7 @@ import { API_URL } from '../config'
 import { Avatar } from '../uploads/Avatar'
 import { createCamp, fetchCampsByBreak, type BreakBucket, type Camp, type InterestStatus } from './api'
 import { CampForm } from './CampForm'
-import { campDetailsLine, formatDateRange, locationLabel } from './format'
+import { campDetailsLine, formatDateRange, locationLabel, timeLabel } from './format'
 import { applyInterestUpdateAcrossBuckets, flattenAndDedupeCamps } from './grouping'
 import { InterestedBadge } from './InterestedBadge'
 import { useCampInterest } from './useCampInterest'
@@ -116,6 +116,7 @@ function CampRow({
         <IonLabel>
           <h2>{camp.title}</h2>
           <p>{formatDateRange(camp.start_date, camp.end_date)}</p>
+          <h3>{timeLabel(camp.start_time, camp.end_time)}</h3>
           {location && <IonNote>{location}</IonNote>}
           <p className="teaser">{details}</p>
           {camp.interested_count > 0 && (

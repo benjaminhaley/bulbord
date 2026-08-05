@@ -10,6 +10,8 @@ function camp(overrides: Partial<Camp> = {}): Camp {
     description: null,
     start_date: '2026-06-08',
     end_date: '2026-06-19',
+    start_time: null,
+    end_time: null,
     address: null,
     location_name: null,
     distance_miles: null,

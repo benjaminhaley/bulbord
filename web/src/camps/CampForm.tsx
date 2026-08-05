@@ -73,6 +73,12 @@ export function CampForm({
     setStartDate(bucket.start_date)
     setEndDate(bucket.end_date)
   }
+  // Exact camp hours (feedback, 2026-08-05) — plain <input type="time">
+  // like the date inputs above, since IonInput doesn't support type="time"
+  // either. initial.start_time/end_time come back "HH:MM:SS" from Postgres;
+  // trim to "HH:MM" for the input, which is all a native time input accepts.
+  const [startTime, setStartTime] = useState(initial?.start_time?.slice(0, 5) ?? '')
+  const [endTime, setEndTime] = useState(initial?.end_time?.slice(0, 5) ?? '')
   const [address, setAddress] = useState(initial?.address ?? '')
   const [pricePerDay, setPricePerDay] = useState(initial?.price_per_day ?? '')
   const [priceDetails, setPriceDetails] = useState(initial?.price_details ?? '')
@@ -101,6 +107,8 @@ export function CampForm({
           description: description.trim(),
           start_date: startDate,
           end_date: endDate.trim() || startDate,
+          start_time: startTime.trim(),
+          end_time: endTime.trim(),
           address: address.trim(),
           price_per_day: pricePerDay.trim() ? Number(pricePerDay) : null,
           price_details: priceDetails.trim(),
@@ -167,6 +175,14 @@ export function CampForm({
           }}
           style={dateInputStyle}
         />
+      </IonItem>
+      <IonItem>
+        <IonLabel position="stacked">Start time (optional)</IonLabel>
+        <input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} style={dateInputStyle} />
+      </IonItem>
+      <IonItem>
+        <IonLabel position="stacked">End time (optional)</IonLabel>
+        <input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} style={dateInputStyle} />
       </IonItem>
       <IonItem>
         <IonLabel position="stacked">Location</IonLabel>

@@ -19,7 +19,7 @@ import { Avatar } from '../uploads/Avatar'
 import { deleteCamp, fetchCamp, updateCamp, type Camp } from './api'
 import { CampForm } from './CampForm'
 import { CommentsSection } from './CommentsSection'
-import { campDetailsLine, formatDateRange } from './format'
+import { campDetailsLine, formatDateRange, timeLabel } from './format'
 import { InterestedBadge } from './InterestedBadge'
 import { SourceNotesSection } from './SourceNotesSection'
 import { useCampInterest } from './useCampInterest'
@@ -128,19 +128,23 @@ export function CampDetailPage() {
             )}
             <h1>{camp.title}</h1>
             <p>{formatDateRange(camp.start_date, camp.end_date)}</p>
+            <p style={{ fontWeight: 600 }}>{timeLabel(camp.start_time, camp.end_time)}</p>
             {camp.submitted_by && (
               <p style={{ color: 'var(--ion-color-medium)', marginTop: -8 }}>Posted by {camp.submitted_by.name}</p>
             )}
             {details !== null && <p>{details}</p>}
-            {camp.price_details && (
-              <p style={{ color: 'var(--ion-color-medium)', marginTop: -8, whiteSpace: 'pre-wrap' }}>{camp.price_details}</p>
-            )}
             {camp.interested_count > 0 && (
               <InterestedBadge campId={camp.id} count={camp.interested_count} people={camp.interested_people} />
             )}
             {camp.location_name && <p>{camp.location_name}</p>}
             {camp.address && <p>{camp.address}</p>}
             {camp.description && <p>{camp.description}</p>}
+            {camp.price_details && (
+              <>
+                <h2>Pricing</h2>
+                <p style={{ whiteSpace: 'pre-wrap' }}>{camp.price_details}</p>
+              </>
+            )}
             {(camp.booking_instructions || camp.source_url) && (
               <>
                 <h2>Booking</h2>

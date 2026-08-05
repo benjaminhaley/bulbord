@@ -209,10 +209,19 @@ export const camps = pgTable('camps', {
   // NULL because the application layer defaults it to startDate on write
   // when omitted (a single-day camp), so every downstream date-range
   // comparison (school-break overlap grouping) never needs to coalesce a
-  // null. No time-of-day fields (startTime/allDay) — camps aren't scheduled
-  // to the hour the way events are.
+  // null.
   startDate: date('start_date').notNull(),
   endDate: date('end_date').notNull(),
+  // Time-of-day the camp actually runs (feedback, 2026-08-05: exact hours
+  // matter more than the description and must be shown up front) — reverses
+  // the original "camps aren't scheduled to the hour" call above. Nullable:
+  // a provider whose real hours can't be confirmed (e.g. a flexible drop-in
+  // pass with no fixed start/end, or a source with no public schedule) stays
+  // null and shows "Time: not specified" (camps/format.ts's timeLabel)
+  // rather than a fabricated time, same honesty posture as every other
+  // optional camp field.
+  startTime: time('start_time'),
+  endTime: time('end_time'),
   address: text('address'),
   locationName: text('location_name'),
   latitude: numeric('latitude', { precision: 9, scale: 6 }),

@@ -117,6 +117,36 @@ import { enrichCampSourceImage } from './image-enrichment.js'
 // merged into one break entry in the `breaks` array below, matching the
 // equivalent merge in seed-2026-08-04-school-breaks.ts, since they're
 // consecutive dates.
+//
+// Seventh follow-up pass (2026-08-05, per feedback): exact camp hours must
+// be shown up front, "more important than the description" — added
+// startTime/endTime (see ProviderSpec below) researched from each
+// provider's own real page. This surfaced a real pricing gap at ClimbZone:
+// their $120/day only covers the 9:00am-3:30pm day camp block — a separate
+// 3:30-5:30pm aftercare add-on ($30) is needed to reach the provider's own
+// maximum possible day, 9:00am-5:30pm — so pricePerDay (the single number
+// shown in the compact list line) moved to $150, the full max-time total,
+// with the breakdown (half-day AM/PM, day-camp-only, aftercare add-on,
+// weekly rates, 5% sibling discount) in priceDetails for the new detail-page
+// Pricing section. Lake View YMCA (7:00am-6:00pm) and Fit City Kids
+// (8:00am-6:00pm, already the $120 max-time total) were confirmed via their
+// own real pages/search results and needed no price change. BitSpace and
+// Family Room's real hours are NOT one fixed start/end (BitSpace's own page
+// gives no times at all, only a FULL DAY/HALF DAY age split; Family Room's
+// drop-in pass lets the customer pick their own drop-off/pick-up time within
+// a window rather than running a fixed schedule) — startTime/endTime are
+// left unset for both rather than fabricating a time, same "never invent,
+// leave unknown" posture as every other honesty rule in this file. Chicago
+// Park District generates no candidates at all today (hasRecurringOffering:
+// false), so its hours are moot until real dates are confirmed.
+//
+// A 7th provider, Unicoi Art Studio, was added the same day via a separate
+// script (camps/backfill-2026-08-05-unicoi.ts) rather than by extending the
+// PROVIDERS array below — re-running this file's main() would duplicate the
+// six providers already live. See that script's own header for the sourcing
+// detail: every seeded date was individually confirmed against Unicoi's
+// real, live Sawyer booking calendar (not an assumed policy) — the first
+// provider with that level of per-date confirmation.
 
 interface BreakInfo {
   name: string
@@ -156,6 +186,13 @@ interface ProviderSpec {
   lng: number
   ageMin: number | null
   ageMax: number | null
+  // The provider's own confirmed maximum-possible-day hours (24h "HH:MM"),
+  // researched from their real page — not a fixed schedule to leave unset
+  // when a provider has none (BitSpace, Family Room; see seventh follow-up
+  // note above). pricePerDay should always be the full-day total for this
+  // exact startTime-endTime span, not a shorter sub-block (see ClimbZone).
+  startTime?: string
+  endTime?: string
   pricePerDay: string | null
   // Whether this price is genuinely UNCLEAR — not merely "not tied to one
   // specific calendar date" (fifth follow-up pass, 2026-08-04, per feedback:
@@ -222,6 +259,10 @@ const PROVIDERS: ProviderSpec[] = [
     lng: -87.6692,
     ageMin: 5,
     ageMax: 13,
+    // Confirmed via search (2026-08-05): Lake View YMCA's School Days Out
+    // program runs 7:00am-6:00pm.
+    startTime: '07:00',
+    endTime: '18:00',
     pricePerDay: '70.00',
     earliestConfirmedDate: '2026-10-12',
     breakDateOverrides: {
@@ -243,13 +284,25 @@ const PROVIDERS: ProviderSpec[] = [
     name: 'ClimbZone Chicago',
     url: 'https://www.climbzone.us/chicago/camps/',
     notes:
-      'States it runs camp on "all CPS days-off-school plus Spring, Summer, Thanksgiving & Winter breaks" with published pricing.',
+      'States it runs camp on "all CPS days-off-school plus Spring, Summer, Thanksgiving & Winter breaks" with published pricing. ' +
+      'Their own page (climbzone.us/chicago/camps/, confirmed 2026-08-05) publishes real per-block hours and prices: full day ' +
+      '9:00am-3:30pm is $120/day ($540/week); morning half-day 9:00am-12:00pm and afternoon half-day 12:30-3:30pm are each ' +
+      '$70/day ($320/week); aftercare 3:30-5:30pm is a $30/day add-on; a 5% sibling discount applies to camp fees. The ' +
+      'provider\'s own maximum possible day is the full day plus aftercare, 9:00am-5:30pm — feedback (2026-08-05) confirmed ' +
+      'pricePerDay (the compact list-line number) should reflect that max-time total ($150), not the shorter 9-3:30 block, ' +
+      'with the full breakdown in priceDetails for the detail page\'s Pricing section.',
     address: '2500 W Bradley Pl, Chicago, IL 60618',
     lat: 41.9398,
     lng: -87.6886,
     ageMin: 5,
     ageMax: 12,
-    pricePerDay: '120.00',
+    startTime: '09:00',
+    endTime: '17:30',
+    pricePerDay: '150.00',
+    priceDetails:
+      'Full day (9:00am-3:30pm): $120/day, $540/week. Add aftercare (3:30-5:30pm) for the full 9:00am-5:30pm day: ' +
+      '$150/day total. Morning half-day (9:00am-12:00pm): $70/day, $320/week. Afternoon half-day (12:30pm-3:30pm): ' +
+      '$70/day, $320/week. A 5% sibling discount applies to camp fees.',
     bookingInstructions: 'Sign up online for whichever day(s) you need — no minimum required.',
     prepInstructions:
       'Wear sneakers or gym shoes. Grip socks are required in the soft-play area (bring your own or buy a pair on-site). Pack a lunch, or pre-order one from ClimbZone for $10/child.',
@@ -268,6 +321,11 @@ const PROVIDERS: ProviderSpec[] = [
     lng: -87.6894,
     ageMin: 4,
     ageMax: 12,
+    // Their own page's stated hours (confirmed 2026-08-04) — 8am-3pm day
+    // camp plus the 3pm-6pm after-camp extension is the full 8:00am-6:00pm
+    // day, matching pricePerDay's $120 max-time total below.
+    startTime: '08:00',
+    endTime: '18:00',
     pricePerDay: '120.00',
     priceDetails:
       '8am-3pm day camp: $85. Add the 3pm-6pm after-camp extension for a full 8am-6pm day: $120 total. Both options are available for any date.',
@@ -297,7 +355,7 @@ const PROVIDERS: ProviderSpec[] = [
     prepInstructions:
       'Pack a nut-free sack lunch, snacks, and a water bottle. No open-toed shoes, crocs, loose jewelry, or loose clothing — bring a hair tie for long hair, and dress for mess (some days get messy). A phone is fine for emergencies but must stay zipped in the backpack.',
     description:
-      'BitSpace "Day Off Camp" — design thinking, 3D printing, woodworking, and programmable electronics, 9am-4pm. Full day for ages 8+; a half-day option also exists for ages 7-12.',
+      'BitSpace "Day Off Camp" — design thinking, 3D printing, woodworking, and programmable electronics. Full day for ages 8+; a half-day option also exists for ages 7-12.',
     sourceUrl: 'https://education.bitspacechicago.com/day-off-camps',
     imageSourceUrl: 'https://bitspacechicago.com/',
   },
@@ -329,7 +387,7 @@ const PROVIDERS: ProviderSpec[] = [
     name: 'Family Room Chicago (Broadway)',
     url: 'https://familyroomchicago.com/shop/camp/day-camp/one-day-camp/family-room-day-camp-single-day-drop-in-pass-lakeview-east/',
     notes:
-      'Not a fully structured multi-week curriculum like the other five, but genuinely has its own real "Day Camp: Single-Day Drop-In Pass" product line (confirmed 2026-08-04 — an earlier pass of this script under-researched this and used a generic membership page instead) — included per Ben\'s direction (feedback #50 review). This is their Broadway Clubhouse Suite location specifically (Ben asked for Broadway over the Southport Play Studio; familyroomchicago.com lists three locations total). Price is the real, currently published 9-hour Full-Day Pass rate ($95 non-member) from that product page — tiered pricing also exists for a 3-hour Express Pass ($45) and 5-hour Half-Day Pass ($65), plus member discounts, but the 9-hour rate is what\'s comparable to the other five providers\' full-day rates. Treated as confirmed, not estimated (feedback, 2026-08-05) — the $95 rate itself is plainly published for this exact pass, regardless of which date on the calendar is picked, so there\'s nothing actually unclear about it. The product page has a real date-picker calendar, but as of 2026-08-04 it isn\'t populated with inventory for dates this far out — spots_available is left null/"unknown" for exactly that reason, not because we didn\'t check.',
+      'Not a fully structured multi-week curriculum like the other five, but genuinely has its own real "Day Camp: Single-Day Drop-In Pass" product line (confirmed 2026-08-04 — an earlier pass of this script under-researched this and used a generic membership page instead) — included per Ben\'s direction (feedback #50 review). This is their Broadway Clubhouse Suite location specifically (Ben asked for Broadway over the Southport Play Studio; familyroomchicago.com lists three locations total). Price is the real, currently published 9-hour Full-Day Pass rate ($95 non-member) from that product page — tiered pricing also exists for a 3-hour Express Pass ($45) and 5-hour Half-Day Pass ($65), plus member discounts, but the 9-hour rate is what\'s comparable to the other five providers\' full-day rates. Treated as confirmed, not estimated (feedback, 2026-08-05) — the $95 rate itself is plainly published for this exact pass, regardless of which date on the calendar is picked, so there\'s nothing actually unclear about it. The product page has a real date-picker calendar, but as of 2026-08-04 it isn\'t populated with inventory for dates this far out — spots_available is left null/"unknown" for exactly that reason, not because we didn\'t check. No single fixed start/end time is set (confirmed 2026-08-05) — the product page itself says drop-off/pick-up times are chosen by the family in a follow-up registration form (bookingInstructions below already gives the real drop-off 7:00am-4:30pm/pick-up 11:00am-6:00pm window), so a specific "start_time"/"end_time" would misrepresent a genuinely flexible, family-picked schedule as a fixed one.',
     address: '3229 N Broadway, Chicago, IL 60657',
     lat: 41.94125,
     lng: -87.6447,
@@ -370,6 +428,8 @@ const candidates = breaks.flatMap((brk) =>
         description: p.description,
         startDate: override?.startDate ?? brk.startDate,
         endDate: override?.endDate ?? brk.endDate,
+        startTime: p.startTime ?? null,
+        endTime: p.endTime ?? null,
         address: p.address,
         lat: p.lat,
         lng: p.lng,
@@ -422,6 +482,8 @@ async function main() {
           latitude: c.lat.toFixed(6),
           longitude: c.lng.toFixed(6),
           distanceMiles: distanceFromNettelhorst(c.lat, c.lng),
+          startTime: c.startTime,
+          endTime: c.endTime,
           pricePerDay: c.pricePerDay,
           priceIsEstimated: c.priceIsEstimated,
           priceDetails: c.priceDetails,

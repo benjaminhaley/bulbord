@@ -21,6 +21,8 @@ type SerializableCamp = Pick<
   | 'description'
   | 'startDate'
   | 'endDate'
+  | 'startTime'
+  | 'endTime'
   | 'address'
   | 'locationName'
   | 'latitude'
@@ -58,6 +60,11 @@ function serializeCamp(c: HydratedCamp, currentUserId: string | null) {
     description: c.description,
     start_date: c.startDate,
     end_date: c.endDate,
+    // Exact hours the camp runs (feedback, 2026-08-05) — null means not
+    // confirmed/fixed (e.g. a flexible drop-in pass), shown as "Time: not
+    // specified" rather than omitted (see camps/format.ts timeLabel).
+    start_time: c.startTime,
+    end_time: c.endTime,
     address: c.address,
     location_name: c.locationName,
     latitude: c.latitude,
@@ -198,6 +205,8 @@ export async function campsRoutes(app: FastifyInstance) {
       description?: string
       start_date?: string
       end_date?: string
+      start_time?: string
+      end_time?: string
       address?: string
       location_name?: string
       price_per_day?: number
@@ -230,6 +239,8 @@ export async function campsRoutes(app: FastifyInstance) {
         description: body.description?.trim() || null,
         startDate,
         endDate,
+        startTime: body.start_time?.trim() || null,
+        endTime: body.end_time?.trim() || null,
         address,
         locationName: body.location_name?.trim() || null,
         pricePerDay: body.price_per_day != null ? String(body.price_per_day) : null,
@@ -260,6 +271,8 @@ export async function campsRoutes(app: FastifyInstance) {
       description?: string
       start_date?: string
       end_date?: string
+      start_time?: string
+      end_time?: string
       address?: string
       location_name?: string
       price_per_day?: number
@@ -306,6 +319,8 @@ export async function campsRoutes(app: FastifyInstance) {
           description: body.description?.trim() || null,
           startDate,
           endDate,
+          startTime: body.start_time?.trim() || null,
+          endTime: body.end_time?.trim() || null,
           address,
           locationName: body.location_name?.trim() || null,
           pricePerDay: body.price_per_day != null ? String(body.price_per_day) : null,

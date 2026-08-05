@@ -32,6 +32,28 @@ export function formatDateRange(startDate: string, endDate: string, now = new Da
   return `${shortDateLabel(startDate)} – ${shortDateLabel(endDate)}`
 }
 
+function formatClockTime(time: string): string {
+  const [hours, minutes] = time.split(':')
+  const date = new Date()
+  date.setHours(Number(hours), Number(minutes))
+  return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+}
+
+// Exact camp hours (feedback, 2026-08-05: "make sure all camps list the
+// exact time... more important than the description") — shown as its own
+// prominent line, right under the date, on both the list row and the detail
+// page, not folded into campDetailsLine's price/age/distance/spots line.
+// Always a labeled string, same "never silently omit" posture as
+// price/age/distance below — a camp with no fixed hours (a flexible
+// drop-in pass, or a provider whose hours just aren't confirmed) shows "not
+// specified" rather than a fabricated time.
+export function timeLabel(startTime: string | null, endTime: string | null): string {
+  if (!startTime) return 'Time: not specified'
+  const start = formatClockTime(startTime)
+  if (!endTime) return `Time: ${start}`
+  return `Time: ${start} – ${formatClockTime(endTime)}`
+}
+
 // Every one of these always returns a labeled string, never null/empty —
 // feedback (2026-08-04): a camp missing a field (unpublished price, no
 // stated age range) should still show that field's line, explicitly marked
