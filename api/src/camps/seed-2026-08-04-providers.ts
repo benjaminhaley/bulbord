@@ -12,16 +12,17 @@ import { enrichCampSourceImage } from './image-enrichment.js'
 // Chicago's street grid (8 blocks = 1 mile), same convention as the events
 // seed scripts' hand-typed lat/long — not a live geocoding call.
 //
-// Pricing honesty rule (confirmed with Ben): only ONE row below —
-// Lake View YMCA's Spring Break listing — is an individually published,
-// dated listing (the provider's own page names that exact date and price).
-// Every other provider/break combination applies that same provider's real,
-// CURRENT, stated recurring pricing ("we run camp on every CPS
-// non-attendance day, $X/day") to a specific future date that hasn't been
-// individually re-announced yet — those all get priceIsEstimated: true, and
-// the frontend renders "(estimated)" next to them (see camps/format.ts).
-// A later pass should replace estimated prices with actual ones as
-// providers publish them for each specific date.
+// Pricing honesty rule (confirmed with Ben, revised 2026-08-05 — see fifth
+// follow-up pass below): priceIsEstimated marks a price that is genuinely
+// UNCLEAR — inferred, derived, or otherwise uncertain — not simply "not
+// individually re-announced for this exact date." Every price below (YMCA
+// $70/day, ClimbZone $120/day, Fit City Kids $120/day, Family Room $95/day)
+// is the provider's own plainly, currently published standing per-day rate,
+// so none of them are marked estimated, even though most of them apply that
+// one stated rate across every seeded date rather than a page individually
+// naming each date. The frontend only renders "(estimated)" next to a price
+// when priceIsEstimated is explicitly true (see camps/format.ts) — reserved
+// for a future case where a price genuinely has to be inferred or guessed.
 //
 // Second follow-up pass (2026-08-04, per feedback): a stricter rule on WHAT
 // counts as a real per-day price — never a rate derived by dividing a
@@ -83,6 +84,20 @@ import { enrichCampSourceImage } from './image-enrichment.js'
 // partial-year gap, since it means NOTHING is confirmed open yet for any
 // seeded date. BitSpace was moved to hasRecurringOffering: false,
 // same treatment as Chicago Park District, rather than a partial-year cutoff.
+//
+// Fifth follow-up pass (2026-08-05, per feedback): Ben flagged Fit City
+// Kids' $120/day as wrongly marked "(estimated)" when it's plainly labeled
+// on their own page — "we should only show estimate if it is unclear what
+// the price will be." The earlier rule conflated two different things: a
+// price not tied to one individually-named calendar date (true for nearly
+// every row here) versus a price that's actually uncertain (true for none
+// of the four providers with real recurring camps generated today).
+// priceIsEstimated is now a plain boolean, defaulting to false/confirmed,
+// and none of YMCA/ClimbZone/Fit City Kids/Family Room set it — every one
+// of their prices is the provider's own clearly published standing rate,
+// just applied across every seeded date rather than individually
+// re-announced for each. Reserve priceIsEstimated: true for a genuinely
+// inferred/derived/uncertain price if one comes up later.
 
 interface BreakInfo {
   name: string
@@ -121,11 +136,15 @@ interface ProviderSpec {
   ageMin: number | null
   ageMax: number | null
   pricePerDay: string | null
-  // Whether this provider/break combination's price is inferred from a
-  // standing policy rather than individually published for that date —
-  // defaults to true (the common case); only YMCA's Spring Break overrides
-  // it to false, since that's the one page that names the exact date+price.
-  priceIsEstimated?: (breakName: string) => boolean
+  // Whether this price is genuinely UNCLEAR — not merely "not tied to one
+  // specific calendar date" (fifth follow-up pass, 2026-08-04, per feedback:
+  // an earlier version of this file treated every non-individually-dated
+  // price as "estimated," which mislabeled a provider's own clearly, plainly
+  // published standing per-day rate as a guess). Defaults to false/confirmed
+  // — reserve true for a price that's actually inferred/derived/uncertain,
+  // not for the common case of "this is the provider's real stated rate,
+  // just not re-announced for this exact date."
+  priceIsEstimated?: boolean
   bookingInstructions: string
   prepInstructions: string
   description: string
@@ -159,15 +178,14 @@ const PROVIDERS: ProviderSpec[] = [
     name: 'Lake View YMCA',
     url: 'https://www.ymcachicago.org/lake-view/',
     notes:
-      '"School Days Out" program. Spring Break 2027 (Mar 22-26) individually published with real pricing: ' +
-      'https://www.ymcachicago.org/early-learning-education/school-age-care/school-days-out/. Other dates use the same stated recurring program/price. Ben checked that page directly (2026-08-04) and confirmed registration is not yet open for Labor Day or the Sep 25 PD day — Oct 12 (Indigenous Peoples\' Day) is the earliest date currently open, so no candidates are generated for the two dates before it (see earliestConfirmedDate below). This mirrors the Chicago Park District fix: a provider stating a general "every non-attendance day" policy doesn\'t guarantee its real registration system has actually opened bookings that far out yet.',
+      '"School Days Out" program, $70/day is the program\'s own clearly stated standing rate (not derived or guessed) at ' +
+      'https://www.ymcachicago.org/early-learning-education/school-age-care/school-days-out/ — same price named for Spring Break 2027 (Mar 22-26) and every other date, so it\'s treated as confirmed (not estimated) throughout (feedback, 2026-08-05: "estimated" should mean the price itself is unclear, not merely "not individually re-announced for this date"). Ben checked that page directly (2026-08-04) and confirmed registration is not yet open for Labor Day or the Sep 25 PD day — Oct 12 (Indigenous Peoples\' Day) is the earliest date currently open, so no candidates are generated for the two dates before it (see earliestConfirmedDate below). This mirrors the Chicago Park District fix: a provider stating a general "every non-attendance day" policy doesn\'t guarantee its real registration system has actually opened bookings that far out yet.',
     address: '3333 N Marshfield Ave, Chicago, IL 60657',
     lat: 41.9422,
     lng: -87.6692,
     ageMin: 5,
     ageMax: 13,
     pricePerDay: '70.00',
-    priceIsEstimated: (breakName) => breakName !== 'Spring Break',
     earliestConfirmedDate: '2026-10-12',
     bookingInstructions:
       'Register online at ymcachicago.org/lake-view (look for "School Days Out"), call the Lake View Y at 773-248-3333, or sign up in person at the front desk.',
@@ -272,7 +290,7 @@ const PROVIDERS: ProviderSpec[] = [
     name: 'Family Room Chicago (Broadway)',
     url: 'https://familyroomchicago.com/shop/camp/day-camp/one-day-camp/family-room-day-camp-single-day-drop-in-pass-lakeview-east/',
     notes:
-      'Not a fully structured multi-week curriculum like the other five, but genuinely has its own real "Day Camp: Single-Day Drop-In Pass" product line (confirmed 2026-08-04 — an earlier pass of this script under-researched this and used a generic membership page instead) — included per Ben\'s direction (feedback #50 review). This is their Broadway Clubhouse Suite location specifically (Ben asked for Broadway over the Southport Play Studio; familyroomchicago.com lists three locations total). Price is the real, currently published 9-hour Full-Day Pass rate ($95 non-member) from that product page — tiered pricing also exists for a 3-hour Express Pass ($45) and 5-hour Half-Day Pass ($65), plus member discounts, but the 9-hour rate is what\'s comparable to the other five providers\' full-day rates. Still marked estimated since it\'s a standing rate, not tied to one specific date. The product page has a real date-picker calendar, but as of 2026-08-04 it isn\'t populated with inventory for dates this far out — spots_available is left null/"unknown" for exactly that reason, not because we didn\'t check.',
+      'Not a fully structured multi-week curriculum like the other five, but genuinely has its own real "Day Camp: Single-Day Drop-In Pass" product line (confirmed 2026-08-04 — an earlier pass of this script under-researched this and used a generic membership page instead) — included per Ben\'s direction (feedback #50 review). This is their Broadway Clubhouse Suite location specifically (Ben asked for Broadway over the Southport Play Studio; familyroomchicago.com lists three locations total). Price is the real, currently published 9-hour Full-Day Pass rate ($95 non-member) from that product page — tiered pricing also exists for a 3-hour Express Pass ($45) and 5-hour Half-Day Pass ($65), plus member discounts, but the 9-hour rate is what\'s comparable to the other five providers\' full-day rates. Treated as confirmed, not estimated (feedback, 2026-08-05) — the $95 rate itself is plainly published for this exact pass, regardless of which date on the calendar is picked, so there\'s nothing actually unclear about it. The product page has a real date-picker calendar, but as of 2026-08-04 it isn\'t populated with inventory for dates this far out — spots_available is left null/"unknown" for exactly that reason, not because we didn\'t check.',
     address: '3229 N Broadway, Chicago, IL 60657',
     lat: 41.94125,
     lng: -87.6447,
@@ -314,7 +332,7 @@ const candidates = breaks.flatMap((brk) =>
       lat: p.lat,
       lng: p.lng,
       pricePerDay: p.pricePerDay,
-      priceIsEstimated: p.pricePerDay !== null && (p.priceIsEstimated?.(brk.name) ?? true),
+      priceIsEstimated: p.pricePerDay !== null && (p.priceIsEstimated ?? false),
       ageMin: p.ageMin,
       ageMax: p.ageMax,
       bookingInstructions: p.bookingInstructions,

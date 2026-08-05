@@ -152,7 +152,7 @@ export function CampDetailPage() {
             )}
             {camp.source_url && (
               <IonButton expand="block" href={camp.source_url} target="_blank" rel="noreferrer">
-                View source
+                View Booking Page
               </IonButton>
             )}
             <CommentsSection campId={camp.id} />
