@@ -93,10 +93,15 @@ export function ShareButton() {
                 not rendered where it's unsupported (e.g. a plain desktop
                 browser) rather than showing a dead button. */}
             {typeof navigator.share === 'function' && (
-              <IonButton expand="block" fill="outline" onClick={() => void navigator.share({ url: shareUrl }).catch(() => {})}>
-                <IonIcon slot="start" icon={paperPlaneOutline} />
-                Share via Text, Email, etc.
-              </IonButton>
+              <>
+                {/* Marks the button below as an alternative to scanning, not
+                    a second unrelated action (feedback, 2026-08-05). */}
+                <p style={{ color: 'var(--ion-color-medium)', margin: 0 }}>— or —</p>
+                <IonButton expand="block" fill="outline" onClick={() => void navigator.share({ url: shareUrl }).catch(() => {})}>
+                  <IonIcon slot="start" icon={paperPlaneOutline} />
+                  Share via Text, Email, etc.
+                </IonButton>
+              </>
             )}
           </div>
         </IonContent>
