@@ -1,4 +1,4 @@
-import { IonButton, IonIcon, IonSpinner, IonTextarea } from '@ionic/react'
+import { IonButton, IonIcon, IonItem, IonSpinner, IonTextarea } from '@ionic/react'
 import { addOutline, trashOutline } from 'ionicons/icons'
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
@@ -206,16 +206,22 @@ export function CommentsSection({ campId, source }: { campId: string; source: { 
           onDeleted={(id) => setComments((prev) => prev?.filter((c) => c.id !== id) ?? null)}
         />
       ))}
-      <div style={{ marginTop: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
-        <IonIcon icon={addOutline} style={{ color: 'var(--ion-color-medium)', flexShrink: 0 }} />
-        <div style={{ flex: 1, minWidth: 0 }}>
+      <div style={{ marginTop: 12 }}>
+        {/* IonItem, not a hand-rolled flex row — its slot="start" icon
+            vertically centers against the item's content using Ionic's own
+            layout, which a manual flex/margin guess kept failing to match
+            (feedback, 2026-08-05, after two attempts: "plus in comments is
+            still not centered"). Same pattern already used elsewhere in
+            this app (e.g. AccountPage.tsx, DevToolsPage.tsx). */}
+        <IonItem lines="none" style={{ '--padding-start': '0' } as React.CSSProperties}>
+          <IonIcon icon={addOutline} slot="start" style={{ color: 'var(--ion-color-medium)' }} />
           <IonTextarea value={newBody} onIonInput={(e) => setNewBody(e.detail.value ?? '')} placeholder="Add a comment" autoGrow />
-          {newBody.trim() && (
-            <IonButton fill="outline" disabled={posting} onClick={post}>
-              Post
-            </IonButton>
-          )}
-        </div>
+        </IonItem>
+        {newBody.trim() && (
+          <IonButton fill="outline" disabled={posting} onClick={post}>
+            Post
+          </IonButton>
+        )}
       </div>
     </div>
   )
