@@ -79,7 +79,7 @@ const OPTIONS: CampOptionLine[] = [
   { label: 'Afternoon', start_time: '13:30', end_time: '17:00', price: '55.00', age_min: 4, age_max: 12, note: null },
   { label: 'Full day (register both)', start_time: '09:00', end_time: '17:00', price: '120.00', age_min: 5, age_max: 12, note: null },
 ]
-const OPTIONS_NOTE = 'Weekly rates also available (vary by camp series).'
+const OPTIONS_NOTE = 'Weekly rates also available.'
 const BOOKING_INSTRUCTIONS = 'Register online via the Sawyer booking calendar — choose Morning, Afternoon, or both for a full day.'
 // Structured "What to bring / prepare" checklist — see CampPrepLine (a
 // simpler shape than OPTIONS above, which now carries per-field

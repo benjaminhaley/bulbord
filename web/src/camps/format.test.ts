@@ -117,17 +117,16 @@ describe('spotsLabel', () => {
 })
 
 describe('campDetailsLine', () => {
-  it('always joins price, age range, and distance — even when some are unknown — and omits spots when unknown', () => {
+  it('always joins price and age range — even when some are unknown — and omits spots when unknown', () => {
     expect(
       campDetailsLine({
         price_per_day: '70.00',
         price_is_estimated: false,
         age_min: 5,
         age_max: 13,
-        distance_miles: '1.26',
         spots_available: null,
       }),
-    ).toBe('$70/day · Ages: 5-13 · 1.3 mi')
+    ).toBe('$70/day · Ages: 5-13')
   })
 
   it('includes spots once known, appended after the always-shown fields', () => {
@@ -137,10 +136,9 @@ describe('campDetailsLine', () => {
         price_is_estimated: false,
         age_min: 5,
         age_max: 13,
-        distance_miles: '1.26',
         spots_available: 12,
       }),
-    ).toBe('$70/day · Ages: 5-13 · 1.3 mi · Spots: 12 available')
+    ).toBe('$70/day · Ages: 5-13 · Spots: 12 available')
   })
 
   it('shows explicit placeholders for every unknown field except spots, which is omitted', () => {
@@ -150,13 +148,12 @@ describe('campDetailsLine', () => {
         price_is_estimated: false,
         age_min: null,
         age_max: null,
-        distance_miles: null,
         spots_available: null,
       }),
-    ).toBe('Price: not published · Ages: not specified · Distance: unknown')
+    ).toBe('Price: not published · Ages: not specified')
   })
 
-  it('drops price and age when a camp has an Options table covering them instead, keeping distance/spots', () => {
+  it('drops price and age when a camp has an Options table covering them instead, keeping spots', () => {
     expect(
       campDetailsLine(
         {
@@ -164,12 +161,11 @@ describe('campDetailsLine', () => {
           price_is_estimated: false,
           age_min: 5,
           age_max: 13,
-          distance_miles: '1.26',
           spots_available: 12,
         },
         { includePrice: false, includeAge: false },
       ),
-    ).toBe('1.3 mi · Spots: 12 available')
+    ).toBe('Spots: 12 available')
   })
 })
 

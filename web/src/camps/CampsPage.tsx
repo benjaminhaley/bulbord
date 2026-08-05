@@ -31,7 +31,7 @@ import { API_URL } from '../config'
 import { Avatar } from '../uploads/Avatar'
 import { createCamp, fetchCampsByBreak, type BreakBucket, type Camp, type InterestStatus } from './api'
 import { CampForm } from './CampForm'
-import { campDetailsLine, formatDateRange, locationLabel, timeLabel } from './format'
+import { campDetailsLine, distanceLabel, formatDateRange, locationLabel, timeLabel } from './format'
 import { applyInterestUpdateAcrossBuckets, flattenAndDedupeCamps } from './grouping'
 import { InterestedBadge } from './InterestedBadge'
 import { useCampInterest } from './useCampInterest'
@@ -130,7 +130,14 @@ function CampRow({
           <h2>{camp.title}</h2>
           {showDate && <p>{formatDateRange(camp.start_date, camp.end_date)}</p>}
           <p>{timeLabel(camp.start_time, camp.end_time)}</p>
-          {location && <IonNote>{location}</IonNote>}
+          {/* Distance sits next to location, not in the price/age line below
+              (feedback, 2026-08-05: "it's just more relevant for address
+              information") — same " · " convention as everywhere else. */}
+          {location && (
+            <IonNote>
+              {location} · {distanceLabel(camp.distance_miles)}
+            </IonNote>
+          )}
           <p className="teaser">{details}</p>
           {camp.interested_count > 0 && (
             <InterestedBadge campId={camp.id} count={camp.interested_count} people={camp.interested_people} />

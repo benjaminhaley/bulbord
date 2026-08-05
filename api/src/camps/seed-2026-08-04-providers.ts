@@ -365,7 +365,7 @@ const PROVIDERS: ProviderSpec[] = [
       { label: 'Morning half-day', start_time: '09:00', end_time: '12:00', price: '70.00', age_min: 5, age_max: 12, note: null },
       { label: 'Afternoon half-day', start_time: '12:30', end_time: '15:30', price: '70.00', age_min: 5, age_max: 12, note: null },
     ],
-    optionsNote: 'Weekly rates also available: $540 (full day), $320 (half-day). A 5% sibling discount applies to camp fees.',
+    optionsNote: 'Weekly rates also available: $540 (full day), $320 (half-day). 5% sibling discount available.',
     bookingInstructions: 'Sign up online for whichever day(s) you need — no minimum required.',
     prepItems: [
       { label: 'Footwear', detail: 'sneakers or gym shoes' },
@@ -411,7 +411,7 @@ const PROVIDERS: ProviderSpec[] = [
       { label: 'Footwear', detail: 'gym shoes and socks' },
       { label: 'Food and drink', detail: 'a labeled water bottle, a snack, and a lunch' },
     ],
-    description: `"School's Out Camp" — fitness classes and active play.`,
+    description: 'Fitness classes and active play.',
     sourceUrl: 'https://www.fitcitykids.com/schools-out-camp/',
     imageSourceUrls: ['https://www.fitcitykids.com/'],
   },
@@ -486,10 +486,17 @@ const PROVIDERS: ProviderSpec[] = [
     startTime: '07:00',
     endTime: '18:00',
     pricePerDay: '95.00',
+    // Same 7:00am-6:00pm window as the camp-level startTime/endTime above on
+    // every pass (feedback, 2026-08-05: "Family room should have times...
+    // I think they're the same for all options because you can get a
+    // booking within that window") — the family picks their exact
+    // drop-off/pick-up within that published window regardless of which
+    // pass they buy, so all three genuinely share it rather than each
+    // having their own distinct hours.
     options: [
-      { label: 'Express Pass', start_time: null, end_time: null, price: '45.00', age_min: null, age_max: null, note: '3 hours' },
-      { label: 'Half-Day Pass', start_time: null, end_time: null, price: '65.00', age_min: null, age_max: null, note: '5 hours' },
-      { label: 'Full-Day Pass', start_time: null, end_time: null, price: '95.00', age_min: null, age_max: null, note: '9 hours' },
+      { label: 'Express Pass', start_time: '07:00', end_time: '18:00', price: '45.00', age_min: null, age_max: null, note: '3 hours' },
+      { label: 'Half-Day Pass', start_time: '07:00', end_time: '18:00', price: '65.00', age_min: null, age_max: null, note: '5 hours' },
+      { label: 'Full-Day Pass', start_time: '07:00', end_time: '18:00', price: '95.00', age_min: null, age_max: null, note: '9 hours' },
     ],
     // Drop-off/pick-up hours moved to startTime/endTime above (feedback,
     // 2026-08-05: "the part of bookings that's talking about pickup and
@@ -497,8 +504,11 @@ const PROVIDERS: ProviderSpec[] = [
     // the actual booking action, not a repeat of the hours.
     bookingInstructions: 'Book online and pick a date.',
     prepItems: [{ label: 'Nothing to pack', detail: 'healthy snacks and a whole-food lunch are included for the day.' }],
-    description:
-      '"Day Camp: Single-Day Drop-In Pass" at the Broadway Clubhouse Suite — up to 9 hours of supervised sports, free play, and creative activities with a 10:1 camper-to-staff ratio.',
+    // Trimmed (feedback, 2026-08-05: "the description here should just be
+    // supervised sports... all this stuff at the beginning can be cut") —
+    // the product name/location were already redundant with the title and
+    // address fields above.
+    description: 'Supervised sports, free play, and creative activities with a 10:1 camper-to-staff ratio.',
     sourceUrl: 'https://familyroomchicago.com/shop/camp/day-camp/one-day-camp/family-room-day-camp-single-day-drop-in-pass-lakeview-east/',
     // Same lazy-loaded-images issue as YMCA — familyroomchicago.com's own
     // pages only expose a blank placeholder SVG in raw HTML; their Facebook

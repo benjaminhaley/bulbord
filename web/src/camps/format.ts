@@ -143,14 +143,18 @@ export interface DetailedCamp {
   price_is_estimated: boolean
   age_min: number | null
   age_max: number | null
-  distance_miles: string | null
   spots_available: number | null
 }
 
-// Price/age/distance, in that order, always shown — joined for the
-// "Price: $70/day · Ages: 5-13 · Distance: 1.3 mi" line shared by the list
-// row and the detail page. Spots is appended only when actually known (see
-// spotsLabel) — unlike the other three, "unknown" isn't shown for it.
+// Price/age/spots, in that order, always shown — joined for the
+// "Price: $70/day · Ages: 5-13" line shared by the list row and the detail
+// page. Distance deliberately lives next to the address instead (feedback,
+// 2026-08-05: "put the distance side by side with the address... it's just
+// more relevant for address information") — see CampDetailPage.tsx's
+// address line and CampsPage.tsx's CampRow, both of which append
+// distanceLabel directly onto their location text. Spots is appended only
+// when actually known (see spotsLabel) — unlike price/age, "unknown" isn't
+// shown for it.
 //
 // includePrice/includeAge default to true (the list row always wants both —
 // there's no options table there to fall back on) — CampDetailPage passes
@@ -167,7 +171,6 @@ export function campDetailsLine(camp: DetailedCamp, opts: { includePrice?: boole
   return [
     includePrice ? priceLabel(camp.price_per_day, camp.price_is_estimated) : null,
     includeAge ? ageRangeLabel(camp.age_min, camp.age_max) : null,
-    distanceLabel(camp.distance_miles),
     spotsLabel(camp.spots_available),
   ]
     .filter((label): label is string => label !== null)

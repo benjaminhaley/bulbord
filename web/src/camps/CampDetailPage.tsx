@@ -21,6 +21,7 @@ import { CampForm } from './CampForm'
 import { CommentsSection } from './CommentsSection'
 import {
   campDetailsLine,
+  distanceLabel,
   formatDateRange,
   mapUrl,
   optionAgeCell,
@@ -45,6 +46,15 @@ import { useCampInterest } from './useCampInterest'
 // only intentionally larger gaps, since those mark genuine section breaks.
 const FACT_LINE_STYLE = { margin: '4px 0' } as const
 
+// A thin rule marking a genuine section boundary — feedback, 2026-08-05:
+// "can you separate all these sections a little better, perhaps with a
+// thin horizontal line between them?" (the heading-only spacing above
+// wasn't enough of a visual break on its own). Rendered immediately before
+// every <h2> on this page (Options, What to bring/prepare, Comments,
+// Booking) — not before the very first section, since there's nothing
+// above the image/title block for it to separate from.
+const SECTION_DIVIDER_STYLE = { border: 'none', borderTop: '1px solid var(--ion-color-step-150, #d9d9d9)', margin: '24px 0 0' } as const
+
 // "What to bring / prepare" section — each CampPrepLine becomes its own
 // bullet, label always bold, detail always plain (feedback, 2026-08-05:
 // "the item should probably be somehow set apart from the description";
@@ -54,13 +64,19 @@ const FACT_LINE_STYLE = { margin: '4px 0' } as const
 // corrections to catch — see CampPrepLine in api.ts). Options has its own
 // OptionsTable below instead — a packing-list item has no time/age/price to
 // line up in columns, so a table would add structure with nothing to show.
+// detail renders on its own line below the label, not inline after a colon
+// (feedback, 2026-08-05: "remove the colon and instead use a new line
+// after the bolded segment... it should not have its own bullet, only the
+// bold [label] should") — a block-level child inside the same <li> pushes
+// it to the next line while keeping it part of that one bullet, same
+// pattern the Options table's per-row `note` already uses.
 function LabeledBulletList({ lines }: { lines: CampPrepLine[] }) {
   return (
     <ul style={{ margin: '4px 0', paddingLeft: 20 }}>
       {lines.map((line) => (
-        <li key={line.label} style={{ marginBottom: 4 }}>
+        <li key={line.label} style={{ marginBottom: 8 }}>
           <strong>{line.label}</strong>
-          {line.detail && `: ${line.detail}`}
+          {line.detail && <div>{line.detail}</div>}
         </li>
       ))}
     </ul>
@@ -92,18 +108,29 @@ function OptionCell({ value }: { value: string }) {
 // as a safety net for an unusually long label, not because the table is
 // expected to overflow a normal phone width. Column header says
 // "Price/day" (not just "Price") so the unit stays clear now that a
-// per-tier "/week" aside is never shown alongside it in the same cell.
+// per-tier "/week" aside is never shown alongside it in the same cell. The
+// first column has no header text (feedback, 2026-08-05: "remove the word
+// option from the table header... it's redundant with the heading up
+// above" — the "Options" <h2> right above the table already says what the
+// column is). Time/Ages/Price get `whiteSpace: 'nowrap'` (feedback,
+// 2026-08-05, from a screenshot where a long label like "Full day +
+// after-camp extension" squeezed "8 am – 6 pm" and "4-12" into an ugly
+// mid-word wrap: "the name should wrap, but the other column should have
+// enough space") — only the Option label is ever long enough to need
+// wrapping; the other three are always short, and the table's own
+// auto-layout gives them exactly the room they need once they can't wrap.
 function OptionsTable({ options }: { options: CampOptionLine[] }) {
   const sorted = sortOptionsByPrice(options)
+  const nowrapCellStyle = { verticalAlign: 'top' as const, padding: '6px', whiteSpace: 'nowrap' as const }
   return (
     <div style={{ overflowX: 'auto', margin: '4px 0' }}>
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
         <thead>
           <tr style={{ color: 'var(--ion-color-medium)', fontSize: 12 }}>
-            <th style={{ textAlign: 'left', fontWeight: 'normal', padding: '0 6px 4px 0' }}>Option</th>
-            <th style={{ textAlign: 'left', fontWeight: 'normal', padding: '0 6px 4px' }}>Time</th>
-            <th style={{ textAlign: 'left', fontWeight: 'normal', padding: '0 6px 4px' }}>Ages</th>
-            <th style={{ textAlign: 'right', fontWeight: 'normal', padding: '0 0 4px 6px' }}>Price/day</th>
+            <th style={{ textAlign: 'left', fontWeight: 'normal', padding: '0 6px 4px 0' }} />
+            <th style={{ textAlign: 'left', fontWeight: 'normal', padding: '0 6px 4px', whiteSpace: 'nowrap' }}>Time</th>
+            <th style={{ textAlign: 'left', fontWeight: 'normal', padding: '0 6px 4px', whiteSpace: 'nowrap' }}>Ages</th>
+            <th style={{ textAlign: 'right', fontWeight: 'normal', padding: '0 0 4px 6px', whiteSpace: 'nowrap' }}>Price/day</th>
           </tr>
         </thead>
         <tbody>
@@ -113,13 +140,13 @@ function OptionsTable({ options }: { options: CampOptionLine[] }) {
                 <strong>{option.label}</strong>
                 {option.note && <div style={{ fontSize: 12, color: 'var(--ion-color-medium)' }}>{option.note}</div>}
               </td>
-              <td style={{ verticalAlign: 'top', padding: '6px' }}>
+              <td style={nowrapCellStyle}>
                 <OptionCell value={optionTimeCell(option.start_time, option.end_time)} />
               </td>
-              <td style={{ verticalAlign: 'top', padding: '6px' }}>
+              <td style={nowrapCellStyle}>
                 <OptionCell value={optionAgeCell(option.age_min, option.age_max)} />
               </td>
-              <td style={{ verticalAlign: 'top', textAlign: 'right', padding: '6px 0 6px 6px' }}>
+              <td style={{ ...nowrapCellStyle, textAlign: 'right', padding: '6px 0 6px 6px' }}>
                 <OptionCell value={optionPriceCell(option.price)} />
               </td>
             </tr>
@@ -238,13 +265,19 @@ export function CampDetailPage() {
                 </div>
               )
             )}
-            <h1>{camp.title}</h1>
+            {/* No <h1>{camp.title}</h1> here (feedback, 2026-08-05: "ClimbZone
+                Chicago is redundant here. Repeated twice. And the top one
+                actually persists as we scroll. So let's just get rid of the
+                first header") — the toolbar's IonTitle above already shows the
+                camp's name and stays visible the whole time the page is
+                scrolled, so a second, large title directly below the image
+                was pure duplication. */}
             <p style={FACT_LINE_STYLE}>{formatDateRange(camp.start_date, camp.end_date)}</p>
             {!hasOptions && <p style={FACT_LINE_STYLE}>{timeLabel(camp.start_time, camp.end_time)}</p>}
             {camp.submitted_by && (
               <p style={{ ...FACT_LINE_STYLE, color: 'var(--ion-color-medium)' }}>Posted by {camp.submitted_by.name}</p>
             )}
-            {details !== null && <p style={FACT_LINE_STYLE}>{details}</p>}
+            {details && <p style={FACT_LINE_STYLE}>{details}</p>}
             {camp.interested_count > 0 && (
               <InterestedBadge campId={camp.id} count={camp.interested_count} people={camp.interested_people} />
             )}
@@ -254,11 +287,20 @@ export function CampDetailPage() {
                 <a href={mapUrl(camp.address)} target="_blank" rel="noreferrer">
                   {shortAddress(camp.address)}
                 </a>
+                {/* Distance lives next to the address, not the price/age line
+                    above (feedback, 2026-08-05: "put the distance side by side
+                    with the address... it's just more relevant for address
+                    information") — separated by the same " · " convention used
+                    everywhere else on this page, but plain text so it doesn't
+                    extend the map link. */}
+                {' · '}
+                {distanceLabel(camp.distance_miles)}
               </p>
             )}
             {camp.description && <p style={FACT_LINE_STYLE}>{camp.description}</p>}
             {(camp.options && camp.options.length > 0) || camp.options_note ? (
               <>
+                <hr style={SECTION_DIVIDER_STYLE} />
                 <h2>Options</h2>
                 {camp.options && camp.options.length > 0 && <OptionsTable options={camp.options} />}
                 {/* A hand-seeded provider's asides that don't belong as their own
@@ -273,12 +315,14 @@ export function CampDetailPage() {
             ) : null}
             {camp.prep_items && camp.prep_items.length > 0 ? (
               <>
+                <hr style={SECTION_DIVIDER_STYLE} />
                 <h2>What to bring / prepare</h2>
                 <LabeledBulletList lines={camp.prep_items} />
               </>
             ) : (
               camp.prep_note && (
                 <>
+                  <hr style={SECTION_DIVIDER_STYLE} />
                   <h2>What to bring / prepare</h2>
                   <p style={FACT_LINE_STYLE}>{camp.prep_note}</p>
                 </>
@@ -287,12 +331,27 @@ export function CampDetailPage() {
             <CommentsSection campId={camp.id} source={camp.source} />
             {(camp.booking_instructions || camp.source_url) && (
               <>
+                <hr style={SECTION_DIVIDER_STYLE} />
                 <h2>Booking</h2>
                 {camp.booking_instructions && (
                   <p style={{ ...FACT_LINE_STYLE, whiteSpace: 'pre-wrap' }}>{camp.booking_instructions}</p>
                 )}
                 {camp.source_url && (
-                  <IonButton expand="block" href={camp.source_url} target="_blank" rel="noreferrer">
+                  // marginBottom clears the persistent floating share button
+                  // (feedback, 2026-08-05: "generally clean up the look of the
+                  // booking link, which is kind of squashed up there") — the
+                  // share button is fixed in the bottom-right corner above the
+                  // tab bar on every page (see index.css's .share-fab), so a
+                  // full-width block button ending the page would otherwise sit
+                  // flush against it with no breathing room once scrolled all
+                  // the way down.
+                  <IonButton
+                    expand="block"
+                    href={camp.source_url}
+                    target="_blank"
+                    rel="noreferrer"
+                    style={{ marginBottom: 72 }}
+                  >
                     View Booking Page
                   </IonButton>
                 )}

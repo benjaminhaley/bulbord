@@ -32,10 +32,18 @@ import { campSources, camps, eventsLog, type CampOptionLine, type CampPrepLine }
 // full rule). Sibling discount and weekly-rate asides (ClimbZone, Unicoi)
 // are no longer their own options row at all — moved to optionsNote,
 // rendered as a short line under the Options table instead.
+//
+// Updated again 2026-08-05 (same day, yet another round): tightened
+// ClimbZone's sibling-discount phrasing ("5% sibling discount available"),
+// dropped Unicoi's "(vary by camp series)" aside as redundant, and trimmed
+// Fit City Kids' description (see optional `description` field below) —
+// "fitness classes and active play" alone, dropping the quoted program
+// name already redundant with the title.
 interface StructuredUpdate {
   sourceName: string
   options?: CampOptionLine[]
   optionsNote?: string
+  description?: string
   prepItems: CampPrepLine[]
 }
 
@@ -57,7 +65,7 @@ const UPDATES: StructuredUpdate[] = [
       { label: 'Morning half-day', start_time: '09:00', end_time: '12:00', price: '70.00', age_min: 5, age_max: 12, note: null },
       { label: 'Afternoon half-day', start_time: '12:30', end_time: '15:30', price: '70.00', age_min: 5, age_max: 12, note: null },
     ],
-    optionsNote: 'Weekly rates also available: $540 (full day), $320 (half-day). A 5% sibling discount applies to camp fees.',
+    optionsNote: 'Weekly rates also available: $540 (full day), $320 (half-day). 5% sibling discount available.',
     prepItems: [
       { label: 'Footwear', detail: 'sneakers or gym shoes' },
       { label: 'Grip socks', detail: 'required in the soft-play area — bring your own or buy a pair on-site' },
@@ -78,6 +86,7 @@ const UPDATES: StructuredUpdate[] = [
         note: null,
       },
     ],
+    description: 'Fitness classes and active play.',
     prepItems: [
       { label: 'Footwear', detail: 'gym shoes and socks' },
       { label: 'Food and drink', detail: 'a labeled water bottle, a snack, and a lunch' },
@@ -130,7 +139,7 @@ const UPDATES: StructuredUpdate[] = [
         note: null,
       },
     ],
-    optionsNote: 'Weekly rates also available (vary by camp series).',
+    optionsNote: 'Weekly rates also available.',
     prepItems: [
       { label: 'Food and drink', detail: 'a labeled lunch and a water bottle' },
       { label: 'Clothes that can get messy', detail: 'for art projects and, weather permitting, a walk to nearby Hamlin Park' },
@@ -151,12 +160,17 @@ async function main() {
       continue
     }
 
+    // description is spread in only when this provider actually declares
+    // one (Fit City Kids) — every other provider's `.set()` must omit the
+    // key entirely, not set it to null, or this would silently wipe out
+    // the other six providers' real descriptions on every rerun.
     const updatedRows = await db
       .update(camps)
       .set({
         options: update.options ?? null,
         optionsNote: update.optionsNote ?? null,
         prepItems: update.prepItems,
+        ...(update.description !== undefined ? { description: update.description } : {}),
         updatedAt: new Date(),
       })
       .where(and(eq(camps.sourceId, source.id), isNull(camps.deletedAt)))

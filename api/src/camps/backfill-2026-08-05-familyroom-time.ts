@@ -4,7 +4,7 @@ import { and, eq, isNull } from 'drizzle-orm'
 import { db } from '../db/client.js'
 import { campSources, camps, eventsLog, type CampOptionLine } from '../db/schema.js'
 
-// One-off, rerunnable backfill applying two corrections to Family Room's
+// One-off, rerunnable backfill applying corrections to Family Room's
 // existing camp rows (feedback, 2026-08-05, from a screenshot of the live
 // page): (1) "Family Room's time definitely should be specified. It's
 // clear in the booking text" — reverses the original "genuinely flexible,
@@ -17,11 +17,20 @@ import { campSources, camps, eventsLog, type CampOptionLine } from '../db/schema
 // camp's own start_time/end_time, and "(shown above)" trimmed from the
 // Full-Day Pass option line since it's redundant with the compact price
 // line regardless.
+//
+// Updated 2026-08-05 (same day, later round): (3) "Family room should have
+// times... I think they're the same for all options because you can get a
+// booking within that window" — each option's own start_time/end_time now
+// matches the camp-level 7:00am-6:00pm window too, not left null. (4) "the
+// description here should just be supervised sports... all this stuff at
+// the beginning can be cut" — trimmed the product-name/location preamble,
+// already redundant with the title and address fields.
 const OPTIONS: CampOptionLine[] = [
-  { label: 'Express Pass', start_time: null, end_time: null, price: '45.00', age_min: 0, age_max: null, note: '3 hours' },
-  { label: 'Half-Day Pass', start_time: null, end_time: null, price: '65.00', age_min: 0, age_max: null, note: '5 hours' },
-  { label: 'Full-Day Pass', start_time: null, end_time: null, price: '95.00', age_min: 0, age_max: null, note: '9 hours' },
+  { label: 'Express Pass', start_time: '07:00', end_time: '18:00', price: '45.00', age_min: 0, age_max: null, note: '3 hours' },
+  { label: 'Half-Day Pass', start_time: '07:00', end_time: '18:00', price: '65.00', age_min: 0, age_max: null, note: '5 hours' },
+  { label: 'Full-Day Pass', start_time: '07:00', end_time: '18:00', price: '95.00', age_min: 0, age_max: null, note: '9 hours' },
 ]
+const DESCRIPTION = 'Supervised sports, free play, and creative activities with a 10:1 camper-to-staff ratio.'
 
 async function main() {
   const [source] = await db
@@ -40,6 +49,7 @@ async function main() {
       startTime: '07:00',
       endTime: '18:00',
       options: OPTIONS,
+      description: DESCRIPTION,
       bookingInstructions: 'Book online and pick a date.',
       updatedAt: new Date(),
     })

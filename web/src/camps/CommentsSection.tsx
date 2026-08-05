@@ -195,6 +195,12 @@ export function CommentsSection({ campId, source }: { campId: string; source: { 
 
   return (
     <div style={{ marginTop: 24 }}>
+      {/* Matches CampDetailPage.tsx's SECTION_DIVIDER_STYLE (feedback,
+          2026-08-05: "separate all these sections a little better... a thin
+          horizontal line between them") — duplicated rather than imported,
+          since this component owns its own top margin/section boundary and
+          a two-line style object isn't worth a cross-file dependency for. */}
+      <hr style={{ border: 'none', borderTop: '1px solid var(--ion-color-step-150, #d9d9d9)', margin: '0 0 24px' }} />
       <h2>Comments</h2>
       {comments === null && !error && <IonSpinner name="dots" />}
       {error && comments === null && <p>Couldn't load comments</p>}
@@ -212,10 +218,35 @@ export function CommentsSection({ campId, source }: { campId: string; source: { 
             layout, which a manual flex/margin guess kept failing to match
             (feedback, 2026-08-05, after two attempts: "plus in comments is
             still not centered"). Same pattern already used elsewhere in
-            this app (e.g. AccountPage.tsx, DevToolsPage.tsx). */}
-        <IonItem lines="none" style={{ '--padding-start': '0' } as React.CSSProperties}>
-          <IonIcon icon={addOutline} slot="start" style={{ color: 'var(--ion-color-medium)' }} />
-          <IonTextarea value={newBody} onIonInput={(e) => setNewBody(e.detail.value ?? '')} placeholder="Add a comment" autoGrow />
+            this app (e.g. AccountPage.tsx, DevToolsPage.tsx).
+            Still wasn't enough on its own — measured the real gap with
+            Playwright (feedback, 2026-08-05, a third time: "still not
+            vertically aligned... strange spacing between them") and found
+            ion-textarea's native <textarea> carries an 18px top padding
+            with a much smaller bottom padding, baked in for its usual
+            floating/stacked-label layouts. That pushes the placeholder
+            text well below the item's true vertical center, which is what
+            the icon actually centers against — no label is used here, so
+            that reserved space just reads as dead air. Overriding
+            --padding-top/--padding-bottom to a small, equal value removes
+            that asymmetry so the item's real center and the text's center
+            coincide, and shrinks the excess whitespace between the icon
+            row and the item above it in the same move. */}
+        <IonItem
+          lines="none"
+          style={{ '--padding-start': '0', '--min-height': '40px' } as React.CSSProperties}
+        >
+          {/* Ionic's default slot="start" icon spacing (~32px) reads as a
+              "strange" gap once the icon is actually vertically aligned
+              (feedback, 2026-08-05) — tightened to sit closer to the text. */}
+          <IonIcon icon={addOutline} slot="start" style={{ color: 'var(--ion-color-medium)', marginInlineEnd: '10px' }} />
+          <IonTextarea
+            value={newBody}
+            onIonInput={(e) => setNewBody(e.detail.value ?? '')}
+            placeholder="Add a comment"
+            autoGrow
+            style={{ '--padding-top': '8px', '--padding-bottom': '8px' } as React.CSSProperties}
+          />
         </IonItem>
         {newBody.trim() && (
           <IonButton fill="outline" disabled={posting} onClick={post}>
