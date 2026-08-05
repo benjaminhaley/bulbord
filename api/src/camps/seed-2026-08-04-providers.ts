@@ -211,22 +211,25 @@ interface ProviderSpec {
   // "pricing isn't the correct heading here based on the information you're
   // providing," since a line can carry time/age alongside the price).
   //
-  // TEMPLATE, revised 2026-08-05 (feedback: "why do you sometimes use dots
-  // as separators, em dashes and colons — it looks haphazard"; the original
-  // free-prose-per-line version mixed parens/commas/colons within a single
-  // line): one tier or note per LINE, joined with '\n' —
-  // `.join('\n')` on an array literal reads most clearly at the call site.
-  // CampDetailPage.tsx renders each line as its own bullet. Each line reuses
-  // the SAME "Label: value" + " · " between-fields convention the stat line
-  // above it already uses (campDetailsLine/format.ts) — not a new format:
+  // TEMPLATE — see "Bulleted-list content" in CLAUDE.md's Camps section for
+  // the canonical, up-to-date version of this rule; summarized here too so
+  // it's visible at the point of use. One tier or note per LINE, joined
+  // with '\n' (`.join('\n')` on an array literal reads most clearly at the
+  // call site) — CampDetailPage.tsx's LabeledBulletList renders each line
+  // as its own bullet and bolds everything before its first colon.
+  // EVERY line gets an explicit "Label: value" shape — no exceptions, not
+  // even a trailing general-availability note (feedback, 2026-08-05: "the
+  // bolt [bold] should either be in every bullet or none of the bullets";
+  // an earlier version of this rule allowed a colon-less line for a
+  // "general note," which produced exactly the 3-bold-1-plain mix Ben
+  // flagged). Between fields within one line, reuse the stat line's own
+  // " · " convention (campDetailsLine/format.ts) — not a new format:
   //   [
   //     'Morning: 9:00 AM – 1:00 PM · $65/day',
   //     'Afternoon: 1:30 PM – 5:00 PM · $55/day',
   //     'Full day (register both): 9:00 AM – 5:00 PM · $120/day',
-  //     'Weekly rates also available',
+  //     'Weekly rates: also available',
   //   ].join('\n')
-  // A trailing note with no natural "Label: value" shape (like the last line
-  // above) is just its own plain sentence — don't force structure onto it.
   // Only add an "· Ages X-Y" segment when that tier's age range is
   // genuinely DIFFERENT from the camp's own ageMin/ageMax below (e.g.
   // BitSpace's half-day option covers a different age band than its
@@ -234,25 +237,15 @@ interface ProviderSpec {
   // shows above.
   priceDetails?: string
   bookingInstructions: string
-  // TEMPLATE (feedback, 2026-08-05: "can you make what to bring a bulleted
-  // list... the general format is that it should be a bullet, the item,
-  // and then, optionally, a description of the item... set apart from the
-  // description"; revised same day: "you're gonna use bold here, please be
-  // consistent... across all bullets" — an earlier version left some
-  // bring-items colon-less, e.g. plain "Labeled lunch" next to bolded
-  // "Clothes that can get messy: ...", which read as arbitrary): same
-  // one-thing-per-LINE shape as priceDetails above, `.join('\n')` on an
-  // array literal. EVERY actual bring-item gets an "Item: detail" line
-  // (CampDetailPage.tsx bolds everything before the first colon) — give it
-  // a short generic label ("Food and drink:", "Footwear:", "Bring:") even
-  // when there's nothing more specific to say, rather than leaving it
-  // colon-less. Reserve a colon-less plain line for a genuinely general
-  // note that isn't a personal checklist item at all (e.g. "A free lunch
-  // and snack are provided district-wide, though kids are welcome to bring
-  // their own") — that's a different kind of information, not an
-  // inconsistency. Also consolidate related items into one bullet rather
-  // than fragmenting (e.g. lunch + water bottle → one "Food and drink"
-  // line) — fewer, richer bullets read cleaner than many thin ones. e.g.:
+  // TEMPLATE — see "Bulleted-list content" in CLAUDE.md's Camps section
+  // (same rule priceDetails follows above: EVERY line gets an explicit
+  // "Item: detail" label, no exceptions — give a short generic label
+  // ("Food and drink:", "Footwear:", "Bring:") even when there's nothing
+  // more specific to say, rather than leaving any single line colon-less
+  // next to others that are bolded). Also consolidate related items into
+  // one bullet rather than fragmenting (e.g. lunch + water bottle → one
+  // "Food and drink" line) — fewer, richer bullets read cleaner than many
+  // thin ones. e.g.:
   //   [
   //     'Food and drink: a labeled lunch and a water bottle',
   //     'Clothes that can get messy: for art projects and, weather permitting, a walk to the park',
@@ -367,7 +360,7 @@ const PROVIDERS: ProviderSpec[] = [
       'Full day + aftercare: 9:00 AM – 5:30 PM · $150/day total',
       'Morning half-day: 9:00 AM – 12:00 PM · $70/day ($320/week)',
       'Afternoon half-day: 12:30 PM – 3:30 PM · $70/day ($320/week)',
-      '5% sibling discount applies to camp fees',
+      'Sibling discount: 5% off camp fees',
     ].join('\n'),
     bookingInstructions: 'Sign up online for whichever day(s) you need — no minimum required.',
     prepInstructions: [
@@ -399,7 +392,7 @@ const PROVIDERS: ProviderSpec[] = [
     priceDetails: [
       'Day camp: 8:00 AM – 3:00 PM · $85/day',
       'Full day + after-camp extension: 8:00 AM – 6:00 PM · $120/day total',
-      'Both options available for any date',
+      'Availability: both options available for any date',
     ].join('\n'),
     earliestConfirmedDate: '2026-09-25',
     bookingInstructions: 'Register through the parent portal. Email Camps@FitCityKids.com if your date isn\'t listed.',
@@ -423,7 +416,7 @@ const PROVIDERS: ProviderSpec[] = [
     ageMin: 8,
     ageMax: null,
     pricePerDay: '150.00',
-    priceDetails: ['Full day · Ages 8+ · $150/day', 'Half-day · Ages 7-12 · price not yet published'].join('\n'),
+    priceDetails: ['Full day: Ages 8+ · $150/day', 'Half-day: Ages 7-12 · price not yet published'].join('\n'),
     hasRecurringOffering: false,
     bookingInstructions: 'Register online. Each session needs a minimum of 8 campers to run — register early.',
     prepInstructions: [
@@ -456,7 +449,7 @@ const PROVIDERS: ProviderSpec[] = [
       'Bring: a backpack and a water bottle',
       'Change of clothes: if needed',
       'Sunscreen: apply before arrival',
-      'A free lunch and snack are provided district-wide, though kids are welcome to bring their own',
+      'Food: a free lunch and snack are provided district-wide, though kids are welcome to bring their own',
     ].join('\n'),
     description: 'Recreational activities, arts and crafts, and sports at the Gill Park fieldhouse.',
     sourceUrl: 'https://anc.apm.activecommunities.com/chicagoparkdistrict/activity/search',
@@ -479,7 +472,7 @@ const PROVIDERS: ProviderSpec[] = [
       'Express Pass: 3 hours · $45/day',
       'Half-Day Pass: 5 hours · $65/day',
       'Full-Day Pass: 9 hours · $95/day (shown above)',
-      'All three lengths available for any date',
+      'Availability: all three lengths available for any date',
     ].join('\n'),
     bookingInstructions: 'Book online and pick a date. Drop-off 7:00am-4:30pm, pick-up 11:00am-6:00pm.',
     prepInstructions: 'Nothing to pack: healthy snacks and a whole-food lunch are included for the day.',

@@ -74,7 +74,7 @@ const PRICE_DETAILS = [
   'Morning: 9:00 AM – 1:00 PM · $65/day · Ages 5-13',
   'Afternoon: 1:30 PM – 5:00 PM · $55/day · Ages 4-12',
   'Full day (register both): 9:00 AM – 5:00 PM · $120/day',
-  'Weekly rates also available (vary by camp series)',
+  'Weekly rates: also available (vary by camp series)',
 ].join('\n')
 const BOOKING_INSTRUCTIONS = 'Register online via the Sawyer booking calendar — choose Morning, Afternoon, or both for a full day.'
 // One item per line, item bolded up to the first colon — see

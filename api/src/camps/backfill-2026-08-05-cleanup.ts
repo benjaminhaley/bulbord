@@ -41,11 +41,26 @@ import { enrichCampSourceImage } from './image-enrichment.js'
 // be consistent... across all bullets." Every actual bring-item now gets a
 // short generic label ("Food and drink:", "Footwear:", "Bring:") so every
 // bullet bolds consistently; a genuinely general note that isn't a personal
-// item (e.g. Park District's "a free lunch is provided") stays colon-less,
-// since that's a different kind of information, not an inconsistency.
-// Also consolidated related items into fewer, richer bullets — Unicoi's
-// separate "weather permitting, walk to the park" bullet was really just
-// commentary on why to dress a certain way, folded into the clothes line.
+// item (e.g. Park District's "a free lunch is provided") was left colon-less
+// under the theory that it's a different kind of information — reversed in
+// the fifth pass below. Also consolidated related items into fewer, richer
+// bullets — Unicoi's separate "weather permitting, walk to the park" bullet
+// was really just commentary on why to dress a certain way, folded into the
+// clothes line.
+//
+// Fifth pass (feedback, 2026-08-05, same session, on the Options section
+// this time): "the bolt should either be in every bullet or none of the
+// bullets... general principle across all our style." The "genuinely
+// general note can stay colon-less" exception from the fourth pass was
+// itself the bug — Ben doesn't distinguish "item" from "note" the way the
+// exception assumed; he just sees a bulleted list where most lines bold and
+// one doesn't. The rule is now absolute: every line in a LabeledBulletList
+// gets an explicit "Label: value" shape, full stop — see "Bulleted-list
+// content" in CLAUDE.md's Camps section. Fixed every remaining colon-less
+// line across both priceDetails and prepInstructions for all seven
+// providers, and a real bug this surfaced: BitSpace's two priceDetails
+// lines used "·" as their only separator with no leading colon at all, so
+// neither one was bolding.
 interface TextUpdate {
   sourceName: string
   description: string
@@ -73,7 +88,7 @@ const TEXT_UPDATES: TextUpdate[] = [
       'Full day + aftercare: 9:00 AM – 5:30 PM · $150/day total',
       'Morning half-day: 9:00 AM – 12:00 PM · $70/day ($320/week)',
       'Afternoon half-day: 12:30 PM – 3:30 PM · $70/day ($320/week)',
-      '5% sibling discount applies to camp fees',
+      'Sibling discount: 5% off camp fees',
     ].join('\n'),
     prepInstructions: [
       'Footwear: sneakers or gym shoes',
@@ -87,7 +102,7 @@ const TEXT_UPDATES: TextUpdate[] = [
     priceDetails: [
       'Day camp: 8:00 AM – 3:00 PM · $85/day',
       'Full day + after-camp extension: 8:00 AM – 6:00 PM · $120/day total',
-      'Both options available for any date',
+      'Availability: both options available for any date',
     ].join('\n'),
     prepInstructions: [
       'Footwear: gym shoes and socks',
@@ -97,7 +112,7 @@ const TEXT_UPDATES: TextUpdate[] = [
   {
     sourceName: 'BitSpace',
     description: '"Day Off Camp" — design thinking, 3D printing, woodworking, and programmable electronics.',
-    priceDetails: ['Full day · Ages 8+ · $150/day', 'Half-day · Ages 7-12 · price not yet published'].join('\n'),
+    priceDetails: ['Full day: Ages 8+ · $150/day', 'Half-day: Ages 7-12 · price not yet published'].join('\n'),
     prepInstructions: [
       'Food and drink: a nut-free sack lunch, snacks, and a water bottle',
       'Closed-toe shoes: no open-toed shoes or crocs',
@@ -114,7 +129,7 @@ const TEXT_UPDATES: TextUpdate[] = [
       'Express Pass: 3 hours · $45/day',
       'Half-Day Pass: 5 hours · $65/day',
       'Full-Day Pass: 9 hours · $95/day (shown above)',
-      'All three lengths available for any date',
+      'Availability: all three lengths available for any date',
     ].join('\n'),
     prepInstructions: 'Nothing to pack: healthy snacks and a whole-food lunch are included for the day.',
   },
@@ -125,7 +140,7 @@ const TEXT_UPDATES: TextUpdate[] = [
       'Bring: a backpack and a water bottle',
       'Change of clothes: if needed',
       'Sunscreen: apply before arrival',
-      'A free lunch and snack are provided district-wide, though kids are welcome to bring their own',
+      'Food: a free lunch and snack are provided district-wide, though kids are welcome to bring their own',
     ].join('\n'),
   },
   {
@@ -135,7 +150,7 @@ const TEXT_UPDATES: TextUpdate[] = [
       'Morning: 9:00 AM – 1:00 PM · $65/day · Ages 5-13',
       'Afternoon: 1:30 PM – 5:00 PM · $55/day · Ages 4-12',
       'Full day (register both): 9:00 AM – 5:00 PM · $120/day',
-      'Weekly rates also available (vary by camp series)',
+      'Weekly rates: also available (vary by camp series)',
     ].join('\n'),
     ageMin: 5,
     ageMax: 12,

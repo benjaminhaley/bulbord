@@ -206,8 +206,8 @@ export function CommentsSection({ campId, source }: { campId: string; source: { 
           onDeleted={(id) => setComments((prev) => prev?.filter((c) => c.id !== id) ?? null)}
         />
       ))}
-      <div style={{ marginTop: 12, display: 'flex', alignItems: 'flex-start', gap: 8 }}>
-        <IonIcon icon={addOutline} style={{ color: 'var(--ion-color-medium)', flexShrink: 0, marginTop: 10 }} />
+      <div style={{ marginTop: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
+        <IonIcon icon={addOutline} style={{ color: 'var(--ion-color-medium)', flexShrink: 0 }} />
         <div style={{ flex: 1, minWidth: 0 }}>
           <IonTextarea value={newBody} onIonInput={(e) => setNewBody(e.detail.value ?? '')} placeholder="Add a comment" autoGrow />
           {newBody.trim() && (

@@ -87,13 +87,26 @@ function CampRow({
   camp,
   multiTouch,
   onSwipe,
+  hideDateIfMatches,
 }: {
   camp: Camp
   multiTouch: boolean
   onSwipe: (e: { target: EventTarget | null }, camp: Camp, status: InterestStatus) => void
+  // The enclosing accordion section's own date range, when one is shown in
+  // its header (feedback, 2026-08-05: "don't bother showing the date on
+  // each event in this preview view since that's already obvious from the
+  // context of which day you are looking at") — the per-row date line is
+  // only redundant, and so only hidden, when this camp's own range exactly
+  // matches the header's; a multi-day bucket (e.g. Winter Break) can still
+  // contain a camp with a narrower real range (e.g. Dec 21-23 within
+  // Dec 21-Jan 1), which is real information the header alone doesn't
+  // convey, so that case keeps showing its own date.
+  hideDateIfMatches?: { start_date: string; end_date: string }
 }) {
   const location = locationLabel({ locationName: camp.location_name, address: camp.address })
   const details = campDetailsLine(camp)
+  const showDate =
+    !hideDateIfMatches || camp.start_date !== hideDateIfMatches.start_date || camp.end_date !== hideDateIfMatches.end_date
 
   return (
     <IonItemSliding disabled={multiTouch}>
@@ -115,7 +128,7 @@ function CampRow({
         )}
         <IonLabel>
           <h2>{camp.title}</h2>
-          <p>{formatDateRange(camp.start_date, camp.end_date)}</p>
+          {showDate && <p>{formatDateRange(camp.start_date, camp.end_date)}</p>}
           <p>{timeLabel(camp.start_time, camp.end_time)}</p>
           {location && <IonNote>{location}</IonNote>}
           <p className="teaser">{details}</p>
@@ -282,7 +295,15 @@ export function CampsPage() {
                 <div slot="content">
                   <IonList>
                     {bucket.camps.map((camp) => (
-                      <CampRow key={camp.id} camp={camp} multiTouch={multiTouch} onSwipe={handleSwipe} />
+                      <CampRow
+                        key={camp.id}
+                        camp={camp}
+                        multiTouch={multiTouch}
+                        onSwipe={handleSwipe}
+                        hideDateIfMatches={
+                          bucket.id !== 'other' ? { start_date: bucket.start_date, end_date: bucket.end_date } : undefined
+                        }
+                      />
                     ))}
                   </IonList>
                 </div>
