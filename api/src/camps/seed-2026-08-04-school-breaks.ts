@@ -14,22 +14,31 @@ import { eventsLog, schoolBreaks } from '../db/schema.js'
 // Nettelhorst, a CPS elementary school, follows the district-wide CPS
 // calendar — there's no separate Nettelhorst-specific calendar for these.
 //
-// Includes the four multi-day breaks, the single-day holiday closures
-// (Labor Day, Indigenous Peoples' Day, MLK Day, Presidents' Day, Memorial
-// Day), the two Parent-Teacher Conference days, the district's General
-// Election Day closure, AND the six Professional Development days (Sep 25,
-// Nov 11, Jan 4, Jan 29, Feb 23, Apr 6 — teacher/staff training, no
-// students) that a first pass of this seed missed (feedback: "I'm not
-// seeing any... professional development days"). feedback #50's own example
-// ("the Labor Day YMCA camp") is itself a single-day closure, not one of the
-// four big breaks, so every non-attendance day gets its own school_breaks
-// row, not just the major ones.
+// Includes the four multi-day breaks, the two Parent-Teacher Conference
+// days, the district's General Election Day closure, AND the six
+// Professional Development days (Sep 25, Nov 11, Jan 4, Jan 29, Feb 23,
+// Apr 6 — teacher/staff training, no students) that a first pass of this
+// seed missed (feedback: "I'm not seeing any... professional development
+// days"). feedback #50's own example ("the Labor Day YMCA camp") is itself
+// a single-day closure, not one of the four big breaks, so every
+// non-attendance day gets its own school_breaks row, not just the major
+// ones — see the exclusion note below for the one deliberate exception.
 //
-// Excluded on purpose: the five staff-only PD days Aug 17-21, 2026 (before
-// the 2026-27 school year even starts — already inside the seeded Summer
-// Break range below, so a separate row would be redundant) and the Jun 14,
-// 2027 PD day (after the 2026-27 school year ends Jun 11 — already ordinary
-// summer for camp purposes, not a distinct "day off").
+// Excluded on purpose: the five official paid public holidays CPS also
+// happens to be closed for — Labor Day, Indigenous Peoples' Day, MLK Jr.
+// Day, Presidents' Day, Memorial Day (feedback, 2026-08-04) — since this
+// app exists to help parents find care on days their KIDS are off school
+// but THEY still have to work (see readme.md's "work days when kids are
+// not in school"); on a nationally-recognized paid holiday most parents are
+// off too, so there's no real camp-need to solve for. Election Day is kept
+// despite CPS observing it in lieu of Veterans Day — it isn't a
+// universally-recognized paid holiday for most employers the way the other
+// five are, so the same reasoning doesn't apply. Also excluded: the five
+// staff-only PD days Aug 17-21, 2026 (before the 2026-27 school year even
+// starts — already inside the seeded Summer Break range below, so a
+// separate row would be redundant) and the Jun 14, 2027 PD day (after the
+// 2026-27 school year ends Jun 11 — already ordinary summer for camp
+// purposes, not a distinct "day off").
 //
 // Known gap: Summer Break 2027 (after the 2026-27 school year ends Jun 11,
 // 2027) isn't seeded yet, since CPS's 2027-28 first-day date (Aug 23, 2027)
@@ -46,26 +55,12 @@ const breaks: (typeof schoolBreaks.$inferInsert)[] = [
       'https://www.wbez.org/education/2026/01/12/chicago-public-schools-releases-2026-2027-calendar-with-longer-summer-break',
   },
   {
-    name: 'Labor Day',
-    startDate: '2026-09-07',
-    endDate: '2026-09-07',
-    splitWeekly: false,
-    notes: 'CPS 2026-27 calendar. https://calendars.school/il-cps-chicago-school-calendar-2026-27',
-  },
-  {
     name: 'Professional Development Day',
     startDate: '2026-09-25',
     endDate: '2026-09-25',
     splitWeekly: false,
     notes:
       'Teacher/staff training, no students. CPS 2026-27 calendar. https://calendars.school/il-cps-chicago-school-calendar-2026-27',
-  },
-  {
-    name: "Indigenous Peoples' Day",
-    startDate: '2026-10-12',
-    endDate: '2026-10-12',
-    splitWeekly: false,
-    notes: 'CPS 2026-27 calendar. https://calendars.school/il-cps-chicago-school-calendar-2026-27',
   },
   {
     name: 'Parent-Teacher Conference Day',
@@ -115,26 +110,12 @@ const breaks: (typeof schoolBreaks.$inferInsert)[] = [
       'Teacher/staff training, no students. CPS 2026-27 calendar. https://calendars.school/il-cps-chicago-school-calendar-2026-27',
   },
   {
-    name: 'MLK Jr. Day',
-    startDate: '2027-01-18',
-    endDate: '2027-01-18',
-    splitWeekly: false,
-    notes: 'CPS 2026-27 calendar. https://calendars.school/il-cps-chicago-school-calendar-2026-27',
-  },
-  {
     name: 'Professional Development Day',
     startDate: '2027-01-29',
     endDate: '2027-01-29',
     splitWeekly: false,
     notes:
       'Teacher/staff training, no students. CPS 2026-27 calendar. https://calendars.school/il-cps-chicago-school-calendar-2026-27',
-  },
-  {
-    name: "Presidents' Day",
-    startDate: '2027-02-15',
-    endDate: '2027-02-15',
-    splitWeekly: false,
-    notes: 'CPS 2026-27 calendar. https://calendars.school/il-cps-chicago-school-calendar-2026-27',
   },
   {
     name: 'Professional Development Day',
@@ -166,13 +147,6 @@ const breaks: (typeof schoolBreaks.$inferInsert)[] = [
     endDate: '2027-04-12',
     splitWeekly: false,
     notes: 'No school for students. CPS 2026-27 calendar. https://calendars.school/il-cps-chicago-school-calendar-2026-27',
-  },
-  {
-    name: 'Memorial Day',
-    startDate: '2027-05-31',
-    endDate: '2027-05-31',
-    splitWeekly: false,
-    notes: 'CPS 2026-27 calendar. https://calendars.school/il-cps-chicago-school-calendar-2026-27',
   },
 ]
 

@@ -91,25 +91,23 @@ interface BreakInfo {
 }
 
 // Every non-attendance day seeded in seed-2026-08-04-school-breaks.ts except
-// Summer Break (handled separately — see file header).
+// Summer Break (handled separately — see file header) — which, as of
+// feedback (2026-08-04), no longer includes the five official paid public
+// holidays (Labor Day, Indigenous Peoples' Day, MLK Jr. Day, Presidents'
+// Day, Memorial Day). See that file's own header comment for why.
 const breaks: BreakInfo[] = [
-  { name: 'Labor Day', startDate: '2026-09-07', endDate: '2026-09-07' },
   { name: 'Professional Development Day', startDate: '2026-09-25', endDate: '2026-09-25' },
-  { name: "Indigenous Peoples' Day", startDate: '2026-10-12', endDate: '2026-10-12' },
   { name: 'Parent-Teacher Conference Day', startDate: '2026-11-02', endDate: '2026-11-02' },
   { name: 'Election Day', startDate: '2026-11-03', endDate: '2026-11-03' },
   { name: 'Professional Development Day', startDate: '2026-11-11', endDate: '2026-11-11' },
   { name: 'Thanksgiving Break', startDate: '2026-11-23', endDate: '2026-11-27' },
   { name: 'Winter Break', startDate: '2026-12-21', endDate: '2027-01-01' },
   { name: 'Professional Development Day', startDate: '2027-01-04', endDate: '2027-01-04' },
-  { name: 'MLK Jr. Day', startDate: '2027-01-18', endDate: '2027-01-18' },
   { name: 'Professional Development Day', startDate: '2027-01-29', endDate: '2027-01-29' },
-  { name: "Presidents' Day", startDate: '2027-02-15', endDate: '2027-02-15' },
   { name: 'Professional Development Day', startDate: '2027-02-23', endDate: '2027-02-23' },
   { name: 'Spring Break', startDate: '2027-03-22', endDate: '2027-03-26' },
   { name: 'Professional Development Day', startDate: '2027-04-06', endDate: '2027-04-06' },
   { name: 'Parent-Teacher Conference Day', startDate: '2027-04-12', endDate: '2027-04-12' },
-  { name: 'Memorial Day', startDate: '2027-05-31', endDate: '2027-05-31' },
 ]
 
 interface ProviderSpec {
