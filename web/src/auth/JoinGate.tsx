@@ -276,7 +276,6 @@ export function ProfileSetupScreen({ preview = false }: { preview?: boolean } = 
           type="file"
           accept="image/*"
           hidden
-          disabled={preview}
           onChange={(e) => {
             const file = e.target.files?.[0]
             if (file) setPendingCropFile(file)
@@ -291,8 +290,15 @@ export function ProfileSetupScreen({ preview = false }: { preview?: boolean } = 
             void attachPhoto(cropped)
           }}
         />
+        {/* Photo pick + crop stays genuinely interactive even in preview
+            mode (unlike every field below) — feedback: Ben wanted a way to
+            actually try the crop/zoom step (feedback #56) from the deployed
+            admin dev tools without registering a real passkey. It's safe to
+            leave live here: nothing is sent to the server until Continue's
+            real PATCH /auth/me, which preview still blocks below — a test
+            upload just sits unused in the 'profiles' folder. */}
         <div
-          onClick={() => !preview && fileInputRef.current?.click()}
+          onClick={() => fileInputRef.current?.click()}
           style={{
             // rem, not px, so this grows along with OS/browser text-size
             // settings instead of staying fixed while "Add photo" grows
@@ -306,7 +312,7 @@ export function ProfileSetupScreen({ preview = false }: { preview?: boolean } = 
             alignItems: 'center',
             justifyContent: 'center',
             overflow: 'hidden',
-            cursor: preview ? 'default' : 'pointer',
+            cursor: 'pointer',
           }}
           >
             {uploading && <IonSpinner name="dots" />}
@@ -338,13 +344,17 @@ export function ProfileSetupScreen({ preview = false }: { preview?: boolean } = 
             <IonLabel position="stacked">Email</IonLabel>
             <IonInput type="email" value={email} onIonInput={(e) => setEmail(e.detail.value ?? '')} disabled={preview} />
           </IonItem>
+          {/* Also stays interactive in preview — the other new feature
+              (feedback #49) Ben wanted to actually try from the admin dev
+              tools without registering a real passkey. Same reasoning as
+              the photo picker above: nothing is sent to the server until
+              Continue's real PATCH /auth/me, which preview still blocks. */}
           <IonItem>
             <IonLabel position="stacked">I am...</IonLabel>
             <IonSelect
               value={role}
               placeholder="Select one"
               interface="action-sheet"
-              disabled={preview}
               onIonChange={(e) => setRole(e.detail.value)}
             >
               <IonSelectOption value="staff">Staff (I work at the school)</IonSelectOption>
@@ -355,7 +365,7 @@ export function ProfileSetupScreen({ preview = false }: { preview?: boolean } = 
           {role === 'other' && (
             <IonItem>
               <IonLabel position="stacked">Please describe</IonLabel>
-              <IonInput value={roleOther} onIonInput={(e) => setRoleOther(e.detail.value ?? '')} disabled={preview} />
+              <IonInput value={roleOther} onIonInput={(e) => setRoleOther(e.detail.value ?? '')} />
             </IonItem>
           )}
           <IonItem lines="none">

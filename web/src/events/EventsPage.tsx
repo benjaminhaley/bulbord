@@ -20,8 +20,8 @@ import {
   IonToolbar,
   useIonViewWillEnter,
 } from '@ionic/react'
-import { addOutline, closeOutline, eyeOffOutline, listOutline, star } from 'ionicons/icons'
-import { useMemo, useState } from 'react'
+import { addOutline, closeOutline, eyeOffOutline, listOutline, sparkles, star } from 'ionicons/icons'
+import { useMemo, useRef, useState } from 'react'
 
 import { useAuth } from '../auth/AuthContext'
 import { InstitutionBanner } from '../app/InstitutionBanner'
@@ -123,6 +123,13 @@ export function EventsPage() {
   // has tapped the "Show N dismissed events" reveal for this page view
   // (feedback #60, same one-time-per-view pattern as Camps' dismissed reveal).
   const [dismissedRevealed, setDismissedRevealed] = useState(false)
+  // Which accordion section(s) start open — New by default, or Starred if
+  // New is already empty ("complete") on first load (feedback, 2026-08-06).
+  // Computed once per page visit, not re-derived every time the underlying
+  // counts change (e.g. from swiping), so the user's own manual expand/
+  // collapse choices aren't stomped mid-session.
+  const [expandedSections, setExpandedSections] = useState<string[]>([])
+  const hasSetDefaultExpansion = useRef(false)
   const { setInterest, clearInterest } = useEventInterest(updateEvent)
 
   // Ionic keeps this page's React state alive (hidden, not unmounted) when
@@ -136,6 +143,11 @@ export function EventsPage() {
       .then(({ events, hiddenCount }) => {
         setEvents(events)
         setHiddenCount(hiddenCount)
+        if (!hasSetDefaultExpansion.current) {
+          hasSetDefaultExpansion.current = true
+          const hasNew = events.some((e) => e.interest_status === null)
+          setExpandedSections([hasNew ? 'new' : 'starred'])
+        }
       })
       .catch(() => setError(true))
   })
@@ -234,10 +246,15 @@ export function EventsPage() {
           </div>
         )}
         {events !== null && events.length > 0 && (
-          <IonAccordionGroup multiple>
+          <IonAccordionGroup
+            multiple
+            value={expandedSections}
+            onIonChange={(e) => setExpandedSections(e.detail.value as string[])}
+          >
             <IonAccordion value="starred">
               <IonItem slot="header">
-                <IonLabel>Starred</IonLabel>
+                <IonIcon slot="start" icon={star} color="warning" />
+                <IonLabel>Starred ({starredEvents.length})</IonLabel>
               </IonItem>
               <div slot="content">
                 {starredEvents.length === 0 && (
@@ -256,7 +273,8 @@ export function EventsPage() {
             </IonAccordion>
             <IonAccordion value="new">
               <IonItem slot="header">
-                <IonLabel>New</IonLabel>
+                <IonIcon slot="start" icon={sparkles} />
+                <IonLabel>New ({newEvents.length})</IonLabel>
               </IonItem>
               <div slot="content">
                 {newEvents.length === 0 && (
