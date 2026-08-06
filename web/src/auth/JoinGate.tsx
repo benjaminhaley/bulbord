@@ -208,6 +208,25 @@ function capitalizeFirst(value: string) {
   return value.length ? value[0].toUpperCase() + value.slice(1) : value
 }
 
+// Every profile-setup field is mandatory except the photo — marked visually
+// so that's obvious at a glance rather than only enforced invisibly by
+// canSubmit/validateProfileUpdate (feedback: "make sure all fields except
+// image are mandatory in sign up").
+function RequiredMark() {
+  return (
+    <span aria-hidden="true" style={{ color: 'var(--ion-color-danger)' }}>
+      {' '}
+      *
+    </span>
+  )
+}
+
+const ROLE_OPTIONS: { value: 'staff' | 'family' | 'other'; label: string; detail: string }[] = [
+  { value: 'staff', label: 'Staff', detail: 'You work at the school.' },
+  { value: 'family', label: 'Family', detail: 'You have a child (or are otherwise family) at the school.' },
+  { value: 'other', label: 'Other', detail: 'Anyone else in the Nettelhorst community.' },
+]
+
 // Exported (not just used internally by JoinGate) so it can be previewed —
 // both via Storybook (feedback #44) and in-app via the admin
 // SignupFlowPreviewPage (feedback #44 follow-up: Ben wants to walk through
@@ -337,7 +356,10 @@ export function ProfileSetupScreen({ preview = false }: { preview?: boolean } = 
         </div>
         <IonList inset>
           <IonItem>
-            <IonLabel position="stacked">First name</IonLabel>
+            <IonLabel position="stacked">
+              First name
+              <RequiredMark />
+            </IonLabel>
             <IonInput
               value={firstName}
               onIonInput={(e) => setFirstName(capitalizeFirst(e.detail.value ?? ''))}
@@ -345,36 +367,79 @@ export function ProfileSetupScreen({ preview = false }: { preview?: boolean } = 
             />
           </IonItem>
           <IonItem>
-            <IonLabel position="stacked">Last name</IonLabel>
+            <IonLabel position="stacked">
+              Last name
+              <RequiredMark />
+            </IonLabel>
             <IonInput value={lastName} onIonInput={(e) => setLastName(capitalizeFirst(e.detail.value ?? ''))} />
           </IonItem>
           <IonItem>
-            <IonLabel position="stacked">Email</IonLabel>
+            <IonLabel position="stacked">
+              Email
+              <RequiredMark />
+            </IonLabel>
             <IonInput type="email" value={email} onIonInput={(e) => setEmail(e.detail.value ?? '')} />
           </IonItem>
           {/* Every field stays genuinely interactive in preview, including
               this one (feedback #49) — nothing is sent to the server until
               Continue's real PATCH /auth/me, which `submit()` above still
-              blocks whenever `preview` is set. */}
+              blocks whenever `preview` is set. Option labels are just the
+              short role name ("Staff", not "Staff (I work at the school)")
+              — a plain ion-select-option can't render a bold-role/subtle-
+              explainer two-line row (its display, both closed and in the
+              action-sheet, is always flattened to plain text), so that
+              distinction lives in the static explainer list below instead,
+              matching the "highlighted text is the role, explainer is
+              subtle" ask directly (feedback, 2026-08-06). */}
           <IonItem>
-            <IonLabel position="stacked">I am...</IonLabel>
+            <IonLabel position="stacked">
+              I am...
+              <RequiredMark />
+            </IonLabel>
             <IonSelect
               value={role}
               placeholder="Select one"
               interface="action-sheet"
               onIonChange={(e) => setRole(e.detail.value)}
             >
-              <IonSelectOption value="staff">Staff (I work at the school)</IonSelectOption>
-              <IonSelectOption value="family">Family (family of someone who goes to the school)</IonSelectOption>
-              <IonSelectOption value="other">Other</IonSelectOption>
+              {ROLE_OPTIONS.map((option) => (
+                <IonSelectOption key={option.value} value={option.value}>
+                  {option.label}
+                </IonSelectOption>
+              ))}
             </IonSelect>
           </IonItem>
           {role === 'other' && (
             <IonItem>
-              <IonLabel position="stacked">Please describe</IonLabel>
+              <IonLabel position="stacked">
+                Please describe
+                <RequiredMark />
+              </IonLabel>
               <IonInput value={roleOther} onIonInput={(e) => setRoleOther(e.detail.value ?? '')} />
             </IonItem>
           )}
+        </IonList>
+        {/* Sits between the two inset lists, not inside either — an
+            ion-item can only hold a label+input pair, not an arbitrary
+            block like this, and a real <ul> breaks IonList's inset card
+            styling if nested inside it directly. */}
+        <ul
+          className="ion-padding-start"
+          style={{
+            color: 'var(--ion-color-medium)',
+            fontSize: '0.8125rem',
+            margin: '4px 0 12px',
+            paddingInlineStart: '1.5rem',
+            listStyle: 'disc',
+          }}
+        >
+          {ROLE_OPTIONS.map((option) => (
+            <li key={option.value}>
+              <strong>{option.label}:</strong> {option.detail}
+            </li>
+          ))}
+        </ul>
+        <IonList inset>
           <IonItem lines="none">
             <IonCheckbox
               checked={newsletterSubscribed}
