@@ -19,6 +19,8 @@ export async function adminRoutes(app: FastifyInstance) {
         created_at: row.createdAt,
         invited_by_name: row.invitedByName,
         newsletter_subscribed: row.newsletterSubscribed,
+        role: row.role,
+        role_other: row.roleOther,
       })),
       has_more: false,
       next_cursor: null,

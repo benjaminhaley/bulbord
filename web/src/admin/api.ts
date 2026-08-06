@@ -8,6 +8,8 @@ export interface AdminUser {
   created_at: string
   invited_by_name: string | null
   newsletter_subscribed: boolean
+  role: 'staff' | 'family' | 'other' | null
+  role_other: string | null
 }
 
 export async function fetchAdminUsers(): Promise<AdminUser[]> {

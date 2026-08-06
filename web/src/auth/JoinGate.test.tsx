@@ -74,7 +74,7 @@ describe('JoinGate', () => {
     expect(screen.getByText('the real app')).toBeInTheDocument()
   })
 
-  it('keeps Continue disabled on the profile setup step until first name, last name, and a valid email are all filled', () => {
+  it('keeps Continue disabled on the profile setup step until first name, last name, email, and role are all filled', () => {
     mockUseAuth.mockReturnValue({ user: { id: 'u1', name: 'New Nettelhorst member', profileComplete: false }, isLoading: false })
     const { container } = renderGate('/events')
 
@@ -90,10 +90,14 @@ describe('JoinGate', () => {
     expect(button.disabled).toBe(true)
 
     typeIntoIonInput(emailInput, 'ben@example.com')
+    expect(button.disabled).toBe(true)
+
+    const roleSelect = container.querySelector('ion-select')!
+    fireEvent(roleSelect, new CustomEvent('ionChange', { detail: { value: 'family' }, bubbles: true }))
     expect(button.disabled).toBe(false)
   })
 
-  it('submits the entered email along with the name', async () => {
+  it('submits the entered email and role along with the name', async () => {
     mockUseAuth.mockReturnValue({ user: { id: 'u1', name: 'New Nettelhorst member', profileComplete: false }, isLoading: false })
     const { container } = renderGate('/events')
 
@@ -101,6 +105,9 @@ describe('JoinGate', () => {
     typeIntoIonInput(firstNameInput, 'Ben')
     typeIntoIonInput(lastNameInput, 'Haley')
     typeIntoIonInput(emailInput, 'ben@example.com')
+
+    const roleSelect = container.querySelector('ion-select')!
+    fireEvent(roleSelect, new CustomEvent('ionChange', { detail: { value: 'family' }, bubbles: true }))
 
     fireEvent.click(screen.getByText('Continue').closest('ion-button')!)
 
@@ -110,6 +117,41 @@ describe('JoinGate', () => {
         email: 'ben@example.com',
         avatarUrl: undefined,
         newsletterSubscribed: true,
+        role: 'family',
+        roleOther: undefined,
+      })
+    })
+  })
+
+  it('submits the free-text description when role is "other"', async () => {
+    mockUseAuth.mockReturnValue({ user: { id: 'u1', name: 'New Nettelhorst member', profileComplete: false }, isLoading: false })
+    const { container } = renderGate('/events')
+
+    const [firstNameInput, lastNameInput, emailInput] = container.querySelectorAll('ion-input')
+    typeIntoIonInput(firstNameInput, 'Ben')
+    typeIntoIonInput(lastNameInput, 'Haley')
+    typeIntoIonInput(emailInput, 'ben@example.com')
+
+    const roleSelect = container.querySelector('ion-select')!
+    fireEvent(roleSelect, new CustomEvent('ionChange', { detail: { value: 'other' }, bubbles: true }))
+
+    const button = screen.getByText('Continue').closest('ion-button') as unknown as { disabled: boolean }
+    expect(button.disabled).toBe(true)
+
+    const roleOtherInput = container.querySelectorAll('ion-input')[3]
+    typeIntoIonInput(roleOtherInput, 'Neighbor')
+    expect(button.disabled).toBe(false)
+
+    fireEvent.click(screen.getByText('Continue').closest('ion-button')!)
+
+    await waitFor(() => {
+      expect(mockUpdateProfile).toHaveBeenCalledWith({
+        name: 'Ben Haley',
+        email: 'ben@example.com',
+        avatarUrl: undefined,
+        newsletterSubscribed: true,
+        role: 'other',
+        roleOther: 'Neighbor',
       })
     })
   })
@@ -123,6 +165,9 @@ describe('JoinGate', () => {
     typeIntoIonInput(lastNameInput, 'Haley')
     typeIntoIonInput(emailInput, 'ben@example.com')
 
+    const roleSelect = container.querySelector('ion-select')!
+    fireEvent(roleSelect, new CustomEvent('ionChange', { detail: { value: 'family' }, bubbles: true }))
+
     const checkbox = container.querySelector('ion-checkbox')!
     fireEvent(checkbox, new CustomEvent('ionChange', { detail: { checked: false }, bubbles: true }))
 
@@ -134,6 +179,8 @@ describe('JoinGate', () => {
         email: 'ben@example.com',
         avatarUrl: undefined,
         newsletterSubscribed: false,
+        role: 'family',
+        roleOther: undefined,
       })
     })
   })

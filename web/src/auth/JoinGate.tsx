@@ -7,6 +7,8 @@ import {
   IonLabel,
   IonList,
   IonPage,
+  IonSelect,
+  IonSelectOption,
   IonSpinner,
   IonText,
 } from '@ionic/react'
@@ -15,6 +17,7 @@ import { useLocation } from 'react-router-dom'
 
 import { API_URL } from '../config'
 import { Avatar } from '../uploads/Avatar'
+import { CropModal } from '../uploads/CropModal'
 import { useImageUpload } from '../uploads/useImageUpload'
 import { fetchInviteInfo, updateProfile, type InviteInfo } from './api'
 import { useAuth } from './AuthContext'
@@ -219,14 +222,25 @@ export function ProfileSetupScreen({ preview = false }: { preview?: boolean } = 
   const [email, setEmail] = useState('')
   const [newsletterSubscribed, setNewsletterSubscribed] = useState(true)
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null)
+  const [role, setRole] = useState<'staff' | 'family' | 'other' | undefined>(undefined)
+  const [roleOther, setRoleOther] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [pendingCropFile, setPendingCropFile] = useState<File | null>(null)
   const { fileInputRef, uploading, attach } = useImageUpload('profiles', (image) => setAvatarUrl(image.image_url))
 
   const name = `${firstName.trim()} ${lastName.trim()}`.trim()
   const trimmedEmail = email.trim()
+  const trimmedRoleOther = roleOther.trim()
   const canSubmit =
-    !preview && !submitting && !uploading && !!firstName.trim() && !!lastName.trim() && trimmedEmail.includes('@')
+    !preview &&
+    !submitting &&
+    !uploading &&
+    !!firstName.trim() &&
+    !!lastName.trim() &&
+    trimmedEmail.includes('@') &&
+    !!role &&
+    (role !== 'other' || !!trimmedRoleOther)
 
   async function attachPhoto(file: File) {
     if (!(await attach(file))) setError('Could not upload photo')
@@ -237,7 +251,14 @@ export function ProfileSetupScreen({ preview = false }: { preview?: boolean } = 
     setSubmitting(true)
     setError(null)
     try {
-      await updateProfile({ name, email: trimmedEmail, avatarUrl: avatarUrl ?? undefined, newsletterSubscribed })
+      await updateProfile({
+        name,
+        email: trimmedEmail,
+        avatarUrl: avatarUrl ?? undefined,
+        newsletterSubscribed,
+        role,
+        roleOther: role === 'other' ? trimmedRoleOther : undefined,
+      })
       await refresh()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not save your profile')
@@ -258,8 +279,16 @@ export function ProfileSetupScreen({ preview = false }: { preview?: boolean } = 
           disabled={preview}
           onChange={(e) => {
             const file = e.target.files?.[0]
-            if (file) void attachPhoto(file)
+            if (file) setPendingCropFile(file)
             e.target.value = ''
+          }}
+        />
+        <CropModal
+          file={pendingCropFile}
+          onCancel={() => setPendingCropFile(null)}
+          onCropped={(cropped) => {
+            setPendingCropFile(null)
+            void attachPhoto(cropped)
           }}
         />
         <div
@@ -309,6 +338,26 @@ export function ProfileSetupScreen({ preview = false }: { preview?: boolean } = 
             <IonLabel position="stacked">Email</IonLabel>
             <IonInput type="email" value={email} onIonInput={(e) => setEmail(e.detail.value ?? '')} disabled={preview} />
           </IonItem>
+          <IonItem>
+            <IonLabel position="stacked">I am...</IonLabel>
+            <IonSelect
+              value={role}
+              placeholder="Select one"
+              interface="action-sheet"
+              disabled={preview}
+              onIonChange={(e) => setRole(e.detail.value)}
+            >
+              <IonSelectOption value="staff">Staff (I work at the school)</IonSelectOption>
+              <IonSelectOption value="family">Family (family of someone who goes to the school)</IonSelectOption>
+              <IonSelectOption value="other">Other</IonSelectOption>
+            </IonSelect>
+          </IonItem>
+          {role === 'other' && (
+            <IonItem>
+              <IonLabel position="stacked">Please describe</IonLabel>
+              <IonInput value={roleOther} onIonInput={(e) => setRoleOther(e.detail.value ?? '')} disabled={preview} />
+            </IonItem>
+          )}
           <IonItem lines="none">
             <IonCheckbox
               checked={newsletterSubscribed}

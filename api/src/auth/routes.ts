@@ -1,7 +1,7 @@
 import type { FastifyInstance, FastifyReply } from 'fastify'
 
 import { bearerToken, requireAuth } from './plugin.js'
-import { getPublicInviteInfo, revokeSession, updateProfile, validateProfileUpdate } from './service.js'
+import { getPublicInviteInfo, revokeSession, updateProfile, validateProfileUpdate, type UserRole } from './service.js'
 import {
   createAuthenticationOptions,
   createRegistrationOptions,
@@ -65,7 +65,14 @@ export async function authRoutes(app: FastifyInstance) {
   })
 
   app.patch('/auth/me', { preHandler: requireAuth }, async (request, reply) => {
-    const body = request.body as { name?: string; email?: string; avatarUrl?: string; newsletterSubscribed?: boolean }
+    const body = request.body as {
+      name?: string
+      email?: string
+      avatarUrl?: string
+      newsletterSubscribed?: boolean
+      role?: UserRole
+      roleOther?: string
+    }
     const result = validateProfileUpdate({ profileComplete: request.currentUser!.profileComplete }, body)
     if (!result.ok) {
       return reply.code(400).send({ error: { message: result.message } })

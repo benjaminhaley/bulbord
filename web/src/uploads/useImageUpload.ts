@@ -16,7 +16,7 @@ export function useImageUpload(
   const [inFlightCount, setInFlightCount] = useState(0)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  async function attach(file: File): Promise<boolean> {
+  async function attach(file: File | Blob): Promise<boolean> {
     setInFlightCount((n) => n + 1)
     try {
       onUploaded(await uploadImage(file, folder))

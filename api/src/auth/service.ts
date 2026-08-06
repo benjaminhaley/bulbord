@@ -70,11 +70,16 @@ export async function revokeSession(bearerToken: string) {
   }
 }
 
+export type UserRole = 'staff' | 'family' | 'other'
+const USER_ROLES: UserRole[] = ['staff', 'family', 'other']
+
 export type ProfileUpdateInput = {
   name?: string
   email?: string
   avatarUrl?: string
   newsletterSubscribed?: boolean
+  role?: UserRole
+  roleOther?: string
 }
 type ValidationResult =
   | { ok: true; updates: ProfileUpdateInput }
@@ -83,9 +88,9 @@ type ValidationResult =
 // Validates a PATCH /auth/me body before it reaches updateProfile — pulled
 // out as a pure function (rather than left inline in the route handler) so
 // the signup-flow's email requirement, the actual business rule here, is
-// unit-testable without spinning up Fastify. Email is only required the
-// first time a profile is completed (the signup flow) — later edits to just
-// the name, say, shouldn't force it.
+// unit-testable without spinning up Fastify. Email and role are only
+// required the first time a profile is completed (the signup flow) — later
+// edits to just the name, say, shouldn't force either.
 export function validateProfileUpdate(current: { profileComplete: boolean }, body: ProfileUpdateInput): ValidationResult {
   const name = body.name?.trim()
   if (body.name !== undefined && !name) {
@@ -100,12 +105,33 @@ export function validateProfileUpdate(current: { profileComplete: boolean }, bod
     return { ok: false, message: 'email must be a valid email address' }
   }
 
+  if (body.role !== undefined && !USER_ROLES.includes(body.role)) {
+    return { ok: false, message: 'role must be staff, family, or other' }
+  }
+  const roleOther = body.roleOther?.trim()
+  if (body.role === 'other' && !roleOther) {
+    return { ok: false, message: 'please describe your role' }
+  }
+
   const completingProfile = !!name && !current.profileComplete
   if (completingProfile && !email) {
     return { ok: false, message: 'email is required to complete your profile' }
   }
+  if (completingProfile && !body.role) {
+    return { ok: false, message: 'role is required to complete your profile' }
+  }
 
-  return { ok: true, updates: { name, email, avatarUrl: body.avatarUrl, newsletterSubscribed: body.newsletterSubscribed } }
+  return {
+    ok: true,
+    updates: {
+      name,
+      email,
+      avatarUrl: body.avatarUrl,
+      newsletterSubscribed: body.newsletterSubscribed,
+      role: body.role,
+      roleOther: body.role === 'other' ? roleOther : undefined,
+    },
+  }
 }
 
 // Post-registration "set up your profile" step — the only place a user's
@@ -119,6 +145,7 @@ export async function updateProfile(userId: string, updates: ProfileUpdateInput)
         ...(updates.email ? { email: updates.email } : {}),
         ...(updates.avatarUrl ? { avatarUrl: updates.avatarUrl } : {}),
         ...(updates.newsletterSubscribed !== undefined ? { newsletterSubscribed: updates.newsletterSubscribed } : {}),
+        ...(updates.role ? { role: updates.role, roleOther: updates.roleOther ?? null } : {}),
         updatedAt: new Date(),
       })
       .where(eq(users.id, userId))
@@ -155,6 +182,8 @@ export async function listUsersForAdmin() {
       createdAt: users.createdAt,
       invitedByName: inviter.name,
       newsletterSubscribed: users.newsletterSubscribed,
+      role: users.role,
+      roleOther: users.roleOther,
     })
     .from(users)
     .leftJoin(inviter, eq(inviter.id, users.invitedByUserId))

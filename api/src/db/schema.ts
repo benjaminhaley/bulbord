@@ -101,6 +101,13 @@ export const users = pgTable('users', {
   // name + optional photo) completes — the frontend join gate uses this,
   // not a placeholder-name string match, to decide whether to show that step.
   profileCompletedAt: timestamp('profile_completed_at', { withTimezone: true }),
+  // Collected at signup (feedback #49) so the community's makeup is visible
+  // to admin — 'staff' | 'family' | 'other'. New signups only (confirmed with
+  // Ben, 2026-08-05); existing accounts stay null unless backfilled by a
+  // one-off script, same posture as email's rollout.
+  role: text('role'),
+  // Free-text detail, only meaningful when role is 'other'.
+  roleOther: text('role_other'),
   ...timestamps,
 })
 

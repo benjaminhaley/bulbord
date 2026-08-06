@@ -34,6 +34,8 @@ export async function updateProfile(updates: {
   email?: string
   avatarUrl?: string
   newsletterSubscribed?: boolean
+  role?: 'staff' | 'family' | 'other'
+  roleOther?: string
 }): Promise<CurrentUser> {
   const response = await fetch(`${API_URL}/auth/me`, {
     method: 'PATCH',

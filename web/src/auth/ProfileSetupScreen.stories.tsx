@@ -30,6 +30,10 @@ function setIonInputValue(el: Element, value: string) {
   el.dispatchEvent(new CustomEvent('ionInput', { detail: { value }, bubbles: true }))
 }
 
+function setIonSelectValue(el: Element, value: string) {
+  el.dispatchEvent(new CustomEvent('ionChange', { detail: { value }, bubbles: true }))
+}
+
 export const Empty: Story = {
   play: async ({ canvasElement }) => {
     const continueButton = canvasElement.querySelector('ion-button')!
@@ -43,6 +47,7 @@ export const FilledForm: Story = {
     setIonInputValue(firstName, 'Ben')
     setIonInputValue(lastName, 'Haley')
     setIonInputValue(email, 'ben@example.com')
+    setIonSelectValue(canvasElement.querySelector('ion-select')!, 'family')
 
     const continueButton = canvasElement.querySelector('ion-button')!
     await waitFor(() => expect(continueButton).not.toHaveAttribute('disabled'))

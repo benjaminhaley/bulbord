@@ -1,4 +1,6 @@
 import {
+  IonAccordion,
+  IonAccordionGroup,
   IonButton,
   IonButtons,
   IonContent,
@@ -12,8 +14,6 @@ import {
   IonList,
   IonNote,
   IonPage,
-  IonSegment,
-  IonSegmentButton,
   IonSpinner,
   IonTitle,
   IonToast,
@@ -33,13 +33,6 @@ import { formatWhen, locationLabel, teaser } from './format'
 import { InterestedBadge } from './InterestedBadge'
 import { useEventInterest } from './useEventInterest'
 
-// 'Starred' and 'Dismissed' are mutually exclusive views over the same
-// interest_status field, so this is a single-select mode rather than the
-// AND-composable multi-select filters (date range, distance, category, …)
-// that may get added here later — keeping the two mechanisms separate avoids
-// faking single-select behavior out of a multi-select filter list.
-type ViewMode = 'new' | 'starred' | 'dismissed'
-
 // What to show in the undo toast after a swipe, and what to restore if the
 // user taps Undo — the status the event had immediately before the swipe.
 interface SwipeToast {
@@ -58,17 +51,78 @@ function closeSliding(target: EventTarget | null) {
   sliding?.close()
 }
 
+// Extracted so the same swipeable row renders in the Starred/New accordion
+// sections and in the "Show N dismissed events" reveal below them (feedback
+// #60, replacing the old New/Starred/Dismissed segmented tabs).
+function EventRow({
+  event,
+  multiTouch,
+  onSwipe,
+  dimmed,
+}: {
+  event: Event
+  multiTouch: boolean
+  onSwipe: (e: { target: EventTarget | null }, event: Event, status: InterestStatus) => void
+  dimmed?: boolean
+}) {
+  const location = locationLabel({ locationName: event.location_name, address: event.address })
+  const description = teaser(event.description)
+
+  return (
+    <IonItemSliding disabled={multiTouch}>
+      <IonItemOptions side="start" onIonSwipe={(e) => onSwipe(e, event, 'interested')}>
+        <IonItemOption expandable color="warning" onClick={(e) => onSwipe(e, event, 'interested')}>
+          <IonIcon slot="icon-only" icon={star} />
+        </IonItemOption>
+      </IonItemOptions>
+      <IonItem routerLink={`/events/${event.id}`} style={dimmed ? { opacity: 0.55 } : undefined}>
+        {event.thumbnail_url ? (
+          <img
+            src={`${API_URL}${event.thumbnail_url}`}
+            alt=""
+            slot="start"
+            style={{ width: 56, height: 56, objectFit: 'cover', borderRadius: 8 }}
+          />
+        ) : (
+          event.submitted_by && <Avatar url={event.submitted_by.avatar_url} name={event.submitted_by.name} size={56} slot="start" />
+        )}
+        <IonLabel>
+          <h2>
+            {event.title}
+            {dimmed && <IonNote style={{ marginLeft: 6, fontSize: '0.75em', textTransform: 'uppercase' }}>Dismissed</IonNote>}
+          </h2>
+          <p>{formatWhen({ startDate: event.start_date, startTime: event.start_time, allDay: event.all_day })}</p>
+          {location && <IonNote>{location}</IonNote>}
+          {description && <p className="teaser">{description}</p>}
+          {event.interested_count > 0 && (
+            <InterestedBadge eventId={event.id} count={event.interested_count} people={event.interested_people} />
+          )}
+        </IonLabel>
+      </IonItem>
+      <IonItemOptions side="end" onIonSwipe={(e) => onSwipe(e, event, 'dismissed')}>
+        <IonItemOption expandable color="medium" onClick={(e) => onSwipe(e, event, 'dismissed')}>
+          <IonIcon slot="icon-only" icon={eyeOffOutline} />
+        </IonItemOption>
+      </IonItemOptions>
+    </IonItemSliding>
+  )
+}
+
 export function EventsPage() {
   const { user } = useAuth()
   const [events, setEvents] = useState<Event[] | null>(null)
   const [error, setError] = useState(false)
-  const [viewMode, setViewMode] = useState<ViewMode>('new')
   const [swipeToast, setSwipeToast] = useState<SwipeToast | null>(null)
   const [multiTouch, setMultiTouch] = useState(false)
   const [showForm, setShowForm] = useState(false)
   // Occurrences the next-occurrence collapse is currently suppressing
   // (feedback #48) — 0 once revealHidden() below has fetched everything.
   const [hiddenCount, setHiddenCount] = useState(0)
+  // Dismissed events are already in `events` (unlike the server-side
+  // next-occurrence collapse above) — this just tracks whether the visitor
+  // has tapped the "Show N dismissed events" reveal for this page view
+  // (feedback #60, same one-time-per-view pattern as Camps' dismissed reveal).
+  const [dismissedRevealed, setDismissedRevealed] = useState(false)
   const { setInterest, clearInterest } = useEventInterest(updateEvent)
 
   // Ionic keeps this page's React state alive (hidden, not unmounted) when
@@ -95,12 +149,9 @@ export function EventsPage() {
       .catch(() => setError(true))
   }
 
-  const filteredEvents = useMemo(() => {
-    if (!events) return []
-    if (viewMode === 'starred') return events.filter((e) => e.interest_status === 'interested')
-    if (viewMode === 'dismissed') return events.filter((e) => e.interest_status === 'dismissed')
-    return events.filter((e) => e.interest_status === null)
-  }, [events, viewMode])
+  const starredEvents = useMemo(() => events?.filter((e) => e.interest_status === 'interested') ?? [], [events])
+  const newEvents = useMemo(() => events?.filter((e) => e.interest_status === null) ?? [], [events])
+  const dismissedEvents = useMemo(() => events?.filter((e) => e.interest_status === 'dismissed') ?? [], [events])
 
   function updateEvent(updated: Event) {
     setEvents((prev) => prev?.map((e) => (e.id === updated.id ? updated : e)) ?? null)
@@ -153,21 +204,6 @@ export function EventsPage() {
             </IonButton>
           </IonButtons>
         </IonToolbar>
-        {user && (
-          <IonToolbar>
-            <IonSegment value={viewMode} onIonChange={(e) => setViewMode(e.detail.value as ViewMode)}>
-              <IonSegmentButton value="new">
-                <IonLabel>New</IonLabel>
-              </IonSegmentButton>
-              <IonSegmentButton value="starred">
-                <IonLabel>Starred</IonLabel>
-              </IonSegmentButton>
-              <IonSegmentButton value="dismissed">
-                <IonLabel>Dismissed</IonLabel>
-              </IonSegmentButton>
-            </IonSegment>
-          </IonToolbar>
-        )}
       </IonHeader>
       <IonContent fullscreen onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd} onTouchCancel={handleTouchEnd}>
         {showForm && (
@@ -197,62 +233,68 @@ export function EventsPage() {
             <p>No upcoming events yet</p>
           </div>
         )}
-        {events !== null && events.length > 0 && filteredEvents.length === 0 && (
-          <div className="coming-soon">
-            <p>No events match this view</p>
-          </div>
-        )}
-        {filteredEvents.length > 0 && (
-          <IonList>
-            {filteredEvents.map((event) => {
-              const location = locationLabel({ locationName: event.location_name, address: event.address })
-              const description = teaser(event.description)
-              return (
-                <IonItemSliding key={event.id} disabled={multiTouch}>
-                  <IonItemOptions side="start" onIonSwipe={(e) => handleSwipe(e, event, 'interested')}>
-                    <IonItemOption expandable color="warning" onClick={(e) => handleSwipe(e, event, 'interested')}>
-                      <IonIcon slot="icon-only" icon={star} />
-                    </IonItemOption>
-                  </IonItemOptions>
-                  <IonItem routerLink={`/events/${event.id}`}>
-                    {event.thumbnail_url ? (
-                      <img
-                        src={`${API_URL}${event.thumbnail_url}`}
-                        alt=""
-                        slot="start"
-                        style={{ width: 56, height: 56, objectFit: 'cover', borderRadius: 8 }}
-                      />
-                    ) : (
-                      event.submitted_by && (
-                        <Avatar url={event.submitted_by.avatar_url} name={event.submitted_by.name} size={56} slot="start" />
-                      )
-                    )}
-                    <IonLabel>
-                      <h2>{event.title}</h2>
-                      <p>{formatWhen({ startDate: event.start_date, startTime: event.start_time, allDay: event.all_day })}</p>
-                      {location && <IonNote>{location}</IonNote>}
-                      {description && <p className="teaser">{description}</p>}
-                      {event.interested_count > 0 && (
-                        <InterestedBadge eventId={event.id} count={event.interested_count} people={event.interested_people} />
-                      )}
+        {events !== null && events.length > 0 && (
+          <IonAccordionGroup multiple>
+            <IonAccordion value="starred">
+              <IonItem slot="header">
+                <IonLabel>Starred</IonLabel>
+              </IonItem>
+              <div slot="content">
+                {starredEvents.length === 0 && (
+                  <div className="coming-soon">
+                    <p>No starred events yet</p>
+                  </div>
+                )}
+                {starredEvents.length > 0 && (
+                  <IonList>
+                    {starredEvents.map((event) => (
+                      <EventRow key={event.id} event={event} multiTouch={multiTouch} onSwipe={handleSwipe} />
+                    ))}
+                  </IonList>
+                )}
+              </div>
+            </IonAccordion>
+            <IonAccordion value="new">
+              <IonItem slot="header">
+                <IonLabel>New</IonLabel>
+              </IonItem>
+              <div slot="content">
+                {newEvents.length === 0 && (
+                  <div className="coming-soon">
+                    <p>No new events</p>
+                  </div>
+                )}
+                {newEvents.length > 0 && (
+                  <IonList>
+                    {newEvents.map((event) => (
+                      <EventRow key={event.id} event={event} multiTouch={multiTouch} onSwipe={handleSwipe} />
+                    ))}
+                  </IonList>
+                )}
+                {hiddenCount > 0 && (
+                  <IonItem button lines="none" detail={false} onClick={revealHidden}>
+                    <IonLabel color="medium" className="ion-text-center">
+                      Show {hiddenCount} hidden repeating {hiddenCount === 1 ? 'event' : 'events'}
                     </IonLabel>
                   </IonItem>
-                  <IonItemOptions side="end" onIonSwipe={(e) => handleSwipe(e, event, 'dismissed')}>
-                    <IonItemOption expandable color="medium" onClick={(e) => handleSwipe(e, event, 'dismissed')}>
-                      <IonIcon slot="icon-only" icon={eyeOffOutline} />
-                    </IonItemOption>
-                  </IonItemOptions>
-                </IonItemSliding>
-              )
-            })}
-          </IonList>
+                )}
+              </div>
+            </IonAccordion>
+          </IonAccordionGroup>
         )}
-        {hiddenCount > 0 && viewMode === 'new' && (
-          <IonItem button lines="none" detail={false} onClick={revealHidden}>
+        {dismissedEvents.length > 0 && !dismissedRevealed && (
+          <IonItem button lines="none" detail={false} onClick={() => setDismissedRevealed(true)}>
             <IonLabel color="medium" className="ion-text-center">
-              Show {hiddenCount} hidden repeating {hiddenCount === 1 ? 'event' : 'events'}
+              Show {dismissedEvents.length} dismissed {dismissedEvents.length === 1 ? 'event' : 'events'}
             </IonLabel>
           </IonItem>
+        )}
+        {dismissedRevealed && dismissedEvents.length > 0 && (
+          <IonList>
+            {dismissedEvents.map((event) => (
+              <EventRow key={event.id} event={event} multiTouch={multiTouch} onSwipe={handleSwipe} dimmed />
+            ))}
+          </IonList>
         )}
       </IonContent>
       <IonToast
