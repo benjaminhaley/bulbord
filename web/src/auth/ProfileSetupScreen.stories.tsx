@@ -58,3 +58,34 @@ export const FilledForm: Story = {
     await waitFor(() => expect(canvasElement.textContent).not.toMatch(/could not save your profile/i))
   },
 }
+
+// The admin dev-tools walkthrough (ProfileSetupPreviewPage.tsx) renders this
+// component with preview={true}. Every field must stay genuinely fillable
+// and Continue must enable exactly like the real flow — the only thing
+// `preview` should change is that Continue's click stops short of the real
+// network call (see JoinGate.tsx's submit()). Regression coverage for
+// feedback that an earlier version force-disabled most fields in preview.
+export const PreviewMode: Story = {
+  args: { preview: true },
+  play: async ({ canvasElement }) => {
+    const [firstName, lastName, email] = canvasElement.querySelectorAll('ion-input')
+    await expect(firstName).not.toHaveAttribute('disabled')
+    await expect(lastName).not.toHaveAttribute('disabled')
+    await expect(email).not.toHaveAttribute('disabled')
+    await expect(canvasElement.querySelector('ion-checkbox')).not.toHaveAttribute('disabled')
+
+    setIonInputValue(firstName, 'Ben')
+    setIonInputValue(lastName, 'Haley')
+    setIonInputValue(email, 'ben@example.com')
+    setIonSelectValue(canvasElement.querySelector('ion-select')!, 'family')
+
+    const continueButton = canvasElement.querySelector('ion-button')!
+    await waitFor(() => expect(continueButton).not.toHaveAttribute('disabled'))
+
+    // Clicking must not throw or hit the real PATCH /auth/me — there's no
+    // msw handler registered for it in this story, so an unmocked request
+    // would surface as a network-error message here.
+    continueButton.click()
+    await expect(canvasElement.textContent).not.toMatch(/could not save your profile/i)
+  },
+}

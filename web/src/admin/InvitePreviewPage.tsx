@@ -7,15 +7,18 @@ import { InviteAcceptCard } from '../auth/JoinGate'
 // a full walkthrough): shows what a real invitee sees when they open your
 // invite QR/link, without leaving your own signed-in session. Reuses
 // InviteAcceptCard — the exact same component JoinGate.tsx's real join
-// screen renders — with busy={true} so the buttons are visibly present but
-// inert, rather than a separately hand-copied mockup that could drift from
-// what the real join screen looks like. Deliberately no disclaimer text
-// injected into the card itself (an earlier version did this via the
-// `banner` prop) — Ben found that broke "exact reproduction," which is the
-// whole point of reusing the real component; the page's own title plus the
-// visibly-disabled controls already say "preview" without interrupting the
-// real screen's content. The "next step" link lives in the header instead
-// of inline content for the same reason, and so it's never below the fold.
+// screen renders — with busy={false} so both buttons are genuinely
+// clickable (feedback: a preview should let every control actually be used,
+// even if it has no real effect, not sit permanently disabled) but
+// onAccept/onSignIn wired to no-ops rather than the real passkey calls,
+// which would be actively dangerous to trigger while already signed in as
+// admin. Deliberately no disclaimer text injected into the card itself (an
+// earlier version did this via the `banner` prop) — Ben found that broke
+// "exact reproduction," which is the whole point of reusing the real
+// component; the page's own title already says "preview" without
+// interrupting the real screen's content. The "next step" link lives in the
+// header instead of inline content for the same reason, and so it's never
+// below the fold.
 export function InvitePreviewPage() {
   const { user } = useAuth()
 
@@ -34,7 +37,7 @@ export function InvitePreviewPage() {
       </IonHeader>
       <InviteAcceptCard
         invite={user ? { name: user.name, avatarUrl: user.avatarUrl } : null}
-        busy
+        busy={false}
         error={null}
         onAccept={() => {}}
         onSignIn={() => {}}

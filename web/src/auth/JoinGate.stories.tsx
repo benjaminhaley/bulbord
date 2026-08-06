@@ -40,8 +40,12 @@ export const RootBootstrap: Story = {
   },
 }
 
-// Mirrors InvitePreviewPage.tsx's admin dev tool: buttons visibly present but inert.
-export const PreviewInert: Story = {
+// The real "a passkey ceremony is in flight" loading state (JoinScreen.tsx
+// passes busy={true} while registerPasskey/loginWithPasskey is pending) —
+// not what InvitePreviewPage.tsx's admin dev tool renders, which keeps
+// busy={false} so its buttons stay genuinely clickable (see JoinGate.tsx's
+// InviteAcceptCard doc comment).
+export const BusyDuringRealCeremony: Story = {
   args: {
     invite: { name: 'Ben Haley', avatarUrl: null },
     busy: true,

@@ -68,12 +68,14 @@ function CenteredMessage({ children }: { children: ReactNode }) {
 
 // Extracted so the admin "preview my invite page" dev tool (feedback #38,
 // InvitePreviewPage.tsx) can render exactly what a real invitee sees without
-// duplicating the markup — it passes busy={true} to inertly disable both
-// buttons (reusing the existing disabled state rather than inventing a
-// separate "preview mode" prop) instead of wiring onAccept/onSignIn to real
-// passkey calls, which would be actively dangerous to trigger while already
-// signed in as admin (registerPasskey/loginWithPasskey overwrite the current
-// session token).
+// duplicating the markup — it passes busy={false} (both buttons genuinely
+// clickable, per feedback that a preview should let every control actually
+// be used, not sit permanently disabled) but onAccept/onSignIn as no-ops
+// instead of the real passkey calls, which would be actively dangerous to
+// trigger while already signed in as admin (registerPasskey/loginWithPasskey
+// overwrite the current session token). `busy` itself is still real here —
+// it's the same prop the actual JoinScreen below passes while a passkey
+// ceremony is genuinely in flight — just never forced true by the preview.
 export function InviteAcceptCard({
   invite,
   busy,
@@ -232,8 +234,14 @@ export function ProfileSetupScreen({ preview = false }: { preview?: boolean } = 
   const name = `${firstName.trim()} ${lastName.trim()}`.trim()
   const trimmedEmail = email.trim()
   const trimmedRoleOther = roleOther.trim()
+  // Deliberately the same validation a real signup would use, preview or
+  // not — Continue enabling/disabling itself as fields fill in is part of
+  // what a preview should demonstrate (feedback: preview should let every
+  // field "be filled out and buttons... clicked even if they have no real
+  // effect"), rather than being force-disabled the whole time. Only
+  // `submit()` below actually branches on `preview`, to skip the real
+  // network call.
   const canSubmit =
-    !preview &&
     !submitting &&
     !uploading &&
     !!firstName.trim() &&
@@ -248,6 +256,11 @@ export function ProfileSetupScreen({ preview = false }: { preview?: boolean } = 
 
   async function submit() {
     if (!canSubmit) return
+    // Preview mode never calls the real PATCH /auth/me — that would
+    // overwrite the admin's own name/email/role. Clicking Continue here is
+    // otherwise identical to the real flow (same validation, same disabled
+    // state), it just stops short of the actual network call.
+    if (preview) return
     setSubmitting(true)
     setError(null)
     try {
@@ -290,13 +303,13 @@ export function ProfileSetupScreen({ preview = false }: { preview?: boolean } = 
             void attachPhoto(cropped)
           }}
         />
-        {/* Photo pick + crop stays genuinely interactive even in preview
-            mode (unlike every field below) — feedback: Ben wanted a way to
-            actually try the crop/zoom step (feedback #56) from the deployed
-            admin dev tools without registering a real passkey. It's safe to
-            leave live here: nothing is sent to the server until Continue's
-            real PATCH /auth/me, which preview still blocks below — a test
-            upload just sits unused in the 'profiles' folder. */}
+        {/* Photo pick + crop is genuinely interactive in preview mode, same
+            as every field below — Ben wanted a way to actually try the crop
+            step (feedback #56) from the deployed admin dev tools without
+            registering a real passkey. It's safe to leave live here:
+            nothing is sent to the server until Continue's real PATCH
+            /auth/me, which `submit()` above still blocks in preview — a
+            test upload just sits unused in the 'profiles' folder. */}
         <div
           onClick={() => fileInputRef.current?.click()}
           style={{
@@ -328,27 +341,21 @@ export function ProfileSetupScreen({ preview = false }: { preview?: boolean } = 
             <IonInput
               value={firstName}
               onIonInput={(e) => setFirstName(capitalizeFirst(e.detail.value ?? ''))}
-              disabled={preview}
               autofocus
             />
           </IonItem>
           <IonItem>
             <IonLabel position="stacked">Last name</IonLabel>
-            <IonInput
-              value={lastName}
-              onIonInput={(e) => setLastName(capitalizeFirst(e.detail.value ?? ''))}
-              disabled={preview}
-            />
+            <IonInput value={lastName} onIonInput={(e) => setLastName(capitalizeFirst(e.detail.value ?? ''))} />
           </IonItem>
           <IonItem>
             <IonLabel position="stacked">Email</IonLabel>
-            <IonInput type="email" value={email} onIonInput={(e) => setEmail(e.detail.value ?? '')} disabled={preview} />
+            <IonInput type="email" value={email} onIonInput={(e) => setEmail(e.detail.value ?? '')} />
           </IonItem>
-          {/* Also stays interactive in preview — the other new feature
-              (feedback #49) Ben wanted to actually try from the admin dev
-              tools without registering a real passkey. Same reasoning as
-              the photo picker above: nothing is sent to the server until
-              Continue's real PATCH /auth/me, which preview still blocks. */}
+          {/* Every field stays genuinely interactive in preview, including
+              this one (feedback #49) — nothing is sent to the server until
+              Continue's real PATCH /auth/me, which `submit()` above still
+              blocks whenever `preview` is set. */}
           <IonItem>
             <IonLabel position="stacked">I am...</IonLabel>
             <IonSelect
@@ -372,7 +379,6 @@ export function ProfileSetupScreen({ preview = false }: { preview?: boolean } = 
             <IonCheckbox
               checked={newsletterSubscribed}
               onIonChange={(e) => setNewsletterSubscribed(e.detail.checked)}
-              disabled={preview}
               justify="start"
               labelPlacement="end"
             >
