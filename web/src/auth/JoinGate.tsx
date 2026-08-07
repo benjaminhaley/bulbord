@@ -231,8 +231,8 @@ function RequiredMark() {
 type Role = 'staff' | 'family' | 'other'
 
 const ROLE_OPTIONS: { value: Role; label: string; detail: string }[] = [
-  { value: 'staff', label: 'Staff', detail: 'You work at the school.' },
-  { value: 'family', label: 'Family', detail: 'You have a child (or are otherwise family) at the school.' },
+  { value: 'staff', label: 'Staff', detail: 'You work at Nettelhorst.' },
+  { value: 'family', label: 'Family', detail: 'You are family of a kid at Nettelhorst.' },
   { value: 'other', label: 'Other', detail: 'Anyone else in the Nettelhorst community.' },
 ]
 
@@ -243,10 +243,13 @@ const ROLE_OPTIONS: { value: Role; label: string; detail: string }[] = [
 // ion-select-option's display, in every interface mode (action-sheet,
 // popover, alert), always flattens to one plain-text line, so secondary
 // text can't be shown even inside IonSelect's own picker. This swaps the
-// field for a real IonModal sheet listing each role as a two-line IonRadio
-// (bold name + subtle description, the same rich-children-as-label pattern
-// this screen's newsletter IonCheckbox already uses) that only exists
-// while open — closing it removes the explainer from the page entirely.
+// field for a real IonModal sheet listing each role as a two-line IonItem
+// (IonLabel's h2/p for bold name + subtle description, IonRadio moved to
+// slot="end" rather than used as the label itself — IonRadio's own default-
+// slot label wrapper is hard-coded `white-space: nowrap` in its shadow CSS
+// with no exposed part to override, which silently clipped the Family
+// description) that only exists while open — closing it removes the
+// explainer from the page entirely.
 function RolePicker({ value, onChange }: { value: Role | undefined; onChange: (value: Role) => void }) {
   const [open, setOpen] = useState(false)
   const selected = ROLE_OPTIONS.find((option) => option.value === value)
@@ -298,12 +301,11 @@ function RolePicker({ value, onChange }: { value: Role | undefined; onChange: (v
             <IonList>
               {ROLE_OPTIONS.map((option) => (
                 <IonItem key={option.value}>
-                  <IonRadio value={option.value} justify="space-between" labelPlacement="start">
-                    <div>
-                      <div>{option.label}</div>
-                      <div style={{ color: 'var(--ion-color-medium)', fontSize: '0.8125rem' }}>{option.detail}</div>
-                    </div>
-                  </IonRadio>
+                  <IonLabel className="ion-text-wrap">
+                    <h2>{option.label}</h2>
+                    <p>{option.detail}</p>
+                  </IonLabel>
+                  <IonRadio slot="end" value={option.value} />
                 </IonItem>
               ))}
             </IonList>
