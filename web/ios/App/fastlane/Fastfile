@@ -1,0 +1,28 @@
+default_platform(:ios)
+
+platform :ios do
+  desc 'Build the WebView-shell app and upload a new build to TestFlight'
+  lane :beta do
+    api_key = app_store_connect_api_key(
+      key_id: ENV['ASC_KEY_ID'],
+      issuer_id: ENV['ASC_ISSUER_ID'],
+      key_content: ENV['ASC_KEY_CONTENT'],
+      is_key_content_base64: true,
+    )
+
+    # No match/certs repo yet — cert/sigh talk to Apple directly using the
+    # API key above and reuse an existing cert/profile if one's still valid,
+    # creating one otherwise. Fine for a single-maintainer app; revisit with
+    # `match` if this ever needs multiple signers.
+    get_certificates(api_key: api_key)
+    get_provisioning_profile(api_key: api_key, app_identifier: 'com.bulbord.app')
+
+    build_app(
+      project: 'App.xcodeproj',
+      scheme: 'App',
+      export_method: 'app-store',
+    )
+
+    upload_to_testflight(api_key: api_key, skip_waiting_for_build_processing: true)
+  end
+end

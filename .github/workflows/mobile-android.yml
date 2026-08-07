@@ -1,0 +1,72 @@
+name: Android Release
+
+# Manual only — ships a real Play Console release, unlike ci.yml's
+# on-every-push checks. Runs entirely on a standard Linux runner; no macOS
+# needed for Android (see CLAUDE.md's Platform strategy). Required repo
+# secrets, once the Play Console account exists:
+#   ANDROID_KEYSTORE_BASE64   — upload keystore (.jks), base64-encoded.
+#     Generate once with:
+#       keytool -genkey -v -keystore upload-keystore.jks -alias bulbord \
+#         -keyalg RSA -keysize 2048 -validity 10000
+#     then `base64 -i upload-keystore.jks`. Keep the original file and its
+#     passwords somewhere safe outside the repo — Play App Signing holds the
+#     real release key, but this upload key can't be silently regenerated if
+#     lost (Google requires an identity-verification support request).
+#   ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS, ANDROID_KEY_PASSWORD
+#   GOOGLE_PLAY_JSON_KEY — a Play Console service account JSON key
+#     (Setup > API access in Play Console), used by fastlane's `supply` to
+#     upload the build without a human clicking through the console.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  beta:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Install web deps and sync native project
+        working-directory: web
+        run: |
+          npm ci
+          npm run build
+          npx cap sync android
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.3'
+          bundler-cache: true
+          working-directory: web/android
+
+      - name: Decode signing key and Play service account
+        working-directory: web/android
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          GOOGLE_PLAY_JSON_KEY: ${{ secrets.GOOGLE_PLAY_JSON_KEY }}
+        run: |
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > upload-keystore.jks
+          echo "$GOOGLE_PLAY_JSON_KEY" > play-service-account.json
+
+      - name: Build and upload to the closed testing track
+        working-directory: web/android
+        env:
+          ANDROID_KEYSTORE_PATH: upload-keystore.jks
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          GOOGLE_PLAY_JSON_KEY_PATH: play-service-account.json
+        run: bundle exec fastlane beta
+
+      - name: Clean up local secrets
+        if: always()
+        working-directory: web/android
+        run: rm -f upload-keystore.jks play-service-account.json

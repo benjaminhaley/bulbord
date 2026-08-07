@@ -1,0 +1,28 @@
+default_platform(:android)
+
+platform :android do
+  desc 'Build the WebView-shell app and upload a new release to the closed testing track'
+  lane :beta do
+    gradle(
+      task: 'bundle',
+      build_type: 'Release',
+      project_dir: '.',
+      properties: {
+        'android.injected.signing.store.file' => ENV['ANDROID_KEYSTORE_PATH'],
+        'android.injected.signing.store.password' => ENV['ANDROID_KEYSTORE_PASSWORD'],
+        'android.injected.signing.key.alias' => ENV['ANDROID_KEY_ALIAS'],
+        'android.injected.signing.key.password' => ENV['ANDROID_KEY_PASSWORD'],
+      },
+    )
+
+    # 'internal' first, not 'production' — Google requires a new developer
+    # account to run 14 days of closed testing with 20+ testers before
+    # production publishing unlocks at all (see CLAUDE.md's Platform
+    # strategy). Promote to the closed/production track manually in Play
+    # Console once that window has been served.
+    upload_to_play_store(
+      track: 'internal',
+      aab: '../app/build/outputs/bundle/release/app-release.aab',
+    )
+  end
+end

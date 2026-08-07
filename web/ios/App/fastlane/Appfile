@@ -1,0 +1,6 @@
+# See CLAUDE.md's Platform strategy for the no-physical-Mac CI build
+# rationale. All values are pulled from CI secrets rather than hardcoded, so
+# no Apple account details need to live in the repo.
+app_identifier('com.bulbord.app')
+apple_id(ENV['FASTLANE_APPLE_ID'])
+team_id(ENV['FASTLANE_TEAM_ID'])

@@ -1,0 +1,48 @@
+name: iOS Release
+
+# Manual only — this ships a real TestFlight/App Store build, unlike ci.yml's
+# on-every-push checks. Needs an App Store Connect API key (Users and Access
+# > Integrations in App Store Connect) once Apple Developer enrollment is
+# approved. Required repo secrets:
+#   APPLE_TEAM_ID    — Apple Developer team ID
+#   APPLE_ID         — the enrolled Apple ID's email
+#   ASC_KEY_ID       — App Store Connect API key ID
+#   ASC_ISSUER_ID    — App Store Connect API issuer ID
+#   ASC_KEY_CONTENT  — the .p8 key file contents, base64-encoded
+# See web/ios/App/fastlane/Fastfile — no physical Mac needed, this runs
+# entirely on GitHub's macOS runner (see CLAUDE.md's Platform strategy).
+on:
+  workflow_dispatch: {}
+
+jobs:
+  beta:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Install web deps and sync native project
+        working-directory: web
+        run: |
+          npm ci
+          npm run build
+          npx cap sync ios
+
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.3'
+          bundler-cache: true
+          working-directory: web/ios/App
+
+      - name: Build and upload to TestFlight
+        working-directory: web/ios/App
+        env:
+          FASTLANE_APPLE_ID: ${{ secrets.APPLE_ID }}
+          FASTLANE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_CONTENT: ${{ secrets.ASC_KEY_CONTENT }}
+        run: bundle exec fastlane beta
