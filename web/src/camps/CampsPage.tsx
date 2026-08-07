@@ -293,9 +293,20 @@ export function CampsPage() {
               <IonAccordion key={bucket.id} value={bucket.id}>
                 <IonItem slot="header">
                   <IonLabel>
-                    <h2>{bucket.label}</h2>
-                    {bucket.id !== 'other' && (
-                      <IonNote>{formatDateRange(bucket.start_date, bucket.end_date)}</IonNote>
+                    {/* The date is what people actually scan for, so it gets the bold/larger
+                        treatment; the break name stays above it but demoted to a smaller,
+                        lighter line (feedback #63: "that's really what people are gonna
+                        care about"). The 'other' bucket has no date range to promote, so
+                        its label keeps the plain default heading weight. */}
+                    {bucket.id !== 'other' ? (
+                      <>
+                        <p style={{ margin: 0, fontSize: '0.8125rem', color: 'var(--ion-color-medium)' }}>{bucket.label}</p>
+                        <h2 style={{ margin: '2px 0 0 0', fontSize: '1.1rem', fontWeight: 600 }}>
+                          {formatDateRange(bucket.start_date, bucket.end_date)}
+                        </h2>
+                      </>
+                    ) : (
+                      <h2>{bucket.label}</h2>
                     )}
                   </IonLabel>
                 </IonItem>
