@@ -1,17 +1,24 @@
 import {
   IonButton,
+  IonButtons,
   IonCheckbox,
   IonContent,
+  IonHeader,
+  IonIcon,
   IonInput,
   IonItem,
   IonLabel,
   IonList,
+  IonModal,
   IonPage,
-  IonSelect,
-  IonSelectOption,
+  IonRadio,
+  IonRadioGroup,
   IonSpinner,
   IonText,
+  IonTitle,
+  IonToolbar,
 } from '@ionic/react'
+import { chevronDownOutline } from 'ionicons/icons'
 import { type ReactNode, useEffect, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 
@@ -221,11 +228,91 @@ function RequiredMark() {
   )
 }
 
-const ROLE_OPTIONS: { value: 'staff' | 'family' | 'other'; label: string; detail: string }[] = [
+type Role = 'staff' | 'family' | 'other'
+
+const ROLE_OPTIONS: { value: Role; label: string; detail: string }[] = [
   { value: 'staff', label: 'Staff', detail: 'You work at the school.' },
   { value: 'family', label: 'Family', detail: 'You have a child (or are otherwise family) at the school.' },
   { value: 'other', label: 'Other', detail: 'Anyone else in the Nettelhorst community.' },
 ]
+
+// A custom modal picker, not IonSelect — feedback (2026-08-06): the
+// role explainer ("Family: you have a child...") must only be visible
+// while actively choosing, not sitting on the main form page the whole
+// time. There's no way to satisfy that with IonSelect at all: a plain
+// ion-select-option's display, in every interface mode (action-sheet,
+// popover, alert), always flattens to one plain-text line, so secondary
+// text can't be shown even inside IonSelect's own picker. This swaps the
+// field for a real IonModal sheet listing each role as a two-line IonRadio
+// (bold name + subtle description, the same rich-children-as-label pattern
+// this screen's newsletter IonCheckbox already uses) that only exists
+// while open — closing it removes the explainer from the page entirely.
+function RolePicker({ value, onChange }: { value: Role | undefined; onChange: (value: Role) => void }) {
+  const [open, setOpen] = useState(false)
+  const selected = ROLE_OPTIONS.find((option) => option.value === value)
+
+  return (
+    <>
+      <IonItem button detail={false} onClick={() => setOpen(true)}>
+        <IonLabel position="stacked">
+          I am...
+          <RequiredMark />
+        </IonLabel>
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            width: '100%',
+            padding: '8px 0',
+            color: selected ? undefined : 'var(--ion-color-medium)',
+          }}
+        >
+          {selected?.label ?? 'Select one'}
+          <IonIcon icon={chevronDownOutline} color="medium" />
+        </div>
+      </IonItem>
+      <IonModal
+        isOpen={open}
+        onDidDismiss={() => setOpen(false)}
+        initialBreakpoint={0.6}
+        breakpoints={[0, 0.6]}
+        keepContentsMounted
+      >
+        <IonHeader>
+          <IonToolbar>
+            <IonTitle>I am...</IonTitle>
+            <IonButtons slot="end">
+              <IonButton onClick={() => setOpen(false)}>Close</IonButton>
+            </IonButtons>
+          </IonToolbar>
+        </IonHeader>
+        <IonContent>
+          <IonRadioGroup
+            value={value}
+            onIonChange={(e) => {
+              onChange(e.detail.value)
+              setOpen(false)
+            }}
+          >
+            <IonList>
+              {ROLE_OPTIONS.map((option) => (
+                <IonItem key={option.value}>
+                  <IonRadio value={option.value} justify="space-between" labelPlacement="start">
+                    <div>
+                      <div>{option.label}</div>
+                      <div style={{ color: 'var(--ion-color-medium)', fontSize: '0.8125rem' }}>{option.detail}</div>
+                    </div>
+                  </IonRadio>
+                </IonItem>
+              ))}
+            </IonList>
+          </IonRadioGroup>
+        </IonContent>
+      </IonModal>
+    </>
+  )
+}
 
 // Exported (not just used internally by JoinGate) so it can be previewed —
 // both via Storybook (feedback #44) and in-app via the admin
@@ -363,6 +450,7 @@ export function ProfileSetupScreen({ preview = false }: { preview?: boolean } = 
             <IonInput
               value={firstName}
               onIonInput={(e) => setFirstName(capitalizeFirst(e.detail.value ?? ''))}
+              autocomplete="given-name"
               autofocus
             />
           </IonItem>
@@ -371,44 +459,24 @@ export function ProfileSetupScreen({ preview = false }: { preview?: boolean } = 
               Last name
               <RequiredMark />
             </IonLabel>
-            <IonInput value={lastName} onIonInput={(e) => setLastName(capitalizeFirst(e.detail.value ?? ''))} />
+            <IonInput
+              value={lastName}
+              onIonInput={(e) => setLastName(capitalizeFirst(e.detail.value ?? ''))}
+              autocomplete="family-name"
+            />
           </IonItem>
           <IonItem>
             <IonLabel position="stacked">
               Email
               <RequiredMark />
             </IonLabel>
-            <IonInput type="email" value={email} onIonInput={(e) => setEmail(e.detail.value ?? '')} />
+            <IonInput type="email" value={email} onIonInput={(e) => setEmail(e.detail.value ?? '')} autocomplete="email" />
           </IonItem>
           {/* Every field stays genuinely interactive in preview, including
               this one (feedback #49) — nothing is sent to the server until
               Continue's real PATCH /auth/me, which `submit()` above still
-              blocks whenever `preview` is set. Option labels are just the
-              short role name ("Staff", not "Staff (I work at the school)")
-              — a plain ion-select-option can't render a bold-role/subtle-
-              explainer two-line row (its display, both closed and in the
-              action-sheet, is always flattened to plain text), so that
-              distinction lives in the static explainer list below instead,
-              matching the "highlighted text is the role, explainer is
-              subtle" ask directly (feedback, 2026-08-06). */}
-          <IonItem>
-            <IonLabel position="stacked">
-              I am...
-              <RequiredMark />
-            </IonLabel>
-            <IonSelect
-              value={role}
-              placeholder="Select one"
-              interface="action-sheet"
-              onIonChange={(e) => setRole(e.detail.value)}
-            >
-              {ROLE_OPTIONS.map((option) => (
-                <IonSelectOption key={option.value} value={option.value}>
-                  {option.label}
-                </IonSelectOption>
-              ))}
-            </IonSelect>
-          </IonItem>
+              blocks whenever `preview` is set. */}
+          <RolePicker value={role} onChange={setRole} />
           {role === 'other' && (
             <IonItem>
               <IonLabel position="stacked">
@@ -419,26 +487,6 @@ export function ProfileSetupScreen({ preview = false }: { preview?: boolean } = 
             </IonItem>
           )}
         </IonList>
-        {/* Sits between the two inset lists, not inside either — an
-            ion-item can only hold a label+input pair, not an arbitrary
-            block like this, and a real <ul> breaks IonList's inset card
-            styling if nested inside it directly. */}
-        <ul
-          className="ion-padding-start"
-          style={{
-            color: 'var(--ion-color-medium)',
-            fontSize: '0.8125rem',
-            margin: '4px 0 12px',
-            paddingInlineStart: '1.5rem',
-            listStyle: 'disc',
-          }}
-        >
-          {ROLE_OPTIONS.map((option) => (
-            <li key={option.value}>
-              <strong>{option.label}:</strong> {option.detail}
-            </li>
-          ))}
-        </ul>
         <IonList inset>
           <IonItem lines="none">
             <IonCheckbox

@@ -30,8 +30,15 @@ function setIonInputValue(el: Element, value: string) {
   el.dispatchEvent(new CustomEvent('ionInput', { detail: { value }, bubbles: true }))
 }
 
-function setIonSelectValue(el: Element, value: string) {
-  el.dispatchEvent(new CustomEvent('ionChange', { detail: { value }, bubbles: true }))
+// The role field is a custom IonModal-based picker (RolePicker in
+// JoinGate.tsx), not an IonSelect — and IonModal's React wrapper portals its
+// content straight to document.body (or ion-app if present) rather than
+// rendering it as a light-DOM descendant of wherever it appears in JSX, so
+// its ion-radio-group is never actually inside `canvasElement`. Same gotcha
+// documented in JoinGate.test.tsx's `roleRadioGroup()` helper.
+function setRole(value: string) {
+  const radioGroup = document.body.querySelector('ion-radio-group')!
+  radioGroup.dispatchEvent(new CustomEvent('ionChange', { detail: { value }, bubbles: true }))
 }
 
 export const Empty: Story = {
@@ -47,7 +54,7 @@ export const FilledForm: Story = {
     setIonInputValue(firstName, 'Ben')
     setIonInputValue(lastName, 'Haley')
     setIonInputValue(email, 'ben@example.com')
-    setIonSelectValue(canvasElement.querySelector('ion-select')!, 'family')
+    setRole('family')
 
     const continueButton = canvasElement.querySelector('ion-button')!
     await waitFor(() => expect(continueButton).not.toHaveAttribute('disabled'))
@@ -77,7 +84,7 @@ export const PreviewMode: Story = {
     setIonInputValue(firstName, 'Ben')
     setIonInputValue(lastName, 'Haley')
     setIonInputValue(email, 'ben@example.com')
-    setIonSelectValue(canvasElement.querySelector('ion-select')!, 'family')
+    setRole('family')
 
     const continueButton = canvasElement.querySelector('ion-button')!
     await waitFor(() => expect(continueButton).not.toHaveAttribute('disabled'))

@@ -25,6 +25,18 @@ function typeIntoIonInput(input: Element, value: string) {
   fireEvent(input, new CustomEvent('ionInput', { detail: { value }, bubbles: true }))
 }
 
+// IonModal (RolePicker's role picker, see JoinGate.tsx) doesn't render its
+// content as a light-DOM descendant of wherever it appears in JSX — the
+// React wrapper portals it straight to `document.body` (or `ion-app` if one
+// exists) via `createPortal`, leaving only an empty `<template>` marker at
+// the JSX location. `keepContentsMounted` (set on that IonModal) keeps the
+// radio group mounted even while closed, but it still only exists under
+// `document.body`, never under RTL's `container` — so it has to be queried
+// from there instead, unlike every other Ionic element in this file.
+function roleRadioGroup() {
+  return document.body.querySelector('ion-radio-group')!
+}
+
 function renderGate(path: string) {
   return render(
     <MemoryRouter initialEntries={[path]}>
@@ -92,8 +104,8 @@ describe('JoinGate', () => {
     typeIntoIonInput(emailInput, 'ben@example.com')
     expect(button.disabled).toBe(true)
 
-    const roleSelect = container.querySelector('ion-select')!
-    fireEvent(roleSelect, new CustomEvent('ionChange', { detail: { value: 'family' }, bubbles: true }))
+    const roleGroup = roleRadioGroup()
+    fireEvent(roleGroup, new CustomEvent('ionChange', { detail: { value: 'family' }, bubbles: true }))
     expect(button.disabled).toBe(false)
   })
 
@@ -106,8 +118,8 @@ describe('JoinGate', () => {
     typeIntoIonInput(lastNameInput, 'Haley')
     typeIntoIonInput(emailInput, 'ben@example.com')
 
-    const roleSelect = container.querySelector('ion-select')!
-    fireEvent(roleSelect, new CustomEvent('ionChange', { detail: { value: 'family' }, bubbles: true }))
+    const roleGroup = roleRadioGroup()
+    fireEvent(roleGroup, new CustomEvent('ionChange', { detail: { value: 'family' }, bubbles: true }))
 
     fireEvent.click(screen.getByText('Continue').closest('ion-button')!)
 
@@ -132,8 +144,8 @@ describe('JoinGate', () => {
     typeIntoIonInput(lastNameInput, 'Haley')
     typeIntoIonInput(emailInput, 'ben@example.com')
 
-    const roleSelect = container.querySelector('ion-select')!
-    fireEvent(roleSelect, new CustomEvent('ionChange', { detail: { value: 'other' }, bubbles: true }))
+    const roleGroup = roleRadioGroup()
+    fireEvent(roleGroup, new CustomEvent('ionChange', { detail: { value: 'other' }, bubbles: true }))
 
     const button = screen.getByText('Continue').closest('ion-button') as unknown as { disabled: boolean }
     expect(button.disabled).toBe(true)
@@ -165,8 +177,8 @@ describe('JoinGate', () => {
     typeIntoIonInput(lastNameInput, 'Haley')
     typeIntoIonInput(emailInput, 'ben@example.com')
 
-    const roleSelect = container.querySelector('ion-select')!
-    fireEvent(roleSelect, new CustomEvent('ionChange', { detail: { value: 'family' }, bubbles: true }))
+    const roleGroup = roleRadioGroup()
+    fireEvent(roleGroup, new CustomEvent('ionChange', { detail: { value: 'family' }, bubbles: true }))
 
     const checkbox = container.querySelector('ion-checkbox')!
     fireEvent(checkbox, new CustomEvent('ionChange', { detail: { checked: false }, bubbles: true }))
