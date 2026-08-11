@@ -8,7 +8,9 @@ name: iOS Release
 #   APPLE_ID         — the enrolled Apple ID's email
 #   ASC_KEY_ID       — App Store Connect API key ID
 #   ASC_ISSUER_ID    — App Store Connect API issuer ID
-#   ASC_KEY_CONTENT  — the .p8 key file contents, base64-encoded
+#   ASC_KEY_CONTENT  — the raw .p8 key file contents (paste as-is, no
+#                      base64 encoding needed — `gh secret set` handles
+#                      multi-line values fine)
 # See web/ios/App/fastlane/Fastfile — no physical Mac needed, this runs
 # entirely on GitHub's macOS runner (see CLAUDE.md's Platform strategy).
 on:
