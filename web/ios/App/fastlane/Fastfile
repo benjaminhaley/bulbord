@@ -75,6 +75,17 @@ platform :ios do
       targets: ['App'],
     )
 
+    # Apple rejects an upload whose build number isn't strictly higher than
+    # every previous upload for this version — the Xcode project's default
+    # CURRENT_PROJECT_VERSION ('1') never changes on its own, so the second
+    # real upload attempt collided with the first. GITHUB_RUN_NUMBER is a
+    # GitHub Actions default env var that auto-increments every workflow
+    # run, so it's a free monotonic counter with no state to persist.
+    increment_build_number(
+      build_number: ENV['GITHUB_RUN_NUMBER'],
+      xcodeproj: 'App.xcodeproj',
+    )
+
     build_app(
       project: 'App.xcodeproj',
       scheme: 'App',
