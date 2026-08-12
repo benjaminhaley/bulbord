@@ -17,6 +17,20 @@ platform :ios do
     get_certificates(api_key: api_key)
     get_provisioning_profile(api_key: api_key, app_identifier: 'com.bulbord.app')
 
+    # The Xcode project has never been opened with a real signing team
+    # configured (no Xcode in this codebase's dev/CI environment until now —
+    # see CLAUDE.md's Platform strategy) — its default is automatic signing
+    # with no team, which fails outright. Point it at the cert/profile the
+    # two steps above just fetched.
+    update_code_signing_settings(
+      use_automatic_signing: false,
+      path: 'App.xcodeproj',
+      team_id: ENV['FASTLANE_TEAM_ID'],
+      code_sign_identity: 'iPhone Distribution',
+      profile_name: lane_context[SharedValues::SIGH_NAME],
+      targets: ['App'],
+    )
+
     build_app(
       project: 'App.xcodeproj',
       scheme: 'App',
