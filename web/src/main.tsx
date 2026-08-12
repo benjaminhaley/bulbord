@@ -1,6 +1,8 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { setupIonicReact } from '@ionic/react'
+import { App as CapacitorApp } from '@capacitor/app'
+import { Capacitor } from '@capacitor/core'
 
 import '@ionic/react/css/core.css'
 import '@ionic/react/css/normalize.css'
@@ -34,6 +36,18 @@ if (signInToken) {
   const url = new URL(window.location.href)
   url.searchParams.delete('signInToken')
   window.history.replaceState({}, '', url)
+}
+
+// The native app's WKWebView has its own storage sandbox, completely
+// separate from mobile Safari — a link (including the sign-in link above)
+// only ever reaches this file's URL-parsing logic if it opens *inside* the
+// app, not the system browser. Universal Links land here, on this native
+// event, when the app is already installed; a full navigation re-runs this
+// file fresh against the incoming URL, same as a normal page load.
+if (Capacitor.isNativePlatform()) {
+  CapacitorApp.addListener('appUrlOpen', ({ url }) => {
+    window.location.href = url
+  })
 }
 
 // Force Material Design on every platform (iOS, Android, web) — see CLAUDE.md Design system.
