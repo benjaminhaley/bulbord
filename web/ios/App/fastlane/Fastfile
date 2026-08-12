@@ -8,7 +8,14 @@ default_platform(:ios)
 # itself — Apple shows it in the dashboard — just needed so
 # get_provisioning_profile binds the profile to the same certificate the
 # imported .p12 actually is, rather than guessing.
-DIST_CERT_ID = 'M9D7SMRJD9'
+#
+# If this ever needs regenerating: export the .p12 with OpenSSL 3.x's
+# `-legacy` flag (`openssl pkcs12 -export -legacy ...`). Without it, OpenSSL
+# defaults to AES-256/PBKDF2, which macOS's Keychain import API doesn't
+# understand and fails with a misleading "MAC verification failed (wrong
+# password?)" — even with the correct password. `-legacy` produces the
+# older SHA1/RC2/3DES format Keychain actually expects.
+DIST_CERT_ID = '9FX735J7PT'
 
 platform :ios do
   desc 'Build the WebView-shell app and upload a new build to TestFlight'
