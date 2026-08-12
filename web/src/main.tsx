@@ -15,8 +15,26 @@ import '@ionic/react/css/display.css'
 
 import './index.css'
 import { App } from './app/App.tsx'
+import { setToken } from './auth/token.ts'
 import { LandingPage } from './landing/LandingPage.tsx'
 import { EVENT_CARD_SECONDARY_TEXT_COLOR } from './events/theme.ts'
+
+// A one-tap sign-in link (?signInToken=<session token>) — lets someone who
+// can't do the normal invite+passkey ceremony themselves (an App Store
+// reviewer on an unfamiliar device, most notably) land on a fully signed-in
+// view with nothing to read or type. Same trust model as the existing
+// ?invite=/?rootSecret= query-param mechanisms below: a valid session token
+// is the same credential normal login already stores in localStorage, this
+// just offers a URL as the delivery mechanism instead of the passkey
+// ceremony. Stripped from the visible URL immediately so it doesn't linger
+// in browser history once used.
+const signInToken = new URLSearchParams(window.location.search).get('signInToken')
+if (signInToken) {
+  setToken(signInToken)
+  const url = new URL(window.location.href)
+  url.searchParams.delete('signInToken')
+  window.history.replaceState({}, '', url)
+}
 
 // Force Material Design on every platform (iOS, Android, web) — see CLAUDE.md Design system.
 setupIonicReact({ mode: 'md' })
