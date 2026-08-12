@@ -5,6 +5,11 @@ App/App/public
 DerivedData
 xcuserdata
 
+# Real signing material must never be committed (see
+# .github/workflows/mobile-ios.yml, which decodes this from a CI secret)
+App/dist_cert.p12
+*.p12
+
 # Cordova plugins for Capacitor
 capacitor-cordova-ios-plugins
 

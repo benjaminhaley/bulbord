@@ -1,4 +1,14 @@
+require 'securerandom'
+
 default_platform(:ios)
+
+# Certificate ID of the durable "iOS Distribution: Benjamin Haley" cert,
+# created once and stored as the IOS_DIST_CERT_P12_BASE64/
+# IOS_DIST_CERT_PASSWORD secrets (see the import step below). Not a secret
+# itself — Apple shows it in the dashboard — just needed so
+# get_provisioning_profile binds the profile to the same certificate the
+# imported .p12 actually is, rather than guessing.
+DIST_CERT_ID = 'M9D7SMRJD9'
 
 platform :ios do
   desc 'Build the WebView-shell app and upload a new build to TestFlight'
@@ -10,12 +20,39 @@ platform :ios do
       is_key_content_base64: false,
     )
 
-    # No match/certs repo yet — cert/sigh talk to Apple directly using the
-    # API key above and reuse an existing cert/profile if one's still valid,
-    # creating one otherwise. Fine for a single-maintainer app; revisit with
-    # `match` if this ever needs multiple signers.
-    get_certificates(api_key: api_key)
-    get_provisioning_profile(api_key: api_key, app_identifier: 'com.bulbord.app')
+    # Every CI run is a brand-new machine with no local keychain state, so
+    # fastlane's own get_certificates (which only reuses a cert already
+    # installed locally) would mint a fresh Distribution certificate on
+    # every single run — and Apple caps how many can be active at once, so
+    # a handful of runs exhausts the account's quota (this actually
+    # happened). Import one durable cert instead, generated once outside CI
+    # and stored as a secret — the same underlying problem `match` solves
+    # with a git-backed store, without standing up a separate certs repo.
+    keychain_name = 'bulbord-ci.keychain-db'
+    keychain_password = SecureRandom.uuid
+
+    create_keychain(
+      name: keychain_name,
+      password: keychain_password,
+      default_keychain: true,
+      unlock: true,
+      timeout: 3600,
+    )
+
+    import_certificate(
+      certificate_path: ENV['IOS_DIST_CERT_P12_PATH'],
+      certificate_password: ENV['IOS_DIST_CERT_PASSWORD'],
+      keychain_name: keychain_name,
+      keychain_password: keychain_password,
+    )
+
+    set_key_partition_list(
+      keychain_name: keychain_name,
+      keychain_password: keychain_password,
+      partition_list: ['apple-tool:', 'apple:', 'codesign:'],
+    )
+
+    get_provisioning_profile(api_key: api_key, app_identifier: 'com.bulbord.app', cert_id: DIST_CERT_ID)
 
     # The Xcode project has never been opened with a real signing team
     # configured (no Xcode in this codebase's dev/CI environment until now —
