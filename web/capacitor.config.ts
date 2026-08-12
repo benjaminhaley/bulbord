@@ -28,10 +28,20 @@ const config: CapacitorConfig = {
     // app's existing @simplewebauthn/browser calls (web/src/auth/webauthn.ts)
     // need no changes; this shim intercepts the same navigator.credentials
     // calls underneath them. `cap sync` auto-wires the native association
-    // config (iOS entitlements, Android asset_statements) from `domains`.
+    // config (iOS entitlements, Android asset_statements) from `domains` —
+    // which is why this is the one place to fix, not the generated files.
+    //
+    // `domains` must match WEBAUTHN_RP_ID (`bulbord.com`, the parent
+    // platform domain — see CLAUDE.md's Login section), not `origin` below.
+    // This was wired to nettelhorst.bulbord.com until 2026-08-12, caught
+    // only by an actual on-device passkey attempt (a real Xcode/device
+    // build didn't exist before then) — iOS rejected every native passkey
+    // ceremony with "Application ... is not associated with domain
+    // bulbord.com" because the entitlement it generated never matched the
+    // RP ID the app was actually requesting.
     CapacitorPasskey: {
       origin: 'https://nettelhorst.bulbord.com',
-      domains: ['nettelhorst.bulbord.com'],
+      domains: ['bulbord.com'],
       autoShim: true,
     },
   },

@@ -12,7 +12,7 @@
     "knip": "KNIP_DISABLE_RAW_TRANSFER=1 knip",
     "test:e2e": "playwright test",
     "preview": "vite preview",
-    "start": "sirv dist --single --host 0.0.0.0 --port ${PORT:-3000}",
+    "start": "node server.mjs",
     "storybook": "storybook dev -p 6006",
     "build-storybook": "storybook build"
   },
@@ -33,7 +33,7 @@
     "react-image-crop": "^11.1.2",
     "react-router": "^5.3.4",
     "react-router-dom": "^5.3.4",
-    "sirv-cli": "^3.0.1"
+    "sirv": "^3.0.2"
   },
   "devDependencies": {
     "@chromatic-com/storybook": "^5.2.1",

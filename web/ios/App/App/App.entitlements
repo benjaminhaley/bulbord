@@ -5,6 +5,7 @@
 	<key>com.apple.developer.associated-domains</key>
 	<array>
 		<string>applinks:nettelhorst.bulbord.com</string>
+		<string>webcredentials:bulbord.com</string>
 		<string>webcredentials:nettelhorst.bulbord.com</string>
 	</array>
 </dict>
