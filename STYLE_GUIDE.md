@@ -54,6 +54,12 @@ Ionic color roles, a small component gallery — is in Storybook
 repo (feedback #44) for exactly this kind of isolated-component reference;
 it didn't need a second tool stood up alongside it.
 
+Every story is also published to Chromatic on push, which flags a pixel-level
+diff against the last-accepted baseline automatically — this is what catches
+future drift (like Events/Camps' divergence above) as it happens, rather
+than relying on someone noticing it in a screenshot months later. See
+`CLAUDE.md`'s Testing section for the setup.
+
 **Deliberately not proposed:** a new component library or CSS framework
 (Tailwind, a design-system package) on top of Ionic, or decomposing every
 hand-styled value into a token. Ionic already is the standardization
