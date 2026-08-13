@@ -91,16 +91,20 @@ jobs:
   # baseline for human review — catches exactly the kind of silent visual
   # drift that let Camps and Events diverge for weeks (see STYLE_GUIDE.md,
   # CLAUDE.md's Camps section) without anyone noticing until a screenshot
-  # comparison caught it by hand. `if:` skips this job cleanly (not a
-  # failure) until CHROMATIC_PROJECT_TOKEN is set as a repo secret — see
-  # CLAUDE.md's Testing section for the one-time account setup this needs.
+  # comparison caught it by hand. The publish step skips itself cleanly
+  # (exit 0, not a failure) until CHROMATIC_PROJECT_TOKEN is set as a repo
+  # secret — see CLAUDE.md's Testing section for the one-time account setup
+  # this needs. Deliberately not a job-level `if: secrets.X != ''` — GitHub
+  # Actions rejects referencing `secrets` directly in a job-level `if:`
+  # (fails the whole workflow file at parse time, not just this job; found
+  # the hard way when this job's first version broke every other job too),
+  # so the presence check has to happen inside a step instead.
   # `--exit-zero-on-changes`: a real visual change isn't a bug by itself
   # (that's the whole point of a UI having new work land on it) — the build
   # still succeeds and the diff waits in Chromatic's UI for a look, rather
   # than blocking every push that changes a pixel.
   chromatic:
     runs-on: ubuntu-latest
-    if: ${{ secrets.CHROMATIC_PROJECT_TOKEN != '' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -110,8 +114,14 @@ jobs:
           node-version: 24
       - run: npm ci
         working-directory: web
-      - run: npm run chromatic
+      - name: Publish to Chromatic
         working-directory: web
+        run: |
+          if [ -z "$CHROMATIC_PROJECT_TOKEN" ]; then
+            echo "CHROMATIC_PROJECT_TOKEN not set yet — skipping Chromatic publish."
+            exit 0
+          fi
+          npm run chromatic
         env:
           CHROMATIC_PROJECT_TOKEN: ${{ secrets.CHROMATIC_PROJECT_TOKEN }}
 
