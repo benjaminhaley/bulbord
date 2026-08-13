@@ -66,15 +66,20 @@ function buildPreviewHtml(pageUrl, meta) {
     imageUrl ? `<meta property="og:image" content="${imageUrl}" />` : '',
     `<meta name="twitter:title" content="${title}" />`,
     `<meta name="twitter:description" content="${description}" />`,
-    imageUrl ? `<meta name="twitter:card" content="summary_large_image" />` : '',
+    `<meta name="twitter:card" content="${imageUrl ? 'summary_large_image' : 'summary'}" />`,
     imageUrl ? `<meta name="twitter:image" content="${imageUrl}" />` : '',
   ]
     .filter(Boolean)
     .join('\n    ')
 
+  // Replaces the whole default og:title..twitter:card block from index.html
+  // (including that trailing static twitter:card line) so nothing from the
+  // static defaults survives alongside the dynamic tags — a leftover
+  // duplicate meta tag (e.g. two conflicting twitter:card values) is
+  // exactly the kind of thing a crawler's behavior on is undefined.
   return indexHtml
     .replace(/<title>.*?<\/title>/, `<title>${title}</title>`)
-    .replace(/<meta property="og:title"[^>]*\/>\n\s*<meta property="og:description"[^>]*\/>/, tags)
+    .replace(/<meta property="og:title"[^>]*\/>\n\s*<meta property="og:description"[^>]*\/>\n\s*<meta name="twitter:card"[^>]*\/>/, tags)
 }
 
 async function tryServePreview(req, res) {
