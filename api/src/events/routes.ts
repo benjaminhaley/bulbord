@@ -5,6 +5,12 @@ import { requireAuth } from '../auth/plugin.js'
 import { db } from '../db/client.js'
 import { events, eventSources, eventInterests, eventsLog, users } from '../db/schema.js'
 import { todayInChicago } from '../dates.js'
+// Reused rather than duplicated for the preview-meta route below (feedback
+// #73 follow-up) — it's the existing, already-tested "This Saturday · 9 am"
+// house-style formatter, just living in newsletter/ for historical reasons
+// (its byte-identical-parity requirement is with web/src/events/format.ts,
+// not with anything newsletter-specific — see that file's own header).
+import { formatWhen } from '../newsletter/format.js'
 import { canEditEvent } from './permissions.js'
 
 type InterestStatus = 'interested' | 'dismissed'
@@ -147,7 +153,15 @@ export async function eventsRoutes(app: FastifyInstance) {
   app.get('/events/:id/preview-meta', async (request, reply) => {
     const { id } = request.params as { id: string }
     const [row] = await db
-      .select({ title: events.title, description: events.description, imageUrl: events.imageUrl, thumbnailUrl: events.thumbnailUrl })
+      .select({
+        title: events.title,
+        description: events.description,
+        imageUrl: events.imageUrl,
+        thumbnailUrl: events.thumbnailUrl,
+        startDate: events.startDate,
+        startTime: events.startTime,
+        allDay: events.allDay,
+      })
       .from(events)
       .where(and(eq(events.id, id), eq(events.status, 'approved'), isNull(events.deletedAt)))
       .limit(1)
@@ -155,7 +169,12 @@ export async function eventsRoutes(app: FastifyInstance) {
       return reply.code(404).send({ error: { message: 'Event not found' } })
     }
     return reply.send({
-      data: { title: row.title, description: row.description, image_url: row.imageUrl ?? row.thumbnailUrl },
+      data: {
+        title: row.title,
+        description: row.description,
+        image_url: row.imageUrl ?? row.thumbnailUrl,
+        when: formatWhen({ startDate: row.startDate, startTime: row.startTime, allDay: row.allDay }),
+      },
     })
   })
 

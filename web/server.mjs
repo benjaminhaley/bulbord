@@ -54,8 +54,16 @@ function truncate(text, max) {
 // "no fake substitute" posture CLAUDE.md's Images section already applies
 // to event/camp images themselves).
 function buildPreviewHtml(pageUrl, meta) {
-  const title = escapeHtml(`${meta.title} · Nettelhorst Bulbord`)
-  const description = escapeHtml(truncate(meta.description?.trim() || 'See details on Nettelhorst Bulbord', 200))
+  // Date/time goes in the title, not just the description (feedback #73
+  // follow-up) — iMessage's compact link-preview card only ever renders
+  // og:title, never og:description, so a listing's "when" has to live
+  // there to show up at all in the most common share surface. Dropped the
+  // "· Nettelhorst Bulbord" suffix an earlier version of this had to make
+  // room — og:site_name below already carries that, and most platforms
+  // show the domain alongside the title anyway, so it was redundant.
+  const title = escapeHtml(meta.when ? `${meta.title} · ${meta.when}` : meta.title)
+  const rawDescription = meta.when ? `${meta.when} — ${meta.description?.trim() || 'See details on Nettelhorst Bulbord'}` : meta.description?.trim() || 'See details on Nettelhorst Bulbord'
+  const description = escapeHtml(truncate(rawDescription, 200))
   const imageUrl = meta.image_url ? escapeHtml(`${API_URL}${meta.image_url}`) : null
 
   const tags = [

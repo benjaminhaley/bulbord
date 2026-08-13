@@ -7,6 +7,7 @@ import { campComments, campInterests, campSources, camps, eventsLog, schoolBreak
 import { todayInChicago } from '../dates.js'
 import { groupCampsByBreak, type SchoolBreakRow } from './grouping.js'
 import { canEditCamp } from './permissions.js'
+import { formatCampWhen } from './preview-when.js'
 
 type InterestStatus = 'interested' | 'dismissed'
 
@@ -203,7 +204,16 @@ export async function campsRoutes(app: FastifyInstance) {
   app.get('/camps/:id/preview-meta', async (request, reply) => {
     const { id } = request.params as { id: string }
     const [row] = await db
-      .select({ title: camps.title, description: camps.description, imageUrl: camps.imageUrl, thumbnailUrl: camps.thumbnailUrl })
+      .select({
+        title: camps.title,
+        description: camps.description,
+        imageUrl: camps.imageUrl,
+        thumbnailUrl: camps.thumbnailUrl,
+        startDate: camps.startDate,
+        endDate: camps.endDate,
+        startTime: camps.startTime,
+        endTime: camps.endTime,
+      })
       .from(camps)
       .where(and(eq(camps.id, id), eq(camps.status, 'approved'), isNull(camps.deletedAt)))
       .limit(1)
@@ -211,7 +221,12 @@ export async function campsRoutes(app: FastifyInstance) {
       return reply.code(404).send({ error: { message: 'Camp not found' } })
     }
     return reply.send({
-      data: { title: row.title, description: row.description, image_url: row.imageUrl ?? row.thumbnailUrl },
+      data: {
+        title: row.title,
+        description: row.description,
+        image_url: row.imageUrl ?? row.thumbnailUrl,
+        when: formatCampWhen({ startDate: row.startDate, endDate: row.endDate, startTime: row.startTime, endTime: row.endTime }),
+      },
     })
   })
 
