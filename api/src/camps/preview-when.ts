@@ -65,3 +65,13 @@ export function formatCampWhen(
   if (!camp.startTime) return dateLabel
   return `${dateLabel} · ${formatTimeRange(camp.startTime, camp.endTime)}`
 }
+
+// Mirrors web/src/camps/format.ts's locationLabel exactly (venue name,
+// falling back to a city/state/zip-stripped address) — same non-parity
+// posture as the rest of this file.
+const CITY_STATE_ZIP = /,\s*[^,]+,\s*[A-Z]{2}\s*\d{5}$/
+
+export function locationLabel(camp: { address: string | null; locationName: string | null }): string | null {
+  if (camp.locationName) return camp.locationName
+  return camp.address ? camp.address.replace(CITY_STATE_ZIP, '').trim() : null
+}

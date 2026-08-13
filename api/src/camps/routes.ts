@@ -7,7 +7,7 @@ import { campComments, campInterests, campSources, camps, eventsLog, schoolBreak
 import { todayInChicago } from '../dates.js'
 import { groupCampsByBreak, type SchoolBreakRow } from './grouping.js'
 import { canEditCamp } from './permissions.js'
-import { formatCampWhen } from './preview-when.js'
+import { formatCampWhen, locationLabel } from './preview-when.js'
 
 type InterestStatus = 'interested' | 'dismissed'
 
@@ -199,8 +199,10 @@ async function loadUpcomingCamps(userId: string | null) {
 export async function campsRoutes(app: FastifyInstance) {
   // Public, unauthenticated on purpose (feedback #73) — same rationale as
   // events' identical GET /events/:id/preview-meta: a link-preview crawler
-  // is never logged in, so it needs a narrow, non-restricted slice of camp
-  // data (title/description/image only) to build a share preview.
+  // is never logged in, so it needs a narrow slice of camp data to build a
+  // share preview. title/description/image/schedule/location are all
+  // already member-visible listing data (see CLAUDE.md's Data safety &
+  // classification) — restricted data is never exposed here.
   app.get('/camps/:id/preview-meta', async (request, reply) => {
     const { id } = request.params as { id: string }
     const [row] = await db
@@ -213,6 +215,8 @@ export async function campsRoutes(app: FastifyInstance) {
         endDate: camps.endDate,
         startTime: camps.startTime,
         endTime: camps.endTime,
+        address: camps.address,
+        locationName: camps.locationName,
       })
       .from(camps)
       .where(and(eq(camps.id, id), eq(camps.status, 'approved'), isNull(camps.deletedAt)))
@@ -226,6 +230,7 @@ export async function campsRoutes(app: FastifyInstance) {
         description: row.description,
         image_url: row.imageUrl ?? row.thumbnailUrl,
         when: formatCampWhen({ startDate: row.startDate, endDate: row.endDate, startTime: row.startTime, endTime: row.endTime }),
+        location: locationLabel({ address: row.address, locationName: row.locationName }),
       },
     })
   })

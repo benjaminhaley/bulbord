@@ -6,11 +6,11 @@ import { db } from '../db/client.js'
 import { events, eventSources, eventInterests, eventsLog, users } from '../db/schema.js'
 import { todayInChicago } from '../dates.js'
 // Reused rather than duplicated for the preview-meta route below (feedback
-// #73 follow-up) — it's the existing, already-tested "This Saturday · 9 am"
-// house-style formatter, just living in newsletter/ for historical reasons
-// (its byte-identical-parity requirement is with web/src/events/format.ts,
-// not with anything newsletter-specific — see that file's own header).
-import { formatWhen } from '../newsletter/format.js'
+// #73 follow-up) — these are the existing, already-tested formatters, just
+// living in newsletter/ for historical reasons (their byte-identical-parity
+// requirement is with web/src/events/format.ts, not with anything
+// newsletter-specific — see that file's own header).
+import { formatWhen, locationLabel } from '../newsletter/format.js'
 import { canEditEvent } from './permissions.js'
 
 type InterestStatus = 'interested' | 'dismissed'
@@ -146,10 +146,12 @@ export async function eventsRoutes(app: FastifyInstance) {
   // crawler (iMessage, WhatsApp, Slack, etc.) that fetches a shared event
   // URL is never logged in, so a rich share preview needs some way to reach
   // event data without a session — same narrow-public-data pattern as
-  // GET /invites/:userId (see CLAUDE.md's Login section). Deliberately
-  // exposes only title/description/image, never address, price, or
-  // attendee data — everything else stays behind requireAuth. Only an
-  // approved, non-deleted event is eligible, same as the real detail route.
+  // GET /invites/:userId (see CLAUDE.md's Login section). title/description/
+  // image/schedule/location are all already member-visible listing data
+  // (see CLAUDE.md's Data safety & classification) — restricted data
+  // (attendee/interest info) is never exposed here, and everything else
+  // stays behind requireAuth. Only an approved, non-deleted event is
+  // eligible, same as the real detail route.
   app.get('/events/:id/preview-meta', async (request, reply) => {
     const { id } = request.params as { id: string }
     const [row] = await db
@@ -161,6 +163,8 @@ export async function eventsRoutes(app: FastifyInstance) {
         startDate: events.startDate,
         startTime: events.startTime,
         allDay: events.allDay,
+        address: events.address,
+        locationName: events.locationName,
       })
       .from(events)
       .where(and(eq(events.id, id), eq(events.status, 'approved'), isNull(events.deletedAt)))
@@ -174,6 +178,7 @@ export async function eventsRoutes(app: FastifyInstance) {
         description: row.description,
         image_url: row.imageUrl ?? row.thumbnailUrl,
         when: formatWhen({ startDate: row.startDate, startTime: row.startTime, allDay: row.allDay }),
+        location: locationLabel({ address: row.address, locationName: row.locationName }),
       },
     })
   })

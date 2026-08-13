@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { formatCampWhen } from './preview-when.js'
+import { formatCampWhen, locationLabel } from './preview-when.js'
 
 describe('formatCampWhen', () => {
   const now = new Date('2026-08-13T09:00:00-05:00')
@@ -27,5 +27,23 @@ describe('formatCampWhen', () => {
     expect(
       formatCampWhen({ startDate: '2026-11-23', endDate: '2026-11-27', startTime: '07:00:00', endTime: '18:00:00' }, now),
     ).toBe('Nov 23 – Nov 27 · 7 am – 6 pm')
+  })
+})
+
+describe('locationLabel', () => {
+  it('prefers the venue name over the address', () => {
+    expect(locationLabel({ locationName: 'Lake View YMCA', address: '3333 N Marshfield Ave, Chicago, IL 60657' })).toBe(
+      'Lake View YMCA',
+    )
+  })
+
+  it('falls back to the address, stripped of city/state/zip', () => {
+    expect(locationLabel({ locationName: null, address: '3333 N Marshfield Ave, Chicago, IL 60657' })).toBe(
+      '3333 N Marshfield Ave',
+    )
+  })
+
+  it('returns null when neither is set', () => {
+    expect(locationLabel({ locationName: null, address: null })).toBeNull()
   })
 })
