@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 
 import { formatDate } from '../format'
-import { sectionDividerStyle } from '../theme/layout'
+import { headingContentGap, sectionDividerStyle } from '../theme/layout'
 import { Avatar } from '../uploads/Avatar'
 import {
   createCampComment,
@@ -213,7 +213,7 @@ export function CommentsSection({ campId, source }: { campId: string; source: { 
           onDeleted={(id) => setComments((prev) => prev?.filter((c) => c.id !== id) ?? null)}
         />
       ))}
-      <div style={{ marginTop: 12 }}>
+      <div style={headingContentGap}>
         {/* IonItem, not a hand-rolled flex row — its slot="start" icon
             vertically centers against the item's content using Ionic's own
             layout, which a manual flex/margin guess kept failing to match
@@ -246,7 +246,20 @@ export function CommentsSection({ campId, source }: { campId: string; source: { 
           {/* Ionic's default slot="start" icon spacing (~32px) reads as a
               "strange" gap once the icon is actually vertically aligned
               (feedback, 2026-08-05) — tightened to sit closer to the text. */}
-          <IonIcon icon={addOutline} slot="start" style={{ color: 'var(--ion-color-medium)', marginInlineEnd: '10px' }} />
+          {/* translateY: a real, measured residual misalignment (style
+              audit, feedback #70, finding 04) — ink-centroid analysis of a
+              live screenshot (crop + grayscale + brightness-weighted row
+              average, same technique as the 2026-08-05 history below) found
+              the icon's centroid sitting ~1.5px CSS below the text's, even
+              in the same browser engine the original fix was "measured" in.
+              Nudging the icon up is more isolated than adjusting the
+              textarea's padding again, which already sits at 0 on the
+              bottom side with no more room to compensate from there. */}
+          <IonIcon
+            icon={addOutline}
+            slot="start"
+            style={{ color: 'var(--ion-color-medium)', marginInlineEnd: '10px', transform: 'translateY(-1.5px)' }}
+          />
           <IonTextarea
             value={newBody}
             onIonInput={(e) => setNewBody(e.detail.value ?? '')}

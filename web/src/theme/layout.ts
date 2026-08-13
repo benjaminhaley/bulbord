@@ -38,3 +38,21 @@ export const sectionDividerStyle = {
   borderTop: '1px solid var(--ion-color-step-150, #d9d9d9)',
   margin: 'var(--space-lg) 0 0',
 } as const
+
+// The gap between an <h2> and its first content element — a real gap found
+// missing, not just misapplied, by the style audit (feedback #70, finding
+// 02): "What to bring"'s <ul> and the Comments composer's wrapper div each
+// had their own incidental margin (a list's default 4px, an unrelated 12px
+// picked for a different reason), measured at 15.25px vs 37.25px on the
+// same page for the identical heading-then-content relationship. Apply as
+// an explicit marginTop on whatever element immediately follows an <h2>.
+export const headingContentGap = { marginTop: 'var(--space-sm)' } as const
+
+// The gap before a standalone CTA button that follows body text (View
+// Booking Page, View Source) — measured at 2.25px before this token existed
+// (finding 03), essentially touching the text above it, on both Camps' and
+// Events' detail pages (the same unstyled pattern was ported from one to
+// the other without anyone noticing). Distinct from sectionDividerStyle's
+// gap, which marks a full section break — this is "give the button room
+// without treating it as its own section."
+export const leadingButtonGap = { marginTop: 'var(--space-md)' } as const

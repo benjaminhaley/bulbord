@@ -23,14 +23,24 @@ const MAX_STACKED_ICONS = 5
 
 // Attendance-signal social proof, own copy of events/InterestedBadge.tsx (see
 // CLAUDE.md's data classification: names and avatars only, never contact/PII).
+//
+// emphasized (style audit, feedback #70, finding 01/05): the detail page has
+// no title for this line to sit "beneath" — its fact lines (date, address,
+// description) are all normal weight, so a muted interested-count read as an
+// unexplained demotion there and is shown at full weight (emphasized=true).
+// A list row's title (the camp name) makes every line below it, including
+// this one, genuinely supporting detail — muted stays the right call there,
+// so it's the default.
 export function InterestedBadge({
   campId,
   count,
   people,
+  emphasized = false,
 }: {
   campId: string
   count: number
   people: { name: string; avatar_url: string | null }[]
+  emphasized?: boolean
 }) {
   const [open, setOpen] = useState(false)
   const [users, setUsers] = useState<InterestedUser[] | null>(null)
@@ -52,7 +62,9 @@ export function InterestedBadge({
   return (
     <>
       <div onClick={show} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer', marginTop: 4 }}>
-        <IonNote>{count} interested:</IonNote>
+        <IonNote style={emphasized ? { color: 'var(--ion-text-color)', fontSize: 'var(--type-body-size)' } : undefined}>
+          {count} interested:
+        </IonNote>
         {shown.map((person, i) => (
           <div
             key={i}

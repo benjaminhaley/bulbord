@@ -20,7 +20,9 @@
  * warning, success) and events/theme.ts's EVENT_CARD_SECONDARY_TEXT_COLOR
  * already pins --ion-color-medium as the one source of truth for secondary
  * text color — see STYLE_GUIDE.md's Color section rather than reinventing
- * color tokens here.
+ * color tokens here. That pin turned out not to reach everywhere it looked
+ * like it did (style audit, feedback #70, finding 06) — see --ion-color-
+ * step-600 below.
  *
  * See STYLE_GUIDE.md for how/when to use these, and theme/layout.ts for the
  * ready-made style objects (fact lines, section dividers) built on top of
@@ -65,4 +67,21 @@
      appears). */
   --banner-bg: #2c2c2c;
   --banner-ink: #ffffff;
+
+  /* Unifies a second, unpinned "muted gray" that turned out to coexist with
+     --ion-color-medium above (style audit, feedback #70, finding 06) —
+     found by extracting real computed colors, not by eye: rgb(99,100,105)
+     (--ion-color-medium, used wherever a component explicitly requests
+     color="medium") vs rgb(102,102,102), close enough to look identical but
+     a genuinely different value/mechanism. The second one turned out to be
+     Ionic's own ion-label/ion-note shadow CSS — `::slotted(p) { color:
+     var(--ion-color-step-600, var(--ion-text-color-step-400, #666666)) }`
+     and ion-note's own `--color` default use the exact same fallback chain
+     — which this app never defined, so every bare <p> under an IonLabel
+     and every <IonNote> with no explicit color prop (list-row date/time/
+     location, feedback post bodies, admin's Joined/invited-by line) was
+     quietly using Ionic's raw default instead of this app's actual pinned
+     secondary-text color. Defining the step token once here closes the gap
+     for every current and future instance, component code untouched. */
+  --ion-color-step-600: var(--ion-color-medium);
 }

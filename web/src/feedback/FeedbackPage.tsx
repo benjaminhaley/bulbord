@@ -150,7 +150,12 @@ function FeedbackItemBody({
     <IonLabel className="ion-text-wrap">
       <h2>{item.title}</h2>
       <FeedbackImages images={item.images} onImageClick={onImageClick} />
-      {item.description && <p>{item.description}</p>}
+      {/* Explicit color, not Ionic's default muted <p>-in-IonLabel styling
+          (style audit, feedback #70, finding 07) — this is the post's own
+          content, not metadata about it, unlike a list row's date/location
+          (which stays muted deliberately, see finding 05) or this item's
+          own #number/author/date line just below. */}
+      {item.description && <p style={{ color: 'var(--ion-text-color)' }}>{item.description}</p>}
       {extra}
       <IonNote>
         #{item.number} · {item.author_name ? `${item.author_name} · ` : ''}

@@ -16,7 +16,7 @@ import { useHistory, useParams } from 'react-router-dom'
 
 import { API_URL } from '../config'
 import { mapUrl, shortAddress } from '../format'
-import { factLineStyle } from '../theme/layout'
+import { factLineStyle, leadingButtonGap } from '../theme/layout'
 import { Avatar } from '../uploads/Avatar'
 import { deleteEvent, fetchEvent, updateEvent, type Event } from './api'
 import { CommentsSection } from './CommentsSection'
@@ -137,7 +137,7 @@ export function EventDetailPage() {
               <p style={{ ...factLineStyle, color: 'var(--ion-color-medium)' }}>Posted by {event.submitted_by.name}</p>
             )}
             {event.interested_count > 0 && (
-              <InterestedBadge eventId={event.id} count={event.interested_count} people={event.interested_people} />
+              <InterestedBadge eventId={event.id} count={event.interested_count} people={event.interested_people} emphasized />
             )}
             {event.location_name && <p style={factLineStyle}>{event.location_name}</p>}
             {event.address && (
@@ -149,7 +149,7 @@ export function EventDetailPage() {
             )}
             {event.description && <p style={factLineStyle}>{event.description}</p>}
             {event.source_url && (
-              <IonButton expand="block" href={event.source_url} target="_blank" rel="noreferrer">
+              <IonButton expand="block" href={event.source_url} target="_blank" rel="noreferrer" style={leadingButtonGap}>
                 View source
               </IonButton>
             )}

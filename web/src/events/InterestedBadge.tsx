@@ -30,14 +30,24 @@ const MAX_STACKED_ICONS = 5
 // "N interested:" label but swaps the name list for a small icon stack
 // (feedback #43, refined per follow-up feedback — bare icons with no label
 // read as unclear on their own).
+//
+// emphasized (style audit, feedback #70, finding 01/05): the detail page has
+// no title for this line to sit "beneath" — its fact lines (date, address,
+// description) are all normal weight, so a muted interested-count read as an
+// unexplained demotion there and is shown at full weight (emphasized=true).
+// A list row's title (the event/camp name) makes every line below it,
+// including this one, genuinely supporting detail — muted stays the right
+// call there, so it's the default.
 export function InterestedBadge({
   eventId,
   count,
   people,
+  emphasized = false,
 }: {
   eventId: string
   count: number
   people: { name: string; avatar_url: string | null }[]
+  emphasized?: boolean
 }) {
   const [open, setOpen] = useState(false)
   const [users, setUsers] = useState<InterestedUser[] | null>(null)
@@ -62,7 +72,9 @@ export function InterestedBadge({
         onClick={show}
         style={{ display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer', marginTop: 4 }}
       >
-        <IonNote>{count} interested:</IonNote>
+        <IonNote style={emphasized ? { color: 'var(--ion-text-color)', fontSize: 'var(--type-body-size)' } : undefined}>
+          {count} interested:
+        </IonNote>
         {shown.map((person, i) => (
           <div key={i} style={{ marginInlineStart: i === 0 ? 0 : -8, border: '2px solid var(--ion-background-color)', borderRadius: '50%' }}>
             <Avatar url={person.avatar_url} name={person.name} size={24} />

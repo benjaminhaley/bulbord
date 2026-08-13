@@ -3,7 +3,7 @@ import { addOutline, trashOutline } from 'ionicons/icons'
 import { useEffect, useState } from 'react'
 
 import { formatDate } from '../format'
-import { sectionDividerStyle } from '../theme/layout'
+import { headingContentGap, sectionDividerStyle } from '../theme/layout'
 import { Avatar } from '../uploads/Avatar'
 import { createEventComment, deleteEventComment, fetchEventComments, updateEventComment, type EventComment } from './api'
 
@@ -147,7 +147,7 @@ export function CommentsSection({ eventId }: { eventId: string }) {
           onDeleted={(id) => setComments((prev) => prev?.filter((c) => c.id !== id) ?? null)}
         />
       ))}
-      <div style={{ marginTop: 12 }}>
+      <div style={headingContentGap}>
         {/* An empty list already falls through to this composer as its own
             empty state — a separate "No comments yet" message next to it
             was redundant (feedback, 2026-08-05, ported here from Camps'
@@ -160,7 +160,15 @@ export function CommentsSection({ eventId }: { eventId: string }) {
             empirically-measured value (not a fresh guess), valid here too
             since it's the same font/line-height. */}
         <IonItem lines="none" style={{ '--padding-start': '0', '--min-height': '40px' } as React.CSSProperties}>
-          <IonIcon icon={addOutline} slot="start" style={{ color: 'var(--ion-color-medium)', marginInlineEnd: '10px' }} />
+          {/* translateY: see camps/CommentsSection.tsx's identical fix — a
+              real, measured ~1.5px CSS icon/text misalignment (style audit,
+              feedback #70, finding 04), found via ink-centroid analysis of
+              a live screenshot, present in this same ported code. */}
+          <IonIcon
+            icon={addOutline}
+            slot="start"
+            style={{ color: 'var(--ion-color-medium)', marginInlineEnd: '10px', transform: 'translateY(-1.5px)' }}
+          />
           <IonTextarea
             value={newBody}
             onIonInput={(e) => setNewBody(e.detail.value ?? '')}
