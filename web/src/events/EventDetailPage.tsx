@@ -15,6 +15,8 @@ import { useEffect, useState } from 'react'
 import { useHistory, useParams } from 'react-router-dom'
 
 import { API_URL } from '../config'
+import { mapUrl, shortAddress } from '../format'
+import { factLineStyle } from '../theme/layout'
 import { Avatar } from '../uploads/Avatar'
 import { deleteEvent, fetchEvent, updateEvent, type Event } from './api'
 import { CommentsSection } from './CommentsSection'
@@ -123,17 +125,29 @@ export function EventDetailPage() {
                 </div>
               )
             )}
-            <h1>{event.title}</h1>
-            <p>{formatWhen({ startDate: event.start_date, startTime: event.start_time, allDay: event.all_day })}</p>
+            {/* No <h1>{event.title}</h1> here — the toolbar's IonTitle above
+                already shows the event's name and stays visible through the
+                whole scroll, so a second, large title directly below the
+                image was pure duplication (same fix already made on
+                CampDetailPage.tsx, 2026-08-05). */}
+            <p style={factLineStyle}>
+              {formatWhen({ startDate: event.start_date, startTime: event.start_time, allDay: event.all_day })}
+            </p>
             {event.submitted_by && (
-              <p style={{ color: 'var(--ion-color-medium)', marginTop: -8 }}>Posted by {event.submitted_by.name}</p>
+              <p style={{ ...factLineStyle, color: 'var(--ion-color-medium)' }}>Posted by {event.submitted_by.name}</p>
             )}
             {event.interested_count > 0 && (
               <InterestedBadge eventId={event.id} count={event.interested_count} people={event.interested_people} />
             )}
-            {event.location_name && <p>{event.location_name}</p>}
-            {event.address && <p>{event.address}</p>}
-            {event.description && <p>{event.description}</p>}
+            {event.location_name && <p style={factLineStyle}>{event.location_name}</p>}
+            {event.address && (
+              <p style={factLineStyle}>
+                <a href={mapUrl(event.address)} target="_blank" rel="noreferrer">
+                  {shortAddress(event.address)}
+                </a>
+              </p>
+            )}
+            {event.description && <p style={factLineStyle}>{event.description}</p>}
             {event.source_url && (
               <IonButton expand="block" href={event.source_url} target="_blank" rel="noreferrer">
                 View source

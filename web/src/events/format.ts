@@ -19,6 +19,25 @@ function relativeDayLabel(date: Date, today: Date): string | null {
   return null
 }
 
+// House time-formatting style (feedback, 2026-08-05, originally established
+// for Camps — camps/format.ts's identical parseTime/formatSingleTime —
+// ported here 2026-08-13 per the style-audit pass, feedback #70): omit
+// minutes entirely when they're :00 ("9 am", not "9:00 am"); lowercase
+// am/pm with no periods; "noon"/"midnight" instead of "12 pm"/"12 am".
+// Events only ever show a single start time (no end time in this data
+// model — see FormattableEvent below), so the range-specific "shared
+// meridiem shown once" rule from Camps' formatTimeRange doesn't apply here.
+function formatTime(time: string): string {
+  const [hourStr, minuteStr] = time.split(':')
+  const hour = Number(hourStr)
+  const minute = Number(minuteStr)
+  const hour12 = hour % 12 === 0 ? 12 : hour % 12
+  const isPM = hour >= 12
+  if (hour12 === 12 && minute === 0) return isPM ? 'noon' : 'midnight'
+  const minutePart = minute === 0 ? '' : `:${String(minute).padStart(2, '0')}`
+  return `${hour12}${minutePart}${isPM ? ' pm' : ' am'}`
+}
+
 export interface FormattableEvent {
   startDate: string
   startTime: string | null
@@ -34,12 +53,7 @@ export function formatWhen(event: FormattableEvent, now = new Date()): string {
 
   if (event.allDay || !event.startTime) return dateLabel
 
-  const [hours, minutes] = event.startTime.split(':')
-  const time = new Date()
-  time.setHours(Number(hours), Number(minutes))
-  const timeLabel = time.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
-
-  return `${dateLabel} · ${timeLabel}`
+  return `${dateLabel} · ${formatTime(event.startTime)}`
 }
 
 // Addresses are typically stored as "Street, Chicago, IL 60613" — everything

@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 
 import { formatDate } from '../format'
+import { sectionDividerStyle } from '../theme/layout'
 import { Avatar } from '../uploads/Avatar'
 import {
   createCampComment,
@@ -195,12 +196,12 @@ export function CommentsSection({ campId, source }: { campId: string; source: { 
 
   return (
     <div style={{ marginTop: 24 }}>
-      {/* Matches CampDetailPage.tsx's SECTION_DIVIDER_STYLE (feedback,
+      {/* Matches CampDetailPage.tsx's own section dividers (feedback,
           2026-08-05: "separate all these sections a little better... a thin
-          horizontal line between them") — duplicated rather than imported,
-          since this component owns its own top margin/section boundary and
-          a two-line style object isn't worth a cross-file dependency for. */}
-      <hr style={{ border: 'none', borderTop: '1px solid var(--ion-color-step-150, #d9d9d9)', margin: '0 0 24px' }} />
+          horizontal line between them") — sectionDividerStyle's default top
+          margin is overridden to 0 here since this div's own marginTop: 24
+          above already provides the gap before the rule. */}
+      <hr style={{ ...sectionDividerStyle, margin: '0 0 24px' }} />
       <h2>Comments</h2>
       {comments === null && !error && <IonSpinner name="dots" />}
       {error && comments === null && <p>Couldn't load comments</p>}

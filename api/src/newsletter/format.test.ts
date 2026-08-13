@@ -18,11 +18,23 @@ describe('formatWhen', () => {
   })
 
   it('appends a time for a timed, non-all-day event', () => {
-    expect(formatWhen({ startDate: '2026-08-03', startTime: '18:30:00', allDay: false }, now)).toBe('Tomorrow · 6:30 PM')
+    expect(formatWhen({ startDate: '2026-08-03', startTime: '18:30:00', allDay: false }, now)).toBe('Tomorrow · 6:30 pm')
   })
 
   it('omits the time for an all-day event even if start_time is set', () => {
     expect(formatWhen({ startDate: '2026-08-03', startTime: '18:30:00', allDay: true }, now)).toBe('Tomorrow')
+  })
+
+  it('omits minutes on the hour', () => {
+    expect(formatWhen({ startDate: '2026-08-03', startTime: '09:00:00', allDay: false }, now)).toBe('Tomorrow · 9 am')
+  })
+
+  it('uses "noon" instead of "12 pm"', () => {
+    expect(formatWhen({ startDate: '2026-08-03', startTime: '12:00:00', allDay: false }, now)).toBe('Tomorrow · noon')
+  })
+
+  it('uses "midnight" instead of "12 am"', () => {
+    expect(formatWhen({ startDate: '2026-08-03', startTime: '00:00:00', allDay: false }, now)).toBe('Tomorrow · midnight')
   })
 })
 

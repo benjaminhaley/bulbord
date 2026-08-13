@@ -15,6 +15,7 @@ import '@ionic/react/css/text-transformation.css'
 import '@ionic/react/css/flex-utils.css'
 import '@ionic/react/css/display.css'
 
+import '../src/theme/tokens.css'
 import '../src/index.css'
 import { AuthProvider } from '../src/auth/AuthContext'
 import { EVENT_CARD_SECONDARY_TEXT_COLOR } from '../src/events/theme'

@@ -1,0 +1,68 @@
+/*
+ * Design tokens — spacing and secondary/label typography.
+ *
+ * Inherited, not invented (feedback #70): Ionic is already forced into
+ * Material Design mode everywhere (see CLAUDE.md's Design system section,
+ * main.tsx's `setupIonicReact({ mode: 'md' })`), but Ionic's md mode only
+ * covers its own components (buttons, items, toolbars) — it ships no
+ * spacing scale or secondary-text type scale of its own, which is exactly
+ * the gap that let ad hoc pixel values (4, 8, 12, 16, 24px margins; 12, 14,
+ * '0.75em' font sizes) drift independently across hand-rolled sections like
+ * the Camps/Events detail pages. These tokens are Material Design 3's own
+ * published spacing grid and type-scale values (m3.material.io/styles/
+ * spacing, m3.material.io/styles/typography) — not a new system, just this
+ * app's existing forced-md-mode decision made to cover the same ground
+ * Ionic's own components already stand on.
+ *
+ * Primary/secondary/tertiary color roles are deliberately NOT redefined
+ * here — Ionic's own --ion-color-* system already is Material's color-role
+ * system (primary, secondary, medium/on-surface-variant, danger/error,
+ * warning, success) and events/theme.ts's EVENT_CARD_SECONDARY_TEXT_COLOR
+ * already pins --ion-color-medium as the one source of truth for secondary
+ * text color — see STYLE_GUIDE.md's Color section rather than reinventing
+ * color tokens here.
+ *
+ * See STYLE_GUIDE.md for how/when to use these, and theme/layout.ts for the
+ * ready-made style objects (fact lines, section dividers) built on top of
+ * the spacing scale below for the common inline-style={{}} usage this
+ * codebase already favors over CSS classes.
+ */
+
+:root {
+  /* Spacing — Material's 4dp base grid. Matches the values already in
+     organic use across the app (4/8/12/16/24/32px), so adopting these is a
+     rename, not a re-numbering. */
+  --space-2xs: 4px;
+  --space-xs: 8px;
+  --space-sm: 12px;
+  --space-md: 16px;
+  --space-lg: 24px;
+  --space-xl: 32px;
+  --space-2xl: 48px;
+  --space-3xl: 64px;
+
+  /* Typography — Material 3 "Body" and "Label" roles only. This app never
+     uses Material's Display/Headline roles (no hero text on a phone-sized
+     utility app), and Title-role sizing is already handled by Ionic's own
+     <h1>/<h2>/IonTitle/IonLabel defaults (see main.tsx's typography.css
+     import) — these tokens exist specifically for the secondary/meta text
+     (dates, "Posted by", table headers, badges) that today gets a
+     different hand-picked size in every file that needs one. */
+  --type-body-size: 16px;
+  --type-body-line-height: 24px;
+  --type-body-secondary-size: 14px;
+  --type-body-secondary-line-height: 20px;
+  --type-label-size: 12px;
+  --type-label-line-height: 16px;
+
+  /* InstitutionBanner's dark bar — named here instead of a literal #2c2c2c
+     in the component itself (style audit, feedback #70, finding 7)
+     specifically because it's a one-off brand-bar decision, not one of
+     Material's semantic color roles (Ionic's own --ion-color-dark already
+     means something else — a general "dark" button/badge color used
+     elsewhere in the app — so this deliberately isn't reused for it, to
+     avoid an unrelated shade change anywhere else --ion-color-dark
+     appears). */
+  --banner-bg: #2c2c2c;
+  --banner-ink: #ffffff;
+}

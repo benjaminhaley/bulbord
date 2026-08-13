@@ -25,3 +25,30 @@ export function formatRelativeDateTime(iso: string, now = new Date()): string {
   if (diffDays === -1) return 'Yesterday'
   return formatDate(iso)
 }
+
+// Addresses are typically stored as "Street, Chicago, IL 60613" —
+// everything in this app is Chicago-area, so the city/state/zip is
+// redundant noise once shown as a tappable map link (feedback, 2026-08-05,
+// applied first to Camps' detail page: "no reason to include Chicago,
+// Illinois there"). Lives here rather than in events/format.ts or
+// camps/format.ts — it's pure address-string formatting, not domain logic,
+// and events/format.ts is byte-parity-checked against the newsletter email
+// template (see scripts/check-format-parity.mjs), which has no use for a
+// map link, so adding it there would leave a dead, knip-flagged export on
+// the api side. Both events/format.ts and camps/format.ts keep their own
+// copy of this same regex for their list-view location labels, unchanged —
+// this is only for the tappable single-line address use.
+const CITY_STATE_ZIP = /,\s*[^,]+,\s*[A-Z]{2}\s*\d{5}$/
+
+export function shortAddress(address: string): string {
+  return address.replace(CITY_STATE_ZIP, '').trim()
+}
+
+// Google Maps' web search URL works universally (opens the native Maps app
+// on both iOS and Android when installed, else falls back to the web) —
+// simpler than branching on platform for an Apple Maps deep link. Always
+// built from the full, untrimmed address (not shortAddress's output) since
+// dropping city/state before geocoding risks a mismatched result.
+export function mapUrl(address: string): string {
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`
+}

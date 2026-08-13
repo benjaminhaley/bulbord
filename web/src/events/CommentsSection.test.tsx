@@ -44,10 +44,22 @@ describe('CommentsSection', () => {
     vi.clearAllMocks()
   })
 
-  it('shows "No comments yet" when the list is empty', async () => {
+  it('shows just the "Add a comment" prompt when the list is empty, with no separate empty-state message', async () => {
     mockFetch.mockResolvedValue([])
     render(<CommentsSection eventId="e1" />)
-    expect(await screen.findByText('No comments yet')).toBeInTheDocument()
+    expect(await screen.findByPlaceholderText('Add a comment')).toBeInTheDocument()
+    expect(screen.queryByText('No comments yet')).not.toBeInTheDocument()
+  })
+
+  it('hides the Post button until the viewer starts typing', async () => {
+    mockFetch.mockResolvedValue([])
+    const { container } = render(<CommentsSection eventId="e1" />)
+    await screen.findByPlaceholderText('Add a comment')
+    expect(screen.queryByText('Post')).not.toBeInTheDocument()
+
+    const textarea = container.querySelector('ion-textarea')!
+    typeIntoIonTextarea(textarea, 'Hello')
+    expect(await screen.findByText('Post')).toBeInTheDocument()
   })
 
   it('renders existing comments with author and body', async () => {

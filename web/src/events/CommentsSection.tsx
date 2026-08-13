@@ -1,8 +1,9 @@
-import { IonButton, IonIcon, IonSpinner, IonTextarea } from '@ionic/react'
-import { trashOutline } from 'ionicons/icons'
+import { IonButton, IonIcon, IonItem, IonSpinner, IonTextarea } from '@ionic/react'
+import { addOutline, trashOutline } from 'ionicons/icons'
 import { useEffect, useState } from 'react'
 
 import { formatDate } from '../format'
+import { sectionDividerStyle } from '../theme/layout'
 import { Avatar } from '../uploads/Avatar'
 import { createEventComment, deleteEventComment, fetchEventComments, updateEventComment, type EventComment } from './api'
 
@@ -129,10 +130,15 @@ export function CommentsSection({ eventId }: { eventId: string }) {
 
   return (
     <div style={{ marginTop: 24 }}>
+      {/* Matches CampDetailPage.tsx's own section dividers (feedback,
+          2026-08-05: "separate all these sections a little better... a thin
+          horizontal line between them") — margin overridden to 0 on the
+          bottom side since this div's own marginTop: 24 above already
+          provides the gap before the rule. */}
+      <hr style={{ ...sectionDividerStyle, margin: '0 0 24px' }} />
       <h2>Comments</h2>
       {comments === null && !error && <IonSpinner name="dots" />}
       {error && comments === null && <p>Couldn't load comments</p>}
-      {comments !== null && comments.length === 0 && <p style={{ color: 'var(--ion-color-medium)' }}>No comments yet</p>}
       {comments?.map((comment) => (
         <CommentItem
           key={comment.id}
@@ -142,15 +148,32 @@ export function CommentsSection({ eventId }: { eventId: string }) {
         />
       ))}
       <div style={{ marginTop: 12 }}>
-        <IonTextarea
-          value={newBody}
-          onIonInput={(e) => setNewBody(e.detail.value ?? '')}
-          placeholder="Add a comment"
-          autoGrow
-        />
-        <IonButton fill="outline" disabled={posting || !newBody.trim()} onClick={post}>
-          Post
-        </IonButton>
+        {/* An empty list already falls through to this composer as its own
+            empty state — a separate "No comments yet" message next to it
+            was redundant (feedback, 2026-08-05, ported here from Camps'
+            identical fix). IonItem + IonIcon slot="start", not a hand-rolled
+            flex row: Ionic's own item layout centers a slotted icon against
+            its content correctly by construction, where several rounds of
+            hand-tuned flexbox/margin guesses on Camps' identical composer
+            did not — see camps/CommentsSection.tsx for the full history.
+            The --padding-top/--padding-bottom split below is that same
+            empirically-measured value (not a fresh guess), valid here too
+            since it's the same font/line-height. */}
+        <IonItem lines="none" style={{ '--padding-start': '0', '--min-height': '40px' } as React.CSSProperties}>
+          <IonIcon icon={addOutline} slot="start" style={{ color: 'var(--ion-color-medium)', marginInlineEnd: '10px' }} />
+          <IonTextarea
+            value={newBody}
+            onIonInput={(e) => setNewBody(e.detail.value ?? '')}
+            placeholder="Add a comment"
+            autoGrow
+            style={{ '--padding-top': '16px', '--padding-bottom': '0px' } as React.CSSProperties}
+          />
+        </IonItem>
+        {newBody.trim() && (
+          <IonButton fill="outline" disabled={posting} onClick={post}>
+            Post
+          </IonButton>
+        )}
       </div>
     </div>
   )

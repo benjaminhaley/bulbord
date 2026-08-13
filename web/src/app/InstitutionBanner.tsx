@@ -17,7 +17,7 @@ export function InstitutionBanner() {
   const history = useHistory()
 
   return (
-    <IonToolbar style={{ '--background': '#2c2c2c', '--color': 'white' } as React.CSSProperties}>
+    <IonToolbar style={{ '--background': 'var(--banner-bg)', '--color': 'var(--banner-ink)' } as React.CSSProperties}>
       <div
         slot="start"
         role="button"
