@@ -113,19 +113,25 @@ function CampRow({
             )}
           </h2>
           {showDate && <p>{formatDateRange(camp.start_date, camp.end_date)}</p>}
-          {/* Booking status (feedback #68) shares the time line via flex
-              rather than getting its own row (fixed 2026-08-13, from a
-              screenshot: an earlier version put the badge as a bare sibling
-              between two block lines with no line break of its own, so the
-              browser flowed the address text right up against it and
-              wrapped mid-word — "2540 W Lawrence" / "Ave · 3.0 mi". flexWrap
-              lets the chip drop to its own line on a narrow screen without
-              text wrapping around it, since a flex item wraps as a whole
-              unit, not mid-content). Muted chip colors, not Ionic's stock
-              IonBadge success/danger/warning (see format.ts's
-              bookingStatusChipStyle for why). */}
-          <p style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 6 }}>
-            {timeLabel(camp.start_time, camp.end_time)}
+          <p>{timeLabel(camp.start_time, camp.end_time)}</p>
+          {/* Booking status (feedback #68) always gets its own line, below
+              the time (fixed 2026-08-13 twice: first for a screenshot
+              showing the address text wrapping around a bare inline badge —
+              see below — then again because sharing the time line via
+              `flexWrap: 'wrap'` let the badge sit inline with the time
+              whenever the combined text was short enough to fit, and drop
+              to its own line only when it wasn't — inconsistent row to row
+              depending on each camp's specific time/status text length. A
+              plain block-level `<p>` is unconditional, not width-dependent,
+              so every row now looks the same regardless of content length.
+              The original bug: an earlier version placed the badge as a
+              bare sibling with no line break of its own, so the browser
+              flowed the address text right up against it and wrapped
+              mid-word — "2540 W Lawrence" / "Ave · 3.0 mi" — this fixes
+              that the same way, since `<p>` forces a break on both sides.
+              Muted chip colors, not Ionic's stock IonBadge success/danger/
+              warning (see format.ts's bookingStatusChipStyle for why). */}
+          <p>
             <IonBadge style={{ ...bookingStatusChipStyle(camp.booking_status), fontWeight: 500 }}>
               {bookingStatusLabel(camp.booking_status)}
             </IonBadge>
