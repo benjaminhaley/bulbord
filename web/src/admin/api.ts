@@ -69,3 +69,21 @@ export async function fetchSourcesLastCheckedAt(): Promise<string | null> {
   const body = (await response.json()) as { data: { last_checked_at: string | null } }
   return body.data.last_checked_at
 }
+
+// Feedback #69 — how stale events/camps data is, so the admin's own avatar
+// and Dev Tools can flag it without a manual check.
+export interface DataFreshness {
+  events_last_checked_at: string | null
+  camps_last_updated_at: string | null
+  oldest_at: string | null
+  is_stale: boolean
+}
+
+export async function fetchDataFreshness(): Promise<DataFreshness> {
+  const response = await fetch(`${API_URL}/admin/data-freshness`, { headers: authHeaders() })
+  if (!response.ok) {
+    throw new Error(`Failed to fetch data freshness: ${response.status}`)
+  }
+  const body = (await response.json()) as { data: DataFreshness }
+  return body.data
+}

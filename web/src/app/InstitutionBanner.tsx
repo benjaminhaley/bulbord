@@ -1,6 +1,7 @@
 import { IonToolbar } from '@ionic/react'
 import { useHistory } from 'react-router-dom'
 
+import { useDataFreshness } from '../admin/DataFreshnessContext'
 import { useAuth } from '../auth/AuthContext'
 import { Avatar } from '../uploads/Avatar'
 
@@ -13,8 +14,13 @@ import { Avatar } from '../uploads/Avatar'
 // position: absolute/inset: 0 layout (see index.css's tab-bar-disappearing
 // history) makes a truly global fixed banner risky to introduce.
 export function InstitutionBanner() {
-  const { user } = useAuth()
+  const { user, isAdmin } = useAuth()
+  const { freshness } = useDataFreshness()
   const history = useHistory()
+  // Feedback #69: a quiet nudge that events/camps data has gone stale,
+  // visible from anywhere without opening Dev Tools first — admin-only,
+  // since only Ben acts on it.
+  const showStaleBadge = isAdmin && (freshness?.is_stale ?? false)
 
   return (
     <IonToolbar style={{ '--background': 'var(--banner-bg)', '--color': 'var(--banner-ink)' } as React.CSSProperties}>
@@ -31,9 +37,24 @@ export function InstitutionBanner() {
         slot="end"
         role="button"
         onClick={() => history.push('/account')}
-        style={{ display: 'flex', alignItems: 'center', paddingInlineEnd: 16, cursor: 'pointer' }}
+        style={{ display: 'flex', alignItems: 'center', paddingInlineEnd: 16, cursor: 'pointer', position: 'relative' }}
       >
         {user && <Avatar url={user.avatarUrl} name={user.name} size={32} />}
+        {showStaleBadge && (
+          <span
+            aria-label="Events/camps data needs a refresh"
+            style={{
+              position: 'absolute',
+              top: -2,
+              right: 12,
+              width: 10,
+              height: 10,
+              borderRadius: '50%',
+              background: 'var(--ion-color-danger)',
+              border: '1.5px solid var(--banner-bg)',
+            }}
+          />
+        )}
       </div>
     </IonToolbar>
   )
