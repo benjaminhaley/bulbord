@@ -5,6 +5,7 @@ import { listUsersForAdmin } from '../auth/service.js'
 import { getCampsLastUpdatedAt } from '../camps/staleness.js'
 import { getSourcesLastCheckedAt, resourceActiveEventSources } from '../events/resourcing.js'
 import { sendTestNewsletterEmail } from '../newsletter/service.js'
+import { computeDataFreshness } from './staleness.js'
 
 // How stale events/camps data can get before Developer Tools and the admin's
 // own avatar flag it red (feedback #69) — a week is long enough that a
@@ -59,19 +60,13 @@ export async function adminRoutes(app: FastifyInstance) {
   // neglected longest, not to average them out.
   app.get('/admin/data-freshness', { preHandler: requireRole('admin') }, async (_request, reply) => {
     const [eventsLastCheckedAt, campsLastUpdatedAt] = await Promise.all([getSourcesLastCheckedAt(), getCampsLastUpdatedAt()])
-    const timestamps = [eventsLastCheckedAt, campsLastUpdatedAt]
-    // A never-checked/never-updated side (null) is treated as maximally
-    // stale, not ignored — there's no timestamp more concerning than "never".
-    const oldestAt = timestamps.every((t) => t !== null)
-      ? timestamps.reduce((oldest, t) => (t! < oldest! ? t : oldest))
-      : null
-    const isStale = oldestAt === null || Date.now() - oldestAt.getTime() > STALE_AFTER_MS
+    const freshness = computeDataFreshness(eventsLastCheckedAt, campsLastUpdatedAt, STALE_AFTER_MS)
     return reply.send({
       data: {
-        events_last_checked_at: eventsLastCheckedAt,
-        camps_last_updated_at: campsLastUpdatedAt,
-        oldest_at: oldestAt,
-        is_stale: isStale,
+        events_last_checked_at: freshness.eventsLastCheckedAt,
+        camps_last_updated_at: freshness.campsLastUpdatedAt,
+        oldest_at: freshness.oldestAt,
+        is_stale: freshness.isStale,
       },
     })
   })
