@@ -57,6 +57,12 @@ looks next. This is the standard the audit process itself is now held to
 on a page is a real decision, not just checking that similar features match
 each other.
 
+`web/scripts/style-audit.mjs` is the reusable tool this standard runs on —
+extracts real computed styles (not screenshots measured by eye) across the
+app's main screens for whoever's doing the next pass to build on, rather
+than re-deriving the technique from scratch (built and thrown away as
+scratch scripts three times in one session before it was worth keeping).
+
 ## The standardization system: Ionic + a small token layer, not a redesign
 
 Answering feedback #70's second question directly — "is there a good

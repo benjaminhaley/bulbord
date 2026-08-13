@@ -16,6 +16,9 @@ dist-ssr
 /playwright-report
 /test-results
 
+# scripts/style-audit.mjs output — diagnostic data, not a committed report
+/style-audit-out
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
