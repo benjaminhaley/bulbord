@@ -31,10 +31,10 @@ export interface EnrichedImage {
 export async function enrichCampSourceImage(sourceUrls: string[]): Promise<EnrichedImage | null> {
   const candidates = (await Promise.all(sourceUrls.map((url) => extractPageImageCandidates(url)))).flat()
 
-  for (const candidateUrl of candidates) {
-    const downloaded = await fetchExternalImage(candidateUrl)
+  for (const candidate of candidates) {
+    const downloaded = await fetchExternalImage(candidate.url)
     if (!downloaded) continue
-    if (await isLowQualityImage(downloaded)) continue
+    if (await isLowQualityImage(downloaded, { isLogo: candidate.isLogo })) continue
 
     const { key, thumbnailKey } = await uploadImage(downloaded, 'camps')
     const fullUrl = imageUrl(key)

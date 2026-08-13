@@ -25,14 +25,14 @@ export async function enrichEventImage(
   { sourceUrl, overrideImageUrl }: { sourceUrl: string | null; overrideImageUrl?: string | null },
 ): Promise<'sourced' | 'none'> {
   const candidates = [
-    ...(overrideImageUrl ? [overrideImageUrl] : []),
+    ...(overrideImageUrl ? [{ url: overrideImageUrl, isLogo: false }] : []),
     ...(sourceUrl ? await extractPageImageCandidates(sourceUrl) : []),
   ]
 
-  for (const candidateUrl of candidates) {
-    const downloaded = await fetchExternalImage(candidateUrl)
+  for (const candidate of candidates) {
+    const downloaded = await fetchExternalImage(candidate.url)
     if (!downloaded) continue
-    if (await isLowQualityImage(downloaded)) continue
+    if (await isLowQualityImage(downloaded, { isLogo: candidate.isLogo })) continue
 
     const { key, thumbnailKey } = await uploadImage(downloaded, 'events')
     await db

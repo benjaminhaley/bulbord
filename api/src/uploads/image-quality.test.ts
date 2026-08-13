@@ -32,4 +32,15 @@ describe('isLowQualityImage', () => {
     const buffer = Buffer.from('not an image')
     expect(await isLowQualityImage(buffer)).toBe(true)
   })
+
+  it('accepts a wide wordmark logo under the looser isLogo bar that a real photo candidate would fail', async () => {
+    const buffer = await pngBuffer(500, 120)
+    expect(await isLowQualityImage(buffer)).toBe(true)
+    expect(await isLowQualityImage(buffer, { isLogo: true })).toBe(false)
+  })
+
+  it('still rejects a degenerate tiny image even under the looser isLogo bar', async () => {
+    const buffer = await pngBuffer(20, 20)
+    expect(await isLowQualityImage(buffer, { isLogo: true })).toBe(true)
+  })
 })

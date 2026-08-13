@@ -19,7 +19,10 @@ describe('enrichCampSourceImage', () => {
   })
 
   it('skips a low-quality candidate and sources from the next one down the list', async () => {
-    extractPageImageCandidatesMock.mockResolvedValue(['https://example.com/logo.png', 'https://example.com/real-photo.jpg'])
+    extractPageImageCandidatesMock.mockResolvedValue([
+      { url: 'https://example.com/logo.png', isLogo: true },
+      { url: 'https://example.com/real-photo.jpg', isLogo: false },
+    ])
     fetchExternalImageMock
       .mockResolvedValueOnce(Buffer.from('logo-bytes'))
       .mockResolvedValueOnce(Buffer.from('real-photo-bytes'))
@@ -31,11 +34,16 @@ describe('enrichCampSourceImage', () => {
     expect(result).toEqual({ imageUrl: '/uploads/camps/final.jpg', thumbnailUrl: '/uploads/camps/final-thumb.jpg' })
     expect(fetchExternalImageMock).toHaveBeenNthCalledWith(1, 'https://example.com/logo.png')
     expect(fetchExternalImageMock).toHaveBeenNthCalledWith(2, 'https://example.com/real-photo.jpg')
+    expect(isLowQualityImageMock).toHaveBeenNthCalledWith(1, Buffer.from('logo-bytes'), { isLogo: true })
+    expect(isLowQualityImageMock).toHaveBeenNthCalledWith(2, Buffer.from('real-photo-bytes'), { isLogo: false })
     expect(uploadImageMock).toHaveBeenCalledWith(Buffer.from('real-photo-bytes'), 'camps')
   })
 
   it('returns null when a download fails but keeps trying the rest of the list', async () => {
-    extractPageImageCandidatesMock.mockResolvedValue(['https://example.com/broken.jpg', 'https://example.com/ok.jpg'])
+    extractPageImageCandidatesMock.mockResolvedValue([
+      { url: 'https://example.com/broken.jpg', isLogo: false },
+      { url: 'https://example.com/ok.jpg', isLogo: false },
+    ])
     fetchExternalImageMock.mockResolvedValueOnce(null).mockResolvedValueOnce(Buffer.from('ok-bytes'))
     isLowQualityImageMock.mockResolvedValueOnce(false)
     const { enrichCampSourceImage } = await import('./image-enrichment.js')
@@ -47,7 +55,7 @@ describe('enrichCampSourceImage', () => {
   })
 
   it('returns null when nothing in the whole candidate list passes', async () => {
-    extractPageImageCandidatesMock.mockResolvedValue(['https://example.com/logo.png'])
+    extractPageImageCandidatesMock.mockResolvedValue([{ url: 'https://example.com/logo.png', isLogo: true }])
     fetchExternalImageMock.mockResolvedValueOnce(Buffer.from('logo-bytes'))
     isLowQualityImageMock.mockResolvedValueOnce(true)
     const { enrichCampSourceImage } = await import('./image-enrichment.js')
@@ -69,7 +77,7 @@ describe('enrichCampSourceImage', () => {
 
   it('falls through to a second source page when the first has no usable candidates', async () => {
     extractPageImageCandidatesMock.mockImplementation(async (url: string) =>
-      url === 'https://example.com/facebook' ? [] : ['https://example.com/about-real-photo.jpg'],
+      url === 'https://example.com/facebook' ? [] : [{ url: 'https://example.com/about-real-photo.jpg', isLogo: false }],
     )
     fetchExternalImageMock.mockResolvedValueOnce(Buffer.from('real-photo-bytes'))
     isLowQualityImageMock.mockResolvedValueOnce(false)

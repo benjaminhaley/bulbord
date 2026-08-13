@@ -5,10 +5,24 @@ import { fetchWithTimeout } from './fetch-with-timeout.js'
 const FETCH_TIMEOUT_MS = 10_000
 const MIN_CONTENT_IMAGE_AREA = 150 * 150
 const SKIP_SRC_PATTERN = /logo|icon|sprite|avatar/i
+// Matches an unrendered server-template variable left in a `src` attribute
+// (e.g. BiblioCommons' own header markup ships `src="{{user_avatar}}"` when
+// nothing populated it) — a page can serve this as perfectly valid HTML, but
+// it was never a real image and always 404s. Caught this the hard way: it
+// slipped through as the ONE candidate siteLogo() below picked for a real
+// CPL Merlo event, silently leaving the event imageless even though a
+// genuine logo sat two images later in the same header. Checked everywhere
+// a src is read, not just in siteLogo(), since any extraction path could hit
+// the same kind of stub on some other site.
+const TEMPLATE_PLACEHOLDER_PATTERN = /\{\{.*\}\}/
 // Schema.org types likely to carry an image for the specific thing the page
 // is about. Deliberately excludes WebSite/Organization — those usually carry
 // a site logo under "image"/"logo", not the page's own content image.
 const JSON_LD_TYPES_WITH_CONTENT_IMAGE = new Set(['Event', 'Article', 'NewsArticle', 'BlogPosting', 'Product'])
+
+function isUsableSrc(src: string | undefined): src is string {
+  return !!src && !TEMPLATE_PLACEHOLDER_PATTERN.test(src)
+}
 
 function resolveUrl(url: string, base: string): string | null {
   try {
@@ -61,7 +75,7 @@ function imageFromContent($: cheerio.CheerioAPI, root: cheerio.Cheerio<any>, pag
 
   for (const el of root.find('img').toArray()) {
     const src = $(el).attr('src')
-    if (!src || SKIP_SRC_PATTERN.test(src)) continue
+    if (!isUsableSrc(src) || SKIP_SRC_PATTERN.test(src)) continue
     const resolved = resolveUrl(src, pageUrl)
     if (!resolved) continue
 
@@ -83,11 +97,33 @@ function imageFromContent($: cheerio.CheerioAPI, root: cheerio.Cheerio<any>, pag
 // plain meeting-notice post): the site's own header logo. Unlike
 // imageFromContent, this deliberately does NOT skip logo-looking images —
 // the org's branding is a more meaningful image than no image at all.
+// Scans every header <img> for the first genuinely usable one, rather than
+// blindly grabbing the first — a real page's header can lead with something
+// that isn't a real image at all (a template placeholder, see
+// TEMPLATE_PLACEHOLDER_PATTERN) while a perfectly good logo sits right next
+// to it.
 function siteLogo($: cheerio.CheerioAPI, pageUrl: string): string | null {
   const header = $('header').first()
   const scope: cheerio.Cheerio<any> = header.length ? header : $.root()
-  const src = scope.find('img').first().attr('src')
-  return src ? resolveUrl(src, pageUrl) : null
+  for (const el of scope.find('img').toArray()) {
+    const src = $(el).attr('src')
+    if (!isUsableSrc(src)) continue
+    const resolved = resolveUrl(src, pageUrl)
+    if (resolved) return resolved
+  }
+  return null
+}
+
+export interface ImageCandidate {
+  url: string
+  // True only for the siteLogo() fallback tier below. A real content-photo
+  // candidate (og:image, JSON-LD, WordPress featured, best plain <img>) is
+  // held to image-quality.ts's normal bar; a logo is held to a looser one —
+  // a legitimate wordmark logo is routinely shorter/wider than any real
+  // photo (see image-quality.ts's LOGO_* constants), so applying the photo
+  // bar to it would reject nearly every real logo, defeating the whole
+  // point of having a logo fallback.
+  isLogo: boolean
 }
 
 // Best-effort, in priority order: og:image/twitter:image meta tags, a
@@ -101,7 +137,7 @@ function siteLogo($: cheerio.CheerioAPI, pageUrl: string): string | null {
 // instead of trusting the first URL found (see image-quality.ts). Returns []
 // (never throws) on any failure — this is opportunistic ingestion-time
 // enrichment, not a guaranteed lookup.
-export async function extractPageImageCandidates(pageUrl: string): Promise<string[]> {
+export async function extractPageImageCandidates(pageUrl: string): Promise<ImageCandidate[]> {
   const response = await fetchWithTimeout(pageUrl, FETCH_TIMEOUT_MS)
   if (!response || !response.ok) return []
 
@@ -112,23 +148,30 @@ export async function extractPageImageCandidates(pageUrl: string): Promise<strin
     const html = await response.text()
     const $ = cheerio.load(html)
 
-    const metaImage =
-      $('meta[property="og:image"]').attr('content') ?? $('meta[name="twitter:image"]').attr('content') ?? null
+    const metaImageSrc =
+      $('meta[property="og:image"]').attr('content') ?? $('meta[name="twitter:image"]').attr('content') ?? undefined
+    const metaImage = isUsableSrc(metaImageSrc) ? resolveUrl(metaImageSrc, pageUrl) : null
     const jsonLdImage = imageFromJsonLd($, pageUrl)
     const root = contentRoot($)
-    const featuredImage = root.find('img.wp-post-image').first().attr('src') ?? null
+    const featuredImageSrc = root.find('img.wp-post-image').first().attr('src')
+    const featuredImage = isUsableSrc(featuredImageSrc) ? resolveUrl(featuredImageSrc, pageUrl) : null
     const contentImage = imageFromContent($, root, pageUrl)
     const logo = siteLogo($, pageUrl)
 
-    const candidates = [
-      metaImage ? resolveUrl(metaImage, pageUrl) : null,
-      jsonLdImage,
-      featuredImage ? resolveUrl(featuredImage, pageUrl) : null,
-      contentImage,
-      logo,
-    ].filter((url): url is string => url !== null)
+    const candidates: (ImageCandidate | null)[] = [
+      metaImage ? { url: metaImage, isLogo: false } : null,
+      jsonLdImage ? { url: jsonLdImage, isLogo: false } : null,
+      featuredImage ? { url: featuredImage, isLogo: false } : null,
+      contentImage ? { url: contentImage, isLogo: false } : null,
+      logo ? { url: logo, isLogo: true } : null,
+    ]
 
-    return [...new Set(candidates)]
+    const seen = new Set<string>()
+    return candidates.filter((c): c is ImageCandidate => {
+      if (!c || seen.has(c.url)) return false
+      seen.add(c.url)
+      return true
+    })
   } catch {
     return []
   }

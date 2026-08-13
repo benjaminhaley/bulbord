@@ -24,7 +24,10 @@ describe('enrichEventImage', () => {
   })
 
   it('skips a low-quality candidate and sources from the next one down the list', async () => {
-    extractPageImageCandidatesMock.mockResolvedValue(['https://example.com/logo.png', 'https://example.com/real-photo.jpg'])
+    extractPageImageCandidatesMock.mockResolvedValue([
+      { url: 'https://example.com/logo.png', isLogo: true },
+      { url: 'https://example.com/real-photo.jpg', isLogo: false },
+    ])
     fetchExternalImageMock
       .mockResolvedValueOnce(Buffer.from('logo-bytes'))
       .mockResolvedValueOnce(Buffer.from('real-photo-bytes'))
@@ -36,11 +39,13 @@ describe('enrichEventImage', () => {
     expect(result).toBe('sourced')
     expect(fetchExternalImageMock).toHaveBeenNthCalledWith(1, 'https://example.com/logo.png')
     expect(fetchExternalImageMock).toHaveBeenNthCalledWith(2, 'https://example.com/real-photo.jpg')
+    expect(isLowQualityImageMock).toHaveBeenNthCalledWith(1, Buffer.from('logo-bytes'), { isLogo: true })
+    expect(isLowQualityImageMock).toHaveBeenNthCalledWith(2, Buffer.from('real-photo-bytes'), { isLogo: false })
     expect(uploadImageMock).toHaveBeenCalledWith(Buffer.from('real-photo-bytes'), 'events')
   })
 
   it('tries overrideImageUrl before any page-extracted candidate', async () => {
-    extractPageImageCandidatesMock.mockResolvedValue(['https://example.com/page-image.jpg'])
+    extractPageImageCandidatesMock.mockResolvedValue([{ url: 'https://example.com/page-image.jpg', isLogo: false }])
     fetchExternalImageMock.mockResolvedValueOnce(Buffer.from('poster-bytes'))
     isLowQualityImageMock.mockResolvedValueOnce(false)
     const { enrichEventImage } = await import('./image-enrichment.js')
@@ -56,7 +61,10 @@ describe('enrichEventImage', () => {
   })
 
   it('returns none when every candidate is low quality or fails to download', async () => {
-    extractPageImageCandidatesMock.mockResolvedValue(['https://example.com/logo.png', 'https://example.com/broken.jpg'])
+    extractPageImageCandidatesMock.mockResolvedValue([
+      { url: 'https://example.com/logo.png', isLogo: true },
+      { url: 'https://example.com/broken.jpg', isLogo: false },
+    ])
     fetchExternalImageMock.mockResolvedValueOnce(Buffer.from('logo-bytes')).mockResolvedValueOnce(null)
     isLowQualityImageMock.mockResolvedValueOnce(true)
     const { enrichEventImage } = await import('./image-enrichment.js')
