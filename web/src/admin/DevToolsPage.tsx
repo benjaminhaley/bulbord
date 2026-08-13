@@ -14,7 +14,7 @@ import {
   IonToast,
   IonToolbar,
 } from '@ionic/react'
-import { alertCircle, eyeOutline, mailOutline, peopleOutline, refreshOutline } from 'ionicons/icons'
+import { alertCircle, eyeOutline, mailOutline, peopleOutline, refreshOutline, sunnyOutline } from 'ionicons/icons'
 import { useEffect, useState } from 'react'
 
 import { formatRelativeDateTime } from '../format'
@@ -125,6 +125,7 @@ export function DevToolsPage() {
             {resourcing && <IonSpinner slot="end" name="dots" />}
           </IonItem>
           <IonItem lines="none">
+            <IonIcon slot="start" icon={sunnyOutline} />
             <IonLabel className="ion-text-wrap">
               <h2>Camps data</h2>
               <p>Camps are hand-researched, not auto-sourced — this just tracks when it was last refreshed.</p>
