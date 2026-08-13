@@ -11,11 +11,16 @@
 // drifted to inventing its own colors and had a different parameter shape
 // from this file).
 
+// Feedback #74: an event within the current week (2-6 days out) reads as
+// "this Saturday" rather than a bare date — day 7 (a week from today) falls
+// back to the full date instead, since people usually mean "next <Weekday>"
+// at that distance, not "this <Weekday>".
 function relativeDayLabel(date: Date, today: Date): string | null {
   const dayMs = 24 * 60 * 60 * 1000
   const diffDays = Math.round((date.getTime() - today.getTime()) / dayMs)
   if (diffDays === 0) return 'Today'
   if (diffDays === 1) return 'Tomorrow'
+  if (diffDays >= 2 && diffDays <= 6) return `this ${date.toLocaleDateString('en-US', { weekday: 'long' })}`
   return null
 }
 
