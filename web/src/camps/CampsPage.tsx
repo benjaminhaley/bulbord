@@ -1,6 +1,7 @@
 import {
   IonAccordion,
   IonAccordionGroup,
+  IonBadge,
   IonButton,
   IonButtons,
   IonContent,
@@ -29,7 +30,7 @@ import { API_URL } from '../config'
 import { Avatar } from '../uploads/Avatar'
 import { createCamp, fetchCampsByBreak, type BreakBucket, type Camp, type InterestStatus } from './api'
 import { CampForm } from './CampForm'
-import { campDetailsLine, distanceLabel, formatDateRange, locationLabel, timeLabel } from './format'
+import { bookingStatusColor, bookingStatusLabel, campDetailsLine, distanceLabel, formatDateRange, locationLabel, timeLabel } from './format'
 import { applyInterestUpdateAcrossBuckets } from './grouping'
 import { InterestedBadge } from './InterestedBadge'
 import { useCampInterest } from './useCampInterest'
@@ -113,6 +114,13 @@ function CampRow({
           </h2>
           {showDate && <p>{formatDateRange(camp.start_date, camp.end_date)}</p>}
           <p>{timeLabel(camp.start_time, camp.end_time)}</p>
+          {/* Booking status (feedback #68) as a color-coded badge so it's
+              clear at a glance whether it's worth tapping through — same
+              IonBadge convention as the is_stale/status badges elsewhere in
+              this app (see format.ts's bookingStatusColor). */}
+          <IonBadge color={bookingStatusColor(camp.booking_status)} style={{ marginBottom: 4 }}>
+            {bookingStatusLabel(camp.booking_status)}
+          </IonBadge>
           {/* Distance sits next to location, not in the price/age line below
               (feedback, 2026-08-05: "it's just more relevant for address
               information") — same " · " convention as everywhere else. */}

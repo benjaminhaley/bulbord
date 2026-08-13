@@ -138,6 +138,36 @@ export function spotsLabel(spotsAvailable: number | null): string | null {
   return `Spots: ${spotsAvailable} available`
 }
 
+// Whether the camp's real registration system is actually open right now
+// (feedback #68) — 'open' | 'full' | 'waitlist' | 'not_opened', hand-checked
+// per camp/date the same way price/hours were (see CLAUDE.md's Data sourcing
+// quality checklist). Same "always show a label, even when unknown" posture
+// as ageRangeLabel/distanceLabel above — a camp whose real booking system
+// couldn't be checked (a JS-rendered widget, or simply not yet researched)
+// shows "Booking: Unknown" rather than omitting the line, so the set of
+// fields shown never varies camp to camp.
+const BOOKING_STATUS_LABELS: Record<string, string> = {
+  open: 'Open',
+  full: 'Full',
+  waitlist: 'Waitlist',
+  not_opened: 'Not open yet',
+}
+
+export function bookingStatusLabel(status: string | null): string {
+  return `Booking: ${status != null && status in BOOKING_STATUS_LABELS ? BOOKING_STATUS_LABELS[status] : 'Unknown'}`
+}
+
+// Color-codes the booking-status badge so it reads at a glance (feedback
+// #68: "this should be clear") — matches this app's existing IonBadge status
+// convention (see SourceDetailPage/CampSourceDetailPage's is_stale/status
+// badges) rather than inventing a new visual language.
+export function bookingStatusColor(status: string | null): 'success' | 'danger' | 'warning' | 'medium' {
+  if (status === 'open') return 'success'
+  if (status === 'full') return 'danger'
+  if (status === 'waitlist') return 'warning'
+  return 'medium'
+}
+
 export interface DetailedCamp {
   price_per_day: string | null
   price_is_estimated: boolean

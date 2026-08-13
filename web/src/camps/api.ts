@@ -63,6 +63,10 @@ export interface Camp {
   age_max: number | null
   // Real-time availability isn't tracked — null means unknown, not zero.
   spots_available: number | null
+  // Whether the camp's real registration system is actually open right now
+  // — 'open' | 'full' | 'waitlist' | 'not_opened' | null (unresearched or
+  // unconfirmable). Only ever set by a seed script (see api/src/db/schema.ts).
+  booking_status: string | null
   // When/how to register — free text, always shown when present.
   booking_instructions: string | null
   // Structured "what to bring / prepare" checklist — same posture as

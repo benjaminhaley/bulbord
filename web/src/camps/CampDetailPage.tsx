@@ -1,5 +1,6 @@
 import {
   IonBackButton,
+  IonBadge,
   IonButton,
   IonButtons,
   IonContent,
@@ -20,6 +21,8 @@ import { deleteCamp, fetchCamp, updateCamp, type Camp, type CampOptionLine, type
 import { CampForm } from './CampForm'
 import { CommentsSection } from './CommentsSection'
 import {
+  bookingStatusColor,
+  bookingStatusLabel,
   campDetailsLine,
   distanceLabel,
   formatDateRange,
@@ -329,10 +332,17 @@ export function CampDetailPage() {
               )
             )}
             <CommentsSection campId={camp.id} source={camp.source} />
-            {(camp.booking_instructions || camp.source_url) && (
+            {(camp.booking_instructions || camp.source_url || camp.booking_status) && (
               <>
                 <hr style={SECTION_DIVIDER_STYLE} />
                 <h2>Booking</h2>
+                {/* Whether registration is actually open right now (feedback
+                    #68) — leads the section since it's the single most
+                    actionable fact here, ahead of the static how-to-register
+                    text and the link itself. */}
+                <IonBadge color={bookingStatusColor(camp.booking_status)} style={{ marginBottom: 8 }}>
+                  {bookingStatusLabel(camp.booking_status)}
+                </IonBadge>
                 {camp.booking_instructions && (
                   <p style={{ ...FACT_LINE_STYLE, whiteSpace: 'pre-wrap' }}>{camp.booking_instructions}</p>
                 )}

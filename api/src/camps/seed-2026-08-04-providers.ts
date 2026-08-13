@@ -296,6 +296,26 @@ interface ProviderSpec {
   // the provider's real page over an assumed blanket policy" principle as
   // earliestConfirmedDate above, just mid-break instead of at the start.
   breakDateOverrides?: Record<string, { startDate: string; endDate: string }>
+  // Whether the provider's REAL registration system currently shows
+  // registration as open, full, waitlisted, or not yet opened for this
+  // provider's seeded dates (feedback #68, 2026-08-13) — 'open' | 'full' |
+  // 'waitlist' | 'not_opened'. Distinct from hasRecurringOffering/
+  // earliestConfirmedDate above (which gate whether a candidate is generated
+  // at all): this is the live-ish state of a candidate that DOES get
+  // generated. Always found by querying the provider's actual booking
+  // system directly — never inferred from the marketing page's stated
+  // policy — see backfill-2026-08-13-booking-status.ts for exactly how each
+  // of the six below was checked (several turned out to have real, public,
+  // queryable APIs behind their booking widgets that an earlier research
+  // pass had assumed were unqueryable — don't repeat that assumption
+  // without trying the real system first). Omitted here (undefined) rather
+  // than duplicating a value the backfill script's own header comment
+  // already documents in full, since this field isn't read by main()'s
+  // insert below — booking_status was added to the schema after this
+  // script's one-time run, so it's applied via that separate backfill
+  // instead; this field exists for future providers added through this same
+  // ProviderSpec shape, and as a template for the next research pass.
+  bookingStatus?: 'open' | 'full' | 'waitlist' | 'not_opened'
 }
 
 const PROVIDERS: ProviderSpec[] = [

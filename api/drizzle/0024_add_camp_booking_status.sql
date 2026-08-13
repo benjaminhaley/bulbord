@@ -1,0 +1,1 @@
+ALTER TABLE "camps" ADD COLUMN "booking_status" text;

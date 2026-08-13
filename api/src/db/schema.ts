@@ -329,6 +329,22 @@ export const camps = pgTable('camps', {
   // sourceUrl "View Booking Page" button, so there's no repeating shape here
   // worth extracting the way there was for options/prepItems.
   bookingInstructions: text('booking_instructions'),
+  // Whether the camp's registration is actually open right now (feedback
+  // #68, 2026-08-13) — 'open' | 'full' | 'waitlist' | 'not_opened'. Distinct
+  // from bookingInstructions above: that's static "how to register" text,
+  // this is the live-ish state of the real registration system, checked
+  // per camp/date the same way price/hours/dates were (see the Data
+  // sourcing quality checklist in CLAUDE.md — never trust a stated blanket
+  // policy, check the real system). Null means genuinely unresearched or
+  // unconfirmable (a JS-rendered booking widget this codebase couldn't
+  // query) — shown as "Booking: Unknown" (camps/format.ts's
+  // bookingStatusLabel), same "always shown, even if unknown" posture as
+  // every other optional camp field, never silently omitted. A snapshot
+  // like every other hand-researched camp field, not live-polled — expect
+  // it to go stale and be refreshed only when asked, same as price/dates.
+  // Seed-only for now, like priceIsEstimated/options — not on the member
+  // self-service POST/PATCH body (see routes.ts).
+  bookingStatus: text('booking_status'),
   // Structured "what to bring / prepare" checklist — see CampPrepLine above.
   prepItems: jsonb('prep_items').$type<CampPrepLine[]>(),
   // Member-submitted-camp equivalent of optionsNote above, for the same

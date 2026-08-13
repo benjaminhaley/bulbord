@@ -169,6 +169,13 @@
       "when": 1785973574662,
       "tag": "0023_add_user_role",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1786587195612,
+      "tag": "0024_add_camp_booking_status",
+      "breakpoints": true
     }
   ]
 }

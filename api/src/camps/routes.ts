@@ -35,6 +35,7 @@ type SerializableCamp = Pick<
   | 'ageMin'
   | 'ageMax'
   | 'spotsAvailable'
+  | 'bookingStatus'
   | 'bookingInstructions'
   | 'prepItems'
   | 'prepNote'
@@ -90,6 +91,10 @@ function serializeCamp(c: HydratedCamp, currentUserId: string | null) {
     // Real-time availability isn't tracked — null means unknown, not zero.
     // Only ever set by a seed script today; not on the self-service body.
     spots_available: c.spotsAvailable,
+    // 'open' | 'full' | 'waitlist' | 'not_opened' | null (unresearched/
+    // unconfirmable) — see schema.ts for the full rationale. Seed-only, same
+    // posture as price_is_estimated/options; not on the self-service body.
+    booking_status: c.bookingStatus,
     booking_instructions: c.bookingInstructions,
     // Structured "what to bring / prepare" checklist — same shape/posture
     // as options above. prep_note is the member self-service equivalent.

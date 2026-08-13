@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest'
 
 import {
   ageRangeLabel,
+  bookingStatusColor,
+  bookingStatusLabel,
   buildInterestedTeaser,
   campDetailsLine,
   distanceLabel,
@@ -113,6 +115,34 @@ describe('spotsLabel', () => {
 
   it('shows full when zero or fewer', () => {
     expect(spotsLabel(0)).toBe('Spots: full')
+  })
+})
+
+describe('bookingStatusLabel', () => {
+  it('labels each known status', () => {
+    expect(bookingStatusLabel('open')).toBe('Booking: Open')
+    expect(bookingStatusLabel('full')).toBe('Booking: Full')
+    expect(bookingStatusLabel('waitlist')).toBe('Booking: Waitlist')
+    expect(bookingStatusLabel('not_opened')).toBe('Booking: Not open yet')
+  })
+
+  it('shows Unknown for null or an unrecognized value, never omitting the label', () => {
+    expect(bookingStatusLabel(null)).toBe('Booking: Unknown')
+    expect(bookingStatusLabel('something_else')).toBe('Booking: Unknown')
+  })
+})
+
+describe('bookingStatusColor', () => {
+  it('color-codes each known status', () => {
+    expect(bookingStatusColor('open')).toBe('success')
+    expect(bookingStatusColor('full')).toBe('danger')
+    expect(bookingStatusColor('waitlist')).toBe('warning')
+    expect(bookingStatusColor('not_opened')).toBe('medium')
+  })
+
+  it('falls back to medium for null or unrecognized values', () => {
+    expect(bookingStatusColor(null)).toBe('medium')
+    expect(bookingStatusColor('something_else')).toBe('medium')
   })
 })
 
