@@ -30,7 +30,7 @@ import { API_URL } from '../config'
 import { Avatar } from '../uploads/Avatar'
 import { createCamp, fetchCampsByBreak, type BreakBucket, type Camp, type InterestStatus } from './api'
 import { CampForm } from './CampForm'
-import { bookingStatusColor, bookingStatusLabel, campDetailsLine, distanceLabel, formatDateRange, locationLabel, timeLabel } from './format'
+import { bookingStatusChipStyle, bookingStatusLabel, campDetailsLine, distanceLabel, formatDateRange, locationLabel, timeLabel } from './format'
 import { applyInterestUpdateAcrossBuckets } from './grouping'
 import { InterestedBadge } from './InterestedBadge'
 import { useCampInterest } from './useCampInterest'
@@ -113,14 +113,23 @@ function CampRow({
             )}
           </h2>
           {showDate && <p>{formatDateRange(camp.start_date, camp.end_date)}</p>}
-          <p>{timeLabel(camp.start_time, camp.end_time)}</p>
-          {/* Booking status (feedback #68) as a color-coded badge so it's
-              clear at a glance whether it's worth tapping through — same
-              IonBadge convention as the is_stale/status badges elsewhere in
-              this app (see format.ts's bookingStatusColor). */}
-          <IonBadge color={bookingStatusColor(camp.booking_status)} style={{ marginBottom: 4 }}>
-            {bookingStatusLabel(camp.booking_status)}
-          </IonBadge>
+          {/* Booking status (feedback #68) shares the time line via flex
+              rather than getting its own row (fixed 2026-08-13, from a
+              screenshot: an earlier version put the badge as a bare sibling
+              between two block lines with no line break of its own, so the
+              browser flowed the address text right up against it and
+              wrapped mid-word — "2540 W Lawrence" / "Ave · 3.0 mi". flexWrap
+              lets the chip drop to its own line on a narrow screen without
+              text wrapping around it, since a flex item wraps as a whole
+              unit, not mid-content). Muted chip colors, not Ionic's stock
+              IonBadge success/danger/warning (see format.ts's
+              bookingStatusChipStyle for why). */}
+          <p style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 6 }}>
+            {timeLabel(camp.start_time, camp.end_time)}
+            <IonBadge style={{ ...bookingStatusChipStyle(camp.booking_status), fontWeight: 500 }}>
+              {bookingStatusLabel(camp.booking_status)}
+            </IonBadge>
+          </p>
           {/* Distance sits next to location, not in the price/age line below
               (feedback, 2026-08-05: "it's just more relevant for address
               information") — same " · " convention as everywhere else. */}

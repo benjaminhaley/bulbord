@@ -21,7 +21,7 @@ import { deleteCamp, fetchCamp, updateCamp, type Camp, type CampOptionLine, type
 import { CampForm } from './CampForm'
 import { CommentsSection } from './CommentsSection'
 import {
-  bookingStatusColor,
+  bookingStatusChipStyle,
   bookingStatusLabel,
   campDetailsLine,
   distanceLabel,
@@ -340,7 +340,7 @@ export function CampDetailPage() {
                     #68) — leads the section since it's the single most
                     actionable fact here, ahead of the static how-to-register
                     text and the link itself. */}
-                <IonBadge color={bookingStatusColor(camp.booking_status)} style={{ marginBottom: 8 }}>
+                <IonBadge style={{ ...bookingStatusChipStyle(camp.booking_status), fontWeight: 500, marginBottom: 8 }}>
                   {bookingStatusLabel(camp.booking_status)}
                 </IonBadge>
                 {camp.booking_instructions && (

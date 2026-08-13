@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
   ageRangeLabel,
-  bookingStatusColor,
+  bookingStatusChipStyle,
   bookingStatusLabel,
   buildInterestedTeaser,
   campDetailsLine,
@@ -132,17 +132,20 @@ describe('bookingStatusLabel', () => {
   })
 })
 
-describe('bookingStatusColor', () => {
-  it('color-codes each known status', () => {
-    expect(bookingStatusColor('open')).toBe('success')
-    expect(bookingStatusColor('full')).toBe('danger')
-    expect(bookingStatusColor('waitlist')).toBe('warning')
-    expect(bookingStatusColor('not_opened')).toBe('medium')
+describe('bookingStatusChipStyle', () => {
+  it('gives each known status its own muted background/foreground pair', () => {
+    const open = bookingStatusChipStyle('open')
+    const full = bookingStatusChipStyle('full')
+    const waitlist = bookingStatusChipStyle('waitlist')
+    const notOpened = bookingStatusChipStyle('not_opened')
+    const all = [open, full, waitlist, notOpened]
+    expect(new Set(all.map((c) => c.background)).size).toBe(4)
+    expect(new Set(all.map((c) => c.color)).size).toBe(4)
   })
 
-  it('falls back to medium for null or unrecognized values', () => {
-    expect(bookingStatusColor(null)).toBe('medium')
-    expect(bookingStatusColor('something_else')).toBe('medium')
+  it('falls back to the neutral gray pair for null or unrecognized values', () => {
+    expect(bookingStatusChipStyle(null)).toEqual(bookingStatusChipStyle('not_opened'))
+    expect(bookingStatusChipStyle('something_else')).toEqual(bookingStatusChipStyle('not_opened'))
   })
 })
 

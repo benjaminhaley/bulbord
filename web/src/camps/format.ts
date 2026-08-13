@@ -157,15 +157,21 @@ export function bookingStatusLabel(status: string | null): string {
   return `Booking: ${status != null && status in BOOKING_STATUS_LABELS ? BOOKING_STATUS_LABELS[status] : 'Unknown'}`
 }
 
-// Color-codes the booking-status badge so it reads at a glance (feedback
-// #68: "this should be clear") — matches this app's existing IonBadge status
-// convention (see SourceDetailPage/CampSourceDetailPage's is_stale/status
-// badges) rather than inventing a new visual language.
-export function bookingStatusColor(status: string | null): 'success' | 'danger' | 'warning' | 'medium' {
-  if (status === 'open') return 'success'
-  if (status === 'full') return 'danger'
-  if (status === 'waitlist') return 'warning'
-  return 'medium'
+// Color-codes the booking-status chip so it reads at a glance (feedback
+// #68: "this should be clear"). Deliberately NOT Ionic's stock
+// success/danger/warning IonBadge colors (feedback, 2026-08-13, from a
+// screenshot: the bright saturated green "reads strange" — it would have
+// been the first `success`-colored badge anywhere in this app; every
+// existing badge here uses the muted `warning`/`medium` palette instead —
+// see SourceDetailPage/CampSourceDetailPage's is_stale/status badges). These
+// are soft background/foreground pairs at the same low saturation as that
+// existing gray/orange convention, applied via inline style rather than
+// IonBadge's `color` prop.
+export function bookingStatusChipStyle(status: string | null): { background: string; color: string } {
+  if (status === 'open') return { background: '#dcf3e3', color: '#1f7a43' }
+  if (status === 'full') return { background: '#f8dede', color: '#a3352b' }
+  if (status === 'waitlist') return { background: '#faedcf', color: '#8a6416' }
+  return { background: '#e8e8ea', color: '#5f6368' }
 }
 
 export interface DetailedCamp {
