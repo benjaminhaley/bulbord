@@ -136,6 +136,29 @@ async function loadEventDetail(id: string, userId: string | null) {
 }
 
 export async function eventsRoutes(app: FastifyInstance) {
+  // Public, unauthenticated on purpose (feedback #73): a link-preview
+  // crawler (iMessage, WhatsApp, Slack, etc.) that fetches a shared event
+  // URL is never logged in, so a rich share preview needs some way to reach
+  // event data without a session — same narrow-public-data pattern as
+  // GET /invites/:userId (see CLAUDE.md's Login section). Deliberately
+  // exposes only title/description/image, never address, price, or
+  // attendee data — everything else stays behind requireAuth. Only an
+  // approved, non-deleted event is eligible, same as the real detail route.
+  app.get('/events/:id/preview-meta', async (request, reply) => {
+    const { id } = request.params as { id: string }
+    const [row] = await db
+      .select({ title: events.title, description: events.description, imageUrl: events.imageUrl, thumbnailUrl: events.thumbnailUrl })
+      .from(events)
+      .where(and(eq(events.id, id), eq(events.status, 'approved'), isNull(events.deletedAt)))
+      .limit(1)
+    if (!row) {
+      return reply.code(404).send({ error: { message: 'Event not found' } })
+    }
+    return reply.send({
+      data: { title: row.title, description: row.description, image_url: row.imageUrl ?? row.thumbnailUrl },
+    })
+  })
+
   app.get('/events/:id', { preHandler: requireAuth }, async (request, reply) => {
     const { id } = request.params as { id: string }
     const userId = request.currentUser?.id ?? null

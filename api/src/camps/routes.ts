@@ -196,6 +196,25 @@ async function loadUpcomingCamps(userId: string | null) {
 }
 
 export async function campsRoutes(app: FastifyInstance) {
+  // Public, unauthenticated on purpose (feedback #73) — same rationale as
+  // events' identical GET /events/:id/preview-meta: a link-preview crawler
+  // is never logged in, so it needs a narrow, non-restricted slice of camp
+  // data (title/description/image only) to build a share preview.
+  app.get('/camps/:id/preview-meta', async (request, reply) => {
+    const { id } = request.params as { id: string }
+    const [row] = await db
+      .select({ title: camps.title, description: camps.description, imageUrl: camps.imageUrl, thumbnailUrl: camps.thumbnailUrl })
+      .from(camps)
+      .where(and(eq(camps.id, id), eq(camps.status, 'approved'), isNull(camps.deletedAt)))
+      .limit(1)
+    if (!row) {
+      return reply.code(404).send({ error: { message: 'Camp not found' } })
+    }
+    return reply.send({
+      data: { title: row.title, description: row.description, image_url: row.imageUrl ?? row.thumbnailUrl },
+    })
+  })
+
   app.get('/camps/:id', { preHandler: requireAuth }, async (request, reply) => {
     const { id } = request.params as { id: string }
     const userId = request.currentUser?.id ?? null

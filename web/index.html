@@ -13,6 +13,17 @@
       content="viewport-fit=cover, width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=5.0"
     />
     <title>Nettelhorst Bulbord</title>
+    <!--
+      Default share-preview tags for pages with nothing more specific to
+      show (feedback #73) — web/server.mjs overwrites these at request time
+      for /events/:id and /camps/:id with that listing's own title,
+      description, and photo, using the same wording JoinGate.tsx's join
+      screen already uses so the two match.
+    -->
+    <meta property="og:site_name" content="Nettelhorst Bulbord" />
+    <meta property="og:title" content="Nettelhorst Bulbord" />
+    <meta property="og:description" content="A bulletin board for the Nettelhorst community" />
+    <meta name="twitter:card" content="summary" />
   </head>
   <body>
     <div id="root"></div>
