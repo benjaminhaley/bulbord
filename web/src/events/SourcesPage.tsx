@@ -37,6 +37,14 @@ export function SourcesPage() {
         </IonToolbar>
       </IonHeader>
       <IonContent fullscreen>
+        {/* A brief scope guide for whoever (human or AI) is deciding what belongs
+            here — feedback #71: the sources list itself doesn't otherwise say
+            what makes an event appropriate to add. */}
+        <p className="ion-padding-horizontal ion-padding-top" style={{ color: 'var(--ion-color-medium)' }}>
+          Events for the Nettelhorst community. The ideal event is close to the school, open to the community, and
+          focused on people, not profit — think about what families are talking about when they drop their kids off.
+          Those are the events that belong here.
+        </p>
         {sources === null && !error && (
           <div className="coming-soon">
             <IonSpinner name="dots" />

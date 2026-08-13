@@ -37,6 +37,13 @@ export function CampSourcesPage() {
         </IonToolbar>
       </IonHeader>
       <IonContent fullscreen>
+        {/* A brief scope guide for whoever (human or AI) is deciding what belongs
+            here — feedback #71: the sources list itself doesn't otherwise say
+            what makes a camp appropriate to add. */}
+        <p className="ion-padding-horizontal ion-padding-top" style={{ color: 'var(--ion-color-medium)' }}>
+          Camps for when school is closed. The ideal camp is close to the school, covers most of a workday, and is
+          well attended by people at Nettelhorst.
+        </p>
         {sources === null && !error && (
           <div className="coming-soon">
             <IonSpinner name="dots" />
