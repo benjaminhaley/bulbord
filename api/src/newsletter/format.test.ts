@@ -13,9 +13,9 @@ describe('formatWhen', () => {
     expect(formatWhen({ startDate: '2026-08-03', startTime: null, allDay: true }, now)).toBe('Tomorrow')
   })
 
-  it('labels a day within the current week as "this <Weekday>"', () => {
-    expect(formatWhen({ startDate: '2026-08-04', startTime: null, allDay: true }, now)).toBe('this Tuesday')
-    expect(formatWhen({ startDate: '2026-08-08', startTime: null, allDay: true }, now)).toBe('this Saturday')
+  it('labels a day within the current week as "This <Weekday>"', () => {
+    expect(formatWhen({ startDate: '2026-08-04', startTime: null, allDay: true }, now)).toBe('This Tuesday')
+    expect(formatWhen({ startDate: '2026-08-08', startTime: null, allDay: true }, now)).toBe('This Saturday')
   })
 
   it('falls back to a weekday/month/day label a week or more out', () => {
