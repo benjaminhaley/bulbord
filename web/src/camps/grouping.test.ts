@@ -22,6 +22,7 @@ function camp(overrides: Partial<Camp> = {}): Camp {
     age_min: null,
     spots_available: null,
     age_max: null,
+    booking_status: null,
     booking_instructions: null,
     prep_items: null,
     prep_note: null,
