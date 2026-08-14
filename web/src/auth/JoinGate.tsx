@@ -83,7 +83,7 @@ function BrandHeader() {
 // so both stay visually identical rather than two hand-copied versions.
 function SignInLink({ busy, onSignIn }: { busy: boolean; onSignIn: () => void }) {
   return (
-    <p className="ion-margin-top" style={{ color: 'var(--ion-color-medium)' }}>
+    <p className="ion-margin-top" style={{ color: 'var(--ion-color-medium)', fontSize: '0.8125rem' }}>
       Already on Nettelhorst Bulbord?{' '}
       <a
         onClick={busy ? undefined : onSignIn}
