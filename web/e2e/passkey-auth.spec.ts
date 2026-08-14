@@ -7,6 +7,26 @@ import { test, expect, type Page, type BrowserContext } from '@playwright/test'
 // the repo, so no new test fixture is needed.
 const FIXTURE_PHOTO_PATH = fileURLToPath(new URL('../public/nettelhorst-logo.png', import.meta.url))
 
+// CI's UPLOADS_* env vars are deliberately non-functional (see
+// .github/workflows/ci.yml — UPLOADS_ENDPOINT: http://localhost:0) since no
+// e2e spec ever needed a real upload to succeed before the photo step
+// became required (feedback #82). Rather than wiring real object-storage
+// credentials into CI just for this, POST /uploads is mocked at the network
+// level — the same approach Playwright itself recommends for a dependency
+// this test doesn't actually need to exercise for real.
+async function mockPhotoUpload(target: Page | BrowserContext) {
+  await target.route('**/uploads', async (route) => {
+    if (route.request().method() !== 'POST') return route.continue()
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        data: { image_url: '/uploads/e2e-fixture.jpg', thumbnail_url: '/uploads/e2e-fixture-thumb.jpg' },
+      }),
+    })
+  })
+}
+
 // Drives the real registration/login ceremonies end-to-end using Chrome
 // DevTools Protocol's WebAuthn virtual-authenticator support — the automated
 // equivalent of a real Face ID prompt, standing in for hardware this CI
@@ -79,6 +99,7 @@ test('the whole invite-only passkey flow: bootstrap, sign out/in, then a second 
   test.skip(!rootSecret, 'ROOT_INVITE_SECRET must be set to run this spec')
 
   await addVirtualAuthenticator(context, page)
+  await mockPhotoUpload(context)
 
   await test.step('an uninvited visitor is fully gated out', async () => {
     await page.goto('/')
@@ -113,6 +134,7 @@ test('the whole invite-only passkey flow: bootstrap, sign out/in, then a second 
     const guestContext = await page.context().browser()!.newContext()
     const guestPage = await guestContext.newPage()
     await addVirtualAuthenticator(guestContext, guestPage)
+    await mockPhotoUpload(guestContext)
 
     await guestPage.goto(`${baseURL}/events?invite=${rootUserId}`)
     await expect(guestPage.getByRole('heading', { name: 'Ben Haley invited you' })).toBeVisible({
