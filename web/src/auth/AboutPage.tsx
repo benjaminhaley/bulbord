@@ -17,8 +17,7 @@ export function AboutPage() {
         <h2>About Nettelhorst Bulbord</h2>
         <p>
           See things relevant to the Nettelhorst community — events, camps, the type of things people talk about
-          during drop off. This app is designed to help us come together more frequently, for the good of our kids
-          and families.
+          during drop off.
         </p>
         <h2>About the Author</h2>
         <img
@@ -30,7 +29,10 @@ export function AboutPage() {
           I'm Ben Haley. Anna Piepmeyer and I are parents to two kids at Nettelhorst — Sebron in third grade and
           Parker in pre-K. You'll see me riding around town in a cargo bike, often with the whole family loaded in.
         </p>
-        <p>I'm building this app as a fun side project.</p>
+        <p>
+          I'm building this app as a fun side project. I designed it to help us come together more frequently, for
+          the good of our kids and families.
+        </p>
         <p>
           Feedback welcome! <a href="mailto:benjamin.haley@gmail.com">benjamin.haley@gmail.com</a> ·{' '}
           <a href="tel:+16302979831">630-297-9831</a>
