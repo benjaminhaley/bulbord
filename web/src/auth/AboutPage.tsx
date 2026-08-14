@@ -21,6 +21,11 @@ export function AboutPage() {
           and families.
         </p>
         <h2>About the Author</h2>
+        <img
+          src="/ben-family-photo.png"
+          alt="Ben, Anna, Sebron, and Parker"
+          style={{ width: '100%', maxWidth: 360, display: 'block', margin: '4px auto 12px' }}
+        />
         <p>
           I'm Ben Haley. Anna Piepmeyer and I are parents to two kids at Nettelhorst — Sebron in third grade and
           Parker in pre-K. You'll see me riding around town in a cargo bike, often with the whole family loaded in.
