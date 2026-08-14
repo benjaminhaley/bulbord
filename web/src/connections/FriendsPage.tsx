@@ -4,6 +4,7 @@ import {
   IonButtons,
   IonContent,
   IonHeader,
+  IonIcon,
   IonItem,
   IonLabel,
   IonList,
@@ -13,35 +14,36 @@ import {
   IonTitle,
   IonToolbar,
 } from '@ionic/react'
+import { personAddOutline } from 'ionicons/icons'
 import { useEffect, useState } from 'react'
 
 import { Avatar } from '../uploads/Avatar'
 import { addConnection, fetchConnectionsState, type ConnectionsState, type MemberSummary } from './api'
 
+// A section with no members just isn't shown at all (feedback #91) — no
+// empty-state placeholder row, unlike most other "nothing here yet" spots
+// in this app (e.g. ChooseFriendsScreen's own suggestions list). Three
+// section headers plus the "add more friends" prompt already carries the
+// nudge; a blank "No mutual friends yet" row under each empty one read as
+// clutter, not information.
 function Section({
   title,
   members,
-  emptyText,
   addBackId,
   onAddBack,
 }: {
   title: string
   members: MemberSummary[]
-  emptyText: string
   addBackId: string | null
   onAddBack?: (member: MemberSummary) => void
 }) {
+  if (members.length === 0) return null
   return (
     <>
       <h2 className="ion-padding-start" style={{ marginBottom: 4 }}>
         {title}
       </h2>
       <IonList inset>
-        {members.length === 0 && (
-          <IonItem lines="none">
-            <IonLabel color="medium">{emptyText}</IonLabel>
-          </IonItem>
-        )}
         {members.map((member) => (
           <IonItem key={member.id}>
             <Avatar slot="start" url={member.avatarUrl} name={member.name} />
@@ -65,7 +67,9 @@ function Section({
 // three buckets from GET /connections (connections/service.ts's
 // deriveConnectionsState): Friends (mutual), Following (you added, they
 // haven't reciprocated), Added You (they added you — the "friend back"
-// prompt the alert email points here for).
+// prompt the alert email points here for). "Add more friends" (feedback
+// #91) always sits above them, routing to AddFriendsPage's reuse of the
+// onboarding ChooseFriendsScreen.
 export function FriendsPage() {
   const [state, setState] = useState<ConnectionsState | null>(null)
   const [loading, setLoading] = useState(true)
@@ -113,12 +117,17 @@ export function FriendsPage() {
         )}
         {state && (
           <>
-            <Section title="Friends" members={state.friends} emptyText="No mutual friends yet" addBackId={null} />
-            <Section title="You Following" members={state.following} emptyText="Not following anyone yet" addBackId={null} />
+            <IonList inset>
+              <IonItem button routerLink="/friends/add" lines="none">
+                <IonIcon slot="start" icon={personAddOutline} color="primary" />
+                <IonLabel color="primary">Add more friends</IonLabel>
+              </IonItem>
+            </IonList>
+            <Section title="Friends" members={state.friends} addBackId={null} />
+            <Section title="You Following" members={state.following} addBackId={null} />
             <Section
               title="Following You"
               members={state.followers}
-              emptyText="No one has added you yet"
               addBackId={addingBackId}
               onAddBack={addBack}
             />

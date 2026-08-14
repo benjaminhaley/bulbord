@@ -15,6 +15,7 @@ import { AboutPage } from '../auth/AboutPage'
 import { AccountPage } from '../auth/AccountPage'
 import { EditProfilePage } from '../auth/EditProfilePage'
 import { JoinGate } from '../auth/JoinGate'
+import { AddFriendsPage } from '../connections/AddFriendsPage'
 import { FriendsPage } from '../connections/FriendsPage'
 import { EventsPage } from '../events/EventsPage'
 import { EventDetailPage } from '../events/EventDetailPage'
@@ -49,6 +50,7 @@ export function App() {
                   <Route exact path="/account/edit" component={EditProfilePage} />
                   <Route exact path="/about" component={AboutPage} />
                   <Route exact path="/friends" component={FriendsPage} />
+                  <Route exact path="/friends/add" component={AddFriendsPage} />
                   <AdminRoute exact path="/admin/users" component={UsersPage} />
                   <AdminRoute exact path="/admin/dev-tools" component={DevToolsPage} />
                   <AdminRoute exact path="/admin/invite-preview" component={InvitePreviewPage} />

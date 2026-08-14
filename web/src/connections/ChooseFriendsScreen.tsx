@@ -53,7 +53,18 @@ function MemberRow({
 // own account while just looking at a preview — POST /connections and
 // finishing the onboarding step — are skipped. The "Added" checkmark still
 // shows on click so the interaction itself stays demonstrable.
-export function ChooseFriendsScreen({ preview = false }: { preview?: boolean } = {}) {
+//
+// `onFinished` (AddFriendsPage.tsx, feedback #91) lets this same component
+// be reached again after onboarding — "you can always do this later from
+// your Account page," a promise this screen's own copy made before that
+// page existed. Its presence (rather than a separate boolean) is also what
+// swaps the button's label to "Done": outside onboarding there's no
+// Continue/Skip distinction to preserve, since finishing this screen isn't
+// advancing a signup flow, it's just closing an add-friends screen.
+export function ChooseFriendsScreen({
+  preview = false,
+  onFinished,
+}: { preview?: boolean; onFinished?: () => void } = {}) {
   const { refresh } = useAuth()
   const [suggestions, setSuggestions] = useState<MemberSummary[]>([])
   const [loadingSuggestions, setLoadingSuggestions] = useState(true)
@@ -121,6 +132,7 @@ export function ChooseFriendsScreen({ preview = false }: { preview?: boolean } =
     try {
       await finishFriendsOnboarding()
       await refresh()
+      onFinished?.()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not continue')
       setFinishing(false)
@@ -173,7 +185,7 @@ export function ChooseFriendsScreen({ preview = false }: { preview?: boolean } =
         </IonText>
       )}
       <IonButton expand="block" className="ion-margin-top" disabled={finishing} onClick={finish}>
-        {addedIds.size > 0 ? 'Continue' : 'Skip for now'}
+        {onFinished ? 'Done' : addedIds.size > 0 ? 'Continue' : 'Skip for now'}
       </IonButton>
     </IonContent>
   )
