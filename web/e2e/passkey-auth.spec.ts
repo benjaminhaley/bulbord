@@ -28,6 +28,14 @@ async function fillProfileAndContinue(page: Page, firstName: string, lastName: s
   // checkbox's own item also matches ("Get weekly events email", feedback
   // #45), so that locator resolves to two ion-items' worth of inputs.
   await page.locator('input[type="email"]').fill(email)
+  // Role became a required field 2026-08-05 (feedback #49) — Continue stays
+  // disabled without it. RolePicker is a custom IonModal bottom sheet, not a
+  // plain select: tap the "I am..." field to open it, then tap the radio
+  // itself (not just the label text) inside the role's own list item.
+  await page.locator('ion-item', { hasText: 'I am...' }).click()
+  await expect(page.locator('ion-radio-group')).toBeVisible()
+  await page.locator('ion-item', { hasText: 'Family' }).locator('ion-radio').click()
+  await expect(page.locator('ion-item', { hasText: 'I am...' })).toContainText('Family')
   await page.getByRole('button', { name: 'Continue' }).click()
   await page.waitForSelector('ion-tab-bar', { timeout: 15000 })
 }

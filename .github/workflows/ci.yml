@@ -19,6 +19,16 @@ env:
   UPLOADS_ENDPOINT: http://localhost:0
   UPLOADS_ACCESS_KEY_ID: ci-unused
   UPLOADS_SECRET_ACCESS_KEY: ci-unused
+  # newsletter/mailer.ts reads these at module load too (same shape as
+  # UPLOADS_* above) — missing since the newsletter feature shipped
+  # (2026-08-02), which meant the e2e job's real `npm run dev` server boot
+  # has crashed on every push since then (`RESEND_FROM_EMAIL is not set`),
+  # silently skipping e2e entirely while every other CI job stayed green.
+  # Found 2026-08-14 while checking CI status wasn't just assumed green.
+  RESEND_FROM_EMAIL: ci-unused@example.com
+  RESEND_API_KEY: re_ci_unused
+  PUBLIC_API_URL: http://localhost:3001
+  PUBLIC_WEB_URL: http://localhost:5173
   VITE_API_URL: http://localhost:3001
 
 jobs:
