@@ -1,6 +1,6 @@
 import { IonButton, IonContent, IonHeader, IonModal, IonTitle, IonToolbar } from '@ionic/react'
 import { type SyntheticEvent, useEffect, useRef, useState } from 'react'
-import ReactCrop, { centerCrop, makeAspectCrop, type Crop, type PixelCrop } from 'react-image-crop'
+import ReactCrop, { centerCrop, convertToPixelCrop, makeAspectCrop, type Crop, type PixelCrop } from 'react-image-crop'
 import 'react-image-crop/dist/ReactCrop.css'
 
 // Crop step for the profile-photo picker only (feedback #56) — a fixed
@@ -79,6 +79,16 @@ export function CropModal({
     const { width, height } = e.currentTarget
     const initial = centerAspectCrop(width, height, 1)
     setCrop(initial)
+    // Also set the completed pixel crop directly, from the image's own
+    // just-known dimensions — don't rely solely on ReactCrop's internal
+    // auto-complete (it fires once, on the crop prop's first
+    // undefined -> set transition, using the crop box's live
+    // getBoundingClientRect() at that instant). That can race IonModal's
+    // open animation and read a zero-size box, permanently leaving "Use
+    // Photo" disabled since it only gets that one attempt — caught by a
+    // CI-only e2e failure, but a real user tapping "Use Photo" immediately
+    // (without dragging first) on a slow device could hit the same race.
+    setCompletedCrop(convertToPixelCrop(initial, width, height))
   }
 
   async function save() {
