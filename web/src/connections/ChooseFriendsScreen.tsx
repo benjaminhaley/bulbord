@@ -161,7 +161,9 @@ export function ChooseFriendsScreen({ preview = false }: { preview?: boolean } =
           ))}
         {!searching && !loadingSuggestions && listItems.length === 0 && (
           <IonItem lines="none">
-            <IonLabel color="medium">{showingSearch ? 'No members found' : 'No suggestions yet'}</IonLabel>
+            <IonLabel color="medium">
+              {showingSearch ? 'No members found' : "You're already connected with everyone on Nettelhorst Bulbord!"}
+            </IonLabel>
           </IonItem>
         )}
       </IonList>
