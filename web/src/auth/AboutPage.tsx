@@ -17,8 +17,8 @@ export function AboutPage() {
         <h2>About Nettelhorst Bulbord</h2>
         <p>
           See things relevant to the Nettelhorst community — events, camps, the type of things people talk about
-          during drop off. This app is designed to help our community at Nettelhorst come together more frequently,
-          for the good of our kids and families.
+          during drop off. This app is designed to help us come together more frequently, for the good of our kids
+          and families.
         </p>
         <h2>About the Author</h2>
         <p>
