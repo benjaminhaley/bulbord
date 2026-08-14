@@ -15,12 +15,12 @@ beforeEach(() => {
   sendMock.mockReset()
 })
 
-describe('sendNewsletterEmail', () => {
+describe('sendEmail', () => {
   it('sends with the configured from address', async () => {
     sendMock.mockResolvedValue({ data: { id: 'email-1' }, error: null })
-    const { sendNewsletterEmail } = await import('./mailer.js')
+    const { sendEmail } = await import('./mailer.js')
 
-    await sendNewsletterEmail('ben@example.com', 'This week on Nettelhorst', '<p>hi</p>')
+    await sendEmail('ben@example.com', 'This week on Nettelhorst', '<p>hi</p>')
 
     expect(sendMock).toHaveBeenCalledWith({
       from: 'Nettelhorst <newsletter@bulbord.com>',
@@ -32,8 +32,8 @@ describe('sendNewsletterEmail', () => {
 
   it('throws when Resend returns an error', async () => {
     sendMock.mockResolvedValue({ data: null, error: { message: 'invalid recipient' } })
-    const { sendNewsletterEmail } = await import('./mailer.js')
+    const { sendEmail } = await import('./mailer.js')
 
-    await expect(sendNewsletterEmail('bad@example.com', 'subject', '<p>hi</p>')).rejects.toThrow('invalid recipient')
+    await expect(sendEmail('bad@example.com', 'subject', '<p>hi</p>')).rejects.toThrow('invalid recipient')
   })
 })

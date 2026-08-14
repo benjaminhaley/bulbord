@@ -4,7 +4,7 @@ import { and, eq, isNotNull, isNull } from 'drizzle-orm'
 import { db } from '../db/client.js'
 import { eventsLog, users } from '../db/schema.js'
 import { requireEnv } from '../env.js'
-import { sendNewsletterEmail } from './mailer.js'
+import { sendEmail } from './mailer.js'
 import { getWeeklyEvents } from './query.js'
 import { createUnsubscribeToken } from './service.js'
 import { formatWeeklyEvents, newsletterSubject, renderNewsletterHtml } from './template.js'
@@ -40,7 +40,7 @@ async function main() {
           webUrl,
           unsubscribeUrl: `${apiUrl}/newsletter/unsubscribe?token=${createUnsubscribeToken(recipient.id)}`,
         })
-        return sendNewsletterEmail(recipient.email, subject, html)
+        return sendEmail(recipient.email, subject, html)
       }),
   )
 

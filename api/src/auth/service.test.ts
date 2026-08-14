@@ -22,6 +22,65 @@ describe('validateProfileUpdate', () => {
     expect(result).toEqual({ ok: false, message: 'role is required to complete your profile' })
   })
 
+  it('requires a photo the first time a profile is completed', () => {
+    const result = validateProfileUpdate(
+      { profileComplete: false },
+      { name: 'Ben Haley', email: 'ben@example.com', role: 'staff' },
+    )
+    expect(result).toEqual({ ok: false, message: 'a photo is required to complete your profile' })
+  })
+
+  it('requires at least one kid when role is family', () => {
+    const result = validateProfileUpdate(
+      { profileComplete: false },
+      { name: 'Ben Haley', email: 'ben@example.com', role: 'family', avatarUrl: '/uploads/profiles/x.jpg' },
+    )
+    expect(result).toEqual({ ok: false, message: 'at least one kid is required to complete your profile' })
+  })
+
+  it('does not require kids when role is staff or other', () => {
+    const result = validateProfileUpdate(
+      { profileComplete: false },
+      {
+        name: 'Ben Haley',
+        email: 'ben@example.com',
+        role: 'other',
+        roleOther: 'Neighbor',
+        avatarUrl: '/uploads/profiles/x.jpg',
+      },
+    )
+    expect(result.ok).toBe(true)
+  })
+
+  it('rejects an invalid grade', () => {
+    const result = validateProfileUpdate(
+      { profileComplete: false },
+      {
+        name: 'Ben Haley',
+        email: 'ben@example.com',
+        role: 'family',
+        avatarUrl: '/uploads/profiles/x.jpg',
+        kids: [{ grade: '9th' as never }],
+      },
+    )
+    expect(result).toEqual({ ok: false, message: 'grade must be a valid school grade' })
+  })
+
+  it('drops kids from the update when role is not family, even if supplied', () => {
+    const result = validateProfileUpdate(
+      { profileComplete: false },
+      {
+        name: 'Ben Haley',
+        email: 'ben@example.com',
+        role: 'staff',
+        avatarUrl: '/uploads/profiles/x.jpg',
+        kids: [{ grade: '3' }],
+      },
+    )
+    expect(result.ok).toBe(true)
+    expect(result.ok && result.updates.kids).toBeUndefined()
+  })
+
   it('rejects an invalid role value', () => {
     const result = validateProfileUpdate(
       { profileComplete: false },
@@ -38,25 +97,51 @@ describe('validateProfileUpdate', () => {
     expect(result).toEqual({ ok: false, message: 'please describe your role' })
   })
 
-  it('accepts a name+email+role that completes the profile', () => {
+  it('accepts a name+email+role+photo+kids that completes a family profile', () => {
     const result = validateProfileUpdate(
       { profileComplete: false },
-      { name: 'Ben Haley', email: 'ben@example.com', role: 'family' },
+      {
+        name: 'Ben Haley',
+        email: 'ben@example.com',
+        role: 'family',
+        avatarUrl: '/uploads/profiles/x.jpg',
+        kids: [{ grade: '3' }],
+      },
     )
     expect(result).toEqual({
       ok: true,
-      updates: { name: 'Ben Haley', email: 'ben@example.com', avatarUrl: undefined, role: 'family', roleOther: undefined },
+      updates: {
+        name: 'Ben Haley',
+        email: 'ben@example.com',
+        avatarUrl: '/uploads/profiles/x.jpg',
+        role: 'family',
+        roleOther: undefined,
+        kids: [{ grade: '3' }],
+      },
     })
   })
 
   it('accepts role "other" with a description', () => {
     const result = validateProfileUpdate(
       { profileComplete: false },
-      { name: 'Ben Haley', email: 'ben@example.com', role: 'other', roleOther: 'Neighbor' },
+      {
+        name: 'Ben Haley',
+        email: 'ben@example.com',
+        role: 'other',
+        roleOther: 'Neighbor',
+        avatarUrl: '/uploads/profiles/x.jpg',
+      },
     )
     expect(result).toEqual({
       ok: true,
-      updates: { name: 'Ben Haley', email: 'ben@example.com', avatarUrl: undefined, role: 'other', roleOther: 'Neighbor' },
+      updates: {
+        name: 'Ben Haley',
+        email: 'ben@example.com',
+        avatarUrl: '/uploads/profiles/x.jpg',
+        role: 'other',
+        roleOther: 'Neighbor',
+        kids: undefined,
+      },
     })
   })
 
@@ -88,17 +173,24 @@ describe('validateProfileUpdate', () => {
   it('passes newsletterSubscribed through, including an explicit opt-out', () => {
     const result = validateProfileUpdate(
       { profileComplete: false },
-      { name: 'Ben Haley', email: 'ben@example.com', role: 'staff', newsletterSubscribed: false },
+      {
+        name: 'Ben Haley',
+        email: 'ben@example.com',
+        role: 'staff',
+        avatarUrl: '/uploads/profiles/x.jpg',
+        newsletterSubscribed: false,
+      },
     )
     expect(result).toEqual({
       ok: true,
       updates: {
         name: 'Ben Haley',
         email: 'ben@example.com',
-        avatarUrl: undefined,
+        avatarUrl: '/uploads/profiles/x.jpg',
         newsletterSubscribed: false,
         role: 'staff',
         roleOther: undefined,
+        kids: undefined,
       },
     })
   })

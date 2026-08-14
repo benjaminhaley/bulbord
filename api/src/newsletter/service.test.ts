@@ -27,9 +27,9 @@ vi.mock('../db/client.js', () => {
   return { db: builder }
 })
 
-const sendNewsletterEmailMock = vi.fn(async (_to: string, _subject: string, _html: string) => {})
+const sendEmailMock = vi.fn(async (_to: string, _subject: string, _html: string) => {})
 vi.mock('./mailer.js', () => ({
-  sendNewsletterEmail: (to: string, subject: string, html: string) => sendNewsletterEmailMock(to, subject, html),
+  sendEmail: (to: string, subject: string, html: string) => sendEmailMock(to, subject, html),
 }))
 
 const getWeeklyEventsMock = vi.fn(async (_fromDate: string, _toDate: string) => [
@@ -57,7 +57,7 @@ beforeEach(() => {
   vi.stubEnv('PUBLIC_WEB_URL', 'https://nettelhorst.bulbord.com')
   updateCalls.length = 0
   insertCalls.length = 0
-  sendNewsletterEmailMock.mockClear()
+  sendEmailMock.mockClear()
   getWeeklyEventsMock.mockClear()
 })
 
@@ -107,8 +107,8 @@ describe('sendTestNewsletterEmail', () => {
     await sendTestNewsletterEmail({ id: 'admin-1', name: 'Ben Haley', email: 'ben@example.com' })
 
     expect(getWeeklyEventsMock).toHaveBeenCalledTimes(1)
-    expect(sendNewsletterEmailMock).toHaveBeenCalledTimes(1)
-    const [to, subject, html] = sendNewsletterEmailMock.mock.calls[0]
+    expect(sendEmailMock).toHaveBeenCalledTimes(1)
+    const [to, subject, html] = sendEmailMock.mock.calls[0]
     expect(to).toBe('ben@example.com')
     expect(subject).toBe('[Test] This week near Nettelhorst: 1 event')
     expect(html).toContain('Story Time')

@@ -13,6 +13,7 @@ import { AuthProvider } from '../auth/AuthContext'
 import { AboutPage } from '../auth/AboutPage'
 import { AccountPage } from '../auth/AccountPage'
 import { JoinGate } from '../auth/JoinGate'
+import { FriendsPage } from '../connections/FriendsPage'
 import { EventsPage } from '../events/EventsPage'
 import { EventDetailPage } from '../events/EventDetailPage'
 import { SourcesPage } from '../events/SourcesPage'
@@ -44,6 +45,7 @@ export function App() {
                   <Route exact path="/feedback" component={FeedbackPage} />
                   <Route exact path="/account" component={AccountPage} />
                   <Route exact path="/about" component={AboutPage} />
+                  <Route exact path="/friends" component={FriendsPage} />
                   <AdminRoute exact path="/admin/users" component={UsersPage} />
                   <AdminRoute exact path="/admin/dev-tools" component={DevToolsPage} />
                   <AdminRoute exact path="/admin/invite-preview" component={InvitePreviewPage} />

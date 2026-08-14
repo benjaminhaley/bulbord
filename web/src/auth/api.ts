@@ -8,8 +8,11 @@ export interface CurrentUser {
   email: string | null
   avatarUrl: string | null
   profileComplete: boolean
+  friendsStepComplete: boolean
   roles: string[]
 }
+
+export type Grade = 'pre-k' | 'k' | '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8'
 
 export async function fetchCurrentUser(): Promise<CurrentUser | null> {
   const token = getToken()
@@ -36,6 +39,7 @@ export async function updateProfile(updates: {
   newsletterSubscribed?: boolean
   role?: 'staff' | 'family' | 'other'
   roleOther?: string
+  kids?: { grade: Grade }[]
 }): Promise<CurrentUser> {
   const response = await fetch(`${API_URL}/auth/me`, {
     method: 'PATCH',

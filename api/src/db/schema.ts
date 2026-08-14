@@ -113,8 +113,53 @@ export const users = pgTable('users', {
   role: text('role'),
   // Free-text detail, only meaningful when role is 'other'.
   roleOther: text('role_other'),
+  // Null until the post-profile-setup "choose friends" onboarding step
+  // completes (feedback #83, see connections/) — same "real DB flag, not a
+  // local preference" shape as profileCompletedAt above, so the step doesn't
+  // repeat across devices and JoinGate can gate on it the same way.
+  friendsStepCompletedAt: timestamp('friends_step_completed_at', { withTimezone: true }),
   ...timestamps,
 })
+
+// One row per kid belonging to a Family-role member — grade only, no name/DOB
+// (feedback #81). Collected as a required onboarding step when role='family'
+// so the friend-suggestion algorithm (connections/) can match members with a
+// kid in the same grade without storing more PII than that match needs.
+// Restricted like other kid data (see CLAUDE.md Data safety & classification)
+// — never exposed to other members directly, only used server-side as a
+// suggestion-matching key.
+export const userChildren = pgTable('user_children', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: uuid('user_id')
+    .notNull()
+    .references(() => users.id),
+  grade: text('grade').notNull(), // 'pre-k' | 'k' | '1' .. '8'
+  ...timestamps,
+})
+
+// One-directional "I added you" edge (feedback #83) — mirrors event_interests'
+// toggle-via-deletedAt shape (single reusable row per pair) rather than a
+// request/accept flow: adding is instant and needs no approval from the
+// other side. A mutual pair (A->B and B->A both present) is what the Friends
+// page renders as "Friends"; one-directional is "Following" (from the
+// adder's view) or "Added you" (from the other side, prompting an "add
+// back"). The recipient is alerted via email (connections/mailer usage,
+// reusing newsletter/mailer.ts's generic sendEmail) since there's no
+// in-app-notification-inbox system to surface it otherwise.
+export const userConnections = pgTable(
+  'user_connections',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id), // the one who added
+    connectedUserId: uuid('connected_user_id')
+      .notNull()
+      .references(() => users.id), // the one added
+    ...timestamps,
+  },
+  (table) => [uniqueIndex('user_connections_user_id_connected_user_id_idx').on(table.userId, table.connectedUserId)],
+)
 
 // One row per passkey (WebAuthn credential) a user has registered. A user can
 // have more than one (e.g. one per device) — deletedAt revokes a lost device's

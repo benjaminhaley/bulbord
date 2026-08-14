@@ -1,7 +1,7 @@
 import type { FastifyInstance, FastifyReply } from 'fastify'
 
 import { bearerToken, requireAuth } from './plugin.js'
-import { getPublicInviteInfo, revokeSession, updateProfile, validateProfileUpdate, type UserRole } from './service.js'
+import { getPublicInviteInfo, revokeSession, updateProfile, validateProfileUpdate, type Grade, type UserRole } from './service.js'
 import {
   createAuthenticationOptions,
   createRegistrationOptions,
@@ -59,6 +59,7 @@ export async function authRoutes(app: FastifyInstance) {
         email: user.email,
         avatarUrl: user.avatarUrl,
         profileComplete: user.profileComplete,
+        friendsStepComplete: user.friendsStepComplete,
         roles: user.roles,
       },
     })
@@ -72,6 +73,7 @@ export async function authRoutes(app: FastifyInstance) {
       newsletterSubscribed?: boolean
       role?: UserRole
       roleOther?: string
+      kids?: { grade: Grade }[]
     }
     const result = validateProfileUpdate({ profileComplete: request.currentUser!.profileComplete }, body)
     if (!result.ok) {

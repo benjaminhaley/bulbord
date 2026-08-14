@@ -2,7 +2,7 @@ import { and, desc, eq, gt, isNull } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 
 import { db } from '../db/client.js'
-import { eventsLog, sessions, userRoles, users } from '../db/schema.js'
+import { eventsLog, sessions, userChildren, userRoles, users } from '../db/schema.js'
 import { hashToken, randomToken } from './tokens.js'
 
 // Effectively unlimited (100 years) rather than a real "never expires" (which
@@ -73,6 +73,9 @@ export async function revokeSession(bearerToken: string) {
 export type UserRole = 'staff' | 'family' | 'other'
 const USER_ROLES: UserRole[] = ['staff', 'family', 'other']
 
+export type Grade = 'pre-k' | 'k' | '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8'
+const GRADES: Grade[] = ['pre-k', 'k', '1', '2', '3', '4', '5', '6', '7', '8']
+
 export type ProfileUpdateInput = {
   name?: string
   email?: string
@@ -80,6 +83,7 @@ export type ProfileUpdateInput = {
   newsletterSubscribed?: boolean
   role?: UserRole
   roleOther?: string
+  kids?: { grade: Grade }[]
 }
 type ValidationResult =
   | { ok: true; updates: ProfileUpdateInput }
@@ -87,10 +91,11 @@ type ValidationResult =
 
 // Validates a PATCH /auth/me body before it reaches updateProfile — pulled
 // out as a pure function (rather than left inline in the route handler) so
-// the signup-flow's email requirement, the actual business rule here, is
-// unit-testable without spinning up Fastify. Email and role are only
-// required the first time a profile is completed (the signup flow) — later
-// edits to just the name, say, shouldn't force either.
+// the signup-flow's field requirements, the actual business rules here, are
+// unit-testable without spinning up Fastify. Email, role, avatar, and (for
+// Family) kids are only required the first time a profile is completed (the
+// signup flow) — later edits to just the name, say, shouldn't force any of
+// them.
 export function validateProfileUpdate(current: { profileComplete: boolean }, body: ProfileUpdateInput): ValidationResult {
   const name = body.name?.trim()
   if (body.name !== undefined && !name) {
@@ -113,12 +118,28 @@ export function validateProfileUpdate(current: { profileComplete: boolean }, bod
     return { ok: false, message: 'please describe your role' }
   }
 
+  if (body.kids?.some((kid) => !GRADES.includes(kid.grade))) {
+    return { ok: false, message: 'grade must be a valid school grade' }
+  }
+
   const completingProfile = !!name && !current.profileComplete
   if (completingProfile && !email) {
     return { ok: false, message: 'email is required to complete your profile' }
   }
   if (completingProfile && !body.role) {
     return { ok: false, message: 'role is required to complete your profile' }
+  }
+  // Photo required (feedback #82): Nettelhorst Bulbord is invite-only, and a
+  // photo is part of how another member can tell this new account is really
+  // who they say they are — same reasoning ProfileSetupScreen's under-Continue
+  // explainer text shows on the client.
+  if (completingProfile && !body.avatarUrl) {
+    return { ok: false, message: 'a photo is required to complete your profile' }
+  }
+  // Kids/grade required for Family only (feedback #81) — Staff/Other members
+  // have no kids to enter.
+  if (completingProfile && body.role === 'family' && !body.kids?.length) {
+    return { ok: false, message: 'at least one kid is required to complete your profile' }
   }
 
   return {
@@ -130,6 +151,7 @@ export function validateProfileUpdate(current: { profileComplete: boolean }, bod
       newsletterSubscribed: body.newsletterSubscribed,
       role: body.role,
       roleOther: body.role === 'other' ? roleOther : undefined,
+      kids: body.role === 'family' ? body.kids : undefined,
     },
   }
 }
@@ -152,6 +174,20 @@ export async function updateProfile(userId: string, updates: ProfileUpdateInput)
       .returning(),
     db.insert(eventsLog).values({ actor: userId, action: 'profile_updated', metadata: {} }),
   ])
+
+  // Full replace, same posture as feedback_images (feedback #40) — the
+  // profile-setup form resends the complete desired set, so there's no
+  // add/remove list to reconcile, just soft-delete the old rows (if any —
+  // there won't be, on first completion) and insert the new set fresh.
+  if (updates.kids) {
+    await db
+      .update(userChildren)
+      .set({ deletedAt: new Date() })
+      .where(and(eq(userChildren.userId, userId), isNull(userChildren.deletedAt)))
+    if (updates.kids.length) {
+      await db.insert(userChildren).values(updates.kids.map((kid) => ({ userId, grade: kid.grade })))
+    }
+  }
 
   return updated
 }

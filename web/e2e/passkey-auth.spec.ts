@@ -1,4 +1,11 @@
+import { fileURLToPath } from 'node:url'
+
 import { test, expect, type Page, type BrowserContext } from '@playwright/test'
+
+// Reused as the fixture photo for the now-required profile-photo step
+// (feedback #82) — any real, decodable image works; this one's already in
+// the repo, so no new test fixture is needed.
+const FIXTURE_PHOTO_PATH = fileURLToPath(new URL('../public/nettelhorst-logo.png', import.meta.url))
 
 // Drives the real registration/login ceremonies end-to-end using Chrome
 // DevTools Protocol's WebAuthn virtual-authenticator support — the automated
@@ -36,7 +43,30 @@ async function fillProfileAndContinue(page: Page, firstName: string, lastName: s
   await expect(page.locator('ion-radio-group')).toBeVisible()
   await page.locator('ion-item', { hasText: 'Family' }).locator('ion-radio').click()
   await expect(page.locator('ion-item', { hasText: 'I am...' })).toContainText('Family')
+
+  // Photo became required 2026-08-14 (feedback #82) — drive the real
+  // CropModal crop UI (react-image-crop initializes a centered selection on
+  // image load, so no drag interaction is needed, just waiting for it and
+  // confirming).
+  await page.setInputFiles('input[type="file"]', FIXTURE_PHOTO_PATH)
+  await expect(page.getByText('Crop photo')).toBeVisible({ timeout: 10000 })
+  const usePhotoButton = page.getByRole('button', { name: 'Use Photo' })
+  await expect(usePhotoButton).toBeEnabled({ timeout: 10000 })
+  await usePhotoButton.click()
+  await expect(page.getByText('Crop photo')).not.toBeVisible()
+
+  // Kids/grade became required for Family 2026-08-14 (feedback #81) — one
+  // kid, left at its default grade, is enough to satisfy it.
+  await page.getByText('+ Add a kid').click()
+
   await page.getByRole('button', { name: 'Continue' }).click()
+
+  // Choose-friends onboarding step (feedback #83) — new after profile setup,
+  // before the real app renders. Picking anyone is optional; this e2e spec
+  // only needs to get past it.
+  await expect(page.getByRole('heading', { name: 'Find your friends' })).toBeVisible({ timeout: 15000 })
+  await page.getByRole('button', { name: /Skip for now|Continue/ }).click()
+
   await page.waitForSelector('ion-tab-bar', { timeout: 15000 })
 }
 
@@ -73,7 +103,9 @@ test('the whole invite-only passkey flow: bootstrap, sign out/in, then a second 
     await page.goto('/')
     await expect(page.getByRole('heading', { name: 'You need an invitation to join Nettelhorst Bulbord' })).toBeVisible()
 
-    await page.getByRole('button', { name: 'Sign In With Passkey' }).click()
+    // De-emphasized to plain text (feedback #84) — no longer a real
+    // ion-button, so it's found by its text/link role instead.
+    await page.getByText('Sign In', { exact: true }).click()
     await page.waitForSelector('ion-tab-bar', { timeout: 15000 })
   })
 

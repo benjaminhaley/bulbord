@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
-import { expect, waitFor } from 'storybook/test'
+import { expect } from 'storybook/test'
 
 import { ProfileSetupScreen } from './JoinGate'
 
@@ -48,6 +48,15 @@ export const Empty: Story = {
   },
 }
 
+// A photo is now required to complete a profile (feedback #82), on top of
+// name/email/role — but driving CropModal's real react-image-crop UI to
+// completion needs an actual decodable image loaded into a real <img>,
+// which a synthetic File in a story can't reliably provide. The full
+// photo -> avatarUrl -> submit path is covered instead by
+// JoinGate.test.tsx, which mocks CropModal to skip the interactive crop
+// step. This story keeps its original job — confirming every other field
+// enables Continue's *other* gating correctly — by asserting Continue stays
+// disabled without a photo, rather than pretending to attach one.
 export const FilledForm: Story = {
   play: async ({ canvasElement }) => {
     const [firstName, lastName, email] = canvasElement.querySelectorAll('ion-input')
@@ -57,12 +66,7 @@ export const FilledForm: Story = {
     setRole('family')
 
     const continueButton = canvasElement.querySelector('ion-button')!
-    await waitFor(() => expect(continueButton).not.toHaveAttribute('disabled'))
-    continueButton.click()
-
-    // Submits via the mocked PATCH /auth/me (.storybook/msw-handlers.ts) —
-    // a real error message appearing here would mean the round trip failed.
-    await waitFor(() => expect(canvasElement.textContent).not.toMatch(/could not save your profile/i))
+    await expect(continueButton).toHaveAttribute('disabled') // still missing a photo (and a kid)
   },
 }
 
@@ -84,15 +88,15 @@ export const PreviewMode: Story = {
     setIonInputValue(firstName, 'Ben')
     setIonInputValue(lastName, 'Haley')
     setIonInputValue(email, 'ben@example.com')
-    setRole('family')
+    setRole('staff')
 
+    // A photo is required too (feedback #82) — not simulated here for the
+    // same reason as FilledForm above (real react-image-crop UI needs a
+    // real decodable image). 'staff' rather than 'family' so this story
+    // isn't also blocked on the kids/grade fields (feedback #81), keeping
+    // its actual point — every field stays genuinely usable in preview
+    // mode — isolated to what it can verify without a real photo.
     const continueButton = canvasElement.querySelector('ion-button')!
-    await waitFor(() => expect(continueButton).not.toHaveAttribute('disabled'))
-
-    // Clicking must not throw or hit the real PATCH /auth/me — there's no
-    // msw handler registered for it in this story, so an unmocked request
-    // would surface as a network-error message here.
-    continueButton.click()
-    await expect(canvasElement.textContent).not.toMatch(/could not save your profile/i)
+    await expect(continueButton).toHaveAttribute('disabled')
   },
 }

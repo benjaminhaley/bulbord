@@ -7,6 +7,7 @@ import { authPlugin } from './auth/plugin.js'
 import { authRoutes } from './auth/routes.js'
 import { campCommentsRoutes } from './camps/comments.js'
 import { campsRoutes } from './camps/routes.js'
+import { connectionsRoutes } from './connections/routes.js'
 import { eventCommentsRoutes } from './events/comments.js'
 import { eventsRoutes } from './events/routes.js'
 import { feedbackRoutes } from './feedback/routes.js'
@@ -31,6 +32,7 @@ export async function buildApp() {
   await app.register(eventCommentsRoutes)
   await app.register(campsRoutes)
   await app.register(campCommentsRoutes)
+  await app.register(connectionsRoutes)
   await app.register(feedbackRoutes)
   await app.register(newsletterRoutes)
   await app.register(uploadsRoutes)

@@ -13,20 +13,24 @@ import {
   IonPage,
   IonRadio,
   IonRadioGroup,
+  IonSelect,
+  IonSelectOption,
   IonSpinner,
   IonText,
   IonTitle,
   IonToolbar,
 } from '@ionic/react'
-import { chevronDownOutline } from 'ionicons/icons'
+import { chevronDownOutline, closeCircleOutline } from 'ionicons/icons'
 import { type ReactNode, useEffect, useState } from 'react'
-import { useLocation } from 'react-router-dom'
+import { Link, useLocation } from 'react-router-dom'
 
 import { API_URL } from '../config'
+import { ChooseFriendsScreen } from '../connections/ChooseFriendsScreen'
 import { Avatar } from '../uploads/Avatar'
 import { CropModal } from '../uploads/CropModal'
 import { useImageUpload } from '../uploads/useImageUpload'
-import { fetchInviteInfo, updateProfile, type InviteInfo } from './api'
+import { AboutPage } from './AboutPage'
+import { fetchInviteInfo, updateProfile, type Grade, type InviteInfo } from './api'
 import { useAuth } from './AuthContext'
 import { setToken } from './token'
 import { loginWithPasskey, registerPasskey } from './webauthn'
@@ -55,10 +59,44 @@ function BrandHeader() {
         <img src="/nettelhorst-logo.png" alt="" style={{ width: 40, height: 40, objectFit: 'contain' }} />
       </div>
       <h1 style={{ margin: '4px 0 0', fontSize: '1.5rem', fontWeight: 700 }}>Nettelhorst Bulbord</h1>
-      <p style={{ margin: '0 0 16px', color: 'var(--ion-color-medium)' }}>
+      <p style={{ margin: '0 0 4px', color: 'var(--ion-color-medium)' }}>
         A bulletin board for the Nettelhorst community
       </p>
+      {/* Gray/underlined to sit at the same low-emphasis level as the copy
+          above it (feedback #85) — the invite screen's job is to get a
+          visitor into the app, not read About's full text, so this is a
+          quiet way out rather than a second call to action. Reachable
+          pre-auth: JoinGate special-cases the /about route below. */}
+      <p style={{ margin: '0 0 16px' }}>
+        <Link to="/about" style={{ color: 'var(--ion-color-medium)', textDecoration: 'underline' }}>
+          Learn more
+        </Link>
+      </p>
     </>
+  )
+}
+
+// Passkey sign-in de-emphasized to plain gray underlined text (feedback #84)
+// — the same visual weight as "Already on Nettelhorst Bulbord?" above it,
+// rather than a second full-width button competing with Accept/Continue for
+// attention. Shared between InviteAcceptCard and JoinScreen's dead-end state
+// so both stay visually identical rather than two hand-copied versions.
+function SignInLink({ busy, onSignIn }: { busy: boolean; onSignIn: () => void }) {
+  return (
+    <p className="ion-margin-top" style={{ color: 'var(--ion-color-medium)' }}>
+      Already on Nettelhorst Bulbord?{' '}
+      <a
+        onClick={busy ? undefined : onSignIn}
+        style={{
+          color: 'var(--ion-color-medium)',
+          textDecoration: 'underline',
+          cursor: busy ? 'default' : 'pointer',
+          opacity: busy ? 0.6 : 1,
+        }}
+      >
+        Sign In
+      </a>
+    </p>
   )
 }
 
@@ -108,10 +146,7 @@ export function InviteAcceptCard({
       <IonButton expand="block" disabled={busy} onClick={onAccept}>
         {invite ? 'Accept Invite' : 'Continue'}
       </IonButton>
-      <p className="ion-margin-top">Already on Nettelhorst Bulbord?</p>
-      <IonButton expand="block" fill="outline" disabled={busy} onClick={onSignIn}>
-        Sign In With Passkey
-      </IonButton>
+      <SignInLink busy={busy} onSignIn={onSignIn} />
     </CenteredMessage>
   )
 }
@@ -167,14 +202,7 @@ function JoinScreen() {
     }
   }
 
-  const signInSection = (
-    <>
-      <p className="ion-margin-top">Already on Nettelhorst Bulbord?</p>
-      <IonButton expand="block" fill="outline" disabled={busy} onClick={signIn}>
-        Sign In With Passkey
-      </IonButton>
-    </>
-  )
+  const signInSection = <SignInLink busy={busy} onSignIn={signIn} />
 
   if (inviterUserId && invite === undefined) {
     return (
@@ -214,6 +242,27 @@ function JoinScreen() {
 function capitalizeFirst(value: string) {
   return value.length ? value[0].toUpperCase() + value.slice(1) : value
 }
+
+// Nettelhorst Bulbord is invite-only (feedback #82) — this is why a photo
+// (and every other required field) is required, and the wording other
+// members would actually see explained back to them if they're missing
+// something, shown under the disabled Continue button rather than as a
+// per-field error.
+const REQUIRED_FIELDS_EXPLANATION =
+  'Nettelhorst Bulbord is only for members of the Nettelhorst community — this information lets others verify that you are.'
+
+const GRADE_OPTIONS: { value: Grade; label: string }[] = [
+  { value: 'pre-k', label: 'Pre-K' },
+  { value: 'k', label: 'Kindergarten' },
+  { value: '1', label: '1st Grade' },
+  { value: '2', label: '2nd Grade' },
+  { value: '3', label: '3rd Grade' },
+  { value: '4', label: '4th Grade' },
+  { value: '5', label: '5th Grade' },
+  { value: '6', label: '6th Grade' },
+  { value: '7', label: '7th Grade' },
+  { value: '8', label: '8th Grade' },
+]
 
 // Every profile-setup field is mandatory except the photo — marked visually
 // so that's obvious at a glance rather than only enforced invisibly by
@@ -334,6 +383,10 @@ export function ProfileSetupScreen({ preview = false }: { preview?: boolean } = 
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null)
   const [role, setRole] = useState<'staff' | 'family' | 'other' | undefined>(undefined)
   const [roleOther, setRoleOther] = useState('')
+  // One grade per kid (feedback #81) — Family role only. The array's own
+  // length is the "how many kids" count, rather than a separate number field
+  // that would need to stay in sync with it.
+  const [kidGrades, setKidGrades] = useState<Grade[]>([])
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [pendingCropFile, setPendingCropFile] = useState<File | null>(null)
@@ -349,14 +402,18 @@ export function ProfileSetupScreen({ preview = false }: { preview?: boolean } = 
   // effect"), rather than being force-disabled the whole time. Only
   // `submit()` below actually branches on `preview`, to skip the real
   // network call.
-  const canSubmit =
-    !submitting &&
-    !uploading &&
+  // Split from canSubmit so the required-fields explainer (feedback #82) can
+  // show whenever a field is genuinely missing, but not merely because a
+  // photo upload or the submit request itself is in flight.
+  const fieldsComplete =
     !!firstName.trim() &&
     !!lastName.trim() &&
     trimmedEmail.includes('@') &&
+    !!avatarUrl &&
     !!role &&
-    (role !== 'other' || !!trimmedRoleOther)
+    (role !== 'other' || !!trimmedRoleOther) &&
+    (role !== 'family' || kidGrades.length > 0)
+  const canSubmit = !submitting && !uploading && fieldsComplete
 
   async function attachPhoto(file: File) {
     if (!(await attach(file))) setError('Could not upload photo')
@@ -379,6 +436,7 @@ export function ProfileSetupScreen({ preview = false }: { preview?: boolean } = 
         newsletterSubscribed,
         role,
         roleOther: role === 'other' ? trimmedRoleOther : undefined,
+        kids: role === 'family' ? kidGrades.map((grade) => ({ grade })) : undefined,
       })
       await refresh()
     } catch (err) {
@@ -411,6 +469,10 @@ export function ProfileSetupScreen({ preview = false }: { preview?: boolean } = 
             void attachPhoto(cropped)
           }}
         />
+        <p style={{ margin: '0 0 4px', fontSize: '0.875rem', color: 'var(--ion-color-medium)' }}>
+          Photo
+          <RequiredMark />
+        </p>
         {/* Photo pick + crop is genuinely interactive in preview mode, same
             as every field below — Ben wanted a way to actually try the crop
             step (feedback #56) from the deployed admin dev tools without
@@ -489,6 +551,51 @@ export function ProfileSetupScreen({ preview = false }: { preview?: boolean } = 
             </IonItem>
           )}
         </IonList>
+        {/* Kids/grade, Family role only (feedback #81) — "how many kids" is
+            just this array's length, not a separate count field to keep in
+            sync; each kid is only a grade, no name (see CLAUDE.md's Data
+            safety & classification — this stays the minimum needed for
+            grade-level friend suggestions, not a name/DOB field). */}
+        {role === 'family' && (
+          <IonList inset>
+            <IonItem lines={kidGrades.length ? undefined : 'none'}>
+              <IonLabel>
+                Kids
+                <RequiredMark />
+              </IonLabel>
+            </IonItem>
+            {kidGrades.map((grade, index) => (
+              <IonItem key={index}>
+                <IonLabel position="stacked">Kid {index + 1}</IonLabel>
+                <IonSelect
+                  interface="action-sheet"
+                  value={grade}
+                  onIonChange={(e) =>
+                    setKidGrades((prev) => prev.map((g, i) => (i === index ? (e.detail.value as Grade) : g)))
+                  }
+                >
+                  {GRADE_OPTIONS.map((option) => (
+                    <IonSelectOption key={option.value} value={option.value}>
+                      {option.label}
+                    </IonSelectOption>
+                  ))}
+                </IonSelect>
+                <IonButton
+                  slot="end"
+                  fill="clear"
+                  color="medium"
+                  aria-label={`Remove kid ${index + 1}`}
+                  onClick={() => setKidGrades((prev) => prev.filter((_, i) => i !== index))}
+                >
+                  <IonIcon slot="icon-only" icon={closeCircleOutline} />
+                </IonButton>
+              </IonItem>
+            ))}
+            <IonItem button lines="none" onClick={() => setKidGrades((prev) => [...prev, GRADE_OPTIONS[0].value])}>
+              <IonLabel color="primary">+ Add a kid</IonLabel>
+            </IonItem>
+          </IonList>
+        )}
         <IonList inset>
           <IonItem lines="none">
             <IonCheckbox
@@ -517,6 +624,14 @@ export function ProfileSetupScreen({ preview = false }: { preview?: boolean } = 
         >
           Continue
         </IonButton>
+        {!fieldsComplete && (
+          <p
+            className="ion-padding-start ion-padding-end"
+            style={{ color: 'var(--ion-color-medium)', fontSize: '0.8125rem', textAlign: 'center', marginTop: 8 }}
+          >
+            {REQUIRED_FIELDS_EXPLANATION}
+          </p>
+        )}
       </IonContent>
   )
 }
@@ -529,6 +644,18 @@ export function ProfileSetupScreen({ preview = false }: { preview?: boolean } = 
 // user is fully signed in — no separate navigation step needed.
 export function JoinGate({ children }: { children: ReactNode }) {
   const { user, isLoading } = useAuth()
+  const location = useLocation()
+
+  // The invite screen's new "Learn more" link (feedback #85) points at the
+  // real About page, which normally only renders once already a member (see
+  // App.tsx's own /about Route, inside these `children`). Special-cased here
+  // so a not-yet-a-member visitor can read it too, without duplicating its
+  // content into a second copy just for the logged-out state. Only bypasses
+  // the gate for this one path — every other route still requires being a
+  // full member, same as before.
+  if (location.pathname === '/about' && (isLoading || !user || !user.profileComplete)) {
+    return <AboutPage />
+  }
 
   if (isLoading) {
     return (
@@ -552,6 +679,14 @@ export function JoinGate({ children }: { children: ReactNode }) {
     return (
       <IonPage>
         <ProfileSetupScreen />
+      </IonPage>
+    )
+  }
+
+  if (!user.friendsStepComplete) {
+    return (
+      <IonPage>
+        <ChooseFriendsScreen />
       </IonPage>
     )
   }

@@ -4,7 +4,7 @@ import { signJson, verifyJson } from '../auth/tokens.js'
 import { db } from '../db/client.js'
 import { eventsLog, users } from '../db/schema.js'
 import { requireEnv } from '../env.js'
-import { sendNewsletterEmail } from './mailer.js'
+import { sendEmail } from './mailer.js'
 import { getWeeklyEvents } from './query.js'
 import { formatWeeklyEvents, newsletterSubject, renderNewsletterHtml } from './template.js'
 import { getUpcomingWeekRange } from './week.js'
@@ -61,5 +61,5 @@ export async function sendTestNewsletterEmail(recipient: { id: string; name: str
     unsubscribeUrl: `${apiUrl}/newsletter/unsubscribe?token=${createUnsubscribeToken(recipient.id)}`,
   })
 
-  await sendNewsletterEmail(recipient.email, newsletterSubject(events.length, '[Test] '), html)
+  await sendEmail(recipient.email, newsletterSubject(events.length, '[Test] '), html)
 }
