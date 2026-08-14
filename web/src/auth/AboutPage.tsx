@@ -16,8 +16,8 @@ export function AboutPage() {
       <IonContent fullscreen className="ion-padding">
         <h2>About Nettelhorst Bulbord</h2>
         <p>
-          See things relevant to the Nettelhorst community — events, camps, the type of things people talk about
-          during drop off.
+          See things relevant to the Nettelhorst community — neighborhood events, day off camps, the type of things
+          people talk about during drop off.
         </p>
         <h2>About the Author</h2>
         <img
