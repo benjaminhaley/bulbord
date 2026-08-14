@@ -2,7 +2,8 @@
   "name": "bulbord",
   "private": true,
   "scripts": {
-    "dev": "concurrently -n postgres,api,web -c blue,green,magenta \"docker compose up\" \"npm run dev --prefix api\" \"npm run dev --prefix web\""
+    "dev": "concurrently -n postgres,api,web -c blue,green,magenta \"docker compose up\" \"npm run dev --prefix api\" \"npm run dev --prefix web\"",
+    "prepare": "ln -sf ../../scripts/pre-push.sh .git/hooks/pre-push"
   },
   "devDependencies": {
     "concurrently": "^9.2.1"
