@@ -2,6 +2,8 @@ import { API_URL } from '../config'
 import { readErrorMessage } from './http'
 import { authHeaders, clearToken, getToken } from './token'
 
+export type Grade = 'pre-k' | 'k' | '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8'
+
 export interface CurrentUser {
   id: string
   name: string
@@ -9,10 +11,12 @@ export interface CurrentUser {
   avatarUrl: string | null
   profileComplete: boolean
   friendsStepComplete: boolean
+  role: 'staff' | 'family' | 'other' | null
+  roleOther: string | null
+  newsletterSubscribed: boolean
+  kids: { grade: Grade }[]
   roles: string[]
 }
-
-export type Grade = 'pre-k' | 'k' | '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8'
 
 export async function fetchCurrentUser(): Promise<CurrentUser | null> {
   const token = getToken()

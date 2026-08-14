@@ -10,6 +10,9 @@ interface AuthedUser {
   avatarUrl: string | null
   profileComplete: boolean
   friendsStepComplete: boolean
+  role: string | null
+  roleOther: string | null
+  newsletterSubscribed: boolean
   roles: string[]
 }
 
@@ -42,6 +45,9 @@ export const authPlugin = fp(async (app) => {
       avatarUrl: resolved.user.avatarUrl,
       profileComplete: resolved.user.profileCompletedAt !== null,
       friendsStepComplete: resolved.user.friendsStepCompletedAt !== null,
+      role: resolved.user.role,
+      roleOther: resolved.user.roleOther,
+      newsletterSubscribed: resolved.user.newsletterSubscribed,
       roles: resolved.roles,
     }
   })

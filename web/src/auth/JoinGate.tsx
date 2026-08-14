@@ -286,7 +286,7 @@ type Role = 'staff' | 'family' | 'other'
 const ROLE_OPTIONS: { value: Role; label: string; detail: string }[] = [
   { value: 'staff', label: 'Staff', detail: 'You work at Nettelhorst.' },
   { value: 'family', label: 'Family', detail: 'You are family of a kid at Nettelhorst.' },
-  { value: 'other', label: 'Other', detail: 'Anyone else in the Nettelhorst community.' },
+  { value: 'other', label: 'Other', detail: 'Someone else in the Nettelhorst community.' },
 ]
 
 // A custom modal picker, not IonSelect — feedback (2026-08-06): the
@@ -369,6 +369,24 @@ function RolePicker({ value, onChange }: { value: Role | undefined; onChange: (v
   )
 }
 
+// Prefills the form for an already-onboarded member editing their own
+// profile later (EditProfilePage.tsx, feedback 2026-08-14: "I should be
+// able to see and edit who my kids are (and all onboarding information) in
+// my profile") — kept as a separate type rather than reusing CurrentUser
+// directly so this component doesn't depend on the auth API's response
+// shape, just plain form values the caller is responsible for deriving
+// (e.g. splitting `name` into first/last).
+export interface ProfileSetupInitialValues {
+  firstName: string
+  lastName: string
+  email: string
+  avatarUrl: string | null
+  newsletterSubscribed: boolean
+  role: 'staff' | 'family' | 'other' | undefined
+  roleOther: string
+  kidGrades: Grade[]
+}
+
 // Exported (not just used internally by JoinGate) so it can be previewed —
 // both via Storybook (feedback #44) and in-app via the admin
 // SignupFlowPreviewPage (feedback #44 follow-up: Ben wants to walk through
@@ -378,19 +396,33 @@ function RolePicker({ value, onChange }: { value: Role | undefined; onChange: (v
 // caller can nest it inside its own IonPage/IonHeader with a back button,
 // the same shape InviteAcceptCard/CenteredMessage above already use; the
 // real flow's own caller (JoinGate, below) supplies the IonPage instead.
-export function ProfileSetupScreen({ preview = false }: { preview?: boolean } = {}) {
+// `initialValues`/`submitLabel`/`onSaved` are what EditProfilePage.tsx uses
+// to reuse this same component after onboarding, rather than building a
+// second form — validation, the photo/kids requirements, and the crop step
+// all stay identical to the real signup flow.
+export function ProfileSetupScreen({
+  preview = false,
+  initialValues,
+  submitLabel = 'Continue',
+  onSaved,
+}: {
+  preview?: boolean
+  initialValues?: ProfileSetupInitialValues
+  submitLabel?: string
+  onSaved?: () => void
+} = {}) {
   const { refresh } = useAuth()
-  const [firstName, setFirstName] = useState('')
-  const [lastName, setLastName] = useState('')
-  const [email, setEmail] = useState('')
-  const [newsletterSubscribed, setNewsletterSubscribed] = useState(true)
-  const [avatarUrl, setAvatarUrl] = useState<string | null>(null)
-  const [role, setRole] = useState<'staff' | 'family' | 'other' | undefined>(undefined)
-  const [roleOther, setRoleOther] = useState('')
+  const [firstName, setFirstName] = useState(initialValues?.firstName ?? '')
+  const [lastName, setLastName] = useState(initialValues?.lastName ?? '')
+  const [email, setEmail] = useState(initialValues?.email ?? '')
+  const [newsletterSubscribed, setNewsletterSubscribed] = useState(initialValues?.newsletterSubscribed ?? true)
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(initialValues?.avatarUrl ?? null)
+  const [role, setRole] = useState<'staff' | 'family' | 'other' | undefined>(initialValues?.role)
+  const [roleOther, setRoleOther] = useState(initialValues?.roleOther ?? '')
   // One grade per kid (feedback #81) — Family role only. The array's own
   // length is the "how many kids" count, rather than a separate number field
   // that would need to stay in sync with it.
-  const [kidGrades, setKidGrades] = useState<Grade[]>([])
+  const [kidGrades, setKidGrades] = useState<Grade[]>(initialValues?.kidGrades ?? [])
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [pendingCropFile, setPendingCropFile] = useState<File | null>(null)
@@ -443,6 +475,7 @@ export function ProfileSetupScreen({ preview = false }: { preview?: boolean } = 
         kids: role === 'family' ? kidGrades.map((grade) => ({ grade })) : undefined,
       })
       await refresh()
+      onSaved?.()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not save your profile')
     } finally {
@@ -452,7 +485,7 @@ export function ProfileSetupScreen({ preview = false }: { preview?: boolean } = 
 
   return (
     <IonContent fullscreen className="ion-padding">
-      <h2 className="ion-padding-top">Set up your profile</h2>
+      <h2 className="ion-padding-top">{initialValues ? 'Edit your profile' : 'Set up your profile'}</h2>
       <div style={{ textAlign: 'center', margin: '16px 0' }}>
         <input
           ref={fileInputRef}
@@ -557,7 +590,7 @@ export function ProfileSetupScreen({ preview = false }: { preview?: boolean } = 
           {role === 'other' && (
             <IonItem>
               <IonLabel position="stacked">
-                Please describe
+                Please describe your relationship to Nettelhorst
                 <RequiredMark />
               </IonLabel>
               <IonInput value={roleOther} onIonInput={(e) => setRoleOther(e.detail.value ?? '')} />
@@ -641,7 +674,7 @@ export function ProfileSetupScreen({ preview = false }: { preview?: boolean } = 
           disabled={!canSubmit}
           onClick={submit}
         >
-          Continue
+          {submitLabel}
         </IonButton>
         {!fieldsComplete && (
           <p

@@ -192,6 +192,17 @@ export async function updateProfile(userId: string, updates: ProfileUpdateInput)
   return updated
 }
 
+// Powers GET /auth/me's `kids` field so a member can see/edit their own
+// onboarding info later, not just set it once at signup (feedback,
+// 2026-08-14: "I should be able to see and edit... all onboarding
+// information in my profile").
+export async function listUserChildren(userId: string) {
+  return db
+    .select({ grade: userChildren.grade })
+    .from(userChildren)
+    .where(and(eq(userChildren.userId, userId), isNull(userChildren.deletedAt)))
+}
+
 // Minimal public lookup so a non-member's join screen can show "X invited
 // you" without exposing anything beyond a name/photo (see CLAUDE.md's Data
 // safety rules — this is the one deliberate exception, same as the existing

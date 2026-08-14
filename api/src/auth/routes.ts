@@ -1,7 +1,7 @@
 import type { FastifyInstance, FastifyReply } from 'fastify'
 
 import { bearerToken, requireAuth } from './plugin.js'
-import { getPublicInviteInfo, revokeSession, updateProfile, validateProfileUpdate, type Grade, type UserRole } from './service.js'
+import { getPublicInviteInfo, listUserChildren, revokeSession, updateProfile, validateProfileUpdate, type Grade, type UserRole } from './service.js'
 import {
   createAuthenticationOptions,
   createRegistrationOptions,
@@ -52,6 +52,7 @@ export async function authRoutes(app: FastifyInstance) {
 
   app.get('/auth/me', { preHandler: requireAuth }, async (request, reply) => {
     const user = request.currentUser!
+    const kids = await listUserChildren(user.id)
     return reply.send({
       data: {
         id: user.id,
@@ -60,6 +61,10 @@ export async function authRoutes(app: FastifyInstance) {
         avatarUrl: user.avatarUrl,
         profileComplete: user.profileComplete,
         friendsStepComplete: user.friendsStepComplete,
+        role: user.role,
+        roleOther: user.roleOther,
+        newsletterSubscribed: user.newsletterSubscribed,
+        kids: kids.map((kid) => ({ grade: kid.grade })),
         roles: user.roles,
       },
     })

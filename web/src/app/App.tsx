@@ -13,6 +13,7 @@ import { UsersPage } from '../admin/UsersPage'
 import { AuthProvider } from '../auth/AuthContext'
 import { AboutPage } from '../auth/AboutPage'
 import { AccountPage } from '../auth/AccountPage'
+import { EditProfilePage } from '../auth/EditProfilePage'
 import { JoinGate } from '../auth/JoinGate'
 import { FriendsPage } from '../connections/FriendsPage'
 import { EventsPage } from '../events/EventsPage'
@@ -45,6 +46,7 @@ export function App() {
                   <Route exact path="/camps/:id" component={CampDetailPage} />
                   <Route exact path="/feedback" component={FeedbackPage} />
                   <Route exact path="/account" component={AccountPage} />
+                  <Route exact path="/account/edit" component={EditProfilePage} />
                   <Route exact path="/about" component={AboutPage} />
                   <Route exact path="/friends" component={FriendsPage} />
                   <AdminRoute exact path="/admin/users" component={UsersPage} />
