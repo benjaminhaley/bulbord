@@ -26,8 +26,8 @@ export function AccountPage() {
             {/* Tapping your profile picture gets you here (InstitutionBanner).
                 The picture/name row itself is just identity, not a link
                 (feedback #90) — the "Administrator" row below is what
-                actually links to Developer Tools, same button+detail
-                pattern as every other row on this page. */}
+                actually links to Developer Tools, same plain button pattern
+                (no detail arrow) as every other row on this page. */}
             <IonItem lines="none">
               <Avatar slot="start" url={user.avatarUrl} name={user.name} />
               <IonLabel>
@@ -35,7 +35,7 @@ export function AccountPage() {
               </IonLabel>
             </IonItem>
             {isAdmin && (
-              <IonItem button routerLink="/admin/dev-tools" detail lines="none">
+              <IonItem button routerLink="/admin/dev-tools" lines="none">
                 <IonIcon slot="start" icon={shieldCheckmarkOutline} color="primary" />
                 <IonLabel>Administrator</IonLabel>
               </IonItem>
