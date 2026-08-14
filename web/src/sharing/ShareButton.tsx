@@ -10,11 +10,11 @@ import {
   IonToolbar,
 } from '@ionic/react'
 import { closeOutline, paperPlaneOutline, shareOutline } from 'ionicons/icons'
-import { useEffect, useRef, useState } from 'react'
+import { useState } from 'react'
 import { useLocation } from 'react-router-dom'
-import QRCode from 'qrcode'
 
 import { useAuth } from '../auth/AuthContext'
+import { useQrDataUrl } from './useQrDataUrl'
 
 // Persistent, always-visible share entry point (see CLAUDE.md "Sharing"):
 // encodes whatever page the visitor is currently on, since sharing here means
@@ -26,29 +26,16 @@ export function ShareButton() {
   const location = useLocation()
   const { user } = useAuth()
   const [open, setOpen] = useState(false)
-  const [qrDataUrl, setQrDataUrl] = useState<string | null>(null)
-  const qrCache = useRef<{ url: string; dataUrl: string } | null>(null)
 
   const params = new URLSearchParams(location.search)
   if (user) params.set('invite', user.id)
   const query = params.toString()
   const shareUrl = `${window.location.origin}${location.pathname}${query ? `?${query}` : ''}`
 
-  useEffect(() => {
-    if (!open) return
-    if (qrCache.current?.url === shareUrl) {
-      setQrDataUrl(qrCache.current.dataUrl)
-      return
-    }
-    let cancelled = false
-    QRCode.toDataURL(shareUrl, { width: 320, margin: 1 }).then((dataUrl) => {
-      qrCache.current = { url: shareUrl, dataUrl }
-      if (!cancelled) setQrDataUrl(dataUrl)
-    })
-    return () => {
-      cancelled = true
-    }
-  }, [open, shareUrl])
+  // Only generate (or regenerate on navigation) while the modal is actually
+  // open — passing null while closed is what keeps this from re-running on
+  // every route change in the background.
+  const qrDataUrl = useQrDataUrl(open ? shareUrl : null)
 
   return (
     <>

@@ -10,14 +10,17 @@ import { hashToken, randomToken } from './tokens.js'
 // logged in over re-auth friction. Logout still works via deletedAt.
 const SESSION_TTL_MS = 100 * 365 * 24 * 60 * 60 * 1000
 
-export async function createSession(userId: string) {
+// ttlMs defaults to the effectively-unlimited session length above; a
+// caller can override it for a deliberately short-lived session (e.g. an
+// admin's impersonation link — see admin/impersonation.ts).
+export async function createSession(userId: string, ttlMs: number = SESSION_TTL_MS) {
   const token = randomToken()
   const [session] = await db
     .insert(sessions)
     .values({
       userId,
       tokenHash: hashToken(token),
-      expiresAt: new Date(Date.now() + SESSION_TTL_MS),
+      expiresAt: new Date(Date.now() + ttlMs),
     })
     .returning()
 

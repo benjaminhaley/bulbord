@@ -6,6 +6,7 @@ import { getCampsLastUpdatedAt } from '../camps/staleness.js'
 import { sendTestConnectionAlertEmail } from '../connections/service.js'
 import { getSourcesLastCheckedAt, resourceActiveEventSources } from '../events/resourcing.js'
 import { sendTestNewsletterEmail } from '../newsletter/service.js'
+import { impersonateUser } from './impersonation.js'
 import { computeDataFreshness } from './staleness.js'
 
 // How stale events/camps data can get before Developer Tools and the admin's
@@ -81,6 +82,19 @@ export async function adminRoutes(app: FastifyInstance) {
         is_stale: freshness.isStale,
       },
     })
+  })
+
+  // Feedback #87: a short-lived (~1hr) real session for any member,
+  // delivered as a ?signInToken= link (see impersonation.ts) — lets an
+  // admin see the app as that member without their device, for testing or
+  // demos.
+  app.post('/admin/users/:id/impersonate', { preHandler: requireRole('admin') }, async (request, reply) => {
+    const { id } = request.params as { id: string }
+    const result = await impersonateUser(id, request.currentUser!.id)
+    if (!result) {
+      return reply.code(404).send({ error: { message: 'User not found' } })
+    }
+    return reply.send({ data: { url: result.url, expires_at: result.expiresAt } })
   })
 
   // Dev tool (feedback #41): re-runs the ingestion pipeline against every

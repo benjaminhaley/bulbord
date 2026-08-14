@@ -85,12 +85,14 @@ function PhotoPicker({
   fileInputRef,
   onFiles,
   onRemove,
+  onImageClick,
 }: {
   images: UploadedImage[]
   uploading: boolean
   fileInputRef: React.RefObject<HTMLInputElement | null>
   onFiles: (files: FileList) => void
   onRemove: (index: number) => void
+  onImageClick: (url: string) => void
 }) {
   return (
     <>
@@ -118,7 +120,8 @@ function PhotoPicker({
               <img
                 src={`${API_URL}${image.thumbnail_url}`}
                 alt=""
-                style={{ width: 60, height: 60, objectFit: 'cover', borderRadius: 8 }}
+                onClick={() => onImageClick(image.image_url)}
+                style={{ width: 60, height: 60, objectFit: 'cover', borderRadius: 8, cursor: 'pointer' }}
               />
               <IonButton
                 fill="clear"
@@ -187,6 +190,7 @@ function FeedbackForm({
   errorMessage,
   onSubmit,
   onCancel,
+  onImageClick,
 }: {
   initialTitle?: string
   initialDescription?: string
@@ -196,6 +200,7 @@ function FeedbackForm({
   errorMessage: string
   onSubmit: (title: string, description: string, images: UploadedImage[]) => Promise<void>
   onCancel: () => void
+  onImageClick: (url: string) => void
 }) {
   const [title, setTitle] = useState(initialTitle)
   const [description, setDescription] = useState(initialDescription)
@@ -238,6 +243,7 @@ function FeedbackForm({
         fileInputRef={fileInputRef}
         onFiles={(files) => void attachFiles(files)}
         onRemove={removeAt}
+        onImageClick={onImageClick}
       />
       {error && (
         <IonText color="danger">
@@ -323,6 +329,7 @@ function FeedbackListItem({
           setEditing(false)
         }}
         onCancel={() => setEditing(false)}
+        onImageClick={onImageClick}
       />
     )
   }
@@ -461,6 +468,7 @@ export function FeedbackPage() {
               setShowForm(false)
             }}
             onCancel={() => setShowForm(false)}
+            onImageClick={(url) => setLightboxSrc(`${API_URL}${url}`)}
           />
         )}
 

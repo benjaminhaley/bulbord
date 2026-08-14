@@ -1,8 +1,10 @@
 import {
   IonBackButton,
+  IonButton,
   IonButtons,
   IonContent,
   IonHeader,
+  IonIcon,
   IonItem,
   IonLabel,
   IonList,
@@ -10,13 +12,16 @@ import {
   IonPage,
   IonSpinner,
   IonTitle,
+  IonToast,
   IonToolbar,
 } from '@ionic/react'
+import { logInOutline } from 'ionicons/icons'
 import { useEffect, useState } from 'react'
 
 import { formatDate } from '../format'
 import { Avatar } from '../uploads/Avatar'
-import { fetchAdminUsers, type AdminUser } from './api'
+import { fetchAdminUsers, impersonateUser, type AdminUser } from './api'
+import { ImpersonateModal, type ImpersonationTarget } from './ImpersonateModal'
 
 function roleLabel(user: AdminUser): string | null {
   if (user.role === 'staff') return 'Staff'
@@ -30,12 +35,27 @@ function roleLabel(user: AdminUser): string | null {
 export function UsersPage() {
   const [users, setUsers] = useState<AdminUser[] | null>(null)
   const [error, setError] = useState(false)
+  const [impersonating, setImpersonating] = useState<string | null>(null)
+  const [impersonateTarget, setImpersonateTarget] = useState<ImpersonationTarget | null>(null)
+  const [toast, setToast] = useState<string | null>(null)
 
   useEffect(() => {
     fetchAdminUsers()
       .then(setUsers)
       .catch(() => setError(true))
   }, [])
+
+  async function getSignInLink(user: AdminUser) {
+    setImpersonating(user.id)
+    try {
+      const link = await impersonateUser(user.id)
+      setImpersonateTarget({ memberName: user.name, url: link.url, expiresAt: link.expires_at })
+    } catch (err) {
+      setToast(err instanceof Error ? err.message : 'Could not create sign-in link')
+    } finally {
+      setImpersonating(null)
+    }
+  }
 
   return (
     <IonPage>
@@ -74,11 +94,23 @@ export function UsersPage() {
                     {user.newsletter_subscribed ? 'Subscribed to newsletter' : 'Not subscribed to newsletter'}
                   </IonNote>
                 </IonLabel>
+                {/* Feedback #87: a demo/impersonation sign-in link, per member. */}
+                <IonButton
+                  slot="end"
+                  fill="clear"
+                  disabled={impersonating === user.id}
+                  onClick={() => void getSignInLink(user)}
+                  title={`Get a sign-in link for ${user.name}`}
+                >
+                  {impersonating === user.id ? <IonSpinner name="dots" /> : <IonIcon slot="icon-only" icon={logInOutline} />}
+                </IonButton>
               </IonItem>
             ))}
           </IonList>
         )}
       </IonContent>
+      <ImpersonateModal target={impersonateTarget} onDismiss={() => setImpersonateTarget(null)} />
+      <IonToast isOpen={!!toast} message={toast ?? ''} duration={3000} onDidDismiss={() => setToast(null)} />
     </IonPage>
   )
 }

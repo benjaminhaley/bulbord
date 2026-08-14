@@ -23,17 +23,19 @@ export function AccountPage() {
       <IonContent fullscreen className="ion-padding">
         {user && (
           <IonList>
-            {/* Tapping your profile picture gets you here (InstitutionBanner);
-                admins can tap it again here to reach Developer Tools (feedback
-                #38) — everyone else just sees their name, non-interactive. */}
-            <IonItem lines="none" button={isAdmin} routerLink={isAdmin ? '/admin/dev-tools' : undefined} detail={isAdmin}>
+            {/* Tapping your profile picture gets you here (InstitutionBanner).
+                The picture/name row itself is just identity, not a link
+                (feedback #90) — the "Administrator" row below is what
+                actually links to Developer Tools, same button+detail
+                pattern as every other row on this page. */}
+            <IonItem lines="none">
               <Avatar slot="start" url={user.avatarUrl} name={user.name} />
               <IonLabel>
                 <h2>{user.name}</h2>
               </IonLabel>
             </IonItem>
             {isAdmin && (
-              <IonItem lines="none">
+              <IonItem button routerLink="/admin/dev-tools" detail lines="none">
                 <IonIcon slot="start" icon={shieldCheckmarkOutline} color="primary" />
                 <IonLabel>Administrator</IonLabel>
               </IonItem>

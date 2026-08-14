@@ -50,6 +50,27 @@ export async function sendTestConnectionAlertEmail(): Promise<void> {
   }
 }
 
+// Feedback #87: a short-lived (~1hr) sign-in link for any member, so an
+// admin can see the app as they'd see it (testing, demos) without needing
+// their device.
+export interface ImpersonationLink {
+  url: string
+  expires_at: string
+}
+
+export async function impersonateUser(userId: string): Promise<ImpersonationLink> {
+  const response = await fetch(`${API_URL}/admin/users/${userId}/impersonate`, {
+    method: 'POST',
+    headers: authHeaders(),
+  })
+  if (!response.ok) {
+    const body = (await response.json().catch(() => null)) as { error?: { message?: string } } | null
+    throw new Error(body?.error?.message ?? `Failed to create sign-in link: ${response.status}`)
+  }
+  const body = (await response.json()) as { data: ImpersonationLink }
+  return body.data
+}
+
 export interface ResourceReport {
   sources_checked: number
   total_added: number
