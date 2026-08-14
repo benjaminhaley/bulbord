@@ -75,9 +75,10 @@ async function fillProfileAndContinue(page: Page, firstName: string, lastName: s
   await usePhotoButton.click()
   await expect(page.getByText('Crop photo')).not.toBeVisible()
 
-  // Kids/grade became required for Family 2026-08-14 (feedback #81) — one
-  // kid, left at its default grade, is enough to satisfy it.
-  await page.getByText('+ Add a kid').click()
+  // Kids/grade became required for Family 2026-08-14 (feedback #81) —
+  // selecting Family above already pre-seeded one kid at the default grade
+  // (the "Kids at Nettelhorst" count dropdown never allows zero), so
+  // nothing further is needed here.
 
   await page.getByRole('button', { name: 'Continue' }).click()
 

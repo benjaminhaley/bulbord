@@ -44,7 +44,16 @@ function MemberRow({
 // users.friendsStepCompletedAt (JoinGate.tsx), a real DB flag so it doesn't
 // re-show on another device, but picking anyone here is optional — Continue
 // works with zero adds, same as Skip.
-export function ChooseFriendsScreen() {
+//
+// `preview` (admin FriendsPreviewPage.tsx, the sign-up flow walkthrough's
+// third step, feedback confirmed 2026-08-14) — same shape as
+// ProfileSetupScreen's own `preview` prop: real data still loads (the
+// suggestions/search GETs are read-only, safe to show for real), but the
+// two mutations that would be actively wrong to trigger against the admin's
+// own account while just looking at a preview — POST /connections and
+// finishing the onboarding step — are skipped. The "Added" checkmark still
+// shows on click so the interaction itself stays demonstrable.
+export function ChooseFriendsScreen({ preview = false }: { preview?: boolean } = {}) {
   const { refresh } = useAuth()
   const [suggestions, setSuggestions] = useState<MemberSummary[]>([])
   const [loadingSuggestions, setLoadingSuggestions] = useState(true)
@@ -84,10 +93,11 @@ export function ChooseFriendsScreen() {
     setAddingId(member.id)
     setError(null)
     try {
-      await addConnection(member.id)
+      if (!preview) await addConnection(member.id)
       setAddedIds((prev) => new Set(prev).add(member.id))
       // "As you add potential friends, suggest their friends at the bottom
       // of the list" — append the newly-added person's own connections.
+      // Still a real (read-only) fetch in preview — nothing unsafe about it.
       const theirConnections = await fetchConnectionsOf(member.id)
       setSuggestions((prev) => {
         const existingIds = new Set(prev.map((m) => m.id))
@@ -102,6 +112,10 @@ export function ChooseFriendsScreen() {
   }
 
   async function finish() {
+    // Preview mode never calls the real finish-onboarding endpoint or
+    // refresh() — that would mark the admin's own account as having
+    // completed a step they didn't actually just complete.
+    if (preview) return
     setFinishing(true)
     setError(null)
     try {

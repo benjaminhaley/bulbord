@@ -20,7 +20,7 @@ import {
   IonTitle,
   IonToolbar,
 } from '@ionic/react'
-import { chevronDownOutline, closeCircleOutline } from 'ionicons/icons'
+import { chevronDownOutline } from 'ionicons/icons'
 import { type ReactNode, useEffect, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 
@@ -263,6 +263,10 @@ const GRADE_OPTIONS: { value: Grade; label: string }[] = [
   { value: '7', label: '7th Grade' },
   { value: '8', label: '8th Grade' },
 ]
+
+// 1-5, never 0 (feedback, 2026-08-14) — the "Kids at Nettelhorst" count
+// dropdown's own options, so a zero-kid state isn't selectable at all.
+const KID_COUNT_OPTIONS = [1, 2, 3, 4, 5]
 
 // Every profile-setup field is mandatory except the photo — marked visually
 // so that's obvious at a glance rather than only enforced invisibly by
@@ -540,7 +544,16 @@ export function ProfileSetupScreen({ preview = false }: { preview?: boolean } = 
               this one (feedback #49) — nothing is sent to the server until
               Continue's real PATCH /auth/me, which `submit()` above still
               blocks whenever `preview` is set. */}
-          <RolePicker value={role} onChange={setRole} />
+          <RolePicker
+            value={role}
+            onChange={(value) => {
+              setRole(value)
+              // Pre-selected to one kid, never zero (feedback, 2026-08-14) —
+              // the count dropdown below only offers 1-5, so there must
+              // already be a kid present the first time Family is picked.
+              if (value === 'family' && kidGrades.length === 0) setKidGrades([GRADE_OPTIONS[0].value])
+            }}
+          />
           {role === 'other' && (
             <IonItem>
               <IonLabel position="stacked">
@@ -551,22 +564,40 @@ export function ProfileSetupScreen({ preview = false }: { preview?: boolean } = 
             </IonItem>
           )}
         </IonList>
-        {/* Kids/grade, Family role only (feedback #81) — "how many kids" is
-            just this array's length, not a separate count field to keep in
-            sync; each kid is only a grade, no name (see CLAUDE.md's Data
-            safety & classification — this stays the minimum needed for
-            grade-level friend suggestions, not a name/DOB field). */}
+        {/* Kids/grade, Family role only (feedback #81, count-dropdown revised
+            2026-08-14) — a "Kids at Nettelhorst" count picker (1-5, never 0 —
+            RolePicker above pre-seeds one kid the moment Family is chosen, so
+            there's nothing to add a first kid from) drives how many grade
+            rows show below it; each kid is only a grade, no name (see
+            CLAUDE.md's Data safety & classification — this stays the minimum
+            needed for grade-level friend suggestions, not a name/DOB field). */}
         {role === 'family' && (
           <IonList inset>
-            <IonItem lines={kidGrades.length ? undefined : 'none'}>
-              <IonLabel>
-                Kids
+            <IonItem>
+              <IonLabel position="stacked">
+                Kids at Nettelhorst
                 <RequiredMark />
               </IonLabel>
+              <IonSelect
+                interface="action-sheet"
+                value={kidGrades.length}
+                onIonChange={(e) => {
+                  const count = e.detail.value as number
+                  setKidGrades((prev) =>
+                    count <= prev.length ? prev.slice(0, count) : [...prev, ...Array(count - prev.length).fill(GRADE_OPTIONS[0].value)],
+                  )
+                }}
+              >
+                {KID_COUNT_OPTIONS.map((count) => (
+                  <IonSelectOption key={count} value={count}>
+                    {count}
+                  </IonSelectOption>
+                ))}
+              </IonSelect>
             </IonItem>
             {kidGrades.map((grade, index) => (
               <IonItem key={index}>
-                <IonLabel position="stacked">Kid {index + 1}</IonLabel>
+                <IonLabel position="stacked">Kid {index + 1} grade</IonLabel>
                 <IonSelect
                   interface="action-sheet"
                   value={grade}
@@ -580,20 +611,8 @@ export function ProfileSetupScreen({ preview = false }: { preview?: boolean } = 
                     </IonSelectOption>
                   ))}
                 </IonSelect>
-                <IonButton
-                  slot="end"
-                  fill="clear"
-                  color="medium"
-                  aria-label={`Remove kid ${index + 1}`}
-                  onClick={() => setKidGrades((prev) => prev.filter((_, i) => i !== index))}
-                >
-                  <IonIcon slot="icon-only" icon={closeCircleOutline} />
-                </IonButton>
               </IonItem>
             ))}
-            <IonItem button lines="none" onClick={() => setKidGrades((prev) => [...prev, GRADE_OPTIONS[0].value])}>
-              <IonLabel color="primary">+ Add a kid</IonLabel>
-            </IonItem>
           </IonList>
         )}
         <IonList inset>

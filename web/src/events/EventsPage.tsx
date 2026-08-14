@@ -118,11 +118,6 @@ export function EventsPage() {
   // Occurrences the next-occurrence collapse is currently suppressing
   // (feedback #48) — 0 once revealHidden() below has fetched everything.
   const [hiddenCount, setHiddenCount] = useState(0)
-  // Dismissed events are already in `events` (unlike the server-side
-  // next-occurrence collapse above) — this just tracks whether the visitor
-  // has tapped the "Show N dismissed events" reveal for this page view
-  // (feedback #60, same one-time-per-view pattern as Camps' dismissed reveal).
-  const [dismissedRevealed, setDismissedRevealed] = useState(false)
   // Which accordion section(s) start open — New by default, or Starred if
   // New is already empty ("complete") on first load (feedback, 2026-08-06).
   // Computed once per page visit, not re-derived every time the underlying
@@ -298,21 +293,30 @@ export function EventsPage() {
                 )}
               </div>
             </IonAccordion>
+            {/* Same square/dropdown shape as Starred/New (feedback,
+                2026-08-14: "should look just like the new and star
+                sections... same kind of square drop down"), replacing the
+                earlier plain centered "Show N dismissed events" link —
+                muted icon/label color is the only deemphasis, not a
+                different layout. */}
+            {dismissedEvents.length > 0 && (
+              <IonAccordion value="dismissed">
+                <IonItem slot="header">
+                  <IonIcon slot="start" icon={eyeOffOutline} color="medium" />
+                  <IonLabel color="medium">
+                    Dismissed ({dismissedEvents.length})
+                  </IonLabel>
+                </IonItem>
+                <div slot="content">
+                  <IonList>
+                    {dismissedEvents.map((event) => (
+                      <EventRow key={event.id} event={event} multiTouch={multiTouch} onSwipe={handleSwipe} dimmed />
+                    ))}
+                  </IonList>
+                </div>
+              </IonAccordion>
+            )}
           </IonAccordionGroup>
-        )}
-        {dismissedEvents.length > 0 && !dismissedRevealed && (
-          <IonItem button lines="none" detail={false} onClick={() => setDismissedRevealed(true)}>
-            <IonLabel color="medium" className="ion-text-center">
-              Show {dismissedEvents.length} dismissed {dismissedEvents.length === 1 ? 'event' : 'events'}
-            </IonLabel>
-          </IonItem>
-        )}
-        {dismissedRevealed && dismissedEvents.length > 0 && (
-          <IonList>
-            {dismissedEvents.map((event) => (
-              <EventRow key={event.id} event={event} multiTouch={multiTouch} onSwipe={handleSwipe} dimmed />
-            ))}
-          </IonList>
         )}
       </IonContent>
       <IonToast

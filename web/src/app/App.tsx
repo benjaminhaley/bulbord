@@ -6,6 +6,7 @@ import { calendarOutline, chatbubbleOutline, sunnyOutline } from 'ionicons/icons
 import { AdminRoute } from '../admin/AdminRoute'
 import { DataFreshnessProvider } from '../admin/DataFreshnessContext'
 import { DevToolsPage } from '../admin/DevToolsPage'
+import { FriendsPreviewPage } from '../admin/FriendsPreviewPage'
 import { InvitePreviewPage } from '../admin/InvitePreviewPage'
 import { ProfileSetupPreviewPage } from '../admin/ProfileSetupPreviewPage'
 import { UsersPage } from '../admin/UsersPage'
@@ -50,6 +51,7 @@ export function App() {
                   <AdminRoute exact path="/admin/dev-tools" component={DevToolsPage} />
                   <AdminRoute exact path="/admin/invite-preview" component={InvitePreviewPage} />
                   <AdminRoute exact path="/admin/profile-setup-preview" component={ProfileSetupPreviewPage} />
+                  <AdminRoute exact path="/admin/friends-preview" component={FriendsPreviewPage} />
                   <Redirect exact path="/" to="/events" />
                 </IonRouterOutlet>
                 <IonTabBar slot="bottom" id="main-tab-bar">

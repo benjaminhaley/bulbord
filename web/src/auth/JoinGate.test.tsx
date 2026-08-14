@@ -72,13 +72,6 @@ async function attachPhoto(container: HTMLElement) {
   await waitFor(() => expect(container.querySelector('img')).toBeInTheDocument())
 }
 
-// Kids/grade (feedback #81, Family role only) — the array's own length is
-// the "how many kids" count, so adding one kid is just this one click; it
-// defaults to the first grade option, which is all these tests need.
-function addKid() {
-  fireEvent.click(screen.getByText('+ Add a kid').closest('ion-item')!)
-}
-
 function renderGate(path: string) {
   return render(
     <MemoryRouter initialEntries={[path]}>
@@ -141,7 +134,7 @@ describe('JoinGate', () => {
     expect(screen.getByText('the real app')).toBeInTheDocument()
   })
 
-  it('keeps Continue disabled until name, email, photo, and role (plus a kid, for Family) are all filled', async () => {
+  it('keeps Continue disabled until name, email, photo, and role are all filled (Family pre-seeds its required kid automatically)', async () => {
     mockUseAuth.mockReturnValue({ user: { id: 'u1', name: 'New Nettelhorst member', profileComplete: false }, isLoading: false })
     const { container } = renderGate('/events')
 
@@ -154,13 +147,13 @@ describe('JoinGate', () => {
     typeIntoIonInput(emailInput, 'ben@example.com')
     expect(button.disabled).toBe(true)
 
+    // Selecting Family pre-seeds one kid at the default grade (feedback,
+    // 2026-08-14: "pre-selected to one, don't allow a zero selection") — no
+    // separate "add a kid" step needed, so only the photo is still missing.
     selectRole('family')
-    expect(button.disabled).toBe(true) // no photo or kid yet
+    expect(button.disabled).toBe(true)
 
     await attachPhoto(container)
-    expect(button.disabled).toBe(true) // photo attached, still no kid
-
-    addKid()
     expect(button.disabled).toBe(false)
   })
 
@@ -198,7 +191,6 @@ describe('JoinGate', () => {
     typeIntoIonInput(emailInput, 'ben@example.com')
     selectRole('family')
     await attachPhoto(container)
-    addKid()
 
     fireEvent.click(screen.getByText('Continue').closest('ion-button')!)
 
@@ -258,7 +250,6 @@ describe('JoinGate', () => {
     typeIntoIonInput(emailInput, 'ben@example.com')
     selectRole('family')
     await attachPhoto(container)
-    addKid()
 
     const checkbox = container.querySelector('ion-checkbox')!
     fireEvent(checkbox, new CustomEvent('ionChange', { detail: { checked: false }, bubbles: true }))

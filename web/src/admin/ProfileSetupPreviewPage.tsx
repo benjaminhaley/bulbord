@@ -1,4 +1,4 @@
-import { IonBackButton, IonButtons, IonHeader, IonPage, IonTitle, IonToolbar } from '@ionic/react'
+import { IonBackButton, IonButton, IonButtons, IonHeader, IonPage, IonTitle, IonToolbar } from '@ionic/react'
 
 import { ProfileSetupScreen } from '../auth/JoinGate'
 
@@ -13,7 +13,10 @@ import { ProfileSetupScreen } from '../auth/JoinGate'
 // real PATCH /auth/me call, which would otherwise overwrite the admin's own
 // name/email. No disclaimer banner injected into the screen itself, for the
 // same "exact reproduction" reason as InvitePreviewPage — the page title
-// alone already says "preview."
+// alone already says "preview." The "Next" link to FriendsPreviewPage.tsx
+// (the walkthrough's third step, added once the choose-friends onboarding
+// step shipped, feedback #83) lives in the header for the same reason
+// InvitePreviewPage's own "Next" does — never below the fold.
 export function ProfileSetupPreviewPage() {
   return (
     <IonPage>
@@ -23,6 +26,9 @@ export function ProfileSetupPreviewPage() {
             <IonBackButton defaultHref="/admin/invite-preview" />
           </IonButtons>
           <IonTitle>Sign-up Flow Preview</IonTitle>
+          <IonButtons slot="end">
+            <IonButton routerLink="/admin/friends-preview">Next</IonButton>
+          </IonButtons>
         </IonToolbar>
       </IonHeader>
       <ProfileSetupScreen preview />
