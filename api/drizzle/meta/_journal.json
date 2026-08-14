@@ -176,6 +176,13 @@
       "when": 1786587195612,
       "tag": "0024_add_camp_booking_status",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1786666792140,
+      "tag": "0025_smiling_sharon_carter",
+      "breakpoints": true
     }
   ]
 }

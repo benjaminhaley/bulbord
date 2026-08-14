@@ -5,6 +5,7 @@ import { requireAuth } from '../auth/plugin.js'
 import { db } from '../db/client.js'
 import { campComments, campInterests, campSources, camps, eventsLog, schoolBreaks, users } from '../db/schema.js'
 import { todayInChicago } from '../dates.js'
+import { uploadPlaceholderImage } from '../uploads/placeholder.js'
 import { groupCampsByBreak, type SchoolBreakRow } from './grouping.js'
 import { canEditCamp } from './permissions.js'
 import { formatCampWhen, locationLabel } from './preview-when.js'
@@ -284,6 +285,13 @@ export async function campsRoutes(app: FastifyInstance) {
     }
 
     const currentUser = request.currentUser!
+    // camps.image_url/thumbnail_url are NOT NULL — a member who doesn't
+    // attach a photo still gets a generated placeholder (uploads/placeholder.ts),
+    // same as every other insert path.
+    const image =
+      body.image_url && body.thumbnail_url
+        ? { imageUrl: body.image_url, thumbnailUrl: body.thumbnail_url }
+        : await uploadPlaceholderImage(title, 'camps')
     const [created] = await db
       .insert(camps)
       .values({
@@ -303,8 +311,8 @@ export async function campsRoutes(app: FastifyInstance) {
         bookingInstructions: body.booking_instructions?.trim() || null,
         prepNote: body.prep_note?.trim() || null,
         sourceUrl: body.source_url?.trim() || null,
-        imageUrl: body.image_url || null,
-        thumbnailUrl: body.thumbnail_url || null,
+        imageUrl: image.imageUrl,
+        thumbnailUrl: image.thumbnailUrl,
         status: 'approved',
         submittedByUserId: currentUser.id,
       })
@@ -363,6 +371,12 @@ export async function campsRoutes(app: FastifyInstance) {
       return reply.code(400).send({ error: { message: 'end_date must be on or after start_date' } })
     }
 
+    // Same NOT NULL fallback as POST /camps above — clearing a photo on edit
+    // still leaves a real (generated) image behind, never null.
+    const image =
+      body.image_url && body.thumbnail_url
+        ? { imageUrl: body.image_url, thumbnailUrl: body.thumbnail_url }
+        : await uploadPlaceholderImage(title, 'camps')
     await Promise.all([
       db
         .update(camps)
@@ -383,8 +397,8 @@ export async function campsRoutes(app: FastifyInstance) {
           bookingInstructions: body.booking_instructions?.trim() || null,
           prepNote: body.prep_note?.trim() || null,
           sourceUrl: body.source_url?.trim() || null,
-          imageUrl: body.image_url || null,
-          thumbnailUrl: body.thumbnail_url || null,
+          imageUrl: image.imageUrl,
+          thumbnailUrl: image.thumbnailUrl,
           updatedAt: new Date(),
         })
         .where(eq(camps.id, id)),

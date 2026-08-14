@@ -35,8 +35,13 @@ export const events = pgTable('events', {
   longitude: numeric('longitude', { precision: 9, scale: 6 }),
   sourceUrl: text('source_url'),
   sourceId: uuid('source_id').references(() => eventSources.id),
-  imageUrl: text('image_url'),
-  thumbnailUrl: text('thumbnail_url'),
+  // NOT NULL (feedback, 2026-08-14, after a real event shipped with none —
+  // see CLAUDE.md's Images & object storage section): every insert path
+  // must supply either a real found image or a generated placeholder
+  // (uploads/placeholder.ts) — there is no code path that can leave this
+  // null. Reverses the 2026-07-31 decision that left it nullable.
+  imageUrl: text('image_url').notNull(),
+  thumbnailUrl: text('thumbnail_url').notNull(),
   status: text('status').notNull().default('pending'), // 'pending' | 'approved' | 'rejected'
   submittedByUserId: uuid('submitted_by_user_id'),
   approvedByUserId: uuid('approved_by_user_id'),
@@ -352,8 +357,9 @@ export const camps = pgTable('camps', {
   prepNote: text('prep_note'),
   sourceUrl: text('source_url'),
   sourceId: uuid('source_id').references(() => campSources.id),
-  imageUrl: text('image_url'),
-  thumbnailUrl: text('thumbnail_url'),
+  // NOT NULL — see the identical note on events.imageUrl above.
+  imageUrl: text('image_url').notNull(),
+  thumbnailUrl: text('thumbnail_url').notNull(),
   status: text('status').notNull().default('pending'), // 'pending' | 'approved' | 'rejected'
   submittedByUserId: uuid('submitted_by_user_id'),
   approvedByUserId: uuid('approved_by_user_id'),

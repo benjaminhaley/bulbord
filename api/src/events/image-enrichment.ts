@@ -35,9 +35,11 @@ export async function enrichEventImage(
     if (await isLowQualityImage(downloaded, { isLogo: candidate.isLogo })) continue
 
     const { key, thumbnailKey } = await uploadImage(downloaded, 'events')
+    // Non-null: uploadImage() always returns a real key, so imageUrl() (only
+    // ever null for a falsy key) can't actually be null here.
     await db
       .update(events)
-      .set({ imageUrl: imageUrl(key), thumbnailUrl: imageUrl(thumbnailKey), updatedAt: new Date() })
+      .set({ imageUrl: imageUrl(key)!, thumbnailUrl: imageUrl(thumbnailKey)!, updatedAt: new Date() })
       .where(eq(events.id, eventId))
 
     return 'sourced'

@@ -11,6 +11,7 @@ import { todayInChicago } from '../dates.js'
 // requirement is with web/src/events/format.ts, not with anything
 // newsletter-specific — see that file's own header).
 import { formatWhen, locationLabel } from '../newsletter/format.js'
+import { uploadPlaceholderImage } from '../uploads/placeholder.js'
 import { canEditEvent } from './permissions.js'
 
 type InterestStatus = 'interested' | 'dismissed'
@@ -231,6 +232,13 @@ export async function eventsRoutes(app: FastifyInstance) {
 
     const currentUser = request.currentUser!
     const allDay = !!body.all_day
+    // events.image_url/thumbnail_url are NOT NULL — a member who doesn't
+    // attach a photo still gets a generated placeholder (uploads/placeholder.ts),
+    // same as every other insert path.
+    const image =
+      body.image_url && body.thumbnail_url
+        ? { imageUrl: body.image_url, thumbnailUrl: body.thumbnail_url }
+        : await uploadPlaceholderImage(title, 'events')
     const [created] = await db
       .insert(events)
       .values({
@@ -242,8 +250,8 @@ export async function eventsRoutes(app: FastifyInstance) {
         address,
         locationName: body.location_name?.trim() || null,
         sourceUrl: body.source_url?.trim() || null,
-        imageUrl: body.image_url || null,
-        thumbnailUrl: body.thumbnail_url || null,
+        imageUrl: image.imageUrl,
+        thumbnailUrl: image.thumbnailUrl,
         status: 'approved',
         submittedByUserId: currentUser.id,
       })
@@ -304,6 +312,12 @@ export async function eventsRoutes(app: FastifyInstance) {
     }
 
     const allDay = !!body.all_day
+    // Same NOT NULL fallback as POST /events above — clearing a photo on
+    // edit still leaves a real (generated) image behind, never null.
+    const image =
+      body.image_url && body.thumbnail_url
+        ? { imageUrl: body.image_url, thumbnailUrl: body.thumbnail_url }
+        : await uploadPlaceholderImage(title, 'events')
     await Promise.all([
       db
         .update(events)
@@ -316,8 +330,8 @@ export async function eventsRoutes(app: FastifyInstance) {
           address,
           locationName: body.location_name?.trim() || null,
           sourceUrl: body.source_url?.trim() || null,
-          imageUrl: body.image_url || null,
-          thumbnailUrl: body.thumbnail_url || null,
+          imageUrl: image.imageUrl,
+          thumbnailUrl: image.thumbnailUrl,
           updatedAt: new Date(),
         })
         .where(eq(events.id, id)),

@@ -3,6 +3,7 @@ import { eq } from 'drizzle-orm'
 
 import { db } from '../db/client.js'
 import { campSources, camps, eventsLog, type CampOptionLine, type CampPrepLine } from '../db/schema.js'
+import { uploadPlaceholderImage } from '../uploads/placeholder.js'
 import { haversineMiles, NETTELHORST_COORDS } from './geo.js'
 import { enrichCampSourceImage } from './image-enrichment.js'
 
@@ -161,8 +162,10 @@ async function main() {
   // accepting multiple candidate pages. Left here as single-URL for
   // historical accuracy — this script has an existing-source guard and
   // won't be re-run.
-  const image = await enrichCampSourceImage(['https://www.facebook.com/UnicoiStudio/'])
-  console.log(image ? 'Found a real image via Facebook' : 'No usable image found')
+  const enriched = await enrichCampSourceImage(['https://www.facebook.com/UnicoiStudio/'])
+  console.log(enriched ? 'Found a real image via Facebook' : 'No usable image found, using a placeholder')
+  // camps.image_url is NOT NULL — see uploads/placeholder.ts.
+  const image = enriched ?? (await uploadPlaceholderImage('Unicoi Art Studio', 'camps'))
 
   const distanceMiles = distanceFromNettelhorst()
 
@@ -191,8 +194,8 @@ async function main() {
         prepItems: PREP_ITEMS,
         sourceUrl: SOURCE_URL,
         sourceId: source.id,
-        imageUrl: image?.imageUrl ?? null,
-        thumbnailUrl: image?.thumbnailUrl ?? null,
+        imageUrl: image.imageUrl,
+        thumbnailUrl: image.thumbnailUrl,
         status: 'approved' as const,
       })),
     )

@@ -2,6 +2,7 @@ import { and, eq } from 'drizzle-orm'
 
 import { db } from '../db/client.js'
 import { events, eventsLog } from '../db/schema.js'
+import { uploadPlaceholderImage } from '../uploads/placeholder.js'
 import { enrichEventImages } from './image-enrichment.js'
 import { lookupMoviePoster } from './movie-poster-lookup.js'
 import { simplifyTitle } from './title-normalization.js'
@@ -65,6 +66,14 @@ export async function ingestEvents(candidates: CandidateEvent[], { sourceId, act
       continue
     }
 
+    // events.image_url/thumbnail_url are NOT NULL (see uploads/placeholder.ts)
+    // — real image resolution happens after insert (enrichEventImages below,
+    // a network fetch + quality gate), so a generated placeholder goes in at
+    // insert time to satisfy the constraint immediately; enrichment then
+    // UPDATEs it to a real photo if one passes, or leaves the placeholder in
+    // place if nothing does.
+    const placeholder = await uploadPlaceholderImage(title, 'events')
+
     const [row] = await db
       .insert(events)
       .values({
@@ -79,6 +88,8 @@ export async function ingestEvents(candidates: CandidateEvent[], { sourceId, act
         longitude: candidate.longitude,
         sourceUrl: candidate.sourceUrl,
         sourceId,
+        imageUrl: placeholder.imageUrl,
+        thumbnailUrl: placeholder.thumbnailUrl,
         status: candidate.status,
       })
       .returning({ id: events.id })

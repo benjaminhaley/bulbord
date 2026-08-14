@@ -15,7 +15,7 @@ const NEW_URL = 'https://southportneighbors.com/events/quarterly-community-meeti
 async function main() {
   const updated = await db
     .update(events)
-    .set({ sourceUrl: NEW_URL, imageUrl: null, thumbnailUrl: null, updatedAt: new Date() })
+    .set({ sourceUrl: NEW_URL, updatedAt: new Date() })
     .where(eq(events.sourceUrl, OLD_URL))
     .returning({ id: events.id, title: events.title })
 

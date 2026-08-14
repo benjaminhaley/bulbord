@@ -50,7 +50,7 @@ async function main() {
 
     const updated = await db
       .update(events)
-      .set({ imageUrl: imageUrl(key), thumbnailUrl: imageUrl(thumbnailKey), updatedAt: new Date() })
+      .set({ imageUrl: imageUrl(key)!, thumbnailUrl: imageUrl(thumbnailKey)!, updatedAt: new Date() })
       .where(and(eq(events.title, poster.titleMatch), isNull(events.deletedAt)))
       .returning({ id: events.id })
 

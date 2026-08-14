@@ -26,7 +26,7 @@ async function main() {
 
   const updated = await db
     .update(events)
-    .set({ imageUrl: imageUrl(key), thumbnailUrl: imageUrl(thumbnailKey), updatedAt: new Date() })
+    .set({ imageUrl: imageUrl(key)!, thumbnailUrl: imageUrl(thumbnailKey)!, updatedAt: new Date() })
     .where(and(like(events.title, 'Block Party:%'), isNull(events.deletedAt)))
     .returning({ id: events.id })
 

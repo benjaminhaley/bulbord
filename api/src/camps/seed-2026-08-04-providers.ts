@@ -2,6 +2,7 @@ import 'dotenv/config'
 
 import { db } from '../db/client.js'
 import { camps, campSources, eventsLog, type CampOptionLine, type CampPrepLine } from '../db/schema.js'
+import { uploadPlaceholderImage } from '../uploads/placeholder.js'
 import { haversineMiles, NETTELHORST_COORDS } from './geo.js'
 import { enrichCampSourceImage } from './image-enrichment.js'
 
@@ -591,18 +592,22 @@ async function main() {
   // One real image fetch per provider (not per camp) — every camp at a given
   // venue shares that venue's real photo/logo. Sequential, not parallel: a
   // handful of one-time network fetches at seed time, not a hot path.
-  const imageByKey = new Map<string, { imageUrl: string; thumbnailUrl: string } | null>()
+  const imageByKey = new Map<string, { imageUrl: string; thumbnailUrl: string }>()
   for (const p of PROVIDERS) {
     const enriched = await enrichCampSourceImage(p.imageSourceUrls)
-    imageByKey.set(p.key, enriched)
-    console.log(`${p.name}: ${enriched ? 'found a real image' : 'no usable image found'}`)
+    // camps.image_url is NOT NULL — a provider with no usable extracted
+    // image still gets a generated placeholder, same as every other insert
+    // path (see uploads/placeholder.ts).
+    imageByKey.set(p.key, enriched ?? (await uploadPlaceholderImage(p.name, 'camps')))
+    console.log(`${p.name}: ${enriched ? 'found a real image' : 'no usable image found, using a placeholder'}`)
   }
 
   const insertedCamps = await db
     .insert(camps)
     .values(
       candidates.map((c) => {
-        const image = imageByKey.get(c.sourceKey) ?? null
+        const image = imageByKey.get(c.sourceKey)
+        if (!image) throw new Error(`No image resolved for source key ${c.sourceKey}`)
         return {
           title: c.title,
           description: c.description,
@@ -625,8 +630,8 @@ async function main() {
           prepItems: c.prepItems,
           sourceUrl: c.sourceUrl,
           sourceId: sourceIdByKey.get(c.sourceKey)!,
-          imageUrl: image?.imageUrl ?? null,
-          thumbnailUrl: image?.thumbnailUrl ?? null,
+          imageUrl: image.imageUrl,
+          thumbnailUrl: image.thumbnailUrl,
           status: 'approved' as const,
         }
       }),

@@ -3,6 +3,7 @@ import { eq } from 'drizzle-orm'
 
 import { db } from '../db/client.js'
 import { campSources, camps, eventsLog, type CampOptionLine, type CampPrepLine } from '../db/schema.js'
+import { uploadPlaceholderImage } from '../uploads/placeholder.js'
 import { haversineMiles, NETTELHORST_COORDS } from './geo.js'
 import { enrichCampSourceImage } from './image-enrichment.js'
 
@@ -133,8 +134,10 @@ async function seedUltimateNinjas() {
     })
     .returning({ id: campSources.id })
 
-  const image = await enrichCampSourceImage([NINJAS_SOURCE_URL, 'https://www.facebook.com/ultimateninjaschi/'])
-  console.log(image ? 'Ultimate Ninjas: found a real image' : 'Ultimate Ninjas: no usable image found')
+  const enriched = await enrichCampSourceImage([NINJAS_SOURCE_URL, 'https://www.facebook.com/ultimateninjaschi/'])
+  console.log(enriched ? 'Ultimate Ninjas: found a real image' : 'Ultimate Ninjas: no usable image found, using a placeholder')
+  // camps.image_url is NOT NULL — see uploads/placeholder.ts.
+  const image = enriched ?? (await uploadPlaceholderImage('Ultimate Ninjas', 'camps'))
 
   const distanceMiles = distanceFromNettelhorst(NINJAS_LAT, NINJAS_LNG)
 
@@ -163,8 +166,8 @@ async function seedUltimateNinjas() {
         prepItems: NINJAS_PREP_ITEMS,
         sourceUrl: NINJAS_SOURCE_URL,
         sourceId: source.id,
-        imageUrl: image?.imageUrl ?? null,
-        thumbnailUrl: image?.thumbnailUrl ?? null,
+        imageUrl: image.imageUrl,
+        thumbnailUrl: image.thumbnailUrl,
         status: 'approved' as const,
       })),
     )
