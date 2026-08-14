@@ -5,30 +5,20 @@
 // between this file and that one (see that file's own header comment) —
 // they solve different problems (a full detail-page field vs. one compact
 // preview line), so this only needs to be close enough to read naturally,
-// not byte-identical.
+// not byte-identical. The single-day date-labeling rule itself (bounded to
+// the current Sunday-Saturday calendar week — feedback #78) does come from
+// the real shared ../dayLabel module rather than a fourth duplicate copy,
+// since getting that specific rule right/consistent matters more than this
+// file's general "close enough" posture toward the rest of the formatting.
 
-function relativeDayLabel(date: Date, today: Date): string | null {
-  const dayMs = 24 * 60 * 60 * 1000
-  const diffDays = Math.round((date.getTime() - today.getTime()) / dayMs)
-  if (diffDays === 0) return 'Today'
-  if (diffDays === 1) return 'Tomorrow'
-  if (diffDays >= 2 && diffDays <= 6) return `This ${date.toLocaleDateString('en-US', { weekday: 'long' })}`
-  return null
-}
+import { dayLabel } from '../dayLabel.js'
 
 function shortDateLabel(dateStr: string): string {
   return new Date(`${dateStr}T00:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
 }
 
 function formatDateRange(startDate: string, endDate: string, now: Date): string {
-  if (startDate === endDate) {
-    const today = new Date(now)
-    today.setHours(0, 0, 0, 0)
-    const date = new Date(`${startDate}T00:00:00`)
-    return (
-      relativeDayLabel(date, today) ?? date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
-    )
-  }
+  if (startDate === endDate) return dayLabel(startDate, now)
   return `${shortDateLabel(startDate)} – ${shortDateLabel(endDate)}`
 }
 

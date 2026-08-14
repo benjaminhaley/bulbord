@@ -15,6 +15,7 @@ import { createOutline, star, starOutline, trashOutline } from 'ionicons/icons'
 import { useEffect, useState } from 'react'
 import { useHistory, useParams } from 'react-router-dom'
 
+import { AddToCalendarButton } from '../calendar/AddToCalendarButton'
 import { API_URL } from '../config'
 import { factLineStyle, headingContentGap, leadingButtonGap, sectionDividerStyle } from '../theme/layout'
 import { Avatar } from '../uploads/Avatar'
@@ -263,7 +264,11 @@ export function CampDetailPage() {
                 camp's name and stays visible the whole time the page is
                 scrolled, so a second, large title directly below the image
                 was pure duplication. */}
-            <p style={factLineStyle}>{formatDateRange(camp.start_date, camp.end_date)}</p>
+            {/* 'detailed' mode (feedback #78): see EventDetailPage.tsx's
+                identical comment — a detail page has no surrounding list
+                context, so the relative word gets the actual date alongside
+                it for clarity. */}
+            <p style={factLineStyle}>{formatDateRange(camp.start_date, camp.end_date, undefined, 'detailed')}</p>
             {!hasOptions && <p style={factLineStyle}>{timeLabel(camp.start_time, camp.end_time)}</p>}
             {camp.submitted_by && (
               <p style={{ ...factLineStyle, color: 'var(--ion-color-medium)' }}>Posted by {camp.submitted_by.name}</p>
@@ -289,6 +294,30 @@ export function CampDetailPage() {
               </p>
             )}
             {camp.description && <p style={factLineStyle}>{camp.description}</p>}
+            {/* Feedback #76: lets a member add this camp to their own
+                calendar (Google/Outlook/.ics — see AddToCalendarButton). A
+                multi-day camp (start_date !== end_date) always becomes an
+                all-day calendar block spanning the whole range — a specific
+                daily time (e.g. "9am-3pm each day of a school break") can't
+                be represented as a single calendar event without a
+                recurrence rule, which is more than this needs — only a
+                genuinely single-day camp's own start_time/end_time become a
+                timed block. */}
+            <AddToCalendarButton
+              event={{
+                title: camp.title,
+                description: camp.description,
+                location: camp.location_name ?? camp.address,
+                url: window.location.href,
+                startDate: camp.start_date,
+                endDate: camp.end_date,
+                startTime: camp.start_date === camp.end_date ? camp.start_time : null,
+                endTime: camp.start_date === camp.end_date ? camp.end_time : null,
+                allDay: camp.start_date !== camp.end_date,
+              }}
+              filename={`${camp.title}.ics`}
+              style={leadingButtonGap}
+            />
             {(camp.options && camp.options.length > 0) || camp.options_note ? (
               <>
                 <hr style={sectionDividerStyle} />

@@ -11,6 +11,15 @@ describe('formatCampWhen', () => {
     )
   })
 
+  // Feedback #78: "This <Weekday>" is bounded to the current Sunday-Saturday
+  // calendar week, not a fixed "2-6 days out" window.
+  it('does not say "This <Weekday>" for a day in next calendar week even if only a few days out', () => {
+    const friday = new Date('2026-08-14T09:00:00-05:00')
+    expect(formatCampWhen({ startDate: '2026-08-16', endDate: '2026-08-16', startTime: null, endTime: null }, friday)).toBe(
+      'Sun, Aug 16',
+    )
+  })
+
   it('appends a formatted time range when times are set', () => {
     expect(
       formatCampWhen({ startDate: '2026-08-15', endDate: '2026-08-15', startTime: '09:00:00', endTime: '15:30:00' }, now),

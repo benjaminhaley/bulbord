@@ -37,11 +37,17 @@ function checkIdentical(label, webPath, apiPath, { normalize = (s) => s } = {}) 
   }
 }
 
-checkIdentical('format.ts', 'web/src/events/format.ts', 'api/src/newsletter/format.ts')
+checkIdentical('format.ts', 'web/src/events/format.ts', 'api/src/newsletter/format.ts', {
+  normalize: stripJsExtensionFromImports,
+})
 checkIdentical('format.test.ts', 'web/src/events/format.test.ts', 'api/src/newsletter/format.test.ts', {
   normalize: stripJsExtensionFromImports,
 })
 checkIdentical('theme.ts', 'web/src/events/theme.ts', 'api/src/newsletter/theme.ts')
+checkIdentical('dayLabel.ts', 'web/src/dayLabel.ts', 'api/src/dayLabel.ts')
+checkIdentical('dayLabel.test.ts', 'web/src/dayLabel.test.ts', 'api/src/dayLabel.test.ts', {
+  normalize: stripJsExtensionFromImports,
+})
 
 if (failed) {
   process.exit(1)

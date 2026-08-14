@@ -10,21 +10,18 @@
 // looser, naming-mismatched duplicate (feedback #36 — the newsletter had
 // drifted to inventing its own colors and had a different parameter shape
 // from this file).
-
-// Feedback #74: an event within the current week (2-6 days out) reads as
-// "This Saturday" rather than a bare date — capitalized like "Today"/
-// "Tomorrow" above, since it's always the leading word of the line, never
-// mid-sentence. Day 7 (a week from today) falls back to the full date
-// instead, since people usually mean "next <Weekday>" at that distance, not
-// "this <Weekday>".
-function relativeDayLabel(date: Date, today: Date): string | null {
-  const dayMs = 24 * 60 * 60 * 1000
-  const diffDays = Math.round((date.getTime() - today.getTime()) / dayMs)
-  if (diffDays === 0) return 'Today'
-  if (diffDays === 1) return 'Tomorrow'
-  if (diffDays >= 2 && diffDays <= 6) return `This ${date.toLocaleDateString('en-US', { weekday: 'long' })}`
-  return null
-}
+//
+// Feedback #74/#78: an event within the current Sunday-Saturday calendar
+// week reads as "This Saturday" rather than a bare date — capitalized like
+// "Today"/"Tomorrow", since it's always the leading word of the line, never
+// mid-sentence. A day outside the current week (even if only 2-6 days out —
+// e.g. a Sunday two days after a Friday, which starts next week) falls back
+// to the full date instead, since "this <Weekday>" would misdescribe a day
+// that isn't actually in this week. This day-labeling rule (and its
+// 'summary'/'detailed' modes — see formatWhen below) lives in ../dates.ts,
+// shared with camps/format.ts (see that file's header comment) and
+// mirrored byte-for-byte into api/src/newsletter/dates.ts.
+import { dayLabel, type DayLabelMode } from '../dayLabel.js'
 
 // House time-formatting style (feedback, 2026-08-05, originally established
 // for Camps — camps/format.ts's identical parseTime/formatSingleTime —
@@ -51,16 +48,14 @@ export interface FormattableEvent {
   allDay: boolean
 }
 
-export function formatWhen(event: FormattableEvent, now = new Date()): string {
-  const today = new Date(now)
-  today.setHours(0, 0, 0, 0)
-  const date = new Date(`${event.startDate}T00:00:00`)
-  const dateLabel =
-    relativeDayLabel(date, today) ?? date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
-
-  if (event.allDay || !event.startTime) return dateLabel
-
-  return `${dateLabel} · ${formatTime(event.startTime)}`
+// mode defaults to 'summary' (the existing word-only behavior every current
+// call site relies on) — pass 'detailed' from a detail page, reached via
+// its own URL with no surrounding list/section context, to also show the
+// actual date alongside the word (e.g. "This Saturday, Aug 16").
+export function formatWhen(event: FormattableEvent, now = new Date(), mode: DayLabelMode = 'summary'): string {
+  const label = dayLabel(event.startDate, now, mode)
+  if (event.allDay || !event.startTime) return label
+  return `${label} · ${formatTime(event.startTime)}`
 }
 
 // Addresses are typically stored as "Street, Chicago, IL 60613" — everything

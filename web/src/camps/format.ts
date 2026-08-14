@@ -2,33 +2,26 @@
 // web/src/events/format.ts (camps is a fresh, non-shared clone — see
 // CLAUDE.md feedback #50). No newsletter counterpart exists for camps, so
 // unlike events/format.ts this file has no byte-identical-parity requirement
-// with anything on the api/ side.
-
-function relativeDayLabel(date: Date, today: Date): string | null {
-  const dayMs = 24 * 60 * 60 * 1000
-  const diffDays = Math.round((date.getTime() - today.getTime()) / dayMs)
-  if (diffDays === 0) return 'Today'
-  if (diffDays === 1) return 'Tomorrow'
-  return null
-}
+// with anything on the api/ side. The single-day date-labeling rule
+// (Today/Tomorrow/"This <Weekday>", bounded to the current Sunday-Saturday
+// calendar week) is genuinely shared with events/format.ts though — both
+// need the exact same rule (feedback #78) — so it lives in ../dayLabel
+// (truly generic shared infra, the same bar auth/uploads/Avatar already
+// clear) rather than as a second diverging copy here.
+import { dayLabel, type DayLabelMode } from '../dayLabel'
 
 function shortDateLabel(dateStr: string): string {
   return new Date(`${dateStr}T00:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
 }
 
 // Camps have no time-of-day (see api/src/db/schema.ts) — a single-day camp
-// gets the same Today/Tomorrow/weekday label events use; a multi-day camp
-// (a full week of a school break, say) shows as a plain date range instead,
-// since a relative "Today – Aug 15" reads oddly for the far end of a range.
-export function formatDateRange(startDate: string, endDate: string, now = new Date()): string {
-  if (startDate === endDate) {
-    const today = new Date(now)
-    today.setHours(0, 0, 0, 0)
-    const date = new Date(`${startDate}T00:00:00`)
-    return (
-      relativeDayLabel(date, today) ?? date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
-    )
-  }
+// gets the same Today/Tomorrow/"This <Weekday>" label events use; a
+// multi-day camp (a full week of a school break, say) shows as a plain date
+// range instead, since a relative "Today – Aug 15" reads oddly for the far
+// end of a range. mode defaults to 'summary' — pass 'detailed' from the
+// camp detail page to also show the actual date alongside the word.
+export function formatDateRange(startDate: string, endDate: string, now = new Date(), mode: DayLabelMode = 'summary'): string {
+  if (startDate === endDate) return dayLabel(startDate, now, mode)
   return `${shortDateLabel(startDate)} – ${shortDateLabel(endDate)}`
 }
 

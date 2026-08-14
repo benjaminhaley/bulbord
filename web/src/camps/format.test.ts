@@ -29,8 +29,25 @@ describe('formatDateRange', () => {
     expect(formatDateRange('2026-08-03', '2026-08-03', now)).toBe('Tomorrow')
   })
 
+  // Feedback #78: camps get the same "This <Weekday>" wording events do,
+  // bounded to the current Sunday-Saturday calendar week (via the shared
+  // ../dayLabel — see this file's own header comment).
+  it('labels a single-day camp within the current week as "This <Weekday>"', () => {
+    expect(formatDateRange('2026-08-04', '2026-08-04', now)).toBe('This Tuesday')
+    expect(formatDateRange('2026-08-08', '2026-08-08', now)).toBe('This Saturday')
+  })
+
+  it('does not say "This <Weekday>" for a day in next calendar week even if only a few days out', () => {
+    const friday = new Date('2026-08-07T09:00:00-05:00')
+    expect(formatDateRange('2026-08-09', '2026-08-09', friday)).toBe('Sun, Aug 9')
+  })
+
   it('falls back to a weekday/month/day label for a single-day camp further out', () => {
     expect(formatDateRange('2026-08-09', '2026-08-09', now)).toBe('Sun, Aug 9')
+  })
+
+  it('shows the actual date alongside the relative word in detailed mode', () => {
+    expect(formatDateRange('2026-08-08', '2026-08-08', now, 'detailed')).toBe('This Saturday, Aug 8')
   })
 
   it('shows a plain date range for a multi-day camp', () => {

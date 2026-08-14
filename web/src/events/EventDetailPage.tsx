@@ -14,6 +14,7 @@ import { createOutline, star, starOutline, trashOutline } from 'ionicons/icons'
 import { useEffect, useState } from 'react'
 import { useHistory, useParams } from 'react-router-dom'
 
+import { AddToCalendarButton } from '../calendar/AddToCalendarButton'
 import { API_URL } from '../config'
 import { mapUrl, shortAddress } from '../format'
 import { factLineStyle, leadingButtonGap } from '../theme/layout'
@@ -131,7 +132,15 @@ export function EventDetailPage() {
                 image was pure duplication (same fix already made on
                 CampDetailPage.tsx, 2026-08-05). */}
             <p style={factLineStyle}>
-              {formatWhen({ startDate: event.start_date, startTime: event.start_time, allDay: event.all_day })}
+              {/* 'detailed' mode (feedback #78): a detail page is reached via
+                  its own URL/back-stack with no surrounding list context, so
+                  a relative word alone ("This Saturday") is shown alongside
+                  the actual date for clarity, unlike the list row above. */}
+              {formatWhen(
+                { startDate: event.start_date, startTime: event.start_time, allDay: event.all_day },
+                undefined,
+                'detailed',
+              )}
             </p>
             {event.submitted_by && (
               <p style={{ ...factLineStyle, color: 'var(--ion-color-medium)' }}>Posted by {event.submitted_by.name}</p>
@@ -148,6 +157,21 @@ export function EventDetailPage() {
               </p>
             )}
             {event.description && <p style={factLineStyle}>{event.description}</p>}
+            {/* Feedback #76: lets a member add this event to their own
+                calendar (Google/Outlook/.ics — see AddToCalendarButton). */}
+            <AddToCalendarButton
+              event={{
+                title: event.title,
+                description: event.description,
+                location: event.location_name ?? event.address,
+                url: window.location.href,
+                startDate: event.start_date,
+                startTime: event.start_time,
+                allDay: event.all_day,
+              }}
+              filename={`${event.title}.ics`}
+              style={leadingButtonGap}
+            />
             {event.source_url && (
               <IonButton expand="block" href={event.source_url} target="_blank" rel="noreferrer" style={leadingButtonGap}>
                 View source

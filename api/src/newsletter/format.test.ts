@@ -22,6 +22,20 @@ describe('formatWhen', () => {
     expect(formatWhen({ startDate: '2026-08-09', startTime: null, allDay: true }, now)).toBe('Sun, Aug 9')
   })
 
+  // Feedback #78: "This <Weekday>" is bounded to the current Sunday-Saturday
+  // calendar week, not a fixed "2-6 days out" window — from a Friday, 2 days
+  // out is already next Sunday.
+  it('does not say "This <Weekday>" for a day in next calendar week even if only a few days out', () => {
+    const friday = new Date('2026-08-07T09:00:00-05:00')
+    expect(formatWhen({ startDate: '2026-08-09', startTime: null, allDay: true }, friday)).toBe('Sun, Aug 9')
+  })
+
+  it('shows the actual date alongside the relative word in detailed mode', () => {
+    expect(formatWhen({ startDate: '2026-08-08', startTime: null, allDay: true }, now, 'detailed')).toBe(
+      'This Saturday, Aug 8',
+    )
+  })
+
   it('appends a time for a timed, non-all-day event', () => {
     expect(formatWhen({ startDate: '2026-08-03', startTime: '18:30:00', allDay: false }, now)).toBe('Tomorrow · 6:30 pm')
   })
