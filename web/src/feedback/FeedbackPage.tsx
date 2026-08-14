@@ -18,7 +18,16 @@ import {
   IonTitle,
   IonToolbar,
 } from '@ionic/react'
-import { addOutline, arrowUndoOutline, checkmarkOutline, closeOutline, createOutline, imageOutline, timeOutline } from 'ionicons/icons'
+import {
+  addOutline,
+  arrowUndoOutline,
+  checkmarkOutline,
+  closeOutline,
+  createOutline,
+  hourglassOutline,
+  imageOutline,
+  timeOutline,
+} from 'ionicons/icons'
 import { type ReactNode, useEffect, useState } from 'react'
 
 import { InstitutionBanner } from '../app/InstitutionBanner'
@@ -32,6 +41,8 @@ import {
   completeFeedback,
   createFeedback,
   fetchFeedback,
+  startProgressFeedback,
+  stopProgressFeedback,
   unbacklogFeedback,
   updateFeedback,
   type FeedbackItem,
@@ -295,6 +306,10 @@ function FeedbackListItem({
     onUpdated(item.backlogged_at ? await unbacklogFeedback(item.id) : await backlogFeedback(item.id))
   }
 
+  async function toggleInProgress() {
+    onUpdated(item.in_progress_at ? await stopProgressFeedback(item.id) : await startProgressFeedback(item.id))
+  }
+
   if (editing) {
     return (
       <FeedbackForm
@@ -333,6 +348,15 @@ function FeedbackListItem({
               </IonButton>
             )}
             {isAdmin && !item.completed_at && (
+              <IonButton
+                fill="clear"
+                onClick={toggleInProgress}
+                title={item.in_progress_at ? 'Restore to open' : 'Move to in progress'}
+              >
+                <IonIcon slot="icon-only" icon={item.in_progress_at ? arrowUndoOutline : hourglassOutline} />
+              </IonButton>
+            )}
+            {isAdmin && !item.completed_at && (
               <IonButton fill="clear" onClick={toggleBacklog} title={item.backlogged_at ? 'Restore to open' : 'Move to backlog'}>
                 <IonIcon slot="icon-only" icon={item.backlogged_at ? arrowUndoOutline : timeOutline} />
               </IonButton>
@@ -342,6 +366,50 @@ function FeedbackListItem({
       </IonItem>
       {markingDone && <MarkDoneForm onConfirm={confirmDone} onCancel={() => setMarkingDone(false)} />}
     </>
+  )
+}
+
+function FeedbackAccordionSection({
+  value,
+  label,
+  items,
+  isAdmin,
+  onCompleted,
+  onUpdated,
+  onImageClick,
+}: {
+  value: string
+  label: string
+  items: FeedbackItem[]
+  isAdmin: boolean
+  onCompleted: (item: FeedbackItem) => void
+  onUpdated: (item: FeedbackItem) => void
+  onImageClick: (url: string) => void
+}) {
+  if (items.length === 0) return null
+
+  return (
+    <IonAccordionGroup>
+      <IonAccordion value={value}>
+        <IonItem slot="header">
+          <IonLabel>
+            {label} ({items.length})
+          </IonLabel>
+        </IonItem>
+        <IonList slot="content">
+          {items.map((item) => (
+            <FeedbackListItem
+              key={item.id}
+              item={item}
+              isAdmin={isAdmin}
+              onCompleted={onCompleted}
+              onUpdated={onUpdated}
+              onImageClick={onImageClick}
+            />
+          ))}
+        </IonList>
+      </IonAccordion>
+    </IonAccordionGroup>
   )
 }
 
@@ -358,7 +426,9 @@ export function FeedbackPage() {
       .catch(() => setError(true))
   }, [])
 
-  const openItems = items?.filter((item) => !item.completed_at && !item.backlogged_at) ?? []
+  const openItems =
+    items?.filter((item) => !item.completed_at && !item.backlogged_at && !item.in_progress_at) ?? []
+  const inProgressItems = items?.filter((item) => item.in_progress_at && !item.completed_at) ?? []
   const backlogItems = items?.filter((item) => item.backlogged_at && !item.completed_at) ?? []
   const closedItems = items?.filter((item) => item.completed_at) ?? []
 
@@ -431,49 +501,35 @@ export function FeedbackPage() {
               )}
             </IonList>
 
-            {backlogItems.length > 0 && (
-              <IonAccordionGroup>
-                <IonAccordion value="backlog">
-                  <IonItem slot="header">
-                    <IonLabel>Backlog ({backlogItems.length})</IonLabel>
-                  </IonItem>
-                  <IonList slot="content">
-                    {backlogItems.map((item) => (
-                      <FeedbackListItem
-                        key={item.id}
-                        item={item}
-                        isAdmin={isAdmin}
-                        onCompleted={handleUpdated}
-                        onUpdated={handleUpdated}
-                        onImageClick={(url) => setLightboxSrc(`${API_URL}${url}`)}
-                      />
-                    ))}
-                  </IonList>
-                </IonAccordion>
-              </IonAccordionGroup>
-            )}
+            <FeedbackAccordionSection
+              value="in-progress"
+              label="In Progress"
+              items={inProgressItems}
+              isAdmin={isAdmin}
+              onCompleted={handleUpdated}
+              onUpdated={handleUpdated}
+              onImageClick={(url) => setLightboxSrc(`${API_URL}${url}`)}
+            />
 
-            {closedItems.length > 0 && (
-              <IonAccordionGroup>
-                <IonAccordion value="closed">
-                  <IonItem slot="header">
-                    <IonLabel>Closed ({closedItems.length})</IonLabel>
-                  </IonItem>
-                  <IonList slot="content">
-                    {closedItems.map((item) => (
-                      <FeedbackListItem
-                        key={item.id}
-                        item={item}
-                        isAdmin={isAdmin}
-                        onCompleted={handleUpdated}
-                        onUpdated={handleUpdated}
-                        onImageClick={(url) => setLightboxSrc(`${API_URL}${url}`)}
-                      />
-                    ))}
-                  </IonList>
-                </IonAccordion>
-              </IonAccordionGroup>
-            )}
+            <FeedbackAccordionSection
+              value="backlog"
+              label="Backlog"
+              items={backlogItems}
+              isAdmin={isAdmin}
+              onCompleted={handleUpdated}
+              onUpdated={handleUpdated}
+              onImageClick={(url) => setLightboxSrc(`${API_URL}${url}`)}
+            />
+
+            <FeedbackAccordionSection
+              value="closed"
+              label="Closed"
+              items={closedItems}
+              isAdmin={isAdmin}
+              onCompleted={handleUpdated}
+              onUpdated={handleUpdated}
+              onImageClick={(url) => setLightboxSrc(`${API_URL}${url}`)}
+            />
           </>
         )}
       </IonContent>

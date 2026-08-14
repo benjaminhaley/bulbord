@@ -13,6 +13,7 @@ export interface FeedbackItem {
   completed_at: string | null
   completion_note: string | null
   backlogged_at: string | null
+  in_progress_at: string | null
   can_edit: boolean
 }
 
@@ -74,4 +75,12 @@ export function backlogFeedback(id: string): Promise<FeedbackItem> {
 
 export function unbacklogFeedback(id: string): Promise<FeedbackItem> {
   return authedRequest('POST', `/feedback/${id}/unbacklog`, {})
+}
+
+export function startProgressFeedback(id: string): Promise<FeedbackItem> {
+  return authedRequest('POST', `/feedback/${id}/start-progress`, {})
+}
+
+export function stopProgressFeedback(id: string): Promise<FeedbackItem> {
+  return authedRequest('POST', `/feedback/${id}/stop-progress`, {})
 }

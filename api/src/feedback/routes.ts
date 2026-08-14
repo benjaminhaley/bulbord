@@ -19,6 +19,7 @@ function serializeFeedback(
     | 'completedAt'
     | 'completionNote'
     | 'backloggedAt'
+    | 'inProgressAt'
     | 'createdByUserId'
   >,
   authorName: string | null,
@@ -36,6 +37,7 @@ function serializeFeedback(
     completed_at: f.completedAt,
     completion_note: f.completionNote,
     backlogged_at: f.backloggedAt,
+    in_progress_at: f.inProgressAt,
     can_edit: canEditFeedback(currentUser, f),
   }
 }
@@ -97,6 +99,7 @@ export async function feedbackRoutes(app: FastifyInstance) {
         completedAt: feedback.completedAt,
         completionNote: feedback.completionNote,
         backloggedAt: feedback.backloggedAt,
+        inProgressAt: feedback.inProgressAt,
         createdByUserId: feedback.createdByUserId,
         authorName: users.name,
       })
@@ -251,15 +254,25 @@ export async function feedbackRoutes(app: FastifyInstance) {
     })
   })
 
-  // Backlog is a third, independent state alongside open/completed (feedback
-  // #52) — a deliberately-deferred item, not a done one. Shares the
-  // set-timestamp-then-reload shape of /complete above, but factored into one
-  // helper since backlog/unbacklog are the same operation with the opposite
-  // value.
-  async function setBacklogged(id: string, currentUser: { id: string }, value: Date | null) {
+  // Backlog and in-progress are two independent non-open, non-completed
+  // states (feedback #52, #79) — a deliberately-deferred item vs. one
+  // that's actively blocked on Ben specifically. Both share the
+  // set-timestamp-then-reload shape of /complete above, factored into one
+  // helper parameterized on which column to write; setting either one
+  // clears the other, since an item is only ever in one of these two states
+  // at a time (same "one active state" shape backlog already had relative
+  // to completedAt).
+  async function setSideState(
+    id: string,
+    currentUser: { id: string },
+    column: 'backloggedAt' | 'inProgressAt',
+    value: Date | null,
+    action: string,
+  ) {
+    const otherColumn = column === 'backloggedAt' ? 'inProgressAt' : 'backloggedAt'
     const [updated] = await db
       .update(feedback)
-      .set({ backloggedAt: value, updatedAt: new Date() })
+      .set({ [column]: value, ...(value ? { [otherColumn]: null } : {}), updatedAt: new Date() })
       .where(and(eq(feedback.id, id), isNull(feedback.deletedAt)))
       .returning()
 
@@ -269,7 +282,7 @@ export async function feedbackRoutes(app: FastifyInstance) {
 
     await db.insert(eventsLog).values({
       actor: currentUser.id,
-      action: value ? 'feedback_backlogged' : 'feedback_unbacklogged',
+      action,
       metadata: { feedbackId: id },
     })
 
@@ -285,14 +298,28 @@ export async function feedbackRoutes(app: FastifyInstance) {
 
   app.post('/feedback/:id/backlog', { preHandler: requireRole('admin') }, async (request, reply) => {
     const { id } = request.params as { id: string }
-    const data = await setBacklogged(id, request.currentUser!, new Date())
+    const data = await setSideState(id, request.currentUser!, 'backloggedAt', new Date(), 'feedback_backlogged')
     if (!data) return reply.code(404).send({ error: { message: 'Feedback not found' } })
     return reply.send({ data })
   })
 
   app.post('/feedback/:id/unbacklog', { preHandler: requireRole('admin') }, async (request, reply) => {
     const { id } = request.params as { id: string }
-    const data = await setBacklogged(id, request.currentUser!, null)
+    const data = await setSideState(id, request.currentUser!, 'backloggedAt', null, 'feedback_unbacklogged')
+    if (!data) return reply.code(404).send({ error: { message: 'Feedback not found' } })
+    return reply.send({ data })
+  })
+
+  app.post('/feedback/:id/start-progress', { preHandler: requireRole('admin') }, async (request, reply) => {
+    const { id } = request.params as { id: string }
+    const data = await setSideState(id, request.currentUser!, 'inProgressAt', new Date(), 'feedback_started_progress')
+    if (!data) return reply.code(404).send({ error: { message: 'Feedback not found' } })
+    return reply.send({ data })
+  })
+
+  app.post('/feedback/:id/stop-progress', { preHandler: requireRole('admin') }, async (request, reply) => {
+    const { id } = request.params as { id: string }
+    const data = await setSideState(id, request.currentUser!, 'inProgressAt', null, 'feedback_stopped_progress')
     if (!data) return reply.code(404).send({ error: { message: 'Feedback not found' } })
     return reply.send({ data })
   })

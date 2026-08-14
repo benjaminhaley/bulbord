@@ -1,0 +1,1 @@
+ALTER TABLE "feedback" ADD COLUMN "in_progress_at" timestamp with time zone;

@@ -187,6 +187,15 @@ export const feedback = pgTable('feedback', {
   // admin can move an item to/from backlog independent of completion
   // (feedback #52).
   backloggedAt: timestamp('backlogged_at', { withTimezone: true }),
+  // A fourth state alongside open/backlogged/completed (feedback #79) — for
+  // an item Claude has already picked up but that's blocked on something
+  // only Ben can do (pasting a DNS record, clicking through an App Store
+  // Connect screen, etc.), so it doesn't get lost in the open list waiting
+  // on him specifically. Mutually exclusive with backloggedAt at the route
+  // level (api/src/feedback/routes.ts's setInProgress/setBacklogged each
+  // clear the other) — same "one active state at a time" shape backloggedAt
+  // already established relative to completedAt.
+  inProgressAt: timestamp('in_progress_at', { withTimezone: true }),
   ...timestamps,
 })
 

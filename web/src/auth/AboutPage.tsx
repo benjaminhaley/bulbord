@@ -16,17 +16,19 @@ export function AboutPage() {
       <IonContent fullscreen className="ion-padding">
         <h2>About Nettelhorst Bulbord</h2>
         <p>
-          This app is designed to help our community at Nettelhorst come together more frequently, for the good of
-          our kids and families.
+          See things relevant to the Nettelhorst community — events, camps, the type of things people talk about
+          during drop off. This app is designed to help our community at Nettelhorst come together more frequently,
+          for the good of our kids and families.
         </p>
+        <h2>About the Author</h2>
+        <p>
+          I'm Ben Haley. Anna Piepmeyer and I are parents to two kids at Nettelhorst — Sebron in third grade and
+          Parker in pre-K. You'll see me riding around town in a cargo bike, often with the whole family loaded in.
+        </p>
+        <p>I'm building this app as a fun side project.</p>
         <p>
           Feedback welcome! <a href="mailto:benjamin.haley@gmail.com">benjamin.haley@gmail.com</a> ·{' '}
           <a href="tel:+16302979831">630-297-9831</a>
-        </p>
-        <h2>About Me</h2>
-        <p>
-          I'm Ben Haley, a parent of two kids at Nettelhorst — Sebron in third grade and Parker in pre-K. You'll see
-          me riding around town in a cargo bike, often with the whole family loaded in.
         </p>
       </IonContent>
     </IonPage>
