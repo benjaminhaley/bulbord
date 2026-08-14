@@ -188,6 +188,23 @@ export function CampDetailPage() {
   const hasOptions = camp?.options != null && camp.options.length > 0
   const details = camp ? campDetailsLine(camp, { includePrice: !hasOptions, includeAge: !hasOptions }) : null
 
+  // Feedback, 2026-08-14: the calendar event's own description should
+  // include what to bring/prepare, not just the camp's plain description —
+  // a member checking their calendar app later has no other way back to
+  // this info without reopening the app. Plain-text bullets (a calendar
+  // description field has no rich list rendering), mirroring
+  // LabeledBulletList's label/detail shape.
+  const prepText = camp
+    ? camp.prep_items && camp.prep_items.length > 0
+      ? camp.prep_items.map((item) => `- ${item.label}${item.detail ? `: ${item.detail}` : ''}`).join('\n')
+      : camp.prep_note
+    : null
+  const calendarDescription = camp
+    ? [camp.description, prepText ? `What to bring / prepare:\n${prepText}` : null]
+        .filter((v): v is string => Boolean(v))
+        .join('\n\n') || null
+    : null
+
   return (
     <IonPage>
       <IonHeader>
@@ -294,30 +311,6 @@ export function CampDetailPage() {
               </p>
             )}
             {camp.description && <p style={factLineStyle}>{camp.description}</p>}
-            {/* Feedback #76: lets a member add this camp to their own
-                calendar (Google/Outlook/.ics — see AddToCalendarButton). A
-                multi-day camp (start_date !== end_date) always becomes an
-                all-day calendar block spanning the whole range — a specific
-                daily time (e.g. "9am-3pm each day of a school break") can't
-                be represented as a single calendar event without a
-                recurrence rule, which is more than this needs — only a
-                genuinely single-day camp's own start_time/end_time become a
-                timed block. */}
-            <AddToCalendarButton
-              event={{
-                title: camp.title,
-                description: camp.description,
-                location: camp.location_name ?? camp.address,
-                url: window.location.href,
-                startDate: camp.start_date,
-                endDate: camp.end_date,
-                startTime: camp.start_date === camp.end_date ? camp.start_time : null,
-                endTime: camp.start_date === camp.end_date ? camp.end_time : null,
-                allDay: camp.start_date !== camp.end_date,
-              }}
-              filename={`${camp.title}.ics`}
-              style={leadingButtonGap}
-            />
             {(camp.options && camp.options.length > 0) || camp.options_note ? (
               <>
                 <hr style={sectionDividerStyle} />
@@ -349,40 +342,68 @@ export function CampDetailPage() {
               )
             )}
             <CommentsSection campId={camp.id} source={camp.source} />
-            {(camp.booking_instructions || camp.source_url || camp.booking_status) && (
-              <>
-                <hr style={sectionDividerStyle} />
-                <h2>Booking</h2>
-                {/* Whether registration is actually open right now (feedback
-                    #68) — leads the section since it's the single most
-                    actionable fact here, ahead of the static how-to-register
-                    text and the link itself. */}
-                <IonBadge style={{ ...bookingStatusChipStyle(camp.booking_status), fontWeight: 500, marginBottom: 8 }}>
-                  {bookingStatusLabel(camp.booking_status)}
-                </IonBadge>
-                {camp.booking_instructions && (
-                  <p style={{ ...factLineStyle, whiteSpace: 'pre-wrap' }}>{camp.booking_instructions}</p>
-                )}
-                {camp.source_url && (
-                  // marginBottom clears the persistent floating share button
-                  // (feedback, 2026-08-05: "generally clean up the look of the
-                  // booking link, which is kind of squashed up there") — the
-                  // share button is fixed in the bottom-right corner above the
-                  // tab bar on every page (see index.css's .share-fab), so a
-                  // full-width block button ending the page would otherwise sit
-                  // flush against it with no breathing room once scrolled all
-                  // the way down.
-                  <IonButton
-                    expand="block"
-                    href={camp.source_url}
-                    target="_blank"
-                    rel="noreferrer"
-                    style={{ ...leadingButtonGap, marginBottom: 72 }}
-                  >
-                    View Booking Page
-                  </IonButton>
-                )}
-              </>
+            <hr style={sectionDividerStyle} />
+            <h2>Booking</h2>
+            {/* Whether registration is actually open right now (feedback
+                #68) — leads the section since it's the single most
+                actionable fact here, ahead of the static how-to-register
+                text and the link itself. */}
+            <IonBadge style={{ ...bookingStatusChipStyle(camp.booking_status), fontWeight: 500, marginBottom: 8 }}>
+              {bookingStatusLabel(camp.booking_status)}
+            </IonBadge>
+            {camp.booking_instructions && (
+              <p style={{ ...factLineStyle, whiteSpace: 'pre-wrap' }}>{camp.booking_instructions}</p>
+            )}
+            {/* Feedback #76: lets a member add this camp to their own
+                calendar (Google/Outlook/.ics — see AddToCalendarButton).
+                Sits directly above "View Booking Page" (feedback,
+                2026-08-14: "keep it consistent with events" — Events'
+                identical button sits directly above its own "View source"
+                link the same way). A multi-day camp (start_date !==
+                end_date) always becomes an all-day calendar block spanning
+                the whole range — a specific daily time (e.g. "9am-3pm each
+                day of a school break") can't be represented as a single
+                calendar event without a recurrence rule, which is more than
+                this needs — only a genuinely single-day camp's own
+                start_time/end_time become a timed block. */}
+            <AddToCalendarButton
+              event={{
+                title: camp.title,
+                description: calendarDescription,
+                location: camp.location_name ?? camp.address,
+                url: window.location.href,
+                startDate: camp.start_date,
+                endDate: camp.end_date,
+                startTime: camp.start_date === camp.end_date ? camp.start_time : null,
+                endTime: camp.start_date === camp.end_date ? camp.end_time : null,
+                allDay: camp.start_date !== camp.end_date,
+              }}
+              filename={`${camp.title}.ics`}
+              // marginBottom clears the persistent floating share button
+              // (feedback, 2026-08-05, originally about the booking link —
+              // see below) whenever this is the last button on the page,
+              // i.e. there's no source_url to show "View Booking Page"
+              // beneath it.
+              style={camp.source_url ? leadingButtonGap : { ...leadingButtonGap, marginBottom: 72 }}
+            />
+            {camp.source_url && (
+              // marginBottom clears the persistent floating share button
+              // (feedback, 2026-08-05: "generally clean up the look of the
+              // booking link, which is kind of squashed up there") — the
+              // share button is fixed in the bottom-right corner above the
+              // tab bar on every page (see index.css's .share-fab), so a
+              // full-width block button ending the page would otherwise sit
+              // flush against it with no breathing room once scrolled all
+              // the way down.
+              <IonButton
+                expand="block"
+                href={camp.source_url}
+                target="_blank"
+                rel="noreferrer"
+                style={{ ...leadingButtonGap, marginBottom: 72 }}
+              >
+                View Booking Page
+              </IonButton>
             )}
           </>
         )}
