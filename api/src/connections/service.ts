@@ -94,11 +94,20 @@ async function notifyConnectionAdded(adderId: string, recipientId: string) {
   await sendEmail(recipient.email, connectionAlertSubject(adderName), connectionAlertHtml(adderName, `${webUrl}/friends`))
 }
 
-// Onboarding suggestions (feedback #83): inviter, then the inviter's own
-// connections, then other Family members with a kid in the same grade as
-// one of the viewer's kids — in that order, deduped, excluding the viewer
-// and anyone already connected. Search (connections/routes.ts's
-// GET /connections/members) covers everyone else.
+// Cap on the default (no search query) suggestions list — "up to whatever
+// reasonable... two hundred at a shot" (feedback, 2026-08-14). Search
+// (GET /connections/members) always queries the full member table
+// server-side regardless of this cap, so it still finds someone this list
+// doesn't reach.
+const SUGGESTIONS_LIMIT = 200
+
+// Onboarding suggestions (feedback #83, extended 2026-08-14): inviter, then
+// the inviter's own connections, then other Family members with a kid in
+// the same grade as one of the viewer's kids, in that priority order — and
+// once that's exhausted, every other member on Nettelhorst Bulbord (up to
+// SUGGESTIONS_LIMIT total), so the default list is never just "no
+// suggestions yet" once a community has more than a handful of members.
+// Deduped throughout, excluding the viewer and anyone already connected.
 export async function getSuggestions(userId: string): Promise<MemberSummary[]> {
   const [[me], myKids, existingConnections] = await Promise.all([
     db.select({ invitedByUserId: users.invitedByUserId }).from(users).where(eq(users.id, userId)).limit(1),
@@ -130,11 +139,23 @@ export async function getSuggestions(userId: string): Promise<MemberSummary[]> {
         .where(and(inArray(userChildren.grade, myGrades), isNull(userChildren.deletedAt), isNull(users.deletedAt)))
     : []
 
-  return buildSuggestionList(
+  // Everyone else, alphabetically (same ordering searchMembers already
+  // uses) — a flat fallback tier, not a ranked one, since there's no
+  // further signal to sort by. Overlaps with the groups above are expected
+  // and harmless; buildSuggestionList dedupes across all of them.
+  const everyoneElseGroup = await db
+    .select(MEMBER_COLUMNS)
+    .from(users)
+    .where(and(ne(users.id, userId), isNull(users.deletedAt)))
+    .orderBy(users.name)
+    .limit(SUGGESTIONS_LIMIT)
+
+  const suggestions = buildSuggestionList(
     userId,
-    [inviterGroup, inviterConnectionsGroup, gradeMatchGroup],
+    [inviterGroup, inviterConnectionsGroup, gradeMatchGroup, everyoneElseGroup],
     existingConnections.map((c) => c.id),
   )
+  return suggestions.slice(0, SUGGESTIONS_LIMIT)
 }
 
 // "Search that allows you to find anyone else who might be a friend"
