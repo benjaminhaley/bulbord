@@ -16,6 +16,10 @@ export interface MemberSummary {
 export type { ConnectionsState }
 
 const MEMBER_COLUMNS = { id: users.id, name: users.name, avatarUrl: users.avatarUrl }
+// Excludes operational accounts (today, just Apple App Review) from every
+// discovery surface below — feedback, 2026-08-14, after it showed up as a
+// friend suggestion. See schema.ts's isServiceAccount comment.
+const NOT_SERVICE_ACCOUNT = eq(users.isServiceAccount, false)
 
 // Every active (not soft-deleted) outgoing edge a user has added — "who
 // they're following". Reused both by the onboarding suggestion algorithm's
@@ -146,7 +150,7 @@ export async function getSuggestions(userId: string): Promise<MemberSummary[]> {
         db
           .select(MEMBER_COLUMNS)
           .from(users)
-          .where(and(eq(users.id, inviterId), isNull(users.deletedAt)))
+          .where(and(eq(users.id, inviterId), isNull(users.deletedAt), NOT_SERVICE_ACCOUNT))
           .limit(1),
         listOutgoingConnections(inviterId),
       ])
@@ -158,7 +162,7 @@ export async function getSuggestions(userId: string): Promise<MemberSummary[]> {
         .selectDistinct(MEMBER_COLUMNS)
         .from(userChildren)
         .innerJoin(users, eq(users.id, userChildren.userId))
-        .where(and(inArray(userChildren.grade, myGrades), isNull(userChildren.deletedAt), isNull(users.deletedAt)))
+        .where(and(inArray(userChildren.grade, myGrades), isNull(userChildren.deletedAt), isNull(users.deletedAt), NOT_SERVICE_ACCOUNT))
     : []
 
   // Everyone else, alphabetically (same ordering searchMembers already
@@ -168,7 +172,7 @@ export async function getSuggestions(userId: string): Promise<MemberSummary[]> {
   const everyoneElseGroup = await db
     .select(MEMBER_COLUMNS)
     .from(users)
-    .where(and(ne(users.id, userId), isNull(users.deletedAt)))
+    .where(and(ne(users.id, userId), isNull(users.deletedAt), NOT_SERVICE_ACCOUNT))
     .orderBy(users.name)
     .limit(SUGGESTIONS_LIMIT)
 
@@ -189,9 +193,29 @@ export async function searchMembers(userId: string, query: string): Promise<Memb
   return db
     .select(MEMBER_COLUMNS)
     .from(users)
-    .where(and(ilike(users.name, `%${trimmed}%`), ne(users.id, userId), isNull(users.deletedAt)))
+    .where(and(ilike(users.name, `%${trimmed}%`), ne(users.id, userId), isNull(users.deletedAt), NOT_SERVICE_ACCOUNT))
     .orderBy(users.name)
     .limit(20)
+}
+
+// Admin dev tool (feedback, 2026-08-14): lets an admin see a live render of
+// the "X added you as a friend" alert without needing a second real account
+// to trigger one — same shape as newsletter/service.ts's
+// sendTestNewsletterEmail, reusing the exact real template/mailer path
+// rather than a separately-maintained preview. The admin is both "adder"
+// and recipient here (their own name/photo, sent to their own address) —
+// there's no second person to stand in as the adder, and this still
+// exercises the real render with real data, same "exact reproduction"
+// posture as the sign-up flow preview.
+export async function sendTestConnectionAlertEmail(admin: {
+  name: string
+  email: string
+  avatarUrl: string | null
+}): Promise<void> {
+  const apiUrl = requireEnv('PUBLIC_API_URL')
+  const webUrl = requireEnv('PUBLIC_WEB_URL')
+  const html = connectionAlertHtml(admin.name, admin.avatarUrl, apiUrl, `${webUrl}/friends`)
+  await sendEmail(admin.email, `[Test] ${connectionAlertSubject(admin.name)}`, html)
 }
 
 export async function completeFriendsStep(userId: string) {

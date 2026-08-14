@@ -114,9 +114,9 @@ export function FriendsPage() {
         {state && (
           <>
             <Section title="Friends" members={state.friends} emptyText="No mutual friends yet" addBackId={null} />
-            <Section title="Following" members={state.following} emptyText="Not following anyone yet" addBackId={null} />
+            <Section title="You Following" members={state.following} emptyText="Not following anyone yet" addBackId={null} />
             <Section
-              title="Added You"
+              title="Following You"
               members={state.followers}
               emptyText="No one has added you yet"
               addBackId={addingBackId}

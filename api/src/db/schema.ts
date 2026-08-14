@@ -118,6 +118,18 @@ export const users = pgTable('users', {
   // local preference" shape as profileCompletedAt above, so the step doesn't
   // repeat across devices and JoinGate can gate on it the same way.
   friendsStepCompletedAt: timestamp('friends_step_completed_at', { withTimezone: true }),
+  // True for an operational account that isn't a real community member —
+  // today, just the dedicated Apple App Review account (feedback #61, see
+  // auth/update-2026-08-12-create-reviewer-account.ts). A real DB flag
+  // rather than matching on email/name, so any future operational account
+  // (a load-testing account, another platform-review account) gets the
+  // same treatment without another code change. Excluded from every
+  // member-facing "who might be your friend" surface (connections/
+  // service.ts's suggestions/search) — feedback, 2026-08-14, after it
+  // showed up as a friend suggestion in the sign-up flow preview. Still
+  // visible in the admin /admin/users list, which is meant to show every
+  // account that exists, not just real members.
+  isServiceAccount: boolean('is_service_account').notNull().default(false),
   ...timestamps,
 })
 

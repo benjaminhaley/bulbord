@@ -3,6 +3,7 @@ import type { FastifyInstance } from 'fastify'
 import { requireRole } from '../auth/plugin.js'
 import { listUsersForAdmin } from '../auth/service.js'
 import { getCampsLastUpdatedAt } from '../camps/staleness.js'
+import { sendTestConnectionAlertEmail } from '../connections/service.js'
 import { getSourcesLastCheckedAt, resourceActiveEventSources } from '../events/resourcing.js'
 import { sendTestNewsletterEmail } from '../newsletter/service.js'
 import { computeDataFreshness } from './staleness.js'
@@ -43,6 +44,17 @@ export async function adminRoutes(app: FastifyInstance) {
       return reply.code(400).send({ error: { message: 'Your account has no email on file' } })
     }
     await sendTestNewsletterEmail({ id: user.id, name: user.name, email: user.email })
+    return reply.send({ sent: true })
+  })
+
+  // Dev tool: preview the "X added you as a friend" alert email
+  // (connections/template.ts) without needing a second real account.
+  app.post('/admin/connections/test-send', { preHandler: requireRole('admin') }, async (request, reply) => {
+    const user = request.currentUser!
+    if (!user.email) {
+      return reply.code(400).send({ error: { message: 'Your account has no email on file' } })
+    }
+    await sendTestConnectionAlertEmail({ name: user.name, email: user.email, avatarUrl: user.avatarUrl })
     return reply.send({ sent: true })
   })
 
