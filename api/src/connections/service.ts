@@ -72,26 +72,48 @@ export async function addConnection(userId: string, connectedUserId: string): Pr
   const created = !wasActive
   if (created) {
     await db.insert(eventsLog).values({ actor: userId, action: 'connection_added', metadata: { connectedUserId } })
-    // Best-effort — there's no in-app notification inbox (see schema.ts's
-    // userConnections comment), so an alert email is the only way the other
-    // person finds out to friend back. A failed send shouldn't undo the add.
-    await notifyConnectionAdded(userId, connectedUserId).catch((err) => {
-      console.error('connection alert email failed', err)
-    })
+
+    // Only alert when this is a genuine surprise to the recipient — i.e.
+    // the reverse edge (them -> the adder) doesn't already exist (feedback,
+    // 2026-08-14: Ben added Anna, she was correctly alerted; Anna then
+    // added him back to complete the pair, and he was wrongly alerted too
+    // — he'd already initiated it himself, so there was nothing to tell
+    // him). Completing a mutual pair is silent; the Friends page already
+    // shows it as "Friends" the next time either of them looks.
+    const [reverseEdge] = await db
+      .select({ id: userConnections.id })
+      .from(userConnections)
+      .where(and(eq(userConnections.userId, connectedUserId), eq(userConnections.connectedUserId, userId), isNull(userConnections.deletedAt)))
+      .limit(1)
+
+    if (!reverseEdge) {
+      // Best-effort — there's no in-app notification inbox (see schema.ts's
+      // userConnections comment), so an alert email is the only way the
+      // other person finds out to friend back. A failed send shouldn't
+      // undo the add.
+      await notifyConnectionAdded(userId, connectedUserId).catch((err) => {
+        console.error('connection alert email failed', err)
+      })
+    }
   }
   return { created }
 }
 
 async function notifyConnectionAdded(adderId: string, recipientId: string) {
   const [[adder], [recipient]] = await Promise.all([
-    db.select({ name: users.name }).from(users).where(eq(users.id, adderId)).limit(1),
+    db.select({ name: users.name, avatarUrl: users.avatarUrl }).from(users).where(eq(users.id, adderId)).limit(1),
     db.select({ name: users.name, email: users.email }).from(users).where(eq(users.id, recipientId)).limit(1),
   ])
   if (!recipient?.email) return
 
+  const apiUrl = requireEnv('PUBLIC_API_URL')
   const webUrl = requireEnv('PUBLIC_WEB_URL')
   const adderName = adder?.name ?? 'Someone'
-  await sendEmail(recipient.email, connectionAlertSubject(adderName), connectionAlertHtml(adderName, `${webUrl}/friends`))
+  await sendEmail(
+    recipient.email,
+    connectionAlertSubject(adderName),
+    connectionAlertHtml(adderName, adder?.avatarUrl ?? null, apiUrl, `${webUrl}/friends`),
+  )
 }
 
 // Cap on the default (no search query) suggestions list — "up to whatever

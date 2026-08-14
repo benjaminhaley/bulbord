@@ -10,10 +10,19 @@ export function connectionAlertSubject(adderName: string): string {
   return `${adderName} added you as a friend on Nettelhorst Bulbord`
 }
 
-export function connectionAlertHtml(adderName: string, friendsUrl: string): string {
+// adderAvatarUrl is the raw path from users.avatar_url (e.g.
+// "/uploads/profiles/x.jpg") — apiUrl turns it into the absolute URL an
+// email client can actually load, same as newsletter/template.ts's own
+// thumbnail images. Omitted entirely when null (an account predating the
+// now-required signup photo) rather than a broken/placeholder image.
+export function connectionAlertHtml(adderName: string, adderAvatarUrl: string | null, apiUrl: string, friendsUrl: string): string {
   const name = escapeHtml(adderName)
+  const photo = adderAvatarUrl
+    ? `<img src="${apiUrl}${adderAvatarUrl}" width="64" height="64" style="display:block;width:64px;height:64px;object-fit:cover;border-radius:50%;margin-bottom:12px;" alt="" />`
+    : ''
   return `
     <div style="font-family:-apple-system,Helvetica,Arial,sans-serif;color:#111111;font-size:16px;line-height:1.5;">
+      ${photo}
       <p><strong>${name}</strong> added you as a friend on Nettelhorst Bulbord.</p>
       <p><a href="${friendsUrl}" style="color:#2c2c2c;">Add them back</a></p>
     </div>
