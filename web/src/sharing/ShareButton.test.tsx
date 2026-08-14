@@ -18,11 +18,12 @@ function openShareModal(container: HTMLElement) {
 
 // Leaving IonModal open across a test boundary lets its present()/dismiss()
 // lifecycle promises resolve after testing-library's cleanup has already
-// torn the tree down, surfacing as an unrelated-looking "framework delegate
-// is missing" unhandled rejection in a later test — so every test below
-// closes it before finishing. It portals its content to document.body
-// rather than rendering inline under the component's own container, so the
-// close button has to be found document-wide, unlike the fab button above.
+// torn the tree down, surfacing as an unrelated-looking "document is not
+// defined" (or "framework delegate is missing") unhandled rejection in a
+// later test — so every test below closes it before finishing. It portals
+// its content to document.body rather than rendering inline under the
+// component's own container, so the close button has to be found
+// document-wide, unlike the fab button above.
 async function closeShareModal() {
   // The modal's real DOM attachment happens asynchronously (Stencil watches
   // the isOpen prop and calls present() outside the current tick), so a
@@ -33,7 +34,23 @@ async function closeShareModal() {
     if (!el) throw new Error('share modal close button not found')
     return el
   })
+  // Clicking only *starts* dismiss() — it resolves asynchronously, outside
+  // this tick, same as present() above. Returning right after the click (as
+  // this used to) let the test finish and testing-library's automatic
+  // afterEach cleanup unmount the tree while dismiss() was still pending;
+  // when that stale promise finally settled, it tried to touch `document`
+  // after a later test file's fresh jsdom environment had replaced it,
+  // surfacing as an unrelated-looking unhandled rejection there. Awaiting
+  // the real `ionModalDidDismiss` lifecycle event — the one Stencil itself
+  // emits once dismiss() actually completes — before returning closes that
+  // race at its source, rather than papering over the symptom with a fixed
+  // delay.
+  const modal = document.querySelector('ion-modal')
+  const dismissed = modal
+    ? new Promise<void>((resolve) => modal.addEventListener('ionModalDidDismiss', () => resolve(), { once: true }))
+    : Promise.resolve()
   fireEvent.click(closeButton)
+  await dismissed
 }
 
 describe('ShareButton', () => {
