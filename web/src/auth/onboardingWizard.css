@@ -1,0 +1,46 @@
+/*
+ * Step-entrance animation for ProfileSetupWizard (feedback #88) — a real CSS
+ * file, not an inline style, specifically because @keyframes can't be
+ * expressed as a React style object (the same reason index.css/tokens.css
+ * exist as real CSS rather than inline styles everywhere else in this app).
+ * Each step is a freshly-mounted element (React `key`), so the animation
+ * plays once automatically on mount — no JS timer needed to add/remove
+ * classes or clean up an in-flight transition.
+ */
+
+@keyframes wizard-step-in-forward {
+  from {
+    transform: translateX(24px);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes wizard-step-in-back {
+  from {
+    transform: translateX(-24px);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+.wizard-step-forward {
+  animation: wizard-step-in-forward 260ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.wizard-step-back {
+  animation: wizard-step-in-back 260ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wizard-step-forward,
+  .wizard-step-back {
+    animation: none;
+  }
+}

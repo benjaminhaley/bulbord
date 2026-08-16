@@ -32,6 +32,23 @@ import { useImageUpload } from '../uploads/useImageUpload'
 import { AboutPage } from './AboutPage'
 import { fetchInviteInfo, updateProfile, type Grade, type InviteInfo } from './api'
 import { useAuth } from './AuthContext'
+import { MosaicMotif } from './MosaicMotif'
+import {
+  capitalizeFirst,
+  GRADE_OPTIONS,
+  isEmailValid,
+  isKidsValid,
+  isNameValid,
+  isPhotoValid,
+  isRoleValid,
+  KID_COUNT_OPTIONS,
+  REQUIRED_FIELDS_EXPLANATION,
+  RequiredMark,
+  ROLE_OPTIONS,
+  type ProfileSetupInitialValues,
+  type Role,
+} from './profileForm'
+import { ProfileSetupWizard } from './ProfileSetupWizard'
 import { setToken } from './token'
 import { loginWithPasskey, registerPasskey } from './webauthn'
 
@@ -100,12 +117,29 @@ function SignInLink({ busy, onSignIn }: { busy: boolean; onSignIn: () => void })
   )
 }
 
-function CenteredMessage({ children }: { children: ReactNode }) {
+// `mosaic` adds the same triangulated backdrop the real app icon uses as a
+// subtle decorative flourish (feedback #88) — reserved for the personalized
+// InviteAcceptCard state specifically (see below), not the generic
+// spinner/dead-end states JoinScreen also renders through this same shell,
+// which stay plain on purpose.
+function CenteredMessage({ children, mosaic = false }: { children: ReactNode; mosaic?: boolean }) {
   return (
     <IonContent fullscreen className="ion-padding">
-      <div className="account-fallback" style={{ height: '100%', justifyContent: 'center' }}>
-        <BrandHeader />
-        {children}
+      <div className="account-fallback" style={{ height: '100%', justifyContent: 'center', position: 'relative' }}>
+        {mosaic && <MosaicMotif />}
+        <div
+          style={{
+            position: 'relative',
+            zIndex: 1,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            width: '100%',
+          }}
+        >
+          <BrandHeader />
+          {children}
+        </div>
       </div>
     </IonContent>
   )
@@ -135,9 +169,9 @@ export function InviteAcceptCard({
   onSignIn: () => void
 }) {
   return (
-    <CenteredMessage>
-      <Avatar url={invite?.avatarUrl ?? null} name={invite?.name} size={64} />
-      <h2>{invite ? `${invite.name} invited you` : 'Join Nettelhorst Bulbord'}</h2>
+    <CenteredMessage mosaic>
+      <Avatar url={invite?.avatarUrl ?? null} name={invite?.name} size={72} />
+      <h2 style={{ fontSize: '1.4rem' }}>{invite ? `${invite.name} invited you` : 'Join Nettelhorst Bulbord'}</h2>
       {error && (
         <IonText color="danger">
           <p>{error}</p>
@@ -147,6 +181,26 @@ export function InviteAcceptCard({
         {invite ? 'Accept Invite' : 'Continue'}
       </IonButton>
       <SignInLink busy={busy} onSignIn={onSignIn} />
+    </CenteredMessage>
+  )
+}
+
+// Shown in place of InviteAcceptCard while the real WebAuthn ceremony
+// (registerPasskey) is actually in flight (feedback #88 — previously this
+// moment was just a disabled button with no real acknowledgment that
+// something was happening, which reads as unresponsive during whatever gap
+// exists before the OS's own Face ID/Touch ID/screen-lock prompt appears).
+// Duration is however long the real ceremony takes, not a fixed timer — this
+// unmounts the instant `accept()`'s await resolves, same as any other
+// loading state in this app.
+function PasskeySettingUpScreen() {
+  return (
+    <CenteredMessage>
+      <IonSpinner name="dots" />
+      <h2 style={{ fontSize: '1.2rem', marginTop: 8 }}>Setting up your passkey</h2>
+      <p style={{ color: 'var(--ion-color-medium)' }}>
+        Face ID, Touch ID, or your device's screen lock — no password to remember, ever.
+      </p>
     </CenteredMessage>
   )
 }
@@ -167,6 +221,11 @@ function JoinScreen() {
 
   const [invite, setInvite] = useState<InviteInfo | null | undefined>(inviterUserId ? undefined : null)
   const [busy, setBusy] = useState(false)
+  // Distinct from `busy` (which also covers signIn()) — only true for the
+  // real Accept Invite ceremony, so PasskeySettingUpScreen doesn't also
+  // replace the whole screen during an existing member's much quicker
+  // sign-in tap (see PasskeySettingUpScreen's own comment).
+  const [acceptInFlight, setAcceptInFlight] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
@@ -176,6 +235,7 @@ function JoinScreen() {
 
   async function accept() {
     setBusy(true)
+    setAcceptInFlight(true)
     setError(null)
     try {
       const token = await registerPasskey({ inviterUserId, rootSecret })
@@ -185,6 +245,7 @@ function JoinScreen() {
       setError(err instanceof Error ? err.message : 'Could not create your passkey')
     } finally {
       setBusy(false)
+      setAcceptInFlight(false)
     }
   }
 
@@ -236,58 +297,12 @@ function JoinScreen() {
     )
   }
 
+  if (acceptInFlight) {
+    return <PasskeySettingUpScreen />
+  }
+
   return <InviteAcceptCard invite={invite ?? null} busy={busy} error={error} onAccept={accept} onSignIn={signIn} />
 }
-
-function capitalizeFirst(value: string) {
-  return value.length ? value[0].toUpperCase() + value.slice(1) : value
-}
-
-// Nettelhorst Bulbord is invite-only (feedback #82) — this is why a photo
-// (and every other required field) is required, and the wording other
-// members would actually see explained back to them if they're missing
-// something, shown under the disabled Continue button rather than as a
-// per-field error.
-const REQUIRED_FIELDS_EXPLANATION =
-  'Nettelhorst Bulbord is only for members of the Nettelhorst community — this information lets others verify that you are.'
-
-const GRADE_OPTIONS: { value: Grade; label: string }[] = [
-  { value: 'pre-k', label: 'Pre-K' },
-  { value: 'k', label: 'Kindergarten' },
-  { value: '1', label: '1st Grade' },
-  { value: '2', label: '2nd Grade' },
-  { value: '3', label: '3rd Grade' },
-  { value: '4', label: '4th Grade' },
-  { value: '5', label: '5th Grade' },
-  { value: '6', label: '6th Grade' },
-  { value: '7', label: '7th Grade' },
-  { value: '8', label: '8th Grade' },
-]
-
-// 1-5, never 0 (feedback, 2026-08-14) — the "Kids at Nettelhorst" count
-// dropdown's own options, so a zero-kid state isn't selectable at all.
-const KID_COUNT_OPTIONS = [1, 2, 3, 4, 5]
-
-// Every profile-setup field is mandatory except the photo — marked visually
-// so that's obvious at a glance rather than only enforced invisibly by
-// canSubmit/validateProfileUpdate (feedback: "make sure all fields except
-// image are mandatory in sign up").
-function RequiredMark() {
-  return (
-    <span aria-hidden="true" style={{ color: 'var(--ion-color-danger)' }}>
-      {' '}
-      *
-    </span>
-  )
-}
-
-type Role = 'staff' | 'family' | 'other'
-
-const ROLE_OPTIONS: { value: Role; label: string; detail: string }[] = [
-  { value: 'staff', label: 'Staff', detail: 'You work at Nettelhorst.' },
-  { value: 'family', label: 'Family', detail: 'You are family of a kid at Nettelhorst.' },
-  { value: 'other', label: 'Other', detail: 'Someone else in the Nettelhorst community.' },
-]
 
 // A custom modal picker, not IonSelect — feedback (2026-08-06): the
 // role explainer ("Family: you have a child...") must only be visible
@@ -369,23 +384,10 @@ function RolePicker({ value, onChange }: { value: Role | undefined; onChange: (v
   )
 }
 
-// Prefills the form for an already-onboarded member editing their own
-// profile later (EditProfilePage.tsx, feedback 2026-08-14: "I should be
-// able to see and edit who my kids are (and all onboarding information) in
-// my profile") — kept as a separate type rather than reusing CurrentUser
-// directly so this component doesn't depend on the auth API's response
-// shape, just plain form values the caller is responsible for deriving
-// (e.g. splitting `name` into first/last).
-export interface ProfileSetupInitialValues {
-  firstName: string
-  lastName: string
-  email: string
-  avatarUrl: string | null
-  newsletterSubscribed: boolean
-  role: 'staff' | 'family' | 'other' | undefined
-  roleOther: string
-  kidGrades: Grade[]
-}
+// ProfileSetupInitialValues now lives in profileForm.tsx (shared with
+// ProfileSetupWizard) — re-exported here so EditProfilePage.tsx's existing
+// import path (`from './JoinGate'`) keeps working unchanged.
+export type { ProfileSetupInitialValues } from './profileForm'
 
 // Exported (not just used internally by JoinGate) so it can be previewed —
 // both via Storybook (feedback #44) and in-app via the admin
@@ -442,13 +444,11 @@ export function ProfileSetupScreen({
   // show whenever a field is genuinely missing, but not merely because a
   // photo upload or the submit request itself is in flight.
   const fieldsComplete =
-    !!firstName.trim() &&
-    !!lastName.trim() &&
-    trimmedEmail.includes('@') &&
-    !!avatarUrl &&
-    !!role &&
-    (role !== 'other' || !!trimmedRoleOther) &&
-    (role !== 'family' || kidGrades.length > 0)
+    isNameValid(firstName, lastName) &&
+    isEmailValid(email) &&
+    isPhotoValid(avatarUrl) &&
+    isRoleValid(role, roleOther) &&
+    isKidsValid(role, kidGrades)
   const canSubmit = !submitting && !uploading && fieldsComplete
 
   async function attachPhoto(file: File) {
@@ -730,7 +730,7 @@ export function JoinGate({ children }: { children: ReactNode }) {
   if (!user.profileComplete) {
     return (
       <IonPage>
-        <ProfileSetupScreen />
+        <ProfileSetupWizard />
       </IonPage>
     )
   }

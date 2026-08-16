@@ -47,39 +47,71 @@ async function addVirtualAuthenticator(context: BrowserContext, page: Page) {
   })
 }
 
+// Feedback #88 replaced the old single-screen "Set up your profile" form
+// with a stepped wizard (one field/group per screen, Continue between each)
+// — this walks through it the same way a real member would, rather than
+// filling every field on one page. IonInput's `label`/`labelPlacement`
+// props (used throughout the wizard, unlike the old ion-item-wrapped
+// IonInputs) give each field a real accessible label Playwright's
+// getByLabel can resolve even through ion-input's closed shadow DOM — CDP-
+// based tools like Playwright can reach into a closed shadow root for
+// interaction even though a jsdom-based unit test cannot (see this
+// codebase's other closed-shadow-DOM notes) — so there's no need for the
+// old ion-item/hasText scoping workaround here.
 async function fillProfileAndContinue(page: Page, firstName: string, lastName: string, email: string) {
-  await expect(page.getByRole('heading', { name: 'Set up your profile' })).toBeVisible({ timeout: 15000 })
-  await page.locator('ion-item', { hasText: 'First name' }).locator('input').fill(firstName)
-  await page.locator('ion-item', { hasText: 'Last name' }).locator('input').fill(lastName)
-  // Not `ion-item` filtered by hasText: 'Email' — the newsletter-subscribe
-  // checkbox's own item also matches ("Get weekly events email", feedback
-  // #45), so that locator resolves to two ion-items' worth of inputs.
-  await page.locator('input[type="email"]').fill(email)
-  // Role became a required field 2026-08-05 (feedback #49) — Continue stays
-  // disabled without it. RolePicker is a custom IonModal bottom sheet, not a
-  // plain select: tap the "I am..." field to open it, then tap the radio
-  // itself (not just the label text) inside the role's own list item.
-  await page.locator('ion-item', { hasText: 'I am...' }).click()
-  await expect(page.locator('ion-radio-group')).toBeVisible()
-  await page.locator('ion-item', { hasText: 'Family' }).locator('ion-radio').click()
-  await expect(page.locator('ion-item', { hasText: 'I am...' })).toContainText('Family')
+  await expect(page.getByRole('heading', { name: 'What should we call you?' })).toBeVisible({ timeout: 15000 })
+  await page.getByLabel('First name').fill(firstName)
+  await page.getByLabel('Last name').fill(lastName)
+  await page.getByRole('button', { name: 'Continue' }).click()
 
-  // Photo became required 2026-08-14 (feedback #82) — drive the real
+  await expect(page.getByRole('heading', { name: "What's your email?" })).toBeVisible()
+  await page.getByLabel('Email', { exact: true }).fill(email)
+  await page.getByRole('button', { name: 'Continue' }).click()
+
+  // Role became a required field 2026-08-05 (feedback #49) — now its own
+  // step with big tappable cards (feedback #88 replaced the old IonModal
+  // bottom-sheet RolePicker, which existed specifically to keep a role
+  // explainer off a busy multi-field form page — a constraint that doesn't
+  // apply once role has its own dedicated screen).
+  // Each role option is one big tappable IonItem (heading + description +
+  // an end-slotted radio with no accessible name of its own) rather than a
+  // standalone labeled radio input — its accessible name is the whole card's
+  // text content, so target the card itself by role="button", not the radio.
+  await expect(page.getByRole('heading', { name: 'Which best describes you?' })).toBeVisible()
+  await page.getByRole('button', { name: /Family/ }).click()
+  await page.getByRole('button', { name: 'Continue' }).click()
+
+  // Kids/grade became required for Family 2026-08-14 (feedback #81) — its
+  // own step now too, pre-seeded with one kid at the default grade (the
+  // "Kids at Nettelhorst" count picker never allows zero), so nothing
+  // further is needed before continuing.
+  await expect(page.getByRole('heading', { name: 'How many kids do you have at Nettelhorst?' })).toBeVisible()
+  await page.getByRole('button', { name: 'Continue' }).click()
+
+  // Photo became required 2026-08-14 (feedback #82) — still its own step,
+  // unchanged in shape by feedback #88's redesign (Ben's own follow-up: "one
+  // photo step should be enough" — CropModal already opens as a modal
+  // overlay on this same step, not a separate one). Drive the real
   // CropModal crop UI (react-image-crop initializes a centered selection on
   // image load, so no drag interaction is needed, just waiting for it and
   // confirming).
+  await expect(page.getByRole('heading', { name: 'Add your photo' })).toBeVisible()
   await page.setInputFiles('input[type="file"]', FIXTURE_PHOTO_PATH)
   await expect(page.getByText('Crop photo')).toBeVisible({ timeout: 10000 })
   const usePhotoButton = page.getByRole('button', { name: 'Use Photo' })
   await expect(usePhotoButton).toBeEnabled({ timeout: 10000 })
   await usePhotoButton.click()
   await expect(page.getByText('Crop photo')).not.toBeVisible()
+  await page.getByRole('button', { name: 'Continue' }).click()
 
-  // Kids/grade became required for Family 2026-08-14 (feedback #81) —
-  // selecting Family above already pre-seeded one kid at the default grade
-  // (the "Kids at Nettelhorst" count dropdown never allows zero), so
-  // nothing further is needed here.
+  // Last field step — Finish submits the real PATCH /auth/me.
+  await expect(page.getByRole('heading', { name: 'Stay in the loop?' })).toBeVisible()
+  await page.getByRole('button', { name: 'Finish' }).click()
 
+  // Local "You're all set" completion screen (feedback #88) — not a route,
+  // just this same component's own next internal phase; Continue here is
+  // what actually advances past profile setup (refreshes auth state).
+  await expect(page.getByRole('heading', { name: /You're all set/ })).toBeVisible({ timeout: 15000 })
   await page.getByRole('button', { name: 'Continue' }).click()
 
   // Choose-friends onboarding step (feedback #83) — new after profile setup,
@@ -87,6 +119,12 @@ async function fillProfileAndContinue(page: Page, firstName: string, lastName: s
   // only needs to get past it.
   await expect(page.getByRole('heading', { name: 'Find your friends' })).toBeVisible({ timeout: 15000 })
   await page.getByRole('button', { name: /Skip for now|Continue/ }).click()
+
+  // Local "Welcome to Nettelhorst Bulbord" screen (feedback #88), same
+  // deferred-refresh pattern as profile setup's own completion screen above
+  // — "Start exploring" is what actually lands in the real app.
+  await expect(page.getByRole('heading', { name: 'Welcome to Nettelhorst Bulbord' })).toBeVisible({ timeout: 15000 })
+  await page.getByRole('button', { name: 'Start exploring' }).click()
 
   await page.waitForSelector('ion-tab-bar', { timeout: 15000 })
 }

@@ -3,8 +3,45 @@ import { addCircleOutline, checkmarkCircle } from 'ionicons/icons'
 import { useEffect, useState } from 'react'
 
 import { useAuth } from '../auth/AuthContext'
+import { MosaicMotif } from '../auth/MosaicMotif'
 import { Avatar } from '../uploads/Avatar'
 import { addConnection, fetchConnectionsOf, fetchSuggestions, finishFriendsOnboarding, searchMembers, type MemberSummary } from './api'
+
+// Closing screen of the real onboarding flow (feedback #88), shown after
+// Continue/Skip below — not part of the AddFriendsPage.tsx reuse (see
+// `onFinished` below), since "welcome" only makes sense the first time.
+// Same triangulated-mosaic motif as the invite-accept screen (JoinGate.tsx),
+// at full brightness here as the flow's one real celebratory moment rather
+// than a subtle backdrop.
+function WelcomeScreen({ onStart, error }: { onStart: () => void; error: string | null }) {
+  return (
+    <IonContent fullscreen>
+      <div style={{ height: 220, position: 'relative', overflow: 'hidden' }}>
+        <MosaicMotif bright />
+      </div>
+      <div
+        style={{
+          padding: '24px 24px 0',
+          textAlign: 'center',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+        }}
+      >
+        <h2 style={{ fontSize: '1.6rem', fontWeight: 700 }}>Welcome to Nettelhorst Bulbord</h2>
+        <p style={{ color: 'var(--ion-color-medium)' }}>You're in — take a look around.</p>
+        {error && (
+          <IonText color="danger">
+            <p>{error}</p>
+          </IonText>
+        )}
+        <IonButton expand="block" style={{ width: '100%', marginTop: 24, marginBottom: 72 }} onClick={onStart}>
+          Start exploring
+        </IonButton>
+      </div>
+    </IonContent>
+  )
+}
 
 function MemberRow({
   member,
@@ -75,6 +112,11 @@ export function ChooseFriendsScreen({
   const [addingId, setAddingId] = useState<string | null>(null)
   const [finishing, setFinishing] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // Local, non-persisted — gates the Welcome screen below (feedback #88).
+  // Real onboarding only (never set when `onFinished` is passed, i.e. the
+  // AddFriendsPage.tsx reuse) — "welcome" doesn't make sense for an already
+  // fully-onboarded member adding one more friend later.
+  const [finished, setFinished] = useState(false)
 
   useEffect(() => {
     fetchSuggestions()
@@ -125,18 +167,47 @@ export function ChooseFriendsScreen({
   async function finish() {
     // Preview mode never calls the real finish-onboarding endpoint or
     // refresh() — that would mark the admin's own account as having
-    // completed a step they didn't actually just complete.
-    if (preview) return
+    // completed a step they didn't actually just complete. It still shows
+    // the local Welcome screen below, though (setFinished(true)) — same
+    // "every screen stays genuinely demonstrable" posture as every other
+    // preview interaction, just stopping short of the real mutation.
+    if (preview) {
+      setFinished(true)
+      return
+    }
     setFinishing(true)
     setError(null)
     try {
       await finishFriendsOnboarding()
-      await refresh()
-      onFinished?.()
+      if (onFinished) {
+        // AddFriendsPage.tsx reuse — unchanged from before: refresh and
+        // return immediately, no Welcome screen.
+        await refresh()
+        onFinished()
+      } else {
+        // Real onboarding — defer refresh() (the thing that actually
+        // advances JoinGate.tsx past this screen) until the member taps
+        // "Start exploring" on the Welcome screen below, same pattern
+        // ProfileSetupWizard's own completion screen uses.
+        setFinished(true)
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not continue')
       setFinishing(false)
     }
+  }
+
+  async function startExploring() {
+    if (preview) return
+    try {
+      await refresh()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not continue')
+    }
+  }
+
+  if (finished) {
+    return <WelcomeScreen onStart={startExploring} error={error} />
   }
 
   const showingSearch = query.trim().length > 0
