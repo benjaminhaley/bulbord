@@ -1,5 +1,5 @@
 import type { Preview } from '@storybook/react-vite'
-import { setupIonicReact } from '@ionic/react'
+import { IonApp, setupIonicReact } from '@ionic/react'
 import { MemoryRouter } from 'react-router-dom'
 
 import { mswHandlers } from './msw-handlers'
@@ -51,7 +51,16 @@ const preview: Preview = {
             short-circuits to null with no network call, so this is safe
             and gives stories the exact same auth wiring the real app uses. */}
         <AuthProvider>
-          <Story />
+          {/* App.tsx's real root always has IonApp above any IonContent —
+              it's what gives ion-app (and everything under it) a real,
+              non-zero height via Ionic's own position:absolute;inset:0 CSS.
+              Without it, a story's IonContent has no height to resolve
+              height:100% against, collapses to 0px, and every child renders
+              with a real DOM position but gets visually clipped out — every
+              story looked broken in Chromatic until this was added. */}
+          <IonApp>
+            <Story />
+          </IonApp>
         </AuthProvider>
       </MemoryRouter>
     ),
