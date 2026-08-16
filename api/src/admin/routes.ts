@@ -7,6 +7,7 @@ import { sendTestConnectionAlertEmail } from '../connections/service.js'
 import { getSourcesLastCheckedAt, resourceActiveEventSources } from '../events/resourcing.js'
 import { sendTestNewsletterEmail } from '../newsletter/service.js'
 import { impersonateUser } from './impersonation.js'
+import { deleteMember } from './memberDeletion.js'
 import { computeDataFreshness } from './staleness.js'
 
 // How stale events/camps data can get before Developer Tools and the admin's
@@ -95,6 +96,20 @@ export async function adminRoutes(app: FastifyInstance) {
       return reply.code(404).send({ error: { message: 'User not found' } })
     }
     return reply.send({ data: { url: result.url, expires_at: result.expiresAt } })
+  })
+
+  // Feedback #92: lets an admin remove a member, for testing (cleaning up
+  // throwaway accounts made while trying the app) and moderation.
+  app.delete('/admin/users/:id', { preHandler: requireRole('admin') }, async (request, reply) => {
+    const { id } = request.params as { id: string }
+    const result = await deleteMember(id, request.currentUser!.id)
+    if (result.error === 'not_found') {
+      return reply.code(404).send({ error: { message: 'User not found' } })
+    }
+    if (result.error === 'not_self') {
+      return reply.code(400).send({ error: { message: "You can't delete your own account" } })
+    }
+    return reply.send({ data: { deleted: true } })
   })
 
   // Dev tool (feedback #41): re-runs the ingestion pipeline against every

@@ -71,6 +71,20 @@ export async function impersonateUser(userId: string): Promise<ImpersonationLink
   return body.data
 }
 
+// Feedback #92: lets an admin remove a member, for testing (cleaning up
+// throwaway accounts) and moderation. Soft-delete on the server — see
+// api/src/admin/memberDeletion.ts.
+export async function deleteMember(userId: string): Promise<void> {
+  const response = await fetch(`${API_URL}/admin/users/${userId}`, {
+    method: 'DELETE',
+    headers: authHeaders(),
+  })
+  if (!response.ok) {
+    const body = (await response.json().catch(() => null)) as { error?: { message?: string } } | null
+    throw new Error(body?.error?.message ?? `Failed to delete member: ${response.status}`)
+  }
+}
+
 export interface ResourceReport {
   sources_checked: number
   total_added: number

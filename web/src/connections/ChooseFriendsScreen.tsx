@@ -71,6 +71,22 @@ function MemberRow({
   )
 }
 
+// Shown in place of the real suggestions list in preview mode (feedback,
+// 2026-08-16, from a live screenshot: the admin preview was correctly
+// calling the real GET /connections/suggestions, but with only a couple of
+// real members on Nettelhorst Bulbord so far, that legitimately returns
+// "you're already connected with everyone" — a real, correct empty state,
+// just a bad one to demo from). Fake ids ('demo-…', never a real UUID) so
+// `handleAdd` below can tell these apart and skip the real
+// GET /connections/of/:userId call it'd otherwise make for each one.
+const DEMO_SUGGESTIONS: MemberSummary[] = [
+  { id: 'demo-1', name: 'Maria Chen', avatarUrl: null },
+  { id: 'demo-2', name: 'James Okafor', avatarUrl: null },
+  { id: 'demo-3', name: 'Priya Patel', avatarUrl: null },
+  { id: 'demo-4', name: 'Tom Reilly', avatarUrl: null },
+  { id: 'demo-5', name: 'Sofia Kowalski', avatarUrl: null },
+]
+
 // Onboarding step shown after ProfileSetupScreen (feedback #83) — "start
 // with the person who invited you and then all of those people's friends...
 // and then the other people in your kids' grade level," with a search to
@@ -119,11 +135,16 @@ export function ChooseFriendsScreen({
   const [finished, setFinished] = useState(false)
 
   useEffect(() => {
+    if (preview) {
+      setSuggestions(DEMO_SUGGESTIONS)
+      setLoadingSuggestions(false)
+      return
+    }
     fetchSuggestions()
       .then(setSuggestions)
       .catch((err) => setError(err instanceof Error ? err.message : 'Could not load suggestions'))
       .finally(() => setLoadingSuggestions(false))
-  }, [])
+  }, [preview])
 
   useEffect(() => {
     const trimmed = query.trim()
@@ -150,13 +171,17 @@ export function ChooseFriendsScreen({
       setAddedIds((prev) => new Set(prev).add(member.id))
       // "As you add potential friends, suggest their friends at the bottom
       // of the list" — append the newly-added person's own connections.
-      // Still a real (read-only) fetch in preview — nothing unsafe about it.
-      const theirConnections = await fetchConnectionsOf(member.id)
-      setSuggestions((prev) => {
-        const existingIds = new Set(prev.map((m) => m.id))
-        const additions = theirConnections.filter((c) => !existingIds.has(c.id))
-        return [...prev, ...additions]
-      })
+      // Still a real (read-only) fetch in preview — nothing unsafe about it,
+      // except for DEMO_SUGGESTIONS' own fake ids above, which don't exist
+      // to look up.
+      if (!member.id.startsWith('demo-')) {
+        const theirConnections = await fetchConnectionsOf(member.id)
+        setSuggestions((prev) => {
+          const existingIds = new Set(prev.map((m) => m.id))
+          const additions = theirConnections.filter((c) => !existingIds.has(c.id))
+          return [...prev, ...additions]
+        })
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not add friend')
     } finally {

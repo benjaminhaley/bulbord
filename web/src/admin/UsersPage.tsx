@@ -15,12 +15,13 @@ import {
   IonToast,
   IonToolbar,
 } from '@ionic/react'
-import { logInOutline } from 'ionicons/icons'
+import { logInOutline, trashOutline } from 'ionicons/icons'
 import { useEffect, useState } from 'react'
 
+import { useAuth } from '../auth/AuthContext'
 import { formatDate } from '../format'
 import { Avatar } from '../uploads/Avatar'
-import { fetchAdminUsers, impersonateUser, type AdminUser } from './api'
+import { deleteMember, fetchAdminUsers, impersonateUser, type AdminUser } from './api'
 import { ImpersonateModal, type ImpersonationTarget } from './ImpersonateModal'
 
 function roleLabel(user: AdminUser): string | null {
@@ -33,9 +34,11 @@ function roleLabel(user: AdminUser): string | null {
 // First admin view in the app (see CLAUDE.md's Introspectability section) —
 // every member, plus the basic invited-by social graph.
 export function UsersPage() {
+  const { user: viewer } = useAuth()
   const [users, setUsers] = useState<AdminUser[] | null>(null)
   const [error, setError] = useState(false)
   const [impersonating, setImpersonating] = useState<string | null>(null)
+  const [deleting, setDeleting] = useState<string | null>(null)
   const [impersonateTarget, setImpersonateTarget] = useState<ImpersonationTarget | null>(null)
   const [toast, setToast] = useState<string | null>(null)
 
@@ -54,6 +57,24 @@ export function UsersPage() {
       setToast(err instanceof Error ? err.message : 'Could not create sign-in link')
     } finally {
       setImpersonating(null)
+    }
+  }
+
+  // Feedback #92: soft-deletes the member on the server (see
+  // api/src/admin/memberDeletion.ts) and drops them from this list
+  // immediately rather than waiting on a refetch — same optimistic-remove
+  // pattern as this codebase's other delete-with-confirm buttons (feedback
+  // posts, events).
+  async function removeMember(user: AdminUser) {
+    if (!window.confirm(`Delete ${user.name}? This removes their account — their posts and comments stay.`)) return
+    setDeleting(user.id)
+    try {
+      await deleteMember(user.id)
+      setUsers((prev) => prev?.filter((u) => u.id !== user.id) ?? prev)
+    } catch (err) {
+      setToast(err instanceof Error ? err.message : 'Could not delete member')
+    } finally {
+      setDeleting(null)
     }
   }
 
@@ -104,6 +125,20 @@ export function UsersPage() {
                 >
                   {impersonating === user.id ? <IonSpinner name="dots" /> : <IonIcon slot="icon-only" icon={logInOutline} />}
                 </IonButton>
+                {/* Feedback #92: never offered for the viewer's own row —
+                    mirrors the server's own can't-delete-yourself guard. */}
+                {user.id !== viewer?.id && (
+                  <IonButton
+                    slot="end"
+                    fill="clear"
+                    color="danger"
+                    disabled={deleting === user.id}
+                    onClick={() => void removeMember(user)}
+                    title={`Delete ${user.name}`}
+                  >
+                    {deleting === user.id ? <IonSpinner name="dots" /> : <IonIcon slot="icon-only" icon={trashOutline} />}
+                  </IonButton>
+                )}
               </IonItem>
             ))}
           </IonList>
