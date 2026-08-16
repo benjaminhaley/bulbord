@@ -88,11 +88,14 @@ Ionic color roles, a small component gallery — is in Storybook
 repo (feedback #44) for exactly this kind of isolated-component reference;
 it didn't need a second tool stood up alongside it.
 
-Every story is also published to Chromatic on push, which flags a pixel-level
-diff against the last-accepted baseline automatically — this is what catches
-future drift (like Events/Camps' divergence above) as it happens, rather
-than relying on someone noticing it in a screenshot months later. See
-`CLAUDE.md`'s Testing section for the setup.
+Every story was published to Chromatic on push for a few days (automatic
+pixel-diffing against the last-accepted baseline), but it was dropped
+2026-08-16 after a cost/benefit look found it wasn't pulling real weight —
+see `CLAUDE.md`'s Testing section for the full reasoning. What actually
+catches future drift (like Events/Camps' divergence above) now is Claude
+building Storybook and reviewing the rendered stories directly as part of
+finishing any UI-touching change, rather than a pixel-diff queue nobody was
+checking.
 
 **Deliberately not proposed:** a new component library or CSS framework
 (Tailwind, a design-system package) on top of Ionic, or decomposing every

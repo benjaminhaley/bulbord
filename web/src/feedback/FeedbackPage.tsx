@@ -27,6 +27,7 @@ import {
   hourglassOutline,
   imageOutline,
   timeOutline,
+  trashOutline,
 } from 'ionicons/icons'
 import { type ReactNode, useEffect, useState } from 'react'
 
@@ -40,6 +41,7 @@ import {
   backlogFeedback,
   completeFeedback,
   createFeedback,
+  deleteFeedback,
   fetchFeedback,
   startProgressFeedback,
   stopProgressFeedback,
@@ -291,12 +293,14 @@ function FeedbackListItem({
   isAdmin,
   onCompleted,
   onUpdated,
+  onDeleted,
   onImageClick,
 }: {
   item: FeedbackItem
   isAdmin: boolean
   onCompleted: (item: FeedbackItem) => void
   onUpdated: (item: FeedbackItem) => void
+  onDeleted: (id: string) => void
   onImageClick: (url: string) => void
 }) {
   const [markingDone, setMarkingDone] = useState(false)
@@ -314,6 +318,12 @@ function FeedbackListItem({
 
   async function toggleInProgress() {
     onUpdated(item.in_progress_at ? await stopProgressFeedback(item.id) : await startProgressFeedback(item.id))
+  }
+
+  async function remove() {
+    if (!window.confirm('Delete this feedback post?')) return
+    await deleteFeedback(item.id)
+    onDeleted(item.id)
   }
 
   if (editing) {
@@ -347,6 +357,11 @@ function FeedbackListItem({
             {item.can_edit && (
               <IonButton fill="clear" onClick={() => setEditing(true)}>
                 <IonIcon slot="icon-only" icon={createOutline} />
+              </IonButton>
+            )}
+            {item.can_edit && (
+              <IonButton fill="clear" color="danger" onClick={remove}>
+                <IonIcon slot="icon-only" icon={trashOutline} />
               </IonButton>
             )}
             {isAdmin && !item.completed_at && (
@@ -383,6 +398,7 @@ function FeedbackAccordionSection({
   isAdmin,
   onCompleted,
   onUpdated,
+  onDeleted,
   onImageClick,
 }: {
   value: string
@@ -391,6 +407,7 @@ function FeedbackAccordionSection({
   isAdmin: boolean
   onCompleted: (item: FeedbackItem) => void
   onUpdated: (item: FeedbackItem) => void
+  onDeleted: (id: string) => void
   onImageClick: (url: string) => void
 }) {
   if (items.length === 0) return null
@@ -411,6 +428,7 @@ function FeedbackAccordionSection({
               isAdmin={isAdmin}
               onCompleted={onCompleted}
               onUpdated={onUpdated}
+              onDeleted={onDeleted}
               onImageClick={onImageClick}
             />
           ))}
@@ -441,6 +459,10 @@ export function FeedbackPage() {
 
   function handleUpdated(updated: FeedbackItem) {
     setItems((prev) => prev?.map((i) => (i.id === updated.id ? updated : i)) ?? null)
+  }
+
+  function handleDeleted(id: string) {
+    setItems((prev) => prev?.filter((i) => i.id !== id) ?? null)
   }
 
   return (
@@ -497,6 +519,7 @@ export function FeedbackPage() {
                   isAdmin={isAdmin}
                   onCompleted={handleUpdated}
                   onUpdated={handleUpdated}
+                  onDeleted={handleDeleted}
                   onImageClick={(url) => setLightboxSrc(`${API_URL}${url}`)}
                 />
               ))}
@@ -516,6 +539,7 @@ export function FeedbackPage() {
               isAdmin={isAdmin}
               onCompleted={handleUpdated}
               onUpdated={handleUpdated}
+              onDeleted={handleDeleted}
               onImageClick={(url) => setLightboxSrc(`${API_URL}${url}`)}
             />
 
@@ -526,6 +550,7 @@ export function FeedbackPage() {
               isAdmin={isAdmin}
               onCompleted={handleUpdated}
               onUpdated={handleUpdated}
+              onDeleted={handleDeleted}
               onImageClick={(url) => setLightboxSrc(`${API_URL}${url}`)}
             />
 
@@ -536,6 +561,7 @@ export function FeedbackPage() {
               isAdmin={isAdmin}
               onCompleted={handleUpdated}
               onUpdated={handleUpdated}
+              onDeleted={handleDeleted}
               onImageClick={(url) => setLightboxSrc(`${API_URL}${url}`)}
             />
           </>

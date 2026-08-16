@@ -217,6 +217,26 @@ export async function feedbackRoutes(app: FastifyInstance) {
     })
   })
 
+  app.delete('/feedback/:id', { preHandler: requireAuth }, async (request, reply) => {
+    const { id } = request.params as { id: string }
+    const currentUser = request.currentUser!
+
+    const existing = await findFeedback(id)
+    if (!existing) {
+      return reply.code(404).send({ error: { message: 'Feedback not found' } })
+    }
+    if (!canEditFeedback(currentUser, existing)) {
+      return reply.code(403).send({ error: { message: 'Forbidden' } })
+    }
+
+    await Promise.all([
+      db.update(feedback).set({ deletedAt: new Date(), updatedAt: new Date() }).where(eq(feedback.id, id)),
+      db.insert(eventsLog).values({ actor: currentUser.id, action: 'feedback_deleted', metadata: { feedbackId: id } }),
+    ])
+
+    return reply.code(204).send()
+  })
+
   app.post('/feedback/:id/complete', { preHandler: requireRole('admin') }, async (request, reply) => {
     const { id } = request.params as { id: string }
     const body = request.body as { note?: string }

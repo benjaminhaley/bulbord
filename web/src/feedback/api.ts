@@ -84,3 +84,13 @@ export function startProgressFeedback(id: string): Promise<FeedbackItem> {
 export function stopProgressFeedback(id: string): Promise<FeedbackItem> {
   return authedRequest('POST', `/feedback/${id}/stop-progress`, {})
 }
+
+export async function deleteFeedback(id: string): Promise<void> {
+  const response = await fetch(`${API_URL}/feedback/${id}`, {
+    method: 'DELETE',
+    headers: authHeaders(),
+  })
+  if (!response.ok) {
+    throw new Error(`Failed to delete feedback: ${response.status}`)
+  }
+}
