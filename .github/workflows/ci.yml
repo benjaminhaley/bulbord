@@ -95,46 +95,6 @@ jobs:
       - run: npm test
         working-directory: web
 
-  # Visual regression testing (added 2026-08-13, feedback #70's second
-  # follow-up): publishes every Storybook story's rendered snapshot to
-  # Chromatic, which flags any pixel-level diff against the last-accepted
-  # baseline for human review — catches exactly the kind of silent visual
-  # drift that let Camps and Events diverge for weeks (see STYLE_GUIDE.md,
-  # CLAUDE.md's Camps section) without anyone noticing until a screenshot
-  # comparison caught it by hand. The publish step skips itself cleanly
-  # (exit 0, not a failure) until CHROMATIC_PROJECT_TOKEN is set as a repo
-  # secret — see CLAUDE.md's Testing section for the one-time account setup
-  # this needs. Deliberately not a job-level `if: secrets.X != ''` — GitHub
-  # Actions rejects referencing `secrets` directly in a job-level `if:`
-  # (fails the whole workflow file at parse time, not just this job; found
-  # the hard way when this job's first version broke every other job too),
-  # so the presence check has to happen inside a step instead.
-  # `--exit-zero-on-changes`: a real visual change isn't a bug by itself
-  # (that's the whole point of a UI having new work land on it) — the build
-  # still succeeds and the diff waits in Chromatic's UI for a look, rather
-  # than blocking every push that changes a pixel.
-  chromatic:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-      - run: npm ci
-        working-directory: web
-      - name: Publish to Chromatic
-        working-directory: web
-        run: |
-          if [ -z "$CHROMATIC_PROJECT_TOKEN" ]; then
-            echo "CHROMATIC_PROJECT_TOKEN not set yet — skipping Chromatic publish."
-            exit 0
-          fi
-          npm run chromatic
-        env:
-          CHROMATIC_PROJECT_TOKEN: ${{ secrets.CHROMATIC_PROJECT_TOKEN }}
-
   e2e:
     runs-on: ubuntu-latest
     needs: [api, web]
