@@ -6,6 +6,15 @@ export interface MemberSummary {
   id: string
   name: string
   avatarUrl: string | null
+  // Never set by the real API today (the suggestions endpoint returns a
+  // deduped, ordered list without saying which tier each row came from) —
+  // only ChooseFriendsScreen.tsx's own DEMO_SUGGESTIONS populates this, to
+  // make the sign-up flow preview's suggestion ordering ("the inviter, then
+  // their connections, then a same-grade match, then everyone else")
+  // visible on the demo screen itself rather than something you have to
+  // take on faith. Optional so the real, reason-less rows render exactly as
+  // before.
+  reason?: string
 }
 
 export interface ConnectionsState {

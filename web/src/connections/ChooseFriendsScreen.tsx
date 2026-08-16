@@ -57,7 +57,10 @@ function MemberRow({
   return (
     <IonItem>
       <Avatar slot="start" url={member.avatarUrl} name={member.name} />
-      <IonLabel>{member.name}</IonLabel>
+      <IonLabel>
+        <h2>{member.name}</h2>
+        {member.reason && <p>{member.reason}</p>}
+      </IonLabel>
       {added ? (
         <IonIcon slot="end" icon={checkmarkCircle} color="success" />
       ) : busy ? (
@@ -79,10 +82,20 @@ function MemberRow({
 // just a bad one to demo from). Fake ids ('demo-…', never a real UUID) so
 // `handleAdd` below can tell these apart and skip the real
 // GET /connections/of/:userId call it'd otherwise make for each one.
+//
+// One row per real suggestion tier (see CLAUDE.md's Connections section —
+// api/src/connections/service.ts's actual priority order), in that same
+// order, each labeled with `reason` so the ordering itself is visible and
+// checkable on the demo screen rather than something to take on faith
+// (feedback, 2026-08-16): the inviter, then the inviter's own connections,
+// then a same-grade Family match, then — deliberately reason-less, the
+// real "everyone else" fallback once those tiers are exhausted — a member
+// suggested only because they're on Nettelhorst Bulbord, nothing more
+// specific.
 const DEMO_SUGGESTIONS: MemberSummary[] = [
-  { id: 'demo-1', name: 'Maria Chen', avatarUrl: null },
-  { id: 'demo-2', name: 'James Okafor', avatarUrl: null },
-  { id: 'demo-3', name: 'Priya Patel', avatarUrl: null },
+  { id: 'demo-1', name: 'Maria Chen', avatarUrl: null, reason: 'Invited you' },
+  { id: 'demo-2', name: 'James Okafor', avatarUrl: null, reason: 'Friend of Maria Chen' },
+  { id: 'demo-3', name: 'Priya Patel', avatarUrl: null, reason: 'Kid in 2nd grade — same as yours' },
   { id: 'demo-4', name: 'Tom Reilly', avatarUrl: null },
   { id: 'demo-5', name: 'Sofia Kowalski', avatarUrl: null },
 ]
