@@ -64,6 +64,36 @@ async function fetchImagesByFeedbackId(feedbackIds: string[]): Promise<Map<strin
   return map
 }
 
+// Shared "write a column patch, log it, reload with author+images, return
+// the serialized row" shape behind /complete, /note, and the backlog/
+// in-progress toggles below — the actual column(s) written and the log
+// action are the only things that differ per caller.
+async function updateFeedbackAndSerialize(
+  id: string,
+  patch: Partial<typeof feedback.$inferInsert>,
+  action: string,
+  currentUser: { id: string },
+) {
+  const [updated] = await db
+    .update(feedback)
+    .set({ ...patch, updatedAt: new Date() })
+    .where(and(eq(feedback.id, id), isNull(feedback.deletedAt)))
+    .returning()
+
+  if (!updated) return null
+
+  await db.insert(eventsLog).values({ actor: currentUser.id, action, metadata: { feedbackId: id } })
+
+  const [authorRow, images] = await Promise.all([
+    updated.createdByUserId
+      ? db.select({ name: users.name }).from(users).where(eq(users.id, updated.createdByUserId)).limit(1)
+      : Promise.resolve([]),
+    fetchImagesByFeedbackId([id]),
+  ])
+
+  return serializeFeedback(updated, authorRow[0]?.name ?? null, images.get(id) ?? [], currentUser)
+}
+
 async function insertFeedbackImages(feedbackId: string, images: { image_url: string; thumbnail_url: string }[]) {
   if (images.length === 0) return
   await db.insert(feedbackImages).values(
@@ -237,83 +267,45 @@ export async function feedbackRoutes(app: FastifyInstance) {
     return reply.code(204).send()
   })
 
+  // One click, no confirmation step (feedback, 2026-08-16: "accidental
+  // clicks are unlikely") — completing no longer bundles a note-entry form.
+  // A note is its own independent action now (POST /feedback/:id/note,
+  // below), settable before, after, or without ever completing an item.
   app.post('/feedback/:id/complete', { preHandler: requireRole('admin') }, async (request, reply) => {
     const { id } = request.params as { id: string }
-    const body = request.body as { note?: string }
+    const data = await updateFeedbackAndSerialize(
+      id,
+      { completedAt: new Date(), completedByUserId: request.currentUser!.id },
+      'feedback_completed',
+      request.currentUser!,
+    )
+    if (!data) return reply.code(404).send({ error: { message: 'Feedback not found' } })
+    return reply.send({ data })
+  })
 
-    const [updated] = await db
-      .update(feedback)
-      .set({
-        completedAt: new Date(),
-        completionNote: body.note?.trim() || null,
-        completedByUserId: request.currentUser!.id,
-        updatedAt: new Date(),
-      })
-      .where(and(eq(feedback.id, id), isNull(feedback.deletedAt)))
-      .returning()
-
-    if (!updated) {
-      return reply.code(404).send({ error: { message: 'Feedback not found' } })
-    }
-
-    await db.insert(eventsLog).values({
-      actor: request.currentUser!.id,
-      action: 'feedback_completed',
-      metadata: { feedbackId: id },
-    })
-
-    const [authorRow, images] = await Promise.all([
-      updated.createdByUserId
-        ? db.select({ name: users.name }).from(users).where(eq(users.id, updated.createdByUserId)).limit(1)
-        : Promise.resolve([]),
-      fetchImagesByFeedbackId([id]),
-    ])
-
-    return reply.send({
-      data: serializeFeedback(updated, authorRow[0]?.name ?? null, images.get(id) ?? [], request.currentUser!),
-    })
+  // Sets (or clears, or edits) the admin annotation note independently of
+  // completing an item (feedback, 2026-08-16) — an empty/whitespace-only
+  // note clears it, same "|| null" posture /complete used to have. Doesn't
+  // touch completedAt/completedByUserId, so it works on an open, backlogged,
+  // in-progress, or already-completed item alike.
+  app.post('/feedback/:id/note', { preHandler: requireRole('admin') }, async (request, reply) => {
+    const { id } = request.params as { id: string }
+    const { note } = (request.body ?? {}) as { note?: string }
+    const data = await updateFeedbackAndSerialize(id, { completionNote: note?.trim() || null }, 'feedback_note_updated', request.currentUser!)
+    if (!data) return reply.code(404).send({ error: { message: 'Feedback not found' } })
+    return reply.send({ data })
   })
 
   // Backlog and in-progress are two independent non-open, non-completed
   // states (feedback #52, #79) — a deliberately-deferred item vs. one
-  // that's actively blocked on Ben specifically. Both share the
-  // set-timestamp-then-reload shape of /complete above, factored into one
-  // helper parameterized on which column to write; setting either one
-  // clears the other, since an item is only ever in one of these two states
-  // at a time (same "one active state" shape backlog already had relative
-  // to completedAt).
-  async function setSideState(
-    id: string,
-    currentUser: { id: string },
-    column: 'backloggedAt' | 'inProgressAt',
-    value: Date | null,
-    action: string,
-  ) {
+  // that's actively blocked on Ben specifically. Both share
+  // updateFeedbackAndSerialize's set-column-then-reload shape above;
+  // setting either one clears the other, since an item is only ever in one
+  // of these two states at a time (same "one active state" shape backlog
+  // already had relative to completedAt).
+  function setSideState(id: string, currentUser: { id: string }, column: 'backloggedAt' | 'inProgressAt', value: Date | null, action: string) {
     const otherColumn = column === 'backloggedAt' ? 'inProgressAt' : 'backloggedAt'
-    const [updated] = await db
-      .update(feedback)
-      .set({ [column]: value, ...(value ? { [otherColumn]: null } : {}), updatedAt: new Date() })
-      .where(and(eq(feedback.id, id), isNull(feedback.deletedAt)))
-      .returning()
-
-    if (!updated) {
-      return null
-    }
-
-    await db.insert(eventsLog).values({
-      actor: currentUser.id,
-      action,
-      metadata: { feedbackId: id },
-    })
-
-    const [authorRow, images] = await Promise.all([
-      updated.createdByUserId
-        ? db.select({ name: users.name }).from(users).where(eq(users.id, updated.createdByUserId)).limit(1)
-        : Promise.resolve([]),
-      fetchImagesByFeedbackId([id]),
-    ])
-
-    return serializeFeedback(updated, authorRow[0]?.name ?? null, images.get(id) ?? [], currentUser)
+    return updateFeedbackAndSerialize(id, { [column]: value, ...(value ? { [otherColumn]: null } : {}) }, action, currentUser)
   }
 
   app.post('/feedback/:id/backlog', { preHandler: requireRole('admin') }, async (request, reply) => {

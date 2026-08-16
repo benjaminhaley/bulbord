@@ -65,8 +65,17 @@ export function updateFeedback(
   return authedRequest('PATCH', `/feedback/${id}`, { title, description, images })
 }
 
-export function completeFeedback(id: string, note: string): Promise<FeedbackItem> {
-  return authedRequest('POST', `/feedback/${id}/complete`, { note })
+// One click, no note prompt (feedback, 2026-08-16) — a note is now its own
+// independent action, setFeedbackNote below.
+export function completeFeedback(id: string): Promise<FeedbackItem> {
+  return authedRequest('POST', `/feedback/${id}/complete`, {})
+}
+
+// Sets/edits/clears the admin annotation note on its own, whether or not the
+// item is completed — moved out from under "Mark done" per the same
+// feedback (an empty string clears the note).
+export function setFeedbackNote(id: string, note: string): Promise<FeedbackItem> {
+  return authedRequest('POST', `/feedback/${id}/note`, { note })
 }
 
 export function backlogFeedback(id: string): Promise<FeedbackItem> {

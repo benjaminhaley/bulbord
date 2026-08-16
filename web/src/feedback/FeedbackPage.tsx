@@ -39,6 +39,7 @@ import {
   createFeedback,
   deleteFeedback,
   fetchFeedback,
+  setFeedbackNote,
   startProgressFeedback,
   stopProgressFeedback,
   unbacklogFeedback,
@@ -260,21 +261,19 @@ function FeedbackForm({
   )
 }
 
-function MarkDoneForm({ onConfirm, onCancel }: { onConfirm: (note: string) => void; onCancel: () => void }) {
-  const [note, setNote] = useState('')
+// The admin annotation note — its own action now (feedback, 2026-08-16),
+// independent of "Mark done", so it works whether or not the item is
+// completed. Prefilled with the existing note, if any, so this doubles as
+// the edit form.
+function NoteForm({ initialNote, onConfirm, onCancel }: { initialNote: string; onConfirm: (note: string) => void; onCancel: () => void }) {
+  const [note, setNote] = useState(initialNote)
 
   return (
     <IonItem lines="none">
       <IonLabel className="ion-text-wrap">
-        <IonTextarea
-          placeholder="Optional note"
-          value={note}
-          onIonInput={(e) => setNote(e.detail.value ?? '')}
-          autoGrow
-          autofocus
-        />
+        <IonTextarea placeholder="Note" value={note} onIonInput={(e) => setNote(e.detail.value ?? '')} autoGrow autofocus />
         <IonButton fill="outline" size="small" onClick={() => onConfirm(note.trim())}>
-          Mark done
+          Save
         </IonButton>
         <IonButton fill="clear" color="medium" size="small" onClick={onCancel}>
           Cancel
@@ -299,14 +298,19 @@ function FeedbackListItem({
   onDeleted: (id: string) => void
   onImageClick: (url: string) => void
 }) {
-  const [markingDone, setMarkingDone] = useState(false)
+  const [addingNote, setAddingNote] = useState(false)
   const [editing, setEditing] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
 
-  async function confirmDone(note: string) {
-    const updated = await completeFeedback(item.id, note)
-    onCompleted(updated)
-    setMarkingDone(false)
+  // One click, no confirmation step (feedback, 2026-08-16: "accidental
+  // clicks are unlikely... I should just be able to do it one time").
+  async function markDone() {
+    onCompleted(await completeFeedback(item.id))
+  }
+
+  async function saveNote(note: string) {
+    onUpdated(await setFeedbackNote(item.id, note))
+    setAddingNote(false)
   }
 
   async function toggleBacklog() {
@@ -342,12 +346,15 @@ function FeedbackListItem({
   }
 
   const canModerate = isAdmin && !item.completed_at
-  const showMenu = item.can_edit || canModerate
+  const showMenu = item.can_edit || isAdmin
   type MenuButton = { text: string; role?: 'destructive' | 'cancel'; handler?: () => void }
   const menuButtons: MenuButton[] = (
     [
       item.can_edit && { text: 'Edit', handler: () => setEditing(true) },
-      canModerate && { text: 'Mark done', handler: () => setMarkingDone(true) },
+      canModerate && { text: 'Mark done', handler: markDone },
+      // Independent of Mark done (feedback, 2026-08-16) — works whether or
+      // not the item is completed, so an admin can annotate at any point.
+      isAdmin && { text: item.completion_note ? 'Edit note' : 'Add a note', handler: () => setAddingNote(true) },
       canModerate && { text: item.in_progress_at ? 'Restore to open' : 'Move to in progress', handler: toggleInProgress },
       canModerate && { text: item.backlogged_at ? 'Restore to open' : 'Move to backlog', handler: toggleBacklog },
       item.can_edit && { text: 'Delete', role: 'destructive' as const, handler: remove },
@@ -357,19 +364,19 @@ function FeedbackListItem({
 
   return (
     <>
-      <IonItem lines={markingDone ? 'none' : 'full'}>
+      <IonItem lines={addingNote ? 'none' : 'full'}>
         <FeedbackItemBody
           item={item}
           extra={item.completion_note && <p>{item.completion_note}</p>}
           onImageClick={onImageClick}
         />
-        {showMenu && !markingDone && (
+        {showMenu && !addingNote && (
           <IonButton slot="end" fill="clear" onClick={() => setMenuOpen(true)} aria-label="Actions">
             <IonIcon slot="icon-only" icon={ellipsisVerticalOutline} />
           </IonButton>
         )}
       </IonItem>
-      {markingDone && <MarkDoneForm onConfirm={confirmDone} onCancel={() => setMarkingDone(false)} />}
+      {addingNote && <NoteForm initialNote={item.completion_note ?? ''} onConfirm={saveNote} onCancel={() => setAddingNote(false)} />}
       <IonActionSheet isOpen={menuOpen} onDidDismiss={() => setMenuOpen(false)} buttons={menuButtons} />
     </>
   )
