@@ -1,5 +1,6 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
 
+import { track } from '../analytics/api'
 import { fetchCurrentUser, logout as apiLogout, type CurrentUser } from './api'
 
 interface AuthState {
@@ -15,6 +16,7 @@ const AuthContext = createContext<AuthState | null>(null)
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<CurrentUser | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+  const trackedAppOpen = useRef(false)
 
   async function refresh() {
     setIsLoading(true)
@@ -33,6 +35,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     refresh()
   }, [])
+
+  // Feedback #96's "daily active visitors" — once per app session, the
+  // first time a real signed-in user is resolved (the server dedupes this
+  // to once per member per Chicago calendar day, so a page reload firing it
+  // again is harmless, just wasted).
+  useEffect(() => {
+    if (user && !trackedAppOpen.current) {
+      trackedAppOpen.current = true
+      track('app_opened').catch(() => {})
+    }
+  }, [user])
 
   const isAdmin = user?.roles.includes('admin') ?? false
 

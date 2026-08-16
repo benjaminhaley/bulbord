@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify'
 
+import { getAnalyticsSummary } from '../analytics/service.js'
 import { requireRole } from '../auth/plugin.js'
 import { listUsersForAdmin } from '../auth/service.js'
 import { getCampsLastUpdatedAt } from '../camps/staleness.js'
@@ -110,6 +111,38 @@ export async function adminRoutes(app: FastifyInstance) {
       return reply.code(400).send({ error: { message: "You can't delete your own account" } })
     }
     return reply.send({ data: { deleted: true } })
+  })
+
+  // Feedback #96: the basics at a glance — today's/this-week's active
+  // members, who's viewing/sharing this week, a 30-day daily-active chart,
+  // last-active-per-member, and a curated recent-activity log. See
+  // analytics/service.ts for what's tracked and why.
+  app.get('/admin/analytics/summary', { preHandler: requireRole('admin') }, async (_request, reply) => {
+    const summary = await getAnalyticsSummary()
+    return reply.send({
+      data: {
+        active_today: summary.activeToday,
+        active_this_week: summary.activeThisWeek,
+        event_viewers_7d: summary.eventViewers7d,
+        camp_viewers_7d: summary.campViewers7d,
+        sharers_7d: summary.sharers7d,
+        dau: summary.dau,
+        last_active_by_member: summary.lastActiveByMember.map((m) => ({
+          user_id: m.userId,
+          name: m.name,
+          avatar_url: m.avatarUrl,
+          last_active_at: m.lastActiveAt,
+        })),
+        recent_log: summary.recentLog.map((entry) => ({
+          id: entry.id,
+          actor: entry.actor,
+          actor_name: entry.actorName,
+          action: entry.action,
+          metadata: entry.metadata,
+          created_at: entry.createdAt,
+        })),
+      },
+    })
   })
 
   // Dev tool (feedback #41): re-runs the ingestion pipeline against every

@@ -7,6 +7,7 @@ import {
   getConnectionsState,
   getSuggestions,
   listOutgoingConnections,
+  markFriendsSeen,
   searchMembers,
 } from './service.js'
 
@@ -52,5 +53,12 @@ export async function connectionsRoutes(app: FastifyInstance) {
   app.post('/connections/finish-onboarding', { preHandler: requireAuth }, async (request, reply) => {
     await completeFriendsStep(request.currentUser!.id)
     return reply.send({ data: { friendsStepComplete: true } })
+  })
+
+  // Clears the in-app new-follower badge/banner (feedback #94) — called on
+  // Friends page load, and by the banner's own dismiss button.
+  app.post('/connections/mark-seen', { preHandler: requireAuth }, async (request, reply) => {
+    await markFriendsSeen(request.currentUser!.id)
+    return reply.send({ data: { seen: true } })
   })
 }

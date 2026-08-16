@@ -137,3 +137,24 @@ export async function fetchDataFreshness(): Promise<DataFreshness> {
   const body = (await response.json()) as { data: DataFreshness }
   return body.data
 }
+
+// Feedback #96 — see api/src/analytics/service.ts for what's tracked/why.
+export interface AnalyticsSummary {
+  active_today: number
+  active_this_week: number
+  event_viewers_7d: number
+  camp_viewers_7d: number
+  sharers_7d: number
+  dau: { date: string; count: number }[]
+  last_active_by_member: { user_id: string; name: string; avatar_url: string | null; last_active_at: string }[]
+  recent_log: { id: string; actor: string; actor_name: string; action: string; metadata: unknown; created_at: string }[]
+}
+
+export async function fetchAnalyticsSummary(): Promise<AnalyticsSummary> {
+  const response = await fetch(`${API_URL}/admin/analytics/summary`, { headers: authHeaders() })
+  if (!response.ok) {
+    throw new Error(`Failed to fetch analytics: ${response.status}`)
+  }
+  const body = (await response.json()) as { data: AnalyticsSummary }
+  return body.data
+}

@@ -3,6 +3,7 @@ import multipart from '@fastify/multipart'
 import Fastify from 'fastify'
 
 import { adminRoutes } from './admin/routes.js'
+import { analyticsRoutes } from './analytics/routes.js'
 import { authPlugin } from './auth/plugin.js'
 import { authRoutes } from './auth/routes.js'
 import { campCommentsRoutes } from './camps/comments.js'
@@ -28,6 +29,7 @@ export async function buildApp() {
   await app.register(authPlugin)
   await app.register(authRoutes)
   await app.register(adminRoutes)
+  await app.register(analyticsRoutes)
   await app.register(eventsRoutes)
   await app.register(eventCommentsRoutes)
   await app.register(campsRoutes)

@@ -1,9 +1,35 @@
-import { IonToolbar } from '@ionic/react'
+import { IonButton, IonIcon, IonToolbar } from '@ionic/react'
+import { closeOutline } from 'ionicons/icons'
+import { Fragment } from 'react'
 import { useHistory } from 'react-router-dom'
 
 import { useDataFreshness } from '../admin/DataFreshnessContext'
 import { useAuth } from '../auth/AuthContext'
+import { markFriendsSeen } from '../connections/api'
 import { Avatar } from '../uploads/Avatar'
+
+// Small red dot anchored to a corner of the avatar — shared shape for the
+// two badges below (stale-data, feedback #69; new-friend-activity, feedback
+// #94), which previously each carried their own copy of this same style
+// object. `corner` positions it opposite the other badge so an admin who
+// has both at once sees two separate dots, not one overlapping the other.
+function BadgeDot({ corner, label }: { corner: 'left' | 'right'; label: string }) {
+  return (
+    <span
+      aria-label={label}
+      style={{
+        position: 'absolute',
+        top: -2,
+        [corner]: corner === 'right' ? 12 : -2,
+        width: 10,
+        height: 10,
+        borderRadius: '50%',
+        background: 'var(--ion-color-danger)',
+        border: '1.5px solid var(--banner-bg)',
+      }}
+    />
+  )
+}
 
 // Persistent workspace-style banner (Slack/ClassDojo pattern, feedback):
 // institution identity (logo + name) on the left, the signed-in member's
@@ -14,48 +40,76 @@ import { Avatar } from '../uploads/Avatar'
 // position: absolute/inset: 0 layout (see index.css's tab-bar-disappearing
 // history) makes a truly global fixed banner risky to introduce.
 export function InstitutionBanner() {
-  const { user, isAdmin } = useAuth()
+  const { user, isAdmin, refresh } = useAuth()
   const { freshness } = useDataFreshness()
   const history = useHistory()
   // Feedback #69: a quiet nudge that events/camps data has gone stale,
   // visible from anywhere without opening Dev Tools first — admin-only,
   // since only Ben acts on it.
   const showStaleBadge = isAdmin && (freshness?.is_stale ?? false)
+  // Feedback #94: "see new friends... as a red icon" the moment you open
+  // the app — same dot pattern as the stale-data badge above, but for every
+  // member, not just admin. Positioned at the avatar's other corner so the
+  // two badges never collide for an admin who has both at once. A second,
+  // stacked IonToolbar (same mechanism this component's own doc comment
+  // above already describes) doubles as the "maybe also a dismissal
+  // banner" ask — shown on whatever page is open, not just the Friends
+  // page itself, since the badge is meant to be seen "when you actually
+  // open the app."
+  const unseenFriendCount = user?.unseenFriendCount ?? 0
+  const showFriendBadge = unseenFriendCount > 0
+
+  async function dismissFriendBanner() {
+    await markFriendsSeen().catch((err) => console.error('failed to mark friends seen', err))
+    await refresh()
+  }
 
   return (
-    <IonToolbar style={{ '--background': 'var(--banner-bg)', '--color': 'var(--banner-ink)' } as React.CSSProperties}>
-      <div
-        slot="start"
-        role="button"
-        onClick={() => history.push('/about')}
-        style={{ display: 'flex', alignItems: 'center', gap: 10, paddingInlineStart: 16, cursor: 'pointer' }}
-      >
-        <img src="/nettelhorst-logo.png" alt="" style={{ width: 28, height: 28, objectFit: 'contain' }} />
-        <span style={{ fontSize: '1.1rem', fontWeight: 600 }}>Nettelhorst Bulbord</span>
-      </div>
-      <div
-        slot="end"
-        role="button"
-        onClick={() => history.push('/account')}
-        style={{ display: 'flex', alignItems: 'center', paddingInlineEnd: 16, cursor: 'pointer', position: 'relative' }}
-      >
-        {user && <Avatar url={user.avatarUrl} name={user.name} size={32} />}
-        {showStaleBadge && (
-          <span
-            aria-label="Events/camps data needs a refresh"
-            style={{
-              position: 'absolute',
-              top: -2,
-              right: 12,
-              width: 10,
-              height: 10,
-              borderRadius: '50%',
-              background: 'var(--ion-color-danger)',
-              border: '1.5px solid var(--banner-bg)',
-            }}
-          />
-        )}
-      </div>
-    </IonToolbar>
+    <Fragment>
+      <IonToolbar style={{ '--background': 'var(--banner-bg)', '--color': 'var(--banner-ink)' } as React.CSSProperties}>
+        <div
+          slot="start"
+          role="button"
+          onClick={() => history.push('/about')}
+          style={{ display: 'flex', alignItems: 'center', gap: 10, paddingInlineStart: 16, cursor: 'pointer' }}
+        >
+          <img src="/nettelhorst-logo.png" alt="" style={{ width: 28, height: 28, objectFit: 'contain' }} />
+          <span style={{ fontSize: '1.1rem', fontWeight: 600 }}>Nettelhorst Bulbord</span>
+        </div>
+        <div
+          slot="end"
+          role="button"
+          onClick={() => history.push('/account')}
+          style={{ display: 'flex', alignItems: 'center', paddingInlineEnd: 16, cursor: 'pointer', position: 'relative' }}
+        >
+          {user && <Avatar url={user.avatarUrl} name={user.name} size={32} />}
+          {showStaleBadge && <BadgeDot corner="right" label="Events/camps data needs a refresh" />}
+          {showFriendBadge && <BadgeDot corner="left" label="New friend activity" />}
+        </div>
+      </IonToolbar>
+      {showFriendBadge && (
+        <IonToolbar
+          style={
+            {
+              '--background': 'var(--ion-color-light)',
+              '--min-height': '36px',
+              '--padding-top': '2px',
+              '--padding-bottom': '2px',
+            } as React.CSSProperties
+          }
+        >
+          <div
+            role="button"
+            onClick={() => history.push('/friends')}
+            style={{ display: 'flex', alignItems: 'center', paddingInlineStart: 16, fontSize: '0.875rem', cursor: 'pointer' }}
+          >
+            {unseenFriendCount === 1 ? '1 person started following you' : `${unseenFriendCount} people started following you`}
+          </div>
+          <IonButton slot="end" fill="clear" size="small" onClick={dismissFriendBanner} aria-label="Dismiss">
+            <IonIcon slot="icon-only" icon={closeOutline} />
+          </IonButton>
+        </IonToolbar>
+      )}
+    </Fragment>
   )
 }

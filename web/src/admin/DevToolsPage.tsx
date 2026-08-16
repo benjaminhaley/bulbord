@@ -14,7 +14,16 @@ import {
   IonToast,
   IonToolbar,
 } from '@ionic/react'
-import { alertCircle, eyeOutline, mailOutline, peopleOutline, personAddOutline, refreshOutline, sunnyOutline } from 'ionicons/icons'
+import {
+  alertCircle,
+  analyticsOutline,
+  eyeOutline,
+  mailOutline,
+  peopleOutline,
+  personAddOutline,
+  refreshOutline,
+  sunnyOutline,
+} from 'ionicons/icons'
 import { useEffect, useState } from 'react'
 
 import { formatRelativeDateTime } from '../format'
@@ -132,6 +141,13 @@ export function DevToolsPage() {
           <IonItem button routerLink="/admin/users">
             <IonIcon slot="start" icon={peopleOutline} />
             <IonLabel>All members</IonLabel>
+          </IonItem>
+          <IonItem button routerLink="/admin/analytics">
+            <IonIcon slot="start" icon={analyticsOutline} />
+            <IonLabel className="ion-text-wrap">
+              <h2>Analytics</h2>
+              <p>Daily active members, who's viewing/sharing, and a recent activity log.</p>
+            </IonLabel>
           </IonItem>
           <IonItem button disabled={resourcing} onClick={resource} lines="none">
             <IonIcon slot="start" icon={refreshOutline} />

@@ -68,3 +68,15 @@ export async function finishFriendsOnboarding(): Promise<void> {
     throw new Error(await readErrorMessage(response, `Failed to finish onboarding: ${response.status}`))
   }
 }
+
+// Clears the new-follower badge/banner (feedback #94) — called on Friends
+// page load, and by the banner's own dismiss button.
+export async function markFriendsSeen(): Promise<void> {
+  const response = await fetch(`${API_URL}/connections/mark-seen`, {
+    method: 'POST',
+    headers: authHeaders(),
+  })
+  if (!response.ok) {
+    throw new Error(await readErrorMessage(response, `Failed to mark friends seen: ${response.status}`))
+  }
+}

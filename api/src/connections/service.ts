@@ -1,4 +1,4 @@
-import { and, eq, ilike, inArray, isNull, ne } from 'drizzle-orm'
+import { and, eq, gt, ilike, inArray, isNull, ne } from 'drizzle-orm'
 
 import { db } from '../db/client.js'
 import { eventsLog, userChildren, userConnections, users } from '../db/schema.js'
@@ -41,6 +41,40 @@ async function listIncomingConnections(userId: string): Promise<MemberSummary[]>
     .where(and(eq(userConnections.connectedUserId, userId), isNull(userConnections.deletedAt), isNull(users.deletedAt)))
 }
 
+// Feedback #94's red-dot/banner count: active, notify-worthy incoming edges
+// created since the viewer last saw their Friends page. `friendsSeenAt` null
+// (a brand-new account, or one that predates this feature and hasn't been
+// backfilled) falls back to the user's own `createdAt` — nothing could have
+// been "new" to them before their account existed. Takes the viewer's own
+// friendsSeenAt/createdAt as params rather than re-querying `users` for
+// them — the auth plugin's onRequest hook already fetched the full row for
+// every authenticated request (see plugin.ts's AuthedUser), so GET /auth/me
+// calling this doesn't need a second lookup for data it already has.
+export async function getUnseenFriendCount(userId: string, friendsSeenAt: Date | null, createdAt: Date): Promise<number> {
+  const since = friendsSeenAt ?? createdAt
+
+  const rows = await db
+    .select({ id: userConnections.id })
+    .from(userConnections)
+    .innerJoin(users, eq(users.id, userConnections.userId))
+    .where(
+      and(
+        eq(userConnections.connectedUserId, userId),
+        isNull(userConnections.deletedAt),
+        isNull(users.deletedAt),
+        eq(userConnections.notify, true),
+        gt(userConnections.createdAt, since),
+      ),
+    )
+  return rows.length
+}
+
+// Clears the badge/banner (feedback #94) — called when the Friends page is
+// opened, and when the banner itself is dismissed without visiting it.
+export async function markFriendsSeen(userId: string): Promise<void> {
+  await db.update(users).set({ friendsSeenAt: new Date() }).where(eq(users.id, userId))
+}
+
 // Powers the Friends page (feedback #83: "have a page where you can see
 // friends and their state") — the mutual/one-directional split itself is
 // pure logic, unit-tested in logic.test.ts; this just supplies the two raw
@@ -66,35 +100,34 @@ export async function addConnection(userId: string, connectedUserId: string): Pr
     .where(and(eq(userConnections.userId, userId), eq(userConnections.connectedUserId, connectedUserId)))
     .limit(1)
 
-  const wasActive = existing ? existing.deletedAt === null : false
-  if (!existing) {
-    await db.insert(userConnections).values({ userId, connectedUserId })
-  } else if (!wasActive) {
-    await db.update(userConnections).set({ deletedAt: null, updatedAt: new Date() }).where(eq(userConnections.id, existing.id))
-  }
+  const created = !existing || existing.deletedAt !== null
 
-  const created = !wasActive
   if (created) {
-    await db.insert(eventsLog).values({ actor: userId, action: 'connection_added', metadata: { connectedUserId } })
-
-    // Only alert when this is a genuine surprise to the recipient — i.e.
-    // the reverse edge (them -> the adder) doesn't already exist (feedback,
-    // 2026-08-14: Ben added Anna, she was correctly alerted; Anna then
-    // added him back to complete the pair, and he was wrongly alerted too
-    // — he'd already initiated it himself, so there was nothing to tell
-    // him). Completing a mutual pair is silent; the Friends page already
-    // shows it as "Friends" the next time either of them looks.
+    // Only a surprise to the recipient — and so only "notify"-worthy, both
+    // for the alert email and the in-app unseen-count badge (feedback #94)
+    // — when the reverse edge (them -> the adder) doesn't already exist
+    // (feedback, 2026-08-14: Ben added Anna, she was correctly alerted;
+    // Anna then added him back to complete the pair, and he was wrongly
+    // alerted too — he'd already initiated it himself, so there was
+    // nothing to tell him). Computed before the insert so the new row's own
+    // `notify` column can record it once, rather than re-deriving it later.
     const [reverseEdge] = await db
       .select({ id: userConnections.id })
       .from(userConnections)
       .where(and(eq(userConnections.userId, connectedUserId), eq(userConnections.connectedUserId, userId), isNull(userConnections.deletedAt)))
       .limit(1)
+    const notify = !reverseEdge
 
-    if (!reverseEdge) {
-      // Best-effort — there's no in-app notification inbox (see schema.ts's
-      // userConnections comment), so an alert email is the only way the
-      // other person finds out to friend back. A failed send shouldn't
-      // undo the add.
+    if (!existing) {
+      await db.insert(userConnections).values({ userId, connectedUserId, notify })
+    } else {
+      await db.update(userConnections).set({ deletedAt: null, notify, updatedAt: new Date() }).where(eq(userConnections.id, existing.id))
+    }
+
+    await db.insert(eventsLog).values({ actor: userId, action: 'connection_added', metadata: { connectedUserId } })
+
+    if (notify) {
+      // Best-effort — a failed send shouldn't undo the add.
       await notifyConnectionAdded(userId, connectedUserId).catch((err) => {
         console.error('connection alert email failed', err)
       })

@@ -14,6 +14,7 @@ import { createOutline, star, starOutline, trashOutline } from 'ionicons/icons'
 import { useEffect, useState } from 'react'
 import { useHistory, useParams } from 'react-router-dom'
 
+import { track } from '../analytics/api'
 import { AddToCalendarButton } from '../calendar/AddToCalendarButton'
 import { API_URL } from '../config'
 import { mapUrl, shortAddress } from '../format'
@@ -55,6 +56,11 @@ export function EventDetailPage() {
     fetchEvent(id)
       .then(setEvent)
       .catch(() => setError(true))
+  }, [id])
+
+  // Feedback #96's "number of people viewing events."
+  useEffect(() => {
+    track('event_viewed', { eventId: id }).catch(() => {})
   }, [id])
 
   return (

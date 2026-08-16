@@ -1,6 +1,7 @@
 import {
   IonAccordion,
   IonAccordionGroup,
+  IonActionSheet,
   IonButton,
   IonButtons,
   IonContent,
@@ -20,14 +21,9 @@ import {
 } from '@ionic/react'
 import {
   addOutline,
-  arrowUndoOutline,
-  checkmarkOutline,
   closeOutline,
-  createOutline,
-  hourglassOutline,
+  ellipsisVerticalOutline,
   imageOutline,
-  timeOutline,
-  trashOutline,
 } from 'ionicons/icons'
 import { type ReactNode, useEffect, useState } from 'react'
 
@@ -305,6 +301,7 @@ function FeedbackListItem({
 }) {
   const [markingDone, setMarkingDone] = useState(false)
   const [editing, setEditing] = useState(false)
+  const [menuOpen, setMenuOpen] = useState(false)
 
   async function confirmDone(note: string) {
     const updated = await completeFeedback(item.id, note)
@@ -344,6 +341,20 @@ function FeedbackListItem({
     )
   }
 
+  const canModerate = isAdmin && !item.completed_at
+  const showMenu = item.can_edit || canModerate
+  type MenuButton = { text: string; role?: 'destructive' | 'cancel'; handler?: () => void }
+  const menuButtons: MenuButton[] = (
+    [
+      item.can_edit && { text: 'Edit', handler: () => setEditing(true) },
+      canModerate && { text: 'Mark done', handler: () => setMarkingDone(true) },
+      canModerate && { text: item.in_progress_at ? 'Restore to open' : 'Move to in progress', handler: toggleInProgress },
+      canModerate && { text: item.backlogged_at ? 'Restore to open' : 'Move to backlog', handler: toggleBacklog },
+      item.can_edit && { text: 'Delete', role: 'destructive' as const, handler: remove },
+      { text: 'Cancel', role: 'cancel' as const },
+    ] as (MenuButton | false)[]
+  ).filter((b): b is MenuButton => b !== false)
+
   return (
     <>
       <IonItem lines={markingDone ? 'none' : 'full'}>
@@ -352,41 +363,14 @@ function FeedbackListItem({
           extra={item.completion_note && <p>{item.completion_note}</p>}
           onImageClick={onImageClick}
         />
-        {(item.can_edit || (isAdmin && !item.completed_at)) && !markingDone && (
-          <div slot="end" style={{ display: 'flex', flexDirection: 'column' }}>
-            {item.can_edit && (
-              <IonButton fill="clear" onClick={() => setEditing(true)}>
-                <IonIcon slot="icon-only" icon={createOutline} />
-              </IonButton>
-            )}
-            {item.can_edit && (
-              <IonButton fill="clear" color="danger" onClick={remove}>
-                <IonIcon slot="icon-only" icon={trashOutline} />
-              </IonButton>
-            )}
-            {isAdmin && !item.completed_at && (
-              <IonButton fill="clear" onClick={() => setMarkingDone(true)}>
-                <IonIcon slot="icon-only" icon={checkmarkOutline} />
-              </IonButton>
-            )}
-            {isAdmin && !item.completed_at && (
-              <IonButton
-                fill="clear"
-                onClick={toggleInProgress}
-                title={item.in_progress_at ? 'Restore to open' : 'Move to in progress'}
-              >
-                <IonIcon slot="icon-only" icon={item.in_progress_at ? arrowUndoOutline : hourglassOutline} />
-              </IonButton>
-            )}
-            {isAdmin && !item.completed_at && (
-              <IonButton fill="clear" onClick={toggleBacklog} title={item.backlogged_at ? 'Restore to open' : 'Move to backlog'}>
-                <IonIcon slot="icon-only" icon={item.backlogged_at ? arrowUndoOutline : timeOutline} />
-              </IonButton>
-            )}
-          </div>
+        {showMenu && !markingDone && (
+          <IonButton slot="end" fill="clear" onClick={() => setMenuOpen(true)} aria-label="Actions">
+            <IonIcon slot="icon-only" icon={ellipsisVerticalOutline} />
+          </IonButton>
         )}
       </IonItem>
       {markingDone && <MarkDoneForm onConfirm={confirmDone} onCancel={() => setMarkingDone(false)} />}
+      <IonActionSheet isOpen={menuOpen} onDidDismiss={() => setMenuOpen(false)} buttons={menuButtons} />
     </>
   )
 }

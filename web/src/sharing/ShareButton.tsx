@@ -13,6 +13,7 @@ import { closeOutline, paperPlaneOutline, shareOutline } from 'ionicons/icons'
 import { useState } from 'react'
 import { useLocation } from 'react-router-dom'
 
+import { track } from '../analytics/api'
 import { useAuth } from '../auth/AuthContext'
 import { useQrDataUrl } from './useQrDataUrl'
 
@@ -37,12 +38,20 @@ export function ShareButton() {
   // every route change in the background.
   const qrDataUrl = useQrDataUrl(open ? shareUrl : null)
 
+  function openModal() {
+    setOpen(true)
+    // Feedback #96's "who is sharing" — logged on open, not on an actual
+    // scan/tap-through, since that's the moment a real share attempt
+    // happened; there's no way to observe what a recipient does with it.
+    track('share_opened', { path: location.pathname }).catch(() => {})
+  }
+
   return (
     <>
       {/* Not IonFab/IonFabButton's usual in-IonContent placement — this button
           must persist across every page, not just one, so it sits outside the
           route-specific IonContent and anchors via .share-fab (index.css). */}
-      <IonFabButton className="share-fab" color="light" onClick={() => setOpen(true)} aria-label="Share this page">
+      <IonFabButton className="share-fab" color="light" onClick={openModal} aria-label="Share this page">
         <IonIcon icon={shareOutline} />
       </IonFabButton>
       <IonModal isOpen={open} onDidDismiss={() => setOpen(false)}>

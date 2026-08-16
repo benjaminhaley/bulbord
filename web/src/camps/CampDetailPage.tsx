@@ -15,6 +15,7 @@ import { createOutline, star, starOutline, trashOutline } from 'ionicons/icons'
 import { useEffect, useState } from 'react'
 import { useHistory, useParams } from 'react-router-dom'
 
+import { track } from '../analytics/api'
 import { AddToCalendarButton } from '../calendar/AddToCalendarButton'
 import { API_URL } from '../config'
 import { factLineStyle, headingContentGap, leadingButtonGap, sectionDividerStyle } from '../theme/layout'
@@ -178,6 +179,12 @@ export function CampDetailPage() {
     fetchCamp(id)
       .then(setCamp)
       .catch(() => setError(true))
+  }, [id])
+
+  // Feedback #96's "number of people viewing events" — the same signal for
+  // Camps, so the analytics page's people-viewing tiles cover both tabs.
+  useEffect(() => {
+    track('camp_viewed', { campId: id }).catch(() => {})
   }, [id])
 
   // Once a camp has a real Options breakdown, every option row shows its

@@ -130,6 +130,14 @@ export const users = pgTable('users', {
   // visible in the admin /admin/users list, which is meant to show every
   // account that exists, not just real members.
   isServiceAccount: boolean('is_service_account').notNull().default(false),
+  // Null until the member has opened the Friends page (or dismissed the
+  // in-app notification banner) since their last new incoming connection —
+  // feedback #94's "see new friends as a red icon when you open the app",
+  // same "real timestamp gates a UI reveal" shape as profileCompletedAt.
+  // Compared against userConnections.createdAt to compute an unseen count;
+  // coalesced to this user's own createdAt when null (a brand-new account
+  // has no prior connections to have missed).
+  friendsSeenAt: timestamp('friends_seen_at', { withTimezone: true }),
   ...timestamps,
 })
 
@@ -168,6 +176,13 @@ export const userConnections = pgTable(
     connectedUserId: uuid('connected_user_id')
       .notNull()
       .references(() => users.id), // the one added
+    // False when this edge was created to complete an already-initiated
+    // mutual pair (the reverse edge already existed) — mirrors
+    // addConnection()'s own "reciprocal completion is silent" check for the
+    // alert email (feedback, 2026-08-14), reused here so the in-app unseen
+    // count (feedback #94) doesn't flag something the recipient already
+    // knew about. Set once at creation time rather than re-derived later.
+    notify: boolean('notify').notNull().default(true),
     ...timestamps,
   },
   (table) => [uniqueIndex('user_connections_user_id_connected_user_id_idx').on(table.userId, table.connectedUserId)],

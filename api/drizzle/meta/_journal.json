@@ -204,6 +204,13 @@
       "when": 1786729401468,
       "tag": "0028_flaky_spyke",
       "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1786899679598,
+      "tag": "0029_tranquil_machine_man",
+      "breakpoints": true
     }
   ]
 }
