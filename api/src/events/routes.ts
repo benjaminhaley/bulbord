@@ -1,4 +1,4 @@
-import { and, asc, eq, getTableColumns, gte, isNull, sql, type SQLWrapper } from 'drizzle-orm'
+import { and, asc, eq, getTableColumns, gte, isNull, sql } from 'drizzle-orm'
 import type { FastifyInstance } from 'fastify'
 
 import { requireAuth } from '../auth/plugin.js'
@@ -12,102 +12,17 @@ import { todayInChicago } from '../dates.js'
 // newsletter-specific — see that file's own header).
 import { formatWhen, locationLabel } from '../newsletter/format.js'
 import { uploadPlaceholderImage } from '../uploads/placeholder.js'
+import { buildEventFilterConditions, parseBeforeTimeParam, parseTopicsParam } from './filters.js'
+import { getEventsForWeek } from './week-query.js'
 import { canEditEvent } from './permissions.js'
-
-type InterestStatus = 'interested' | 'dismissed'
-
-type SerializableEvent = Pick<
-  typeof events.$inferSelect,
-  | 'id'
-  | 'title'
-  | 'description'
-  | 'startDate'
-  | 'startTime'
-  | 'allDay'
-  | 'address'
-  | 'locationName'
-  | 'latitude'
-  | 'longitude'
-  | 'sourceUrl'
-  | 'imageUrl'
-  | 'thumbnailUrl'
-  | 'submittedByUserId'
->
-
-// Small icon-stack teaser (feedback #43 — replaced a text-name teaser), so
-// the closed state needs a photo/initials per person, not just a name.
-export type InterestedPersonSummary = { name: string; avatar_url: string | null }
-
-// null for system-sourced events (no submitter to show); present for member
-// self-service posts (feedback #46), so the frontend can attribute the post
-// and fall back to the poster's own photo as a placeholder image when the
-// event has no image of its own (feedback, 2026-08-03).
-export type SubmitterSummary = { name: string; avatar_url: string | null }
-
-function serializeEvent(
-  e: SerializableEvent,
-  interestStatus: InterestStatus | null,
-  interestedCount: number,
-  interestedPeople: InterestedPersonSummary[],
-  currentUserId: string | null,
-  submittedBy: SubmitterSummary | null,
-) {
-  return {
-    id: e.id,
-    title: e.title,
-    description: e.description,
-    start_date: e.startDate,
-    start_time: e.startTime,
-    all_day: e.allDay,
-    address: e.address,
-    location_name: e.locationName,
-    latitude: e.latitude,
-    longitude: e.longitude,
-    source_url: e.sourceUrl,
-    image_url: e.imageUrl,
-    thumbnail_url: e.thumbnailUrl,
-    interest_status: interestStatus,
-    interested_count: interestedCount,
-    interested_people: interestedPeople,
-    // Creator-only edit/delete (feedback #46) — no admin override, same
-    // posture as feedback-post edits (feedback #39).
-    can_edit: currentUserId !== null && canEditEvent({ id: currentUserId }, e),
-    submitted_by: submittedBy,
-  }
-}
-
-// Correlated scalar subqueries — fine for a single row (GET /events/:id), but
-// the paginated list route below aggregates via a joined CTE instead so it
-// doesn't re-scan event_interests once per returned row.
-//
-// CAUTION: drizzle only table-qualifies a raw sql`` column interpolation
-// (e.g. the `${eventId}` below) when the surrounding query already involves
-// more than one table — GET /events/:id's outer query happens to already
-// left-join event_interests, which is the only reason `${eventId}` renders
-// as "events"."id" instead of a bare "id" that would wrongly resolve to
-// event_interests' own id column inside this subquery. A caller with a
-// single-table outer query would silently get that wrong (see the
-// event_count fix on GET /event-sources, which hit exactly this and had to
-// use a real join instead) — don't reuse these two helpers from one.
-function interestedCountExpr(eventId: SQLWrapper) {
-  return sql<number>`(select count(*)::int from ${eventInterests} where ${eventInterests.eventId} = ${eventId} and ${eventInterests.status} = 'interested' and ${eventInterests.deletedAt} is null)`
-}
-
-// Name+avatar in interest-order, with the current viewer's own name swapped
-// for "You" — same substitution the paginated list's interest_people CTE
-// applies. Carries avatar_url (not just name) so the closed-state teaser can
-// render a small icon stack instead of text (feedback #43).
-function interestedPeopleExpr(eventId: SQLWrapper, userId: string | null) {
-  return sql<InterestedPersonSummary[]>`(select coalesce(json_agg(json_build_object('name', case when ${eventInterests.userId} = ${userId} then 'You' else ${users.name} end, 'avatar_url', ${users.avatarUrl}) order by ${eventInterests.createdAt}), '[]'::json) from ${eventInterests} join ${users} on ${users.id} = ${eventInterests.userId} where ${eventInterests.eventId} = ${eventId} and ${eventInterests.status} = 'interested' and ${eventInterests.deletedAt} is null)`
-}
-
-// Scalar subquery, not a join — mirrors interestedCountExpr/interestedPeopleExpr
-// above. Naturally yields SQL NULL (not an error) when submittedByUserId
-// itself is NULL (system-sourced events), since the WHERE clause then
-// matches no row.
-function submittedByExpr(submittedByUserId: SQLWrapper) {
-  return sql<SubmitterSummary | null>`(select json_build_object('name', ${users.name}, 'avatar_url', ${users.avatarUrl}) from ${users} where ${users.id} = ${submittedByUserId})`
-}
+import {
+  interestedCountExpr,
+  interestedPeopleExpr,
+  serializeEvent,
+  submittedByExpr,
+  type InterestedPersonSummary,
+  type InterestStatus,
+} from './serialize.js'
 
 // "Stale" flags a source the ingestion pipeline hasn't turned up anything new
 // from recently — a signal the source may have gone quiet or broken, not a
@@ -222,6 +137,7 @@ export async function eventsRoutes(app: FastifyInstance) {
       source_url?: string
       image_url?: string
       thumbnail_url?: string
+      topic?: string
     }
     const title = body.title?.trim()
     const address = body.address?.trim()
@@ -252,6 +168,7 @@ export async function eventsRoutes(app: FastifyInstance) {
         sourceUrl: body.source_url?.trim() || null,
         imageUrl: image.imageUrl,
         thumbnailUrl: image.thumbnailUrl,
+        topic: body.topic?.trim() || null,
         status: 'approved',
         submittedByUserId: currentUser.id,
       })
@@ -289,6 +206,7 @@ export async function eventsRoutes(app: FastifyInstance) {
       source_url?: string
       image_url?: string
       thumbnail_url?: string
+      topic?: string
     }
 
     const currentUser = request.currentUser!
@@ -332,6 +250,7 @@ export async function eventsRoutes(app: FastifyInstance) {
           sourceUrl: body.source_url?.trim() || null,
           imageUrl: image.imageUrl,
           thumbnailUrl: image.thumbnailUrl,
+          topic: body.topic?.trim() || null,
           updatedAt: new Date(),
         })
         .where(eq(events.id, id)),
@@ -507,7 +426,7 @@ export async function eventsRoutes(app: FastifyInstance) {
   })
 
   app.get('/events', { preHandler: requireAuth }, async (request, reply) => {
-    const query = request.query as { limit?: string; cursor?: string; include_hidden?: string }
+    const query = request.query as { limit?: string; cursor?: string; include_hidden?: string; topics?: string; before_time?: string }
     const limit = Math.min(Number(query.limit) || 20, 100)
     const userId = request.currentUser?.id ?? null
     // Feedback #48 — the next-occurrence collapse below hides later dates of
@@ -515,6 +434,10 @@ export async function eventsRoutes(app: FastifyInstance) {
     // so a client that's already shown the hidden count can ask for
     // everything. Left off (the default), behavior is unchanged from before.
     const includeHidden = query.include_hidden === 'true'
+    // Feedback #97 — topic (Movie Night, Sports & Fitness, ...) and a
+    // "hide anything starting after HH:MM" time-of-day cutoff.
+    const topics = parseTopicsParam(query.topics)
+    const beforeTime = parseBeforeTimeParam(query.before_time)
 
     let cursorStartDate: string | null = null
     let cursorSortTime: string | null = null
@@ -526,7 +449,12 @@ export async function eventsRoutes(app: FastifyInstance) {
       cursorId = id ?? null
     }
 
-    const conditions = [eq(events.status, 'approved'), isNull(events.deletedAt), gte(events.startDate, todayInChicago())]
+    const conditions = [
+      eq(events.status, 'approved'),
+      isNull(events.deletedAt),
+      gte(events.startDate, todayInChicago()),
+      ...buildEventFilterConditions(topics, beforeTime),
+    ]
 
     // Events with no specific start_time (null = no specific time, distinct
     // from all_day — see CLAUDE.md) sort after every timed event on the same
@@ -606,6 +534,7 @@ export async function eventsRoutes(app: FastifyInstance) {
           imageUrl: nextOccurrence.imageUrl,
           thumbnailUrl: nextOccurrence.thumbnailUrl,
           submittedByUserId: nextOccurrence.submittedByUserId,
+          topic: nextOccurrence.topic,
           interestStatus: eventInterests.status,
           interestedCount: sql<number>`coalesce(${interestCounts.interestedCount}, 0)`,
           interestedPeople: sql<InterestedPersonSummary[]>`coalesce(${interestCounts.interestedPeople}, '[]'::json)`,
@@ -673,5 +602,23 @@ export async function eventsRoutes(app: FastifyInstance) {
     return reply.send({
       data: rows.map((row) => ({ id: row.id, name: row.name, avatar_url: row.avatarUrl })),
     })
+  })
+
+  // Calendar week view (feedback #97) — every real occurrence within a
+  // Sunday-Saturday week, not the next-occurrence-collapsed set the main
+  // list above shows; see week-query.ts's own header for why this is a
+  // deliberate parallel query rather than a variant of the CTE above.
+  app.get('/events/week', { preHandler: requireAuth }, async (request, reply) => {
+    const query = request.query as { start?: string; topics?: string; before_time?: string }
+    const weekStart = query.start
+    if (!weekStart || !/^\d{4}-\d{2}-\d{2}$/.test(weekStart)) {
+      return reply.code(400).send({ error: { message: 'start (YYYY-MM-DD) is required' } })
+    }
+    const userId = request.currentUser?.id ?? null
+    const topics = parseTopicsParam(query.topics)
+    const beforeTime = parseBeforeTimeParam(query.before_time)
+
+    const weekEvents = await getEventsForWeek(weekStart, topics, beforeTime, userId)
+    return reply.send({ data: weekEvents })
   })
 }

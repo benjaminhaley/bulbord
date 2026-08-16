@@ -45,6 +45,15 @@ export const events = pgTable('events', {
   status: text('status').notNull().default('pending'), // 'pending' | 'approved' | 'rejected'
   submittedByUserId: uuid('submitted_by_user_id'),
   approvedByUserId: uuid('approved_by_user_id'),
+  // Optional subject category (feedback #97, 2026-08-16) — lets the Events
+  // tab be filtered down (e.g. skip Movie Night listings that run too late).
+  // Plain text like every other status column, not a DB enum; validated
+  // against a fixed picker list at the application layer only (see
+  // web/src/events/format.ts's TOPIC_OPTIONS). Null means unset — an older
+  // or unclassified event, shown as untagged rather than defaulted to
+  // "Other" (a real "nobody's looked at this yet" state, distinct from a
+  // deliberate "Other" choice).
+  topic: text('topic'),
   ...timestamps,
 })
 
@@ -138,6 +147,12 @@ export const users = pgTable('users', {
   // coalesced to this user's own createdAt when null (a brand-new account
   // has no prior connections to have missed).
   friendsSeenAt: timestamp('friends_seen_at', { withTimezone: true }),
+  // Null until the member has opened the Feedback tab since a reply landed
+  // on a feedback post they authored (feedback #98) — same "real timestamp
+  // gates a UI reveal" shape as friendsSeenAt above, compared against
+  // feedbackComments.createdAt to compute an unseen-reply count. Coalesced
+  // to this user's own createdAt when null.
+  feedbackRepliesSeenAt: timestamp('feedback_replies_seen_at', { withTimezone: true }),
   ...timestamps,
 })
 
@@ -252,7 +267,6 @@ export const feedback = pgTable('feedback', {
   description: text('description'),
   createdByUserId: uuid('created_by_user_id').references(() => users.id),
   completedAt: timestamp('completed_at', { withTimezone: true }),
-  completionNote: text('completion_note'),
   completedByUserId: uuid('completed_by_user_id').references(() => users.id),
   // A deliberately-deferred item — distinct from completedAt (which means
   // "done"). Mutually exclusive with being in the default Open view; an
@@ -282,6 +296,26 @@ export const feedbackImages = pgTable('feedback_images', {
   imageUrl: text('image_url').notNull(),
   thumbnailUrl: text('thumbnail_url').notNull(),
   position: integer('position').notNull().default(0),
+  ...timestamps,
+})
+
+// A reply thread on a feedback post (feedback #98, 2026-08-16) — same shape
+// as eventComments/campComments above. Replaces the old single admin-only
+// completionNote field: any member (not just admin) can reply, and the
+// feedback author gets an in-app-only notification (no email, no banner —
+// see users.feedbackRepliesSeenAt above) when someone other than themselves
+// replies. Existing completionNote text was backfilled into this table as
+// each item's first comment before the column was dropped (see
+// api/src/feedback/backfill-2026-08-16-notes-to-comments.ts).
+export const feedbackComments = pgTable('feedback_comments', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  feedbackId: uuid('feedback_id')
+    .notNull()
+    .references(() => feedback.id),
+  userId: uuid('user_id')
+    .notNull()
+    .references(() => users.id),
+  body: text('body').notNull(),
   ...timestamps,
 })
 

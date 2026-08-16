@@ -1,6 +1,7 @@
 import {
   IonAccordion,
   IonAccordionGroup,
+  IonBadge,
   IonButton,
   IonButtons,
   IonContent,
@@ -14,20 +15,24 @@ import {
   IonList,
   IonNote,
   IonPage,
+  IonSegment,
+  IonSegmentButton,
   IonSpinner,
   IonTitle,
   IonToast,
   IonToolbar,
   useIonViewWillEnter,
 } from '@ionic/react'
-import { addOutline, closeOutline, eyeOffOutline, listOutline, sparkles, star } from 'ionicons/icons'
-import { useMemo, useRef, useState } from 'react'
+import { addOutline, calendarOutline, closeOutline, eyeOffOutline, filterOutline, listOutline, sparkles, star } from 'ionicons/icons'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { useAuth } from '../auth/AuthContext'
 import { InstitutionBanner } from '../app/InstitutionBanner'
 import { API_URL } from '../config'
 import { Avatar } from '../uploads/Avatar'
-import { createEvent, fetchEvents, type Event, type InterestStatus } from './api'
+import { CalendarWeekView } from './CalendarWeekView'
+import { EventFilterModal } from './EventFilterModal'
+import { createEvent, fetchEvents, type Event, type EventFilters, type InterestStatus } from './api'
 import { EventForm } from './EventForm'
 import { formatWhen, locationLabel, teaser } from './format'
 import { InterestedBadge } from './InterestedBadge'
@@ -35,26 +40,28 @@ import { useEventInterest } from './useEventInterest'
 
 // What to show in the undo toast after a swipe, and what to restore if the
 // user taps Undo — the status the event had immediately before the swipe.
-interface SwipeToast {
+// Exported for CalendarWeekView.tsx's own independent swipe/undo handling.
+export interface SwipeToast {
   event: Event
   previousStatus: InterestStatus | null
   newStatus: InterestStatus
 }
 
-const TOAST_MESSAGES: Record<InterestStatus, string> = {
+export const TOAST_MESSAGES: Record<InterestStatus, string> = {
   interested: 'Marked interested',
   dismissed: 'Dismissed',
 }
 
-function closeSliding(target: EventTarget | null) {
+export function closeSliding(target: EventTarget | null) {
   const sliding = (target as HTMLElement | null)?.closest('ion-item-sliding') as HTMLIonItemSlidingElement | null
   sliding?.close()
 }
 
 // Extracted so the same swipeable row renders in the Starred/New accordion
-// sections and in the "Show N dismissed events" reveal below them (feedback
-// #60, replacing the old New/Starred/Dismissed segmented tabs).
-function EventRow({
+// sections, the "Show N dismissed events" reveal below them (feedback #60,
+// replacing the old New/Starred/Dismissed segmented tabs), and — exported —
+// the calendar week view's own agenda list (feedback #97, CalendarWeekView.tsx).
+export function EventRow({
   event,
   multiTouch,
   onSwipe,
@@ -127,14 +134,18 @@ export function EventsPage() {
   const hasSetDefaultExpansion = useRef(false)
   const { setInterest, clearInterest } = useEventInterest(updateEvent)
 
-  // Ionic keeps this page's React state alive (hidden, not unmounted) when
-  // navigating to an event's detail page and back, for the back-swipe
-  // transition — a plain useEffect(fn, []) would only ever run once and
-  // never see an edit/delete made on the detail page. useIonViewWillEnter
-  // fires on that initial mount too, so it fully replaces useEffect here,
-  // not just supplements it.
-  useIonViewWillEnter(() => {
-    fetchEvents()
+  // Feedback #97: List/Calendar view toggle, and the topic/time-cutoff
+  // filters that apply to both. Neither is persisted across visits — a
+  // fresh tab open always starts on List with no filters, same "no saved
+  // per-user preference" posture as every other view-state in this app.
+  const [viewMode, setViewMode] = useState<'list' | 'calendar'>('list')
+  const [filters, setFilters] = useState<EventFilters>({ topics: [], beforeTime: '' })
+  const [filterModalOpen, setFilterModalOpen] = useState(false)
+  const hasActiveFilters = (filters.topics?.length ?? 0) > 0 || !!filters.beforeTime
+  const didInitialFetch = useRef(false)
+
+  function loadEvents() {
+    fetchEvents({ topics: filters.topics, beforeTime: filters.beforeTime })
       .then(({ events, hiddenCount }) => {
         setEvents(events)
         setHiddenCount(hiddenCount)
@@ -145,10 +156,32 @@ export function EventsPage() {
         }
       })
       .catch(() => setError(true))
+  }
+
+  // Ionic keeps this page's React state alive (hidden, not unmounted) when
+  // navigating to an event's detail page and back, for the back-swipe
+  // transition — a plain useEffect(fn, []) would only ever run once and
+  // never see an edit/delete made on the detail page. useIonViewWillEnter
+  // fires on that initial mount too, so it fully replaces useEffect here,
+  // not just supplements it.
+  useIonViewWillEnter(() => {
+    didInitialFetch.current = true
+    loadEvents()
   })
 
+  // Refetch the list whenever the filters change while already on this tab
+  // — view-enter alone only catches re-entering the tab, not editing
+  // filters mid-visit. Guarded so it doesn't also double-fire the very
+  // first load, which useIonViewWillEnter above already handles.
+  const topicsKey = filters.topics?.join(',') ?? ''
+  useEffect(() => {
+    if (!didInitialFetch.current) return
+    loadEvents()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [topicsKey, filters.beforeTime])
+
   function revealHidden() {
-    fetchEvents({ includeHidden: true })
+    fetchEvents({ includeHidden: true, topics: filters.topics, beforeTime: filters.beforeTime })
       .then(({ events, hiddenCount }) => {
         setEvents(events)
         setHiddenCount(hiddenCount)
@@ -201,6 +234,10 @@ export function EventsPage() {
         <IonToolbar>
           <IonTitle>Events</IonTitle>
           <IonButtons slot="end">
+            <IonButton onClick={() => setFilterModalOpen(true)} aria-label="Filters">
+              <IonIcon slot="icon-only" icon={filterOutline} color={hasActiveFilters ? 'primary' : undefined} />
+              {hasActiveFilters && <IonBadge color="primary">{(filters.topics?.length ?? 0) + (filters.beforeTime ? 1 : 0)}</IonBadge>}
+            </IonButton>
             {user && (
               <IonButton onClick={() => setShowForm((v) => !v)}>
                 <IonIcon slot="icon-only" icon={showForm ? closeOutline : addOutline} />
@@ -210,6 +247,22 @@ export function EventsPage() {
               <IonIcon slot="icon-only" icon={listOutline} />
             </IonButton>
           </IonButtons>
+        </IonToolbar>
+        {/* Feedback #97: List (the existing Starred/New/Dismissed accordion)
+            vs. Calendar (a Sunday-Saturday week strip + agenda, see
+            CalendarWeekView.tsx) — same "second stacked IonToolbar" pattern
+            InstitutionBanner's own doc comment already establishes. */}
+        <IonToolbar>
+          <IonSegment value={viewMode} onIonChange={(e) => setViewMode(e.detail.value as 'list' | 'calendar')}>
+            <IonSegmentButton value="list">
+              <IonIcon icon={listOutline} />
+              <IonLabel>List</IonLabel>
+            </IonSegmentButton>
+            <IonSegmentButton value="calendar">
+              <IonIcon icon={calendarOutline} />
+              <IonLabel>Calendar</IonLabel>
+            </IonSegmentButton>
+          </IonSegment>
         </IonToolbar>
       </IonHeader>
       <IonContent fullscreen onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd} onTouchCancel={handleTouchEnd}>
@@ -225,22 +278,23 @@ export function EventsPage() {
             onCancel={() => setShowForm(false)}
           />
         )}
-        {events === null && !error && (
+        {viewMode === 'calendar' && <CalendarWeekView filters={filters} multiTouch={multiTouch} />}
+        {viewMode === 'list' && events === null && !error && (
           <div className="coming-soon">
             <IonSpinner name="dots" />
           </div>
         )}
-        {error && (
+        {viewMode === 'list' && error && (
           <div className="coming-soon">
             <p>Coming soon</p>
           </div>
         )}
-        {events !== null && events.length === 0 && (
+        {viewMode === 'list' && events !== null && events.length === 0 && (
           <div className="coming-soon">
             <p>No upcoming events yet</p>
           </div>
         )}
-        {events !== null && events.length > 0 && (
+        {viewMode === 'list' && events !== null && events.length > 0 && (
           <IonAccordionGroup
             multiple
             value={expandedSections}
@@ -327,6 +381,13 @@ export function EventsPage() {
         positionAnchor="main-tab-bar"
         buttons={[{ text: 'Undo', handler: undoSwipe }]}
         onDidDismiss={() => setSwipeToast(null)}
+      />
+      <EventFilterModal
+        isOpen={filterModalOpen}
+        topics={filters.topics ?? []}
+        beforeTime={filters.beforeTime ?? ''}
+        onApply={(topics, beforeTime) => setFilters({ topics, beforeTime })}
+        onDismiss={() => setFilterModalOpen(false)}
       />
     </IonPage>
   )

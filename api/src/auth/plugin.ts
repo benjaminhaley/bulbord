@@ -18,6 +18,9 @@ interface AuthedUser {
   // getUnseenFriendCount() (feedback #94) skip a second users lookup on
   // every GET /auth/me call rather than re-querying data already in hand.
   friendsSeenAt: Date | null
+  // Same rationale as friendsSeenAt above, for getUnseenFeedbackReplyCount()
+  // (feedback #98).
+  feedbackRepliesSeenAt: Date | null
   createdAt: Date
 }
 
@@ -55,6 +58,7 @@ export const authPlugin = fp(async (app) => {
       newsletterSubscribed: resolved.user.newsletterSubscribed,
       roles: resolved.roles,
       friendsSeenAt: resolved.user.friendsSeenAt,
+      feedbackRepliesSeenAt: resolved.user.feedbackRepliesSeenAt,
       createdAt: resolved.user.createdAt,
     }
   })

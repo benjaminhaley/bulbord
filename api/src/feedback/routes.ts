@@ -1,29 +1,30 @@
-import { and, asc, desc, eq, inArray, isNull } from 'drizzle-orm'
+import { and, asc, desc, eq, inArray, isNull, sql, type SQLWrapper } from 'drizzle-orm'
 import type { FastifyInstance } from 'fastify'
 
 import { db } from '../db/client.js'
-import { eventsLog, feedback, feedbackImages, users } from '../db/schema.js'
+import { eventsLog, feedback, feedbackComments, feedbackImages, users } from '../db/schema.js'
 import { requireAuth, requireRole } from '../auth/plugin.js'
+import { markFeedbackRepliesSeen } from './notifications.js'
 import { canEditFeedback } from './permissions.js'
 
 type FeedbackImage = { imageUrl: string; thumbnailUrl: string }
 
+// Scalar subquery, not a join — same pattern as events/routes.ts's
+// interestedCountExpr. The outer queries below all already join `users`, so
+// drizzle table-qualifies `${feedbackId}` correctly (see that file's own
+// caution comment on this gotcha).
+function commentCountExpr(feedbackId: SQLWrapper) {
+  return sql<number>`(select count(*)::int from ${feedbackComments} where ${feedbackComments.feedbackId} = ${feedbackId} and ${feedbackComments.deletedAt} is null)`
+}
+
 function serializeFeedback(
   f: Pick<
     typeof feedback.$inferSelect,
-    | 'id'
-    | 'number'
-    | 'title'
-    | 'description'
-    | 'createdAt'
-    | 'completedAt'
-    | 'completionNote'
-    | 'backloggedAt'
-    | 'inProgressAt'
-    | 'createdByUserId'
+    'id' | 'number' | 'title' | 'description' | 'createdAt' | 'completedAt' | 'backloggedAt' | 'inProgressAt' | 'createdByUserId'
   >,
   authorName: string | null,
   images: FeedbackImage[],
+  commentCount: number,
   currentUser: { id: string },
 ) {
   return {
@@ -35,9 +36,9 @@ function serializeFeedback(
     author_name: authorName,
     images: images.map((img) => ({ image_url: img.imageUrl, thumbnail_url: img.thumbnailUrl })),
     completed_at: f.completedAt,
-    completion_note: f.completionNote,
     backlogged_at: f.backloggedAt,
     in_progress_at: f.inProgressAt,
+    comment_count: commentCount,
     can_edit: canEditFeedback(currentUser, f),
   }
 }
@@ -65,9 +66,9 @@ async function fetchImagesByFeedbackId(feedbackIds: string[]): Promise<Map<strin
 }
 
 // Shared "write a column patch, log it, reload with author+images, return
-// the serialized row" shape behind /complete, /note, and the backlog/
-// in-progress toggles below — the actual column(s) written and the log
-// action are the only things that differ per caller.
+// the serialized row" shape behind /complete and the backlog/in-progress
+// toggles below — the actual column(s) written and the log action are the
+// only things that differ per caller.
 async function updateFeedbackAndSerialize(
   id: string,
   patch: Partial<typeof feedback.$inferInsert>,
@@ -84,14 +85,23 @@ async function updateFeedbackAndSerialize(
 
   await db.insert(eventsLog).values({ actor: currentUser.id, action, metadata: { feedbackId: id } })
 
-  const [authorRow, images] = await Promise.all([
+  const [authorRow, images, commentCount] = await Promise.all([
     updated.createdByUserId
       ? db.select({ name: users.name }).from(users).where(eq(users.id, updated.createdByUserId)).limit(1)
       : Promise.resolve([]),
     fetchImagesByFeedbackId([id]),
+    fetchCommentCount(id),
   ])
 
-  return serializeFeedback(updated, authorRow[0]?.name ?? null, images.get(id) ?? [], currentUser)
+  return serializeFeedback(updated, authorRow[0]?.name ?? null, images.get(id) ?? [], commentCount, currentUser)
+}
+
+async function fetchCommentCount(id: string): Promise<number> {
+  const [row] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(feedbackComments)
+    .where(and(eq(feedbackComments.feedbackId, id), isNull(feedbackComments.deletedAt)))
+  return row?.count ?? 0
 }
 
 async function insertFeedbackImages(feedbackId: string, images: { image_url: string; thumbnail_url: string }[]) {
@@ -127,11 +137,11 @@ export async function feedbackRoutes(app: FastifyInstance) {
         description: feedback.description,
         createdAt: feedback.createdAt,
         completedAt: feedback.completedAt,
-        completionNote: feedback.completionNote,
         backloggedAt: feedback.backloggedAt,
         inProgressAt: feedback.inProgressAt,
         createdByUserId: feedback.createdByUserId,
         authorName: users.name,
+        commentCount: commentCountExpr(feedback.id),
       })
       .from(feedback)
       .leftJoin(users, eq(users.id, feedback.createdByUserId))
@@ -142,11 +152,45 @@ export async function feedbackRoutes(app: FastifyInstance) {
 
     return reply.send({
       data: rows.map((row) =>
-        serializeFeedback(row, row.authorName, imagesByFeedbackId.get(row.id) ?? [], currentUser),
+        serializeFeedback(row, row.authorName, imagesByFeedbackId.get(row.id) ?? [], row.commentCount, currentUser),
       ),
       has_more: false,
       next_cursor: null,
     })
+  })
+
+  // Powers FeedbackDetailPage (feedback #98) — the one place a single
+  // item's full content + comment thread is shown, mirroring
+  // GET /events/:id / GET /camps/:id.
+  app.get('/feedback/:id', { preHandler: requireAuth }, async (request, reply) => {
+    const { id } = request.params as { id: string }
+    const currentUser = request.currentUser!
+
+    const [row] = await db
+      .select({
+        id: feedback.id,
+        number: feedback.number,
+        title: feedback.title,
+        description: feedback.description,
+        createdAt: feedback.createdAt,
+        completedAt: feedback.completedAt,
+        backloggedAt: feedback.backloggedAt,
+        inProgressAt: feedback.inProgressAt,
+        createdByUserId: feedback.createdByUserId,
+        authorName: users.name,
+        commentCount: commentCountExpr(feedback.id),
+      })
+      .from(feedback)
+      .leftJoin(users, eq(users.id, feedback.createdByUserId))
+      .where(and(eq(feedback.id, id), isNull(feedback.deletedAt)))
+      .limit(1)
+
+    if (!row) {
+      return reply.code(404).send({ error: { message: 'Feedback not found' } })
+    }
+
+    const images = await fetchImagesByFeedbackId([id])
+    return reply.send({ data: serializeFeedback(row, row.authorName, images.get(id) ?? [], row.commentCount, currentUser) })
   })
 
   app.post('/feedback', { preHandler: requireAuth }, async (request, reply) => {
@@ -185,6 +229,7 @@ export async function feedbackRoutes(app: FastifyInstance) {
         created,
         currentUser.name,
         images.map((img) => ({ imageUrl: img.image_url, thumbnailUrl: img.thumbnail_url })),
+        0,
         currentUser,
       ),
     })
@@ -234,6 +279,7 @@ export async function feedbackRoutes(app: FastifyInstance) {
       }),
     ])
     await insertFeedbackImages(id, images)
+    const commentCount = await fetchCommentCount(id)
 
     // currentUser is already known to be the author (canEditFeedback above),
     // and the new image set is already in hand — no need to re-query either.
@@ -242,6 +288,7 @@ export async function feedbackRoutes(app: FastifyInstance) {
         updated,
         currentUser.name,
         images.map((img) => ({ imageUrl: img.image_url, thumbnailUrl: img.thumbnail_url })),
+        commentCount,
         currentUser,
       ),
     })
@@ -268,9 +315,9 @@ export async function feedbackRoutes(app: FastifyInstance) {
   })
 
   // One click, no confirmation step (feedback, 2026-08-16: "accidental
-  // clicks are unlikely") — completing no longer bundles a note-entry form.
-  // A note is its own independent action now (POST /feedback/:id/note,
-  // below), settable before, after, or without ever completing an item.
+  // clicks are unlikely"). Admin commentary now happens as an ordinary reply
+  // in the item's comment thread (feedback #98) rather than a dedicated
+  // note field/route — see feedback/comments.ts.
   app.post('/feedback/:id/complete', { preHandler: requireRole('admin') }, async (request, reply) => {
     const { id } = request.params as { id: string }
     const data = await updateFeedbackAndSerialize(
@@ -279,19 +326,6 @@ export async function feedbackRoutes(app: FastifyInstance) {
       'feedback_completed',
       request.currentUser!,
     )
-    if (!data) return reply.code(404).send({ error: { message: 'Feedback not found' } })
-    return reply.send({ data })
-  })
-
-  // Sets (or clears, or edits) the admin annotation note independently of
-  // completing an item (feedback, 2026-08-16) — an empty/whitespace-only
-  // note clears it, same "|| null" posture /complete used to have. Doesn't
-  // touch completedAt/completedByUserId, so it works on an open, backlogged,
-  // in-progress, or already-completed item alike.
-  app.post('/feedback/:id/note', { preHandler: requireRole('admin') }, async (request, reply) => {
-    const { id } = request.params as { id: string }
-    const { note } = (request.body ?? {}) as { note?: string }
-    const data = await updateFeedbackAndSerialize(id, { completionNote: note?.trim() || null }, 'feedback_note_updated', request.currentUser!)
     if (!data) return reply.code(404).send({ error: { message: 'Feedback not found' } })
     return reply.send({ data })
   })
@@ -334,5 +368,13 @@ export async function feedbackRoutes(app: FastifyInstance) {
     const data = await setSideState(id, request.currentUser!, 'inProgressAt', null, 'feedback_stopped_progress')
     if (!data) return reply.code(404).send({ error: { message: 'Feedback not found' } })
     return reply.send({ data })
+  })
+
+  // Clears the unseen-reply badge (feedback #98) — called whenever the
+  // Feedback tab is opened, same shape as connections/routes.ts's own
+  // POST /connections/mark-seen.
+  app.post('/feedback/mark-replies-seen', { preHandler: requireAuth }, async (request, reply) => {
+    await markFeedbackRepliesSeen(request.currentUser!.id)
+    return reply.send({ data: { seen: true } })
   })
 }

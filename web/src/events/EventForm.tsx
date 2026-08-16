@@ -6,6 +6,8 @@ import {
   IonItem,
   IonLabel,
   IonList,
+  IonSelect,
+  IonSelectOption,
   IonSpinner,
   IonText,
   IonTextarea,
@@ -16,6 +18,7 @@ import { useState } from 'react'
 import { API_URL } from '../config'
 import type { UploadedImage } from '../uploads/api'
 import type { Event, EventInput } from './api'
+import { EVENT_TOPIC_OPTIONS } from './topics'
 import { useEventImageUpload } from './useEventImageUpload'
 
 function toEventInput(image: UploadedImage | null, fields: Omit<EventInput, 'image_url' | 'thumbnail_url'>): EventInput {
@@ -46,6 +49,7 @@ export function EventForm({
   const [startTime, setStartTime] = useState(initial?.start_time?.slice(0, 5) ?? '')
   const [address, setAddress] = useState(initial?.address ?? '')
   const [sourceUrl, setSourceUrl] = useState(initial?.source_url ?? '')
+  const [topic, setTopic] = useState(initial?.topic ?? '')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const { image, fileInputRef, uploading, attach, remove } = useEventImageUpload(
@@ -68,6 +72,7 @@ export function EventForm({
           all_day: allDay,
           address: address.trim(),
           source_url: sourceUrl.trim(),
+          topic,
         }),
       )
     } catch {
@@ -124,6 +129,18 @@ export function EventForm({
           onIonInput={(e) => setSourceUrl(e.detail.value ?? '')}
           placeholder="Optional link with more details"
         />
+      </IonItem>
+      {/* Optional (feedback #97) — powers the Events tab's topic filter. */}
+      <IonItem>
+        <IonLabel position="stacked">Topic</IonLabel>
+        <IonSelect value={topic} onIonChange={(e) => setTopic(e.detail.value ?? '')} placeholder="Optional">
+          <IonSelectOption value="">None</IonSelectOption>
+          {EVENT_TOPIC_OPTIONS.map((option) => (
+            <IonSelectOption key={option} value={option}>
+              {option}
+            </IonSelectOption>
+          ))}
+        </IonSelect>
       </IonItem>
       <IonItem lines="none">
         <input

@@ -1,7 +1,7 @@
 import { IonApp, IonIcon, IonLabel, IonRouterOutlet, IonTabBar, IonTabButton, IonTabs } from '@ionic/react'
 import { IonReactRouter } from '@ionic/react-router'
 import { Redirect, Route } from 'react-router-dom'
-import { calendarOutline, chatbubbleOutline, sunnyOutline } from 'ionicons/icons'
+import { calendarOutline, sunnyOutline } from 'ionicons/icons'
 
 import { AdminRoute } from '../admin/AdminRoute'
 import { AnalyticsPage } from '../admin/AnalyticsPage'
@@ -26,8 +26,10 @@ import { CampsPage } from '../camps/CampsPage'
 import { CampDetailPage } from '../camps/CampDetailPage'
 import { CampSourcesPage } from '../camps/CampSourcesPage'
 import { CampSourceDetailPage } from '../camps/CampSourceDetailPage'
+import { FeedbackDetailPage } from '../feedback/FeedbackDetailPage'
 import { FeedbackPage } from '../feedback/FeedbackPage'
 import { ShareButton } from '../sharing/ShareButton'
+import { FeedbackTabIcon } from './FeedbackTabIcon'
 
 export function App() {
   return (
@@ -47,6 +49,7 @@ export function App() {
                   <Route exact path="/camp-sources/:id" component={CampSourceDetailPage} />
                   <Route exact path="/camps/:id" component={CampDetailPage} />
                   <Route exact path="/feedback" component={FeedbackPage} />
+                  <Route exact path="/feedback/:id" component={FeedbackDetailPage} />
                   <Route exact path="/account" component={AccountPage} />
                   <Route exact path="/account/edit" component={EditProfilePage} />
                   <Route exact path="/about" component={AboutPage} />
@@ -70,7 +73,7 @@ export function App() {
                     <IonLabel>Camps</IonLabel>
                   </IonTabButton>
                   <IonTabButton tab="feedback" href="/feedback">
-                    <IonIcon icon={chatbubbleOutline} />
+                    <FeedbackTabIcon />
                     <IonLabel>Feedback</IonLabel>
                   </IonTabButton>
                 </IonTabBar>

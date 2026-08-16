@@ -17,6 +17,7 @@ export interface CurrentUser {
   kids: { grade: Grade }[]
   roles: string[]
   unseenFriendCount: number
+  unseenFeedbackReplyCount: number
 }
 
 export async function fetchCurrentUser(): Promise<CurrentUser | null> {

@@ -7,29 +7,7 @@ import { useDataFreshness } from '../admin/DataFreshnessContext'
 import { useAuth } from '../auth/AuthContext'
 import { markFriendsSeen } from '../connections/api'
 import { Avatar } from '../uploads/Avatar'
-
-// Small red dot anchored to a corner of the avatar — shared shape for the
-// two badges below (stale-data, feedback #69; new-friend-activity, feedback
-// #94), which previously each carried their own copy of this same style
-// object. `corner` positions it opposite the other badge so an admin who
-// has both at once sees two separate dots, not one overlapping the other.
-function BadgeDot({ corner, label }: { corner: 'left' | 'right'; label: string }) {
-  return (
-    <span
-      aria-label={label}
-      style={{
-        position: 'absolute',
-        top: -2,
-        [corner]: corner === 'right' ? 12 : -2,
-        width: 10,
-        height: 10,
-        borderRadius: '50%',
-        background: 'var(--ion-color-danger)',
-        border: '1.5px solid var(--banner-bg)',
-      }}
-    />
-  )
-}
+import { BadgeDot } from './BadgeDot'
 
 // Persistent workspace-style banner (Slack/ClassDojo pattern, feedback):
 // institution identity (logo + name) on the left, the signed-in member's
@@ -58,6 +36,12 @@ export function InstitutionBanner() {
   // open the app."
   const unseenFriendCount = user?.unseenFriendCount ?? 0
   const showFriendBadge = unseenFriendCount > 0
+  // Feedback #98: a numbered badge (feedback #98's own "add a number... if
+  // there are multiple" ask — see BadgeDot's own doc comment) at the
+  // avatar's third corner, distinct from both badges above so all three can
+  // show at once without colliding.
+  const unseenFeedbackReplyCount = user?.unseenFeedbackReplyCount ?? 0
+  const showFeedbackBadge = unseenFeedbackReplyCount > 0
 
   async function dismissFriendBanner() {
     await markFriendsSeen().catch((err) => console.error('failed to mark friends seen', err))
@@ -83,8 +67,11 @@ export function InstitutionBanner() {
           style={{ display: 'flex', alignItems: 'center', paddingInlineEnd: 16, cursor: 'pointer', position: 'relative' }}
         >
           {user && <Avatar url={user.avatarUrl} name={user.name} size={32} />}
-          {showStaleBadge && <BadgeDot corner="right" label="Events/camps data needs a refresh" />}
-          {showFriendBadge && <BadgeDot corner="left" label="New friend activity" />}
+          {showStaleBadge && <BadgeDot corner="top-right" label="Events/camps data needs a refresh" />}
+          {showFriendBadge && <BadgeDot corner="top-left" label="New friend activity" />}
+          {showFeedbackBadge && (
+            <BadgeDot corner="bottom-right" label="New feedback replies" count={unseenFeedbackReplyCount} />
+          )}
         </div>
       </IonToolbar>
       {showFriendBadge && (

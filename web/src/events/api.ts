@@ -29,6 +29,9 @@ export interface Event {
   // post and as a placeholder image fallback when the event has no photo
   // of its own (feedback, 2026-08-03).
   submitted_by: { name: string; avatar_url: string | null } | null
+  // Optional subject category (feedback #97) — see topics.ts's fixed list.
+  // Null for an unclassified/older event, not defaulted to "Other".
+  topic: string | null
 }
 
 // Fields a member supplies when submitting or editing their own event
@@ -44,6 +47,7 @@ export interface EventInput {
   source_url: string
   image_url: string | null
   thumbnail_url: string | null
+  topic: string
 }
 
 export interface InterestedUser {
@@ -136,11 +140,24 @@ export interface FetchEventsResult {
   hiddenCount: number
 }
 
+// Feedback #97's topic + "hide anything starting after HH:MM" filters —
+// shared query-param shape between the paginated list (fetchEvents below)
+// and the calendar week view (fetchEventsForWeek).
+export interface EventFilters {
+  topics?: string[]
+  beforeTime?: string // 'HH:MM'
+}
+
+function applyFilterParams(url: URL, filters?: EventFilters) {
+  if (filters?.topics?.length) url.searchParams.set('topics', filters.topics.join(','))
+  if (filters?.beforeTime) url.searchParams.set('before_time', filters.beforeTime)
+}
+
 // GET /events paginates (100/page max) — loop through every page rather than
 // silently showing only the chronologically-soonest page. Fine at this app's
 // scale (low hundreds of events at most); a true infinite-scroll UI would be
 // overkill for a family app's event list.
-export async function fetchEvents(options?: { includeHidden?: boolean }): Promise<FetchEventsResult> {
+export async function fetchEvents(options?: { includeHidden?: boolean } & EventFilters): Promise<FetchEventsResult> {
   const all: Event[] = []
   let cursor: string | null = null
   let hiddenCount = 0
@@ -151,6 +168,7 @@ export async function fetchEvents(options?: { includeHidden?: boolean }): Promis
     url.searchParams.set('limit', '100')
     if (cursor) url.searchParams.set('cursor', cursor)
     if (options?.includeHidden) url.searchParams.set('include_hidden', 'true')
+    applyFilterParams(url, options)
 
     const response = await fetch(url, { headers: authHeaders() })
     if (!response.ok) {
@@ -168,6 +186,26 @@ export async function fetchEvents(options?: { includeHidden?: boolean }): Promis
   }
 
   return { events: all, hiddenCount }
+}
+
+interface EventsWeekResponse {
+  data: Event[]
+}
+
+// Calendar week view (feedback #97) — every real occurrence in a
+// Sunday-Saturday week (weekStart = that Sunday, 'YYYY-MM-DD'), not the
+// next-occurrence-collapsed set fetchEvents returns.
+export async function fetchEventsForWeek(weekStart: string, filters?: EventFilters): Promise<Event[]> {
+  const url = new URL(`${API_URL}/events/week`)
+  url.searchParams.set('start', weekStart)
+  applyFilterParams(url, filters)
+
+  const response = await fetch(url, { headers: authHeaders() })
+  if (!response.ok) {
+    throw new Error(`Failed to fetch week events: ${response.status}`)
+  }
+  const body = (await response.json()) as EventsWeekResponse
+  return body.data
 }
 
 export async function createEvent(input: EventInput): Promise<Event> {
