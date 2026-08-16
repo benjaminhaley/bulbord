@@ -18,6 +18,7 @@ import {
   alertCircle,
   analyticsOutline,
   eyeOutline,
+  flaskOutline,
   mailOutline,
   peopleOutline,
   personAddOutline,
@@ -29,7 +30,14 @@ import { useEffect, useState } from 'react'
 import { formatRelativeDateTime } from '../format'
 import { useAuth } from '../auth/AuthContext'
 import { useDataFreshness } from './DataFreshnessContext'
-import { fetchSourcesLastCheckedAt, resourceEventSources, sendTestConnectionAlertEmail, sendTestNewsletterEmail, type ResourceReport } from './api'
+import {
+  createTestFollow,
+  fetchSourcesLastCheckedAt,
+  resourceEventSources,
+  sendTestConnectionAlertEmail,
+  sendTestNewsletterEmail,
+  type ResourceReport,
+} from './api'
 
 // A week with no refresh is the same threshold the admin avatar badge uses
 // (see admin/DataFreshnessContext.tsx's server-side STALE_AFTER_MS) — kept
@@ -44,10 +52,11 @@ function isStale(iso: string | null): boolean {
 // page (see AccountPage.tsx) — a deliberately low-visibility entry point
 // since only Ben (the sole admin) needs these tools (feedback #38).
 export function DevToolsPage() {
-  const { user } = useAuth()
+  const { user, refresh } = useAuth()
   const { freshness, refresh: refreshFreshness } = useDataFreshness()
   const [sending, setSending] = useState(false)
   const [sendingConnectionTest, setSendingConnectionTest] = useState(false)
+  const [creatingTestFollow, setCreatingTestFollow] = useState(false)
   const [toast, setToast] = useState<string | null>(null)
   const [resourcing, setResourcing] = useState(false)
   const [report, setReport] = useState<ResourceReport | null>(null)
@@ -84,6 +93,22 @@ export function DevToolsPage() {
       setToast(err instanceof Error ? err.message : 'Could not send test email')
     } finally {
       setSendingConnectionTest(false)
+    }
+  }
+
+  async function createFollow() {
+    setCreatingTestFollow(true)
+    try {
+      const testUser = await createTestFollow()
+      // Updates the avatar dot/count immediately, same as visiting Friends
+      // would — otherwise it'd only show up on this page's next real
+      // GET /auth/me (the next navigation).
+      await refresh()
+      setToast(`Created "${testUser.name}" — check your alert email and the red dot. Delete it from All members when done.`)
+    } catch (err) {
+      setToast(err instanceof Error ? err.message : 'Could not create test follow')
+    } finally {
+      setCreatingTestFollow(false)
     }
   }
 
@@ -130,6 +155,14 @@ export function DevToolsPage() {
               <p>The real "added you as a friend" alert (using your own name/photo), same template as the live send.</p>
             </IonLabel>
             {sendingConnectionTest && <IonSpinner slot="end" name="dots" />}
+          </IonItem>
+          <IonItem button disabled={creatingTestFollow} onClick={createFollow}>
+            <IonIcon slot="start" icon={flaskOutline} />
+            <IonLabel className="ion-text-wrap">
+              <h2>Create a test friend follow</h2>
+              <p>A real throwaway member follows you — the actual alert email, red dot, and banner, repeatable anytime. Delete it from All members after.</p>
+            </IonLabel>
+            {creatingTestFollow && <IonSpinner slot="end" name="dots" />}
           </IonItem>
           <IonItem button routerLink="/admin/invite-preview">
             <IonIcon slot="start" icon={eyeOutline} />

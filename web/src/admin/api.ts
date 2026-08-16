@@ -50,6 +50,23 @@ export async function sendTestConnectionAlertEmail(): Promise<void> {
   }
 }
 
+// Dev tool (feedback, 2026-08-16): creates a real throwaway member that
+// actually follows the admin, repeatable on demand — unlike the email
+// preview above, this exercises the whole real path (email, notify flag,
+// in-app dot/banner), not just the template.
+export async function createTestFollow(): Promise<{ id: string; name: string }> {
+  const response = await fetch(`${API_URL}/admin/connections/test-follow`, {
+    method: 'POST',
+    headers: authHeaders(),
+  })
+  if (!response.ok) {
+    const body = (await response.json().catch(() => null)) as { error?: { message?: string } } | null
+    throw new Error(body?.error?.message ?? `Failed to create test follow: ${response.status}`)
+  }
+  const body = (await response.json()) as { data: { id: string; name: string } }
+  return body.data
+}
+
 // Feedback #87: a short-lived (~1hr) sign-in link for any member, so an
 // admin can see the app as they'd see it (testing, demos) without needing
 // their device.

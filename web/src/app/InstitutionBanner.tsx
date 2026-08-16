@@ -103,7 +103,8 @@ export function InstitutionBanner() {
             onClick={() => history.push('/friends')}
             style={{ display: 'flex', alignItems: 'center', paddingInlineStart: 16, fontSize: '0.875rem', cursor: 'pointer' }}
           >
-            {unseenFriendCount === 1 ? '1 person started following you' : `${unseenFriendCount} people started following you`}
+            {unseenFriendCount === 1 ? '1 person started following you. ' : `${unseenFriendCount} people started following you. `}
+            <span style={{ textDecoration: 'underline', fontWeight: 600, marginInlineStart: 4 }}>Follow them back</span>
           </div>
           <IonButton slot="end" fill="clear" size="small" onClick={dismissFriendBanner} aria-label="Dismiss">
             <IonIcon slot="icon-only" icon={closeOutline} />

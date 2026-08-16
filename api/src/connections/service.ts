@@ -251,6 +251,36 @@ export async function sendTestConnectionAlertEmail(admin: {
   await sendEmail(admin.email, `[Test] ${connectionAlertSubject(admin.name)}`, html)
 }
 
+// Dev tool (feedback, 2026-08-16: "I don't wanna just be able to test this
+// one time... I'd like to really trigger it anytime"): unlike the email
+// preview above (which fakes the template with the admin's own name/photo,
+// no real row written), this creates a genuine throwaway member and has it
+// follow the admin for real — through the same addConnection() path a real
+// follow takes, so the alert email, the notify flag, and the in-app
+// dot/banner all fire exactly as they would for a real follow. isServiceAccount
+// keeps it out of every discovery surface (search, suggestions) while it
+// exists; deleting it afterward is the existing admin member-deletion tool
+// (DELETE /admin/users/:id), not a separate cleanup path.
+export async function createTestFollow(adminId: string): Promise<{ id: string; name: string }> {
+  const name = `Test Follower (delete me) ${Math.random().toString(36).slice(2, 6)}`
+  const [tempUser] = await db
+    .insert(users)
+    .values({
+      name,
+      invitedByUserId: adminId,
+      profileCompletedAt: new Date(),
+      friendsStepCompletedAt: new Date(),
+      newsletterSubscribed: false,
+      isServiceAccount: true,
+    })
+    .returning({ id: users.id, name: users.name })
+
+  await db.insert(eventsLog).values({ actor: adminId, action: 'test_follow_created', metadata: { testUserId: tempUser.id } })
+  await addConnection(tempUser.id, adminId)
+
+  return tempUser
+}
+
 export async function completeFriendsStep(userId: string) {
   const [updated] = await db
     .update(users)

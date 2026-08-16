@@ -18,12 +18,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true)
   const trackedAppOpen = useRef(false)
 
+  // `isLoading` gates JoinGate's whole-app spinner (see JoinGate.tsx) — only
+  // meaningful while we don't yet know who's signed in (true app boot, or
+  // right after registering/logging in, before `user` exists). A background
+  // refresh of an *already-known* user (e.g. FriendsPage marking the friend
+  // badge seen) must never touch it: doing so was a real bug (2026-08-16) —
+  // toggling isLoading unmounted the entire app including whatever page
+  // called refresh(), and if that page's own mount effect called refresh()
+  // again (FriendsPage's did, for exactly this reason), the remount
+  // re-triggered it, forever — an infinite unmount/remount loop that ended
+  // with the user logged out once a request in the storm happened to 401.
   async function refresh() {
-    setIsLoading(true)
+    const isInitialLoad = user === null
+    if (isInitialLoad) setIsLoading(true)
     try {
       setUser(await fetchCurrentUser())
     } finally {
-      setIsLoading(false)
+      if (isInitialLoad) setIsLoading(false)
     }
   }
 
@@ -34,6 +45,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     refresh()
+    // Intentionally run once at mount only — `refresh` is redefined every
+    // render (it closes over `user`), so listing it here would re-run this
+    // on every render instead of just once.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // Feedback #96's "daily active visitors" — once per app session, the

@@ -21,9 +21,16 @@ import {
 } from '@ionic/react'
 import {
   addOutline,
+  arrowUndoOutline,
+  checkmarkOutline,
   closeOutline,
+  createOutline,
+  documentTextOutline,
   ellipsisVerticalOutline,
+  hourglassOutline,
   imageOutline,
+  timeOutline,
+  trashOutline,
 } from 'ionicons/icons'
 import { type ReactNode, useEffect, useState } from 'react'
 
@@ -347,18 +354,30 @@ function FeedbackListItem({
 
   const canModerate = isAdmin && !item.completed_at
   const showMenu = item.can_edit || isAdmin
-  type MenuButton = { text: string; role?: 'destructive' | 'cancel'; handler?: () => void }
+  type MenuButton = { text: string; icon?: string; role?: 'destructive' | 'cancel'; handler?: () => void }
   const menuButtons: MenuButton[] = (
     [
-      item.can_edit && { text: 'Edit', handler: () => setEditing(true) },
-      canModerate && { text: 'Mark done', handler: markDone },
+      item.can_edit && { text: 'Edit', icon: createOutline, handler: () => setEditing(true) },
+      canModerate && { text: 'Mark done', icon: checkmarkOutline, handler: markDone },
       // Independent of Mark done (feedback, 2026-08-16) — works whether or
       // not the item is completed, so an admin can annotate at any point.
-      isAdmin && { text: item.completion_note ? 'Edit note' : 'Add a note', handler: () => setAddingNote(true) },
-      canModerate && { text: item.in_progress_at ? 'Restore to open' : 'Move to in progress', handler: toggleInProgress },
-      canModerate && { text: item.backlogged_at ? 'Restore to open' : 'Move to backlog', handler: toggleBacklog },
-      item.can_edit && { text: 'Delete', role: 'destructive' as const, handler: remove },
-      { text: 'Cancel', role: 'cancel' as const },
+      isAdmin && {
+        text: item.completion_note ? 'Edit note' : 'Add a note',
+        icon: documentTextOutline,
+        handler: () => setAddingNote(true),
+      },
+      canModerate && {
+        text: item.in_progress_at ? 'Restore to open' : 'Move to in progress',
+        icon: item.in_progress_at ? arrowUndoOutline : hourglassOutline,
+        handler: toggleInProgress,
+      },
+      canModerate && {
+        text: item.backlogged_at ? 'Restore to open' : 'Move to backlog',
+        icon: item.backlogged_at ? arrowUndoOutline : timeOutline,
+        handler: toggleBacklog,
+      },
+      item.can_edit && { text: 'Delete', icon: trashOutline, role: 'destructive' as const, handler: remove },
+      { text: 'Cancel', icon: closeOutline, role: 'cancel' as const },
     ] as (MenuButton | false)[]
   ).filter((b): b is MenuButton => b !== false)
 

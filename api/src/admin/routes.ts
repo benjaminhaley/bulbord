@@ -4,7 +4,7 @@ import { getAnalyticsSummary } from '../analytics/service.js'
 import { requireRole } from '../auth/plugin.js'
 import { listUsersForAdmin } from '../auth/service.js'
 import { getCampsLastUpdatedAt } from '../camps/staleness.js'
-import { sendTestConnectionAlertEmail } from '../connections/service.js'
+import { createTestFollow, sendTestConnectionAlertEmail } from '../connections/service.js'
 import { getSourcesLastCheckedAt, resourceActiveEventSources } from '../events/resourcing.js'
 import { sendTestNewsletterEmail } from '../newsletter/service.js'
 import { impersonateUser } from './impersonation.js'
@@ -59,6 +59,16 @@ export async function adminRoutes(app: FastifyInstance) {
     }
     await sendTestConnectionAlertEmail({ name: user.name, email: user.email, avatarUrl: user.avatarUrl })
     return reply.send({ sent: true })
+  })
+
+  // Dev tool (feedback, 2026-08-16): unlike the email preview above, this
+  // creates a real throwaway member that actually follows the admin — the
+  // full real path (alert email, notify flag, in-app dot/banner), repeatable
+  // on demand rather than a one-off script. Delete the resulting account
+  // from All members when done.
+  app.post('/admin/connections/test-follow', { preHandler: requireRole('admin') }, async (request, reply) => {
+    const testUser = await createTestFollow(request.currentUser!.id)
+    return reply.send({ data: testUser })
   })
 
   // Lets Developer Tools show "Sources last checked: ..." before the admin
