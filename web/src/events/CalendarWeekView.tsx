@@ -1,6 +1,6 @@
 import { IonButton, IonIcon, IonItem, IonLabel, IonList, IonSpinner, IonToast } from '@ionic/react'
 import { chevronBack, chevronForward } from 'ionicons/icons'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { fetchEventsForWeek, type Event, type EventFilters, type InterestStatus } from './api'
 import { closeSliding, EventRow, TOAST_MESSAGES, type SwipeToast } from './EventsPage'
@@ -65,7 +65,12 @@ export function CalendarWeekView({ filters, multiTouch }: { filters: EventFilter
   const [weekEvents, setWeekEvents] = useState<Event[] | null>(null)
   const [error, setError] = useState(false)
   const [swipeToast, setSwipeToast] = useState<SwipeToast | null>(null)
+  const [selectedDay, setSelectedDay] = useState<string | null>(null)
   const { setInterest, clearInterest } = useEventInterest(updateEvent)
+  // Tapping a day in the strip scrolls its agenda heading into view (a day
+  // with no events has nothing to scroll to, but still gets the selected
+  // highlight below, so the tap always visibly does something).
+  const dayHeadingRefs = useRef<Record<string, HTMLDivElement | null>>({})
 
   const topicsKey = filters.topics?.join(',') ?? ''
   useEffect(() => {
@@ -109,16 +114,26 @@ export function CalendarWeekView({ filters, multiTouch }: { filters: EventFilter
     }
   }
 
+  function selectDay(day: string) {
+    setSelectedDay(day)
+    dayHeadingRefs.current[day]?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
+
+  function shiftWeek(days: number) {
+    setSelectedDay(null)
+    setWeekStart((prev) => toISODate(addDays(parseISODate(prev), days)))
+  }
+
   return (
     <>
       <div style={{ display: 'flex', alignItems: 'center', padding: '8px 4px' }}>
-        <IonButton fill="clear" onClick={() => setWeekStart((prev) => toISODate(addDays(parseISODate(prev), -7)))} aria-label="Previous week">
+        <IonButton fill="clear" onClick={() => shiftWeek(-7)} aria-label="Previous week">
           <IonIcon slot="icon-only" icon={chevronBack} />
         </IonButton>
         <div style={{ flex: 1, textAlign: 'center', fontSize: '0.8125rem', color: 'var(--ion-color-medium)' }}>
           {weekRangeLabel(weekStart)}
         </div>
-        <IonButton fill="clear" onClick={() => setWeekStart((prev) => toISODate(addDays(parseISODate(prev), 7)))} aria-label="Next week">
+        <IonButton fill="clear" onClick={() => shiftWeek(7)} aria-label="Next week">
           <IonIcon slot="icon-only" icon={chevronForward} />
         </IonButton>
       </div>
@@ -126,14 +141,28 @@ export function CalendarWeekView({ filters, multiTouch }: { filters: EventFilter
         {days.map((day) => {
           const hasEvents = (eventsByDay.get(day)?.length ?? 0) > 0
           const isToday = day === today
+          const isSelected = day === selectedDay
           return (
-            <div key={day} style={{ textAlign: 'center', flex: 1 }}>
+            <div
+              key={day}
+              role="button"
+              aria-label={dayHeading(day)}
+              onClick={() => selectDay(day)}
+              style={{ textAlign: 'center', flex: 1, cursor: 'pointer', padding: '2px 0' }}
+            >
               <div style={{ fontSize: '0.6875rem', color: 'var(--ion-color-medium)' }}>{weekdayAbbrev(day)}</div>
               <div
                 style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  width: 26,
+                  height: 26,
+                  borderRadius: '50%',
                   fontSize: '0.9375rem',
-                  fontWeight: isToday ? 700 : 400,
-                  color: isToday ? 'var(--ion-color-primary)' : undefined,
+                  fontWeight: isToday || isSelected ? 700 : 400,
+                  background: isSelected ? 'var(--ion-color-primary)' : 'transparent',
+                  color: isSelected ? 'var(--ion-color-primary-contrast)' : isToday ? 'var(--ion-color-primary)' : undefined,
                 }}
               >
                 {dayNumber(day)}

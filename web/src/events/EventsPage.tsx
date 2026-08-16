@@ -1,7 +1,6 @@
 import {
   IonAccordion,
   IonAccordionGroup,
-  IonBadge,
   IonButton,
   IonButtons,
   IonContent,
@@ -23,7 +22,7 @@ import {
   IonToolbar,
   useIonViewWillEnter,
 } from '@ionic/react'
-import { addOutline, calendarOutline, closeOutline, eyeOffOutline, filterOutline, listOutline, sparkles, star } from 'ionicons/icons'
+import { addOutline, calendarOutline, closeOutline, eyeOffOutline, listOutline, sparkles, star } from 'ionicons/icons'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { useAuth } from '../auth/AuthContext'
@@ -31,7 +30,7 @@ import { InstitutionBanner } from '../app/InstitutionBanner'
 import { API_URL } from '../config'
 import { Avatar } from '../uploads/Avatar'
 import { CalendarWeekView } from './CalendarWeekView'
-import { EventFilterModal } from './EventFilterModal'
+import { EventFilterChips } from './EventFilterChips'
 import { createEvent, fetchEvents, type Event, type EventFilters, type InterestStatus } from './api'
 import { EventForm } from './EventForm'
 import { formatWhen, locationLabel, teaser } from './format'
@@ -140,8 +139,6 @@ export function EventsPage() {
   // per-user preference" posture as every other view-state in this app.
   const [viewMode, setViewMode] = useState<'list' | 'calendar'>('list')
   const [filters, setFilters] = useState<EventFilters>({ topics: [], beforeTime: '' })
-  const [filterModalOpen, setFilterModalOpen] = useState(false)
-  const hasActiveFilters = (filters.topics?.length ?? 0) > 0 || !!filters.beforeTime
   const didInitialFetch = useRef(false)
 
   function loadEvents() {
@@ -234,10 +231,6 @@ export function EventsPage() {
         <IonToolbar>
           <IonTitle>Events</IonTitle>
           <IonButtons slot="end">
-            <IonButton onClick={() => setFilterModalOpen(true)} aria-label="Filters">
-              <IonIcon slot="icon-only" icon={filterOutline} color={hasActiveFilters ? 'primary' : undefined} />
-              {hasActiveFilters && <IonBadge color="primary">{(filters.topics?.length ?? 0) + (filters.beforeTime ? 1 : 0)}</IonBadge>}
-            </IonButton>
             {user && (
               <IonButton onClick={() => setShowForm((v) => !v)}>
                 <IonIcon slot="icon-only" icon={showForm ? closeOutline : addOutline} />
@@ -251,18 +244,31 @@ export function EventsPage() {
         {/* Feedback #97: List (the existing Starred/New/Dismissed accordion)
             vs. Calendar (a Sunday-Saturday week strip + agenda, see
             CalendarWeekView.tsx) — same "second stacked IonToolbar" pattern
-            InstitutionBanner's own doc comment already establishes. */}
-        <IonToolbar>
+            InstitutionBanner's own doc comment already establishes.
+            Compact single-line segment (feedback, 2026-08-16: "way too
+            big... maybe just make it a toggle at the top") — layout=
+            "icon-start" puts the icon beside the label instead of Ionic's
+            default stacked-above, and a reduced --min-height shrinks the
+            surrounding toolbar to match. */}
+        <IonToolbar style={{ '--min-height': '40px' } as React.CSSProperties}>
           <IonSegment value={viewMode} onIonChange={(e) => setViewMode(e.detail.value as 'list' | 'calendar')}>
-            <IonSegmentButton value="list">
+            <IonSegmentButton value="list" layout="icon-start">
               <IonIcon icon={listOutline} />
               <IonLabel>List</IonLabel>
             </IonSegmentButton>
-            <IonSegmentButton value="calendar">
+            <IonSegmentButton value="calendar" layout="icon-start">
               <IonIcon icon={calendarOutline} />
               <IonLabel>Calendar</IonLabel>
             </IonSegmentButton>
           </IonSegment>
+        </IonToolbar>
+        {/* Feedback (2026-08-16): "filters are clunky... base it on a more
+            modern app like Google Maps" — a horizontally-scrollable row of
+            instant-apply chips, replacing the earlier filter-button +
+            IonModal sheet. See EventFilterChips.tsx's own header for the
+            full reasoning. */}
+        <IonToolbar style={{ '--min-height': '40px', '--padding-start': '0', '--padding-end': '0' } as React.CSSProperties}>
+          <EventFilterChips filters={filters} onChange={setFilters} />
         </IonToolbar>
       </IonHeader>
       <IonContent fullscreen onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd} onTouchCancel={handleTouchEnd}>
@@ -381,13 +387,6 @@ export function EventsPage() {
         positionAnchor="main-tab-bar"
         buttons={[{ text: 'Undo', handler: undoSwipe }]}
         onDidDismiss={() => setSwipeToast(null)}
-      />
-      <EventFilterModal
-        isOpen={filterModalOpen}
-        topics={filters.topics ?? []}
-        beforeTime={filters.beforeTime ?? ''}
-        onApply={(topics, beforeTime) => setFilters({ topics, beforeTime })}
-        onDismiss={() => setFilterModalOpen(false)}
       />
     </IonPage>
   )
