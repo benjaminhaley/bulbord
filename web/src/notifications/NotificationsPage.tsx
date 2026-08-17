@@ -13,7 +13,7 @@ import {
   IonTitle,
   IonToolbar,
 } from '@ionic/react'
-import { closeOutline, personCircleOutline } from 'ionicons/icons'
+import { closeOutline } from 'ionicons/icons'
 import { useEffect, useState } from 'react'
 import { useHistory } from 'react-router-dom'
 
@@ -28,9 +28,11 @@ import { dismissNotification, fetchNotifications, type NotificationItem } from '
 // lead exactly to the correct place." Tapping a row's own content both
 // navigates to targetPath and dismisses it (the "when clicked become
 // dismissed" reading) — the separate X is for clearing one without
-// visiting it. Replaces InstitutionBanner's avatar -> /account default (see
-// App.tsx/InstitutionBanner.tsx); Account is still reachable via the
-// person icon in this page's own header.
+// visiting it. Reached via its own bell icon in `InstitutionBanner`, not
+// the avatar — Account is a separate, direct entry point (feedback,
+// 2026-08-17: overloading the avatar to mean "notifications first" read as
+// "confusing and buried... follow more conventional [apps] like Facebook,"
+// which keeps a bell and a profile photo as two separate top-bar icons).
 export function NotificationsPage() {
   const history = useHistory()
   const [items, setItems] = useState<NotificationItem[] | null>(null)
@@ -75,11 +77,6 @@ export function NotificationsPage() {
             <IonBackButton defaultHref="/events" />
           </IonButtons>
           <IonTitle>Notifications</IonTitle>
-          <IonButtons slot="end">
-            <IonButton routerLink="/account" aria-label="Account">
-              <IonIcon slot="icon-only" icon={personCircleOutline} />
-            </IonButton>
-          </IonButtons>
         </IonToolbar>
       </IonHeader>
       <IonContent fullscreen className="ion-padding">
