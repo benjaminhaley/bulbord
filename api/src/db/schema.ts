@@ -139,20 +139,50 @@ export const users = pgTable('users', {
   // visible in the admin /admin/users list, which is meant to show every
   // account that exists, not just real members.
   isServiceAccount: boolean('is_service_account').notNull().default(false),
-  // Null until the member has opened the Friends page (or dismissed the
-  // in-app notification banner) since their last new incoming connection —
-  // feedback #94's "see new friends as a red icon when you open the app",
-  // same "real timestamp gates a UI reveal" shape as profileCompletedAt.
-  // Compared against userConnections.createdAt to compute an unseen count;
-  // coalesced to this user's own createdAt when null (a brand-new account
-  // has no prior connections to have missed).
-  friendsSeenAt: timestamp('friends_seen_at', { withTimezone: true }),
-  // Null until the member has opened the Feedback tab since a reply landed
-  // on a feedback post they authored (feedback #98) — same "real timestamp
-  // gates a UI reveal" shape as friendsSeenAt above, compared against
-  // feedbackComments.createdAt to compute an unseen-reply count. Coalesced
-  // to this user's own createdAt when null.
-  feedbackRepliesSeenAt: timestamp('feedback_replies_seen_at', { withTimezone: true }),
+  // Per-type email toggles for the unified notification center (feedback
+  // #100, 2026-08-17) — replaces the old friendsSeenAt/feedbackRepliesSeenAt
+  // "real timestamp gates a UI reveal" pair (superseded by
+  // notifications.dismissedAt below, which tracks per-notification state
+  // directly rather than a single "last seen" watermark per feature). Email
+  // is the only toggleable channel (confirmed with Ben) — the in-app
+  // notification list itself always includes every type, since it's the
+  // notification inbox, not an optional channel. All default true so
+  // existing members keep getting exactly the emails they already got
+  // before this shipped. newsletterSubscribed above is the fourth such
+  // toggle, pre-existing and unchanged.
+  notifyFriendAddedEmail: boolean('notify_friend_added_email').notNull().default(true),
+  notifyFeedbackReplyEmail: boolean('notify_feedback_reply_email').notNull().default(true),
+  // Covers both event and camp comment-reply notifications (one setting,
+  // not two — Events/Camps parity confirmed with Ben) since they're the
+  // same notification concept ("someone replied to something you posted")
+  // just on two different content types.
+  notifyContentCommentEmail: boolean('notify_content_comment_email').notNull().default(true),
+  ...timestamps,
+})
+
+// A unified in-app notification feed (feedback #100, 2026-08-17) —
+// replaces the previous per-feature "unseen count derived from a
+// last-seen timestamp" shape (userConnections' notify flag +
+// friendsSeenAt, feedbackComments + feedbackRepliesSeenAt) with real,
+// individually-dismissible rows: "click on my profile, you should be able
+// to quickly see a set of notifications that... lead exactly to the
+// correct place... there's a little X where you can dismiss them."
+// `message`/`targetPath` are precomputed at creation time (denormalized,
+// same "snapshot" posture as the existing email templates already have)
+// rather than joined live from the referenced content — simpler, and a
+// notification is meant to read as "what happened then," not update if the
+// underlying content is edited later. One row backs both the unread badge
+// count (dismissedAt is null) and the /notifications list itself.
+export const notifications = pgTable('notifications', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: uuid('user_id')
+    .notNull()
+    .references(() => users.id), // the recipient
+  type: text('type').notNull(), // 'friend_added' | 'feedback_reply' | 'event_comment' | 'camp_comment'
+  actorUserId: uuid('actor_user_id').references(() => users.id), // who triggered it, for the avatar shown in the list
+  message: text('message').notNull(),
+  targetPath: text('target_path').notNull(), // e.g. '/friends', '/feedback/:id', '/events/:id', '/camps/:id'
+  dismissedAt: timestamp('dismissed_at', { withTimezone: true }),
   ...timestamps,
 })
 
@@ -299,14 +329,13 @@ export const feedbackImages = pgTable('feedback_images', {
   ...timestamps,
 })
 
-// A reply thread on a feedback post (feedback #98, 2026-08-16) — same shape
-// as eventComments/campComments above. Replaces the old single admin-only
-// completionNote field: any member (not just admin) can reply, and the
-// feedback author gets an in-app-only notification (no email, no banner —
-// see users.feedbackRepliesSeenAt above) when someone other than themselves
-// replies. Existing completionNote text was backfilled into this table as
-// each item's first comment before the column was dropped (see
-// api/src/feedback/backfill-2026-08-16-notes-to-comments.ts).
+// A reply thread on a feedback post (feedback #98, 2026-08-16). Replaces the
+// old single admin-only completionNote field: any member (not just admin)
+// can reply, and the feedback author gets a notification (in-app via the
+// notifications table above, plus email — see feedback/notifications.ts)
+// when someone other than themselves replies. Existing completionNote text
+// was backfilled into this table as each item's first comment before the
+// column was dropped (see api/src/feedback/backfill-2026-08-16-notes-to-comments.ts).
 export const feedbackComments = pgTable('feedback_comments', {
   id: uuid('id').primaryKey().defaultRandom(),
   feedbackId: uuid('feedback_id')

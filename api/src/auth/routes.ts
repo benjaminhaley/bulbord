@@ -1,7 +1,6 @@
 import type { FastifyInstance, FastifyReply } from 'fastify'
 
-import { getUnseenFriendCount } from '../connections/service.js'
-import { getUnseenFeedbackReplyCount } from '../feedback/notifications.js'
+import { getUnseenNotificationCount } from '../notifications/service.js'
 import { bearerToken, requireAuth } from './plugin.js'
 import { getPublicInviteInfo, listUserChildren, revokeSession, updateProfile, validateProfileUpdate, type Grade, type UserRole } from './service.js'
 import {
@@ -54,11 +53,7 @@ export async function authRoutes(app: FastifyInstance) {
 
   app.get('/auth/me', { preHandler: requireAuth }, async (request, reply) => {
     const user = request.currentUser!
-    const [kids, unseenFriendCount, unseenFeedbackReplyCount] = await Promise.all([
-      listUserChildren(user.id),
-      getUnseenFriendCount(user.id, user.friendsSeenAt, user.createdAt),
-      getUnseenFeedbackReplyCount(user.id, user.feedbackRepliesSeenAt, user.createdAt),
-    ])
+    const [kids, unseenNotificationCount] = await Promise.all([listUserChildren(user.id), getUnseenNotificationCount(user.id)])
     return reply.send({
       data: {
         id: user.id,
@@ -72,8 +67,7 @@ export async function authRoutes(app: FastifyInstance) {
         newsletterSubscribed: user.newsletterSubscribed,
         kids: kids.map((kid) => ({ grade: kid.grade })),
         roles: user.roles,
-        unseenFriendCount,
-        unseenFeedbackReplyCount,
+        unseenNotificationCount,
       },
     })
   })

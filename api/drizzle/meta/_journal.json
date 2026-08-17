@@ -232,6 +232,20 @@
       "when": 1786965137733,
       "tag": "0032_serious_vermin",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1786982423488,
+      "tag": "0033_powerful_hannibal_king",
+      "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1786982437553,
+      "tag": "0034_cooing_toxin",
+      "breakpoints": true
     }
   ]
 }

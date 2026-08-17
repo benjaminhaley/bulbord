@@ -1,5 +1,5 @@
 import { IonBackButton, IonButton, IonButtons, IonContent, IonHeader, IonIcon, IonItem, IonLabel, IonList, IonPage, IonTitle, IonToolbar } from '@ionic/react'
-import { createOutline, informationCircleOutline, peopleOutline, shieldCheckmarkOutline } from 'ionicons/icons'
+import { createOutline, informationCircleOutline, notificationsOutline, peopleOutline, shieldCheckmarkOutline } from 'ionicons/icons'
 
 import { Avatar } from '../uploads/Avatar'
 import { useAuth } from './AuthContext'
@@ -47,6 +47,10 @@ export function AccountPage() {
             <IonItem button routerLink="/friends" lines="none">
               <IonIcon slot="start" icon={peopleOutline} />
               <IonLabel>Friends</IonLabel>
+            </IonItem>
+            <IonItem button routerLink="/account/notification-settings" lines="none">
+              <IonIcon slot="start" icon={notificationsOutline} />
+              <IonLabel>Notification Settings</IonLabel>
             </IonItem>
             <IonItem button routerLink="/about" lines="none">
               <IonIcon slot="start" icon={informationCircleOutline} />

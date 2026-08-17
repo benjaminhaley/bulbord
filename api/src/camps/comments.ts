@@ -4,6 +4,7 @@ import type { FastifyInstance } from 'fastify'
 import { requireAuth } from '../auth/plugin.js'
 import { db } from '../db/client.js'
 import { campComments, camps, eventsLog, users } from '../db/schema.js'
+import { notifyContentComment } from '../notifications/content-comment.js'
 import { canDeleteComment, canEditComment } from './comment-permissions.js'
 
 async function findComment(campId: string, commentId: string) {
@@ -72,7 +73,7 @@ export async function campCommentsRoutes(app: FastifyInstance) {
     }
 
     const [camp] = await db
-      .select({ id: camps.id })
+      .select({ id: camps.id, title: camps.title, submittedByUserId: camps.submittedByUserId })
       .from(camps)
       .where(and(eq(camps.id, id), isNull(camps.deletedAt)))
       .limit(1)
@@ -88,6 +89,15 @@ export async function campCommentsRoutes(app: FastifyInstance) {
       action: 'camp_comment_created',
       metadata: { campId: id, commentId: created.id },
     })
+
+    notifyContentComment({
+      contentKind: 'camp',
+      contentId: id,
+      contentTitle: camp.title,
+      creatorUserId: camp.submittedByUserId,
+      commenterId: currentUser.id,
+      commentBody: text,
+    }).catch((err) => console.error('camp comment notification failed', err))
 
     return reply.code(201).send({ data: serializeComment(created, currentUser.name, currentUser.avatarUrl, currentUser) })
   })

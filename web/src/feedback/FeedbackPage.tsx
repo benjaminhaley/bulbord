@@ -43,7 +43,6 @@ import {
   createFeedback,
   deleteFeedback,
   fetchFeedback,
-  markFeedbackRepliesSeen,
   startProgressFeedback,
   stopProgressFeedback,
   unbacklogFeedback,
@@ -231,25 +230,23 @@ function FeedbackAccordionSection({
 }
 
 export function FeedbackPage() {
-  const { isAdmin, refresh } = useAuth()
+  const { isAdmin } = useAuth()
   const [items, setItems] = useState<FeedbackItem[] | null>(null)
   const [error, setError] = useState(false)
   const [showForm, setShowForm] = useState(false)
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null)
 
-  // Ionic keeps this tab's page alive (hidden, not unmounted) once visited —
-  // useIonViewWillEnter (not useEffect(fn, [])) so both the list refetch
-  // (an item's comment_count can change on the detail page pushed on top of
-  // this one) and the mark-replies-seen call (feedback #98: "clears on
-  // opening the Feedback tab", every open, not just the first) fire on every
-  // real re-entry, same reasoning as EventsPage's own identical fix.
+  // Ionic keeps this tab's page alive (hidden, not unmounted) once
+  // visited — useIonViewWillEnter (not useEffect(fn, [])) so the list
+  // refetch (an item's comment_count can change on the detail page pushed
+  // on top of this one) fires on every real re-entry, same reasoning as
+  // EventsPage's own identical fix. The unseen-reply badge itself is now
+  // cleared by dismissing individual notifications (feedback #100), not by
+  // opening this tab.
   useIonViewWillEnter(() => {
     fetchFeedback()
       .then(setItems)
       .catch(() => setError(true))
-    markFeedbackRepliesSeen()
-      .then(refresh)
-      .catch((err) => console.error('failed to mark feedback replies seen', err))
   })
 
   const openItems =

@@ -131,18 +131,6 @@ export async function deleteFeedback(id: string): Promise<void> {
   }
 }
 
-// Clears the unseen-reply badge (feedback #98) — called whenever the
-// Feedback tab is opened.
-export async function markFeedbackRepliesSeen(): Promise<void> {
-  const response = await fetch(`${API_URL}/feedback/mark-replies-seen`, {
-    method: 'POST',
-    headers: authHeaders(),
-  })
-  if (!response.ok) {
-    throw new Error(`Failed to mark feedback replies seen: ${response.status}`)
-  }
-}
-
 export async function fetchFeedbackComments(id: string): Promise<FeedbackComment[]> {
   const response = await fetch(`${API_URL}/feedback/${id}/comments`, { headers: authHeaders() })
   if (!response.ok) {

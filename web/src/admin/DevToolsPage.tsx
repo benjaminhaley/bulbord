@@ -160,7 +160,7 @@ export function DevToolsPage() {
             <IonIcon slot="start" icon={flaskOutline} />
             <IonLabel className="ion-text-wrap">
               <h2>Create a test friend follow</h2>
-              <p>A real throwaway member follows you — the actual alert email, red dot, and banner, repeatable anytime. Delete it from All members after.</p>
+              <p>A real throwaway member follows you — the actual alert email and in-app notification, repeatable anytime. Delete it from All members after.</p>
             </IonLabel>
             {creatingTestFollow && <IonSpinner slot="end" name="dots" />}
           </IonItem>

@@ -4,6 +4,7 @@ import type { FastifyInstance } from 'fastify'
 import { requireAuth } from '../auth/plugin.js'
 import { db } from '../db/client.js'
 import { eventComments, events, eventsLog, users } from '../db/schema.js'
+import { notifyContentComment } from '../notifications/content-comment.js'
 import { canDeleteComment, canEditComment } from './comment-permissions.js'
 
 async function findComment(eventId: string, commentId: string) {
@@ -72,7 +73,7 @@ export async function eventCommentsRoutes(app: FastifyInstance) {
     }
 
     const [event] = await db
-      .select({ id: events.id })
+      .select({ id: events.id, title: events.title, submittedByUserId: events.submittedByUserId })
       .from(events)
       .where(and(eq(events.id, id), isNull(events.deletedAt)))
       .limit(1)
@@ -91,6 +92,15 @@ export async function eventCommentsRoutes(app: FastifyInstance) {
       action: 'event_comment_created',
       metadata: { eventId: id, commentId: created.id },
     })
+
+    notifyContentComment({
+      contentKind: 'event',
+      contentId: id,
+      contentTitle: event.title,
+      creatorUserId: event.submittedByUserId,
+      commenterId: currentUser.id,
+      commentBody: text,
+    }).catch((err) => console.error('event comment notification failed', err))
 
     return reply.code(201).send({ data: serializeComment(created, currentUser.name, currentUser.avatarUrl, currentUser) })
   })

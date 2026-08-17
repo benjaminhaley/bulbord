@@ -17,9 +17,8 @@ import {
 import { personAddOutline } from 'ionicons/icons'
 import { useEffect, useState } from 'react'
 
-import { useAuth } from '../auth/AuthContext'
 import { Avatar } from '../uploads/Avatar'
-import { addConnection, fetchConnectionsState, markFriendsSeen, type ConnectionsState, type MemberSummary } from './api'
+import { addConnection, fetchConnectionsState, type ConnectionsState, type MemberSummary } from './api'
 
 // A section with no members just isn't shown at all (feedback #91) — no
 // empty-state placeholder row, unlike most other "nothing here yet" spots
@@ -72,7 +71,6 @@ function Section({
 // #91) always sits above them, routing to AddFriendsPage's reuse of the
 // onboarding ChooseFriendsScreen.
 export function FriendsPage() {
-  const { refresh } = useAuth()
   const [state, setState] = useState<ConnectionsState | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -88,11 +86,6 @@ export function FriendsPage() {
 
   useEffect(() => {
     load()
-    // Clears the avatar dot/banner (feedback #94) — best-effort, doesn't
-    // block or affect the page's own load state.
-    markFriendsSeen()
-      .then(refresh)
-      .catch((err) => console.error('failed to mark friends seen', err))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 

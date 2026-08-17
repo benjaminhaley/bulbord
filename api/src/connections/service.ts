@@ -1,9 +1,10 @@
-import { and, eq, gt, ilike, inArray, isNull, ne } from 'drizzle-orm'
+import { and, eq, ilike, inArray, isNull, ne } from 'drizzle-orm'
 
 import { db } from '../db/client.js'
 import { eventsLog, userChildren, userConnections, users } from '../db/schema.js'
 import { requireEnv } from '../env.js'
 import { sendEmail } from '../newsletter/mailer.js'
+import { createNotification } from '../notifications/service.js'
 import { buildSuggestionList, deriveConnectionsState, type ConnectionsState } from './logic.js'
 import { connectionAlertHtml, connectionAlertSubject } from './template.js'
 
@@ -39,40 +40,6 @@ async function listIncomingConnections(userId: string): Promise<MemberSummary[]>
     .from(userConnections)
     .innerJoin(users, eq(users.id, userConnections.userId))
     .where(and(eq(userConnections.connectedUserId, userId), isNull(userConnections.deletedAt), isNull(users.deletedAt)))
-}
-
-// Feedback #94's red-dot/banner count: active, notify-worthy incoming edges
-// created since the viewer last saw their Friends page. `friendsSeenAt` null
-// (a brand-new account, or one that predates this feature and hasn't been
-// backfilled) falls back to the user's own `createdAt` — nothing could have
-// been "new" to them before their account existed. Takes the viewer's own
-// friendsSeenAt/createdAt as params rather than re-querying `users` for
-// them — the auth plugin's onRequest hook already fetched the full row for
-// every authenticated request (see plugin.ts's AuthedUser), so GET /auth/me
-// calling this doesn't need a second lookup for data it already has.
-export async function getUnseenFriendCount(userId: string, friendsSeenAt: Date | null, createdAt: Date): Promise<number> {
-  const since = friendsSeenAt ?? createdAt
-
-  const rows = await db
-    .select({ id: userConnections.id })
-    .from(userConnections)
-    .innerJoin(users, eq(users.id, userConnections.userId))
-    .where(
-      and(
-        eq(userConnections.connectedUserId, userId),
-        isNull(userConnections.deletedAt),
-        isNull(users.deletedAt),
-        eq(userConnections.notify, true),
-        gt(userConnections.createdAt, since),
-      ),
-    )
-  return rows.length
-}
-
-// Clears the badge/banner (feedback #94) — called when the Friends page is
-// opened, and when the banner itself is dismissed without visiting it.
-export async function markFriendsSeen(userId: string): Promise<void> {
-  await db.update(users).set({ friendsSeenAt: new Date() }).where(eq(users.id, userId))
 }
 
 // Powers the Friends page (feedback #83: "have a page where you can see
@@ -139,13 +106,28 @@ export async function addConnection(userId: string, connectedUserId: string): Pr
 async function notifyConnectionAdded(adderId: string, recipientId: string) {
   const [[adder], [recipient]] = await Promise.all([
     db.select({ name: users.name, avatarUrl: users.avatarUrl }).from(users).where(eq(users.id, adderId)).limit(1),
-    db.select({ name: users.name, email: users.email }).from(users).where(eq(users.id, recipientId)).limit(1),
+    db
+      .select({ name: users.name, email: users.email, notifyEmail: users.notifyFriendAddedEmail })
+      .from(users)
+      .where(eq(users.id, recipientId))
+      .limit(1),
   ])
-  if (!recipient?.email) return
+  const adderName = adder?.name ?? 'Someone'
+
+  // In-app entry always created (feedback #100: the notification list is
+  // the inbox itself, not an optional channel — only Email is toggleable).
+  await createNotification({
+    userId: recipientId,
+    type: 'friend_added',
+    actorUserId: adderId,
+    message: `${adderName} started following you`,
+    targetPath: '/friends',
+  })
+
+  if (!recipient?.email || !recipient.notifyEmail) return
 
   const apiUrl = requireEnv('PUBLIC_API_URL')
   const webUrl = requireEnv('PUBLIC_WEB_URL')
-  const adderName = adder?.name ?? 'Someone'
   await sendEmail(
     recipient.email,
     connectionAlertSubject(adderName),
@@ -257,7 +239,7 @@ export async function sendTestConnectionAlertEmail(admin: {
 // no real row written), this creates a genuine throwaway member and has it
 // follow the admin for real — through the same addConnection() path a real
 // follow takes, so the alert email, the notify flag, and the in-app
-// dot/banner all fire exactly as they would for a real follow. isServiceAccount
+// notification all fire exactly as they would for a real follow. isServiceAccount
 // keeps it out of every discovery surface (search, suggestions) while it
 // exists; deleting it afterward is the existing admin member-deletion tool
 // (DELETE /admin/users/:id), not a separate cleanup path.

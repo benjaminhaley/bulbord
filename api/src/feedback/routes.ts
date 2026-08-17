@@ -4,7 +4,6 @@ import type { FastifyInstance } from 'fastify'
 import { db } from '../db/client.js'
 import { eventsLog, feedback, feedbackComments, feedbackImages, users } from '../db/schema.js'
 import { requireAuth, requireRole } from '../auth/plugin.js'
-import { markFeedbackRepliesSeen } from './notifications.js'
 import { canEditFeedback } from './permissions.js'
 
 type FeedbackImage = { imageUrl: string; thumbnailUrl: string }
@@ -370,11 +369,4 @@ export async function feedbackRoutes(app: FastifyInstance) {
     return reply.send({ data })
   })
 
-  // Clears the unseen-reply badge (feedback #98) — called whenever the
-  // Feedback tab is opened, same shape as connections/routes.ts's own
-  // POST /connections/mark-seen.
-  app.post('/feedback/mark-replies-seen', { preHandler: requireAuth }, async (request, reply) => {
-    await markFeedbackRepliesSeen(request.currentUser!.id)
-    return reply.send({ data: { seen: true } })
-  })
 }

@@ -80,15 +80,13 @@ function serializeComment(
 
 // feedback #98's whole reason for existing: any member can reply to a
 // feedback post (replacing the old admin-only completionNote field), and the
-// post's own author gets an in-app-only notification (the unseen-reply badge
-// — see feedback/notifications.ts) when someone other than themselves
+// post's own author gets a notification (in-app + email — see
+// feedback/notifications.ts's notifyFeedbackReply, backed by the unified
+// notifications table, feedback #100) when someone other than themselves
 // replies. No stored `notify` flag is needed here the way user_connections
 // has one — unlike a mutual-follow edge, there's no "this would be a
 // surprise to no one" case to special-case: every comment from someone other
-// than the feedback's own author is notify-worthy for that author, and the
-// unseen count is computed live off feedbackComments.createdAt vs.
-// users.feedbackRepliesSeenAt (see notifications.ts) rather than persisted
-// per-comment.
+// than the feedback's own author is notify-worthy for that author.
 export async function feedbackCommentsRoutes(app: FastifyInstance) {
   app.get('/feedback/:id/comments', { preHandler: requireAuth }, async (request, reply) => {
     const { id } = request.params as { id: string }

@@ -14,6 +14,7 @@ import { eventsRoutes } from './events/routes.js'
 import { feedbackCommentsRoutes } from './feedback/comments.js'
 import { feedbackRoutes } from './feedback/routes.js'
 import { newsletterRoutes } from './newsletter/routes.js'
+import { notificationsRoutes } from './notifications/routes.js'
 import { uploadsRoutes } from './uploads/routes.js'
 
 export async function buildApp() {
@@ -39,6 +40,7 @@ export async function buildApp() {
   await app.register(feedbackRoutes)
   await app.register(feedbackCommentsRoutes)
   await app.register(newsletterRoutes)
+  await app.register(notificationsRoutes)
   await app.register(uploadsRoutes)
 
   return app
