@@ -13,8 +13,9 @@ import { eventsLog, users } from '../db/schema.js'
 // this feedback rather than expanding events_log's scope generally.
 // `app_opened` is deduped to once per member per Chicago calendar day (see
 // trackAnalyticsEvent below), which is what makes it a clean source for
-// both "daily active" and "last active by member" without a separate
-// session/heartbeat mechanism.
+// "daily active" without a separate session/heartbeat mechanism.
+// "Last active by member" is a different, broader query — see its own
+// comment below for why it isn't scoped to `app_opened`.
 const TRACKABLE_ACTIONS = ['app_opened', 'event_viewed', 'camp_viewed', 'share_opened'] as const
 export type TrackableAction = (typeof TRACKABLE_ACTIONS)[number]
 
@@ -125,11 +126,21 @@ export async function getAnalyticsSummary(actorFilter?: ActorFilter): Promise<An
       .where(and(eq(eventsLog.action, 'app_opened'), gte(eventsLog.createdAt, dauSince)))
       .groupBy(dayExpr)
       .orderBy(dayExpr),
-    db
-      .select({ actor: eventsLog.actor, lastActiveAt: sql<Date>`max(${eventsLog.createdAt})` })
-      .from(eventsLog)
-      .where(eq(eventsLog.action, 'app_opened'))
-      .groupBy(eventsLog.actor),
+    // Fixed 2026-08-17 (live report: "I've been active multiple times
+    // since 6 AM" while this showed a stale 6:04am timestamp) — this used
+    // to be scoped to `action = 'app_opened'` only, which only fires once
+    // per member per Chicago day from AuthContext's boot effect (see above)
+    // and so goes stale the moment a member does real things — post
+    // feedback, comment, star an event — in a session that started before
+    // today's app_opened row, without ever triggering a fresh app open.
+    // "Last active" now means the most recent row in events_log for that
+    // actor, full stop — any real action counts, matching what an admin
+    // actually means by the phrase (and matching what the Recent activity
+    // log right below it already shows). Deliberately NOT applied to the
+    // DAU chart/"active today"/"active this week" above, which are a
+    // different, intentionally narrower concept — real login/open
+    // sessions, not "did anything."
+    db.select({ actor: eventsLog.actor, lastActiveAt: sql<Date>`max(${eventsLog.createdAt})` }).from(eventsLog).groupBy(eventsLog.actor),
     // One grouped query for all three "who's viewing/sharing" tiles rather
     // than three near-identical count(distinct actor)-per-action queries.
     db
