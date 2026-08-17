@@ -17,6 +17,7 @@ import { closeOutline } from 'ionicons/icons'
 import { useEffect, useState } from 'react'
 import { useHistory } from 'react-router-dom'
 
+import { useAuth } from '../auth/AuthContext'
 import { formatRelativeDateTime } from '../format'
 import { secondaryTextStyle } from '../theme/layout'
 import { Avatar } from '../uploads/Avatar'
@@ -35,6 +36,17 @@ import { dismissNotification, fetchNotifications, type NotificationItem } from '
 // which keeps a bell and a profile photo as two separate top-bar icons).
 export function NotificationsPage() {
   const history = useHistory()
+  // Dismissing here doesn't just need to update this page's own list — the
+  // bell badge on InstitutionBanner reads `user.unseenNotificationCount`
+  // straight off AuthContext, so a dismissal has to trigger a `refresh()`
+  // or that badge stays stuck at its old count until something else
+  // happens to refetch /auth/me (found live, 2026-08-17: "I closed all the
+  // notifications, but my ringer number still reads four" — the server-side
+  // count was already correctly 0). Safe to call from here per the
+  // documented refresh()/isLoading incident (see Connections in
+  // CLAUDE.md) — this page only ever renders once `user` is already
+  // loaded, so refresh() never touches the global spinner.
+  const { refresh } = useAuth()
   const [items, setItems] = useState<NotificationItem[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [dismissingId, setDismissingId] = useState<string | null>(null)
@@ -53,7 +65,9 @@ export function NotificationsPage() {
     history.push(item.target_path)
     if (!item.dismissed_at) {
       removeLocally(item.id)
-      dismissNotification(item.id).catch((err) => console.error('failed to dismiss notification', err))
+      dismissNotification(item.id)
+        .then(refresh)
+        .catch((err) => console.error('failed to dismiss notification', err))
     }
   }
 
@@ -62,6 +76,7 @@ export function NotificationsPage() {
     try {
       await dismissNotification(item.id)
       removeLocally(item.id)
+      await refresh()
     } catch (err) {
       console.error('failed to dismiss notification', err)
     } finally {
