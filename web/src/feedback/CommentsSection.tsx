@@ -148,7 +148,10 @@ export function CommentsSection({ feedbackId, onImageClick }: { feedbackId: stri
     setPosting(true)
     try {
       const created = await createFeedbackComment(feedbackId, trimmed, newImages)
-      setComments((prev) => [created, ...(prev ?? [])])
+      // Appended, not prepended — oldest-first order (see api/src/feedback/
+      // comments.ts's own GET route comment) means a just-posted reply
+      // belongs at the end, next to the compose box it was typed in.
+      setComments((prev) => [...(prev ?? []), created])
       setNewBody('')
       resetNewImages()
     } catch {

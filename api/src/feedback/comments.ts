@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray, isNull } from 'drizzle-orm'
+import { and, asc, eq, inArray, isNull } from 'drizzle-orm'
 import type { FastifyInstance } from 'fastify'
 
 import { requireAuth } from '../auth/plugin.js'
@@ -108,7 +108,12 @@ export async function feedbackCommentsRoutes(app: FastifyInstance) {
       .from(feedbackComments)
       .innerJoin(users, eq(users.id, feedbackComments.userId))
       .where(and(eq(feedbackComments.feedbackId, id), isNull(feedbackComments.deletedAt)))
-      .orderBy(desc(feedbackComments.createdAt))
+      // Oldest first, newest last — standard chat-thread order (feedback,
+      // 2026-08-17: "have replies come in so the oldest is at the bottom"),
+      // matching the compose box's own position below the list, so a
+      // reply just posted appears right where the member was looking, not
+      // at the top of the thread.
+      .orderBy(asc(feedbackComments.createdAt))
 
     const imagesByCommentId = await fetchImagesByCommentId(rows.map((row) => row.id))
 

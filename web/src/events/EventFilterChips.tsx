@@ -243,23 +243,47 @@ export function EventFilterChips({
     DEFAULT_INTEREST_FILTER.every((v) => interest.value.includes(v))
   const interestLabel = !interest || interestIsDefault ? 'Interest' : interest.value.length === 0 ? 'None' : interest.value.length === 3 ? 'All' : interest.value.length === 1 ? EVENT_INTEREST_OPTIONS.find((o) => o.value === interest.value[0])!.label : `${interest.value.length} selected`
 
+  // Feedback (2026-08-17): "when adjusting the hours, sometimes the text...
+  // overflow[s] to the next line... jump[s] around in a... strange way...
+  // instead, just have the filters flow outside the screen... I think this
+  // is the same convention Google Maps has." The row itself scrolls
+  // horizontally (`overflowX: 'auto'`) rather than wrapping, and every chip
+  // is pinned to `flexShrink: 0`/`whiteSpace: 'nowrap'` so a longer label
+  // (a wide hours range, several topics selected) grows the chip and pushes
+  // later chips further right instead of ever breaking onto a second line —
+  // the same "scroll for more, never wrap" shape the topic-chip row itself
+  // already had before Hours/Interest joined it.
+  const chipStyle: React.CSSProperties = { flexShrink: 0 }
+  const labelStyle: React.CSSProperties = { whiteSpace: 'nowrap' }
+
   return (
-    <div style={{ display: 'flex', gap: 8, padding: '6px 12px' }}>
-      <IonChip outline={topics.length === 0} color={topics.length > 0 ? 'primary' : 'medium'} onClick={() => setTopicSheetOpen(true)}>
-        <IonLabel>{topicLabel}</IonLabel>
+    <div style={{ display: 'flex', gap: 8, padding: '6px 12px', overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+      <IonChip
+        outline={topics.length === 0}
+        color={topics.length > 0 ? 'primary' : 'medium'}
+        onClick={() => setTopicSheetOpen(true)}
+        style={chipStyle}
+      >
+        <IonLabel style={labelStyle}>{topicLabel}</IonLabel>
         <IonIcon icon={chevronDownOutline} />
       </IonChip>
       <IonChip
         outline={!afterTime && !beforeTime}
         color={afterTime || beforeTime ? 'primary' : 'medium'}
         onClick={() => setHoursSheetOpen(true)}
+        style={chipStyle}
       >
-        <IonLabel>{hoursLabel}</IonLabel>
+        <IonLabel style={labelStyle}>{hoursLabel}</IonLabel>
         <IonIcon icon={chevronDownOutline} />
       </IonChip>
       {interest && (
-        <IonChip outline={interestIsDefault} color={interestIsDefault ? 'medium' : 'primary'} onClick={() => setInterestSheetOpen(true)}>
-          <IonLabel>{interestLabel}</IonLabel>
+        <IonChip
+          outline={interestIsDefault}
+          color={interestIsDefault ? 'medium' : 'primary'}
+          onClick={() => setInterestSheetOpen(true)}
+          style={chipStyle}
+        >
+          <IonLabel style={labelStyle}>{interestLabel}</IonLabel>
           <IonIcon icon={chevronDownOutline} />
         </IonChip>
       )}
