@@ -19,7 +19,7 @@ import {
   IonToolbar,
   useIonViewWillEnter,
 } from '@ionic/react'
-import { addOutline, calendarOutline, closeOutline, eyeOffOutline, filterOutline, listOutline, star } from 'ionicons/icons'
+import { addOutline, closeOutline, eyeOffOutline, filterOutline, star } from 'ionicons/icons'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { useAuth } from '../auth/AuthContext'
@@ -234,21 +234,15 @@ export function EventsPage() {
         <IonToolbar>
           <IonTitle>Events</IonTitle>
           <IonButtons slot="end">
-            {/* Feedback (2026-08-17): the List/Calendar segment and the
-                filter chip row each used to be their own full-width toolbar
-                — "put the calendar toggle and filter toggle up here [next
-                to the title]. Both should be out of the way like this."
-                Both are now single icon buttons in the main toolbar, same
-                row as the existing post/sources buttons — no permanent
-                second/third row at all. Calendar is a pressed-state toggle
-                (one static icon, colored primary only while active) rather
-                than swapping icon+label, so it reads as "this view is on,"
-                not "tap to see a different icon." Filter is the same
-                pressed-state shape, plus a count badge so an applied filter
-                is visible even while its chip row is collapsed. */}
-            <IonButton onClick={() => setViewMode((v) => (v === 'list' ? 'calendar' : 'list'))} aria-label="Toggle calendar view">
-              <IonIcon slot="icon-only" icon={calendarOutline} color={viewMode === 'calendar' ? 'primary' : undefined} />
-            </IonButton>
+            {/* Feedback (2026-08-17, "consolidate these icons"): the
+                standalone calendar-toggle icon and the sources-list icon are
+                both gone from this row — calendar folded into the filter
+                chip row below ("make the calendar something in the filter
+                view... one of the filters that can pop open"), sources moved
+                to Developer Tools entirely (adding one is admin-only now).
+                Filter is a pressed-state toggle (one static icon, colored
+                primary only while active), plus a count badge so an applied
+                filter is visible even while its chip row is collapsed. */}
             <IonButton onClick={() => setFiltersOpen((v) => !v)} aria-label="Toggle filters">
               <IonIcon slot="icon-only" icon={filterOutline} color={hasActiveFilters || filtersOpen ? 'primary' : undefined} />
               {hasActiveFilters && <IonBadge color="primary">{activeFilterCount}</IonBadge>}
@@ -258,9 +252,6 @@ export function EventsPage() {
                 <IonIcon slot="icon-only" icon={showForm ? closeOutline : addOutline} />
               </IonButton>
             )}
-            <IonButton routerLink="/event-sources">
-              <IonIcon slot="icon-only" icon={listOutline} />
-            </IonButton>
           </IonButtons>
         </IonToolbar>
         {/* Feedback (2026-08-16): "filters are clunky... base it on a more
@@ -273,6 +264,7 @@ export function EventsPage() {
             <EventFilterChips
               filters={filters}
               onChange={setFilters}
+              view={{ value: viewMode, onChange: setViewMode }}
               interest={viewMode === 'list' ? { value: interestFilter, onChange: setInterestFilter } : undefined}
             />
           </IonToolbar>

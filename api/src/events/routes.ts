@@ -1,7 +1,7 @@
 import { and, asc, eq, getTableColumns, gte, isNull, sql } from 'drizzle-orm'
 import type { FastifyInstance } from 'fastify'
 
-import { requireAuth } from '../auth/plugin.js'
+import { requireAuth, requireRole } from '../auth/plugin.js'
 import { db } from '../db/client.js'
 import { events, eventSources, eventInterests, eventsLog, users } from '../db/schema.js'
 import { todayInChicago } from '../dates.js'
@@ -23,6 +23,11 @@ import {
   type InterestedPersonSummary,
   type InterestStatus,
 } from './serialize.js'
+
+// Matches eventSources.type's own comment in db/schema.ts — kept here rather
+// than a DB enum since new source shapes get added over time (see CLAUDE.md's
+// event_sources bullet).
+const EVENT_SOURCE_TYPES = ['generic_search', 'website', 'facebook_group', 'open_data']
 
 // "Stale" flags a source the ingestion pipeline hasn't turned up anything new
 // from recently — a signal the source may have gone quiet or broken, not a
@@ -373,6 +378,42 @@ export async function eventsRoutes(app: FastifyInstance) {
       has_more: false,
       next_cursor: null,
     })
+  })
+
+  // Feedback (2026-08-17, "consolidate these icons"): sources used to be
+  // added only by hand-run seed/backfill scripts (see CLAUDE.md's Camps
+  // section on hand-researched provider data, and Events data model &
+  // sourcing's "reviewed live with Ben" seed batches) — this is the first
+  // real UI path to create one. Kept admin-only (unlike self-service event
+  // posting, feedback #46): a bad/junk source would otherwise silently feed
+  // the Claude-driven "re-run event sourcing" tool, so Ben stays the one
+  // curating what gets sourced from, same posture as the rest of this
+  // codebase's source-vetting checklist.
+  app.post('/event-sources', { preHandler: requireRole('admin') }, async (request, reply) => {
+    const body = request.body as { name?: string; url?: string; type?: string; notes?: string }
+    const name = body.name?.trim()
+    const url = body.url?.trim()
+    const type = body.type?.trim()
+    if (!name || !url || !type) {
+      return reply.code(400).send({ error: { message: 'name, url, and type are required' } })
+    }
+    if (!EVENT_SOURCE_TYPES.includes(type)) {
+      return reply.code(400).send({ error: { message: `type must be one of: ${EVENT_SOURCE_TYPES.join(', ')}` } })
+    }
+
+    const currentUser = request.currentUser!
+    const [created] = await db
+      .insert(eventSources)
+      .values({ name, url, type, notes: body.notes?.trim() || null, isActive: true })
+      .returning({ id: eventSources.id })
+
+    await db.insert(eventsLog).values({
+      actor: currentUser.id,
+      action: 'event_source_created',
+      metadata: { sourceId: created.id },
+    })
+
+    return reply.code(201).send({ data: { id: created.id, name, url, type, event_count: 0 } })
   })
 
   app.get('/event-sources/:id', { preHandler: requireAuth }, async (request, reply) => {

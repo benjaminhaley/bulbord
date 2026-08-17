@@ -115,6 +115,10 @@ interface EventSourcesResponse {
   data: EventSource[]
 }
 
+interface EventSourceResponse {
+  data: EventSource
+}
+
 interface EventCommentsResponse {
   data: EventComment[]
   has_more: boolean
@@ -300,6 +304,29 @@ export async function fetchEventSources(): Promise<EventSource[]> {
     throw new Error(`Failed to fetch event sources: ${response.status}`)
   }
   const body = (await response.json()) as EventSourcesResponse
+  return body.data
+}
+
+// Admin-only (feedback, 2026-08-17, "consolidate these icons" — moved here
+// from a member-facing icon on the Events toolbar into Developer Tools).
+export interface EventSourceInput {
+  name: string
+  url: string
+  type: string
+  notes: string
+}
+
+export async function createEventSource(input: EventSourceInput): Promise<EventSource> {
+  const response = await fetch(`${API_URL}/event-sources`, {
+    method: 'POST',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  })
+  if (!response.ok) {
+    const body = await response.json().catch(() => null)
+    throw new Error(body?.error?.message ?? `Failed to create event source: ${response.status}`)
+  }
+  const body = (await response.json()) as EventSourceResponse
   return body.data
 }
 

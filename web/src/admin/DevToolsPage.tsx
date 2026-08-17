@@ -19,6 +19,7 @@ import {
   analyticsOutline,
   eyeOutline,
   flaskOutline,
+  globeOutline,
   mailOutline,
   peopleOutline,
   personAddOutline,
@@ -182,7 +183,7 @@ export function DevToolsPage() {
               <p>Daily active members, who's viewing/sharing, and a recent activity log.</p>
             </IonLabel>
           </IonItem>
-          <IonItem button disabled={resourcing} onClick={resource} lines="none">
+          <IonItem button disabled={resourcing} onClick={resource}>
             <IonIcon slot="start" icon={refreshOutline} />
             <IonLabel className="ion-text-wrap">
               <h2>Re-run event sourcing</h2>
@@ -193,6 +194,16 @@ export function DevToolsPage() {
               </p>
             </IonLabel>
             {resourcing && <IonSpinner slot="end" name="dots" />}
+          </IonItem>
+          {/* Feedback (2026-08-17, "consolidate these icons"): sources used
+              to be one tap away from the Events tab itself (a standalone
+              list icon) — moved here since adding one is now admin-only. */}
+          <IonItem button routerLink="/event-sources" lines="none">
+            <IonIcon slot="start" icon={globeOutline} />
+            <IonLabel className="ion-text-wrap">
+              <h2>Manage sources</h2>
+              <p>View existing event sources, or add a new one.</p>
+            </IonLabel>
           </IonItem>
           <IonItem lines="none">
             <IonIcon slot="start" icon={sunnyOutline} />

@@ -42,8 +42,8 @@ export function App() {
               <IonTabs>
                 <IonRouterOutlet>
                   <Route exact path="/events" component={EventsPage} />
-                  <Route exact path="/event-sources" component={SourcesPage} />
-                  <Route exact path="/event-sources/:id" component={SourceDetailPage} />
+                  <AdminRoute exact path="/event-sources" component={SourcesPage} />
+                  <AdminRoute exact path="/event-sources/:id" component={SourceDetailPage} />
                   <Route exact path="/events/:id" component={EventDetailPage} />
                   <Route exact path="/camps" component={CampsPage} />
                   <Route exact path="/camp-sources" component={CampSourcesPage} />
