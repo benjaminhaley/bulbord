@@ -137,14 +137,15 @@ export function EventsPage() {
   // fresh tab open always starts on List with no filters, same "no saved
   // per-user preference" posture as every other view-state in this app.
   const [viewMode, setViewMode] = useState<'list' | 'calendar'>('list')
-  const [filters, setFilters] = useState<EventFilters>({ topics: [], beforeTime: '' })
+  const [filters, setFilters] = useState<EventFilters>({ topics: [], afterTime: '', beforeTime: '' })
   const [filtersOpen, setFiltersOpen] = useState(false)
-  const activeFilterCount = (filters.topics?.length ?? 0) + (filters.beforeTime ? 1 : 0)
+  const activeFilterCount =
+    (filters.topics?.length ?? 0) + (filters.afterTime ? 1 : 0) + (filters.beforeTime ? 1 : 0)
   const hasActiveFilters = activeFilterCount > 0
   const didInitialFetch = useRef(false)
 
   function loadEvents() {
-    fetchEvents({ topics: filters.topics, beforeTime: filters.beforeTime })
+    fetchEvents({ topics: filters.topics, afterTime: filters.afterTime, beforeTime: filters.beforeTime })
       .then(({ events, hiddenCount }) => {
         setEvents(events)
         setHiddenCount(hiddenCount)
@@ -177,10 +178,10 @@ export function EventsPage() {
     if (!didInitialFetch.current) return
     loadEvents()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [topicsKey, filters.beforeTime])
+  }, [topicsKey, filters.afterTime, filters.beforeTime])
 
   function revealHidden() {
-    fetchEvents({ includeHidden: true, topics: filters.topics, beforeTime: filters.beforeTime })
+    fetchEvents({ includeHidden: true, topics: filters.topics, afterTime: filters.afterTime, beforeTime: filters.beforeTime })
       .then(({ events, hiddenCount }) => {
         setEvents(events)
         setHiddenCount(hiddenCount)

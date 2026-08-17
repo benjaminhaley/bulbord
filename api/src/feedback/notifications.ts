@@ -1,7 +1,7 @@
-import { and, asc, eq, gt, isNull, ne } from 'drizzle-orm'
+import { and, eq, gt, isNull, ne } from 'drizzle-orm'
 
 import { db } from '../db/client.js'
-import { feedback, feedbackComments, feedbackImages, users } from '../db/schema.js'
+import { feedback, feedbackComments, users } from '../db/schema.js'
 import { requireEnv } from '../env.js'
 import { sendEmail } from '../newsletter/mailer.js'
 import { feedbackReplyHtml, feedbackReplySubject } from './template.js'
@@ -51,8 +51,16 @@ export async function markFeedbackRepliesSeen(userId: string): Promise<void> {
 // to tell someone about their own action). Best-effort: called from
 // comments.ts without being awaited into the response, and a failed send is
 // logged, not thrown — same graceful-degrade posture as
-// connections/service.ts's notifyConnectionAdded.
-export async function notifyFeedbackReply(feedbackId: string, replierId: string, replyBody: string): Promise<void> {
+// connections/service.ts's notifyConnectionAdded. `replyImageUrls` is
+// passed straight through from the just-inserted comment (feedback,
+// 2026-08-17: replies got their own photo-attachment support) rather than
+// re-queried here — the caller already has them in hand.
+export async function notifyFeedbackReply(
+  feedbackId: string,
+  replierId: string,
+  replyBody: string,
+  replyImageUrls: string[],
+): Promise<void> {
   const [item] = await db
     .select({ title: feedback.title, number: feedback.number, createdByUserId: feedback.createdByUserId })
     .from(feedback)
@@ -60,14 +68,9 @@ export async function notifyFeedbackReply(feedbackId: string, replierId: string,
     .limit(1)
   if (!item?.createdByUserId || item.createdByUserId === replierId) return
 
-  const [[author], [replier], images] = await Promise.all([
+  const [[author], [replier]] = await Promise.all([
     db.select({ email: users.email }).from(users).where(eq(users.id, item.createdByUserId)).limit(1),
     db.select({ name: users.name, avatarUrl: users.avatarUrl }).from(users).where(eq(users.id, replierId)).limit(1),
-    db
-      .select({ imageUrl: feedbackImages.imageUrl })
-      .from(feedbackImages)
-      .where(and(eq(feedbackImages.feedbackId, feedbackId), isNull(feedbackImages.deletedAt)))
-      .orderBy(asc(feedbackImages.position)),
   ])
   if (!author?.email) return
 
@@ -80,7 +83,7 @@ export async function notifyFeedbackReply(feedbackId: string, replierId: string,
     replyBody,
     feedbackTitle: item.title,
     feedbackNumber: item.number,
-    postImageUrls: images.map((img) => img.imageUrl),
+    replyImageUrls,
     apiUrl,
     linkUrl: `${webUrl}/feedback/${feedbackId}`,
   })

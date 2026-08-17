@@ -12,7 +12,7 @@ import { todayInChicago } from '../dates.js'
 // newsletter-specific — see that file's own header).
 import { formatWhen, locationLabel } from '../newsletter/format.js'
 import { uploadPlaceholderImage } from '../uploads/placeholder.js'
-import { buildEventFilterConditions, parseBeforeTimeParam, parseTopicsParam } from './filters.js'
+import { buildEventFilterConditions, parseAfterTimeParam, parseBeforeTimeParam, parseTopicsParam } from './filters.js'
 import { getEventsForWeek } from './week-query.js'
 import { canEditEvent } from './permissions.js'
 import {
@@ -426,7 +426,14 @@ export async function eventsRoutes(app: FastifyInstance) {
   })
 
   app.get('/events', { preHandler: requireAuth }, async (request, reply) => {
-    const query = request.query as { limit?: string; cursor?: string; include_hidden?: string; topics?: string; before_time?: string }
+    const query = request.query as {
+      limit?: string
+      cursor?: string
+      include_hidden?: string
+      topics?: string
+      before_time?: string
+      after_time?: string
+    }
     const limit = Math.min(Number(query.limit) || 20, 100)
     const userId = request.currentUser?.id ?? null
     // Feedback #48 — the next-occurrence collapse below hides later dates of
@@ -434,10 +441,11 @@ export async function eventsRoutes(app: FastifyInstance) {
     // so a client that's already shown the hidden count can ask for
     // everything. Left off (the default), behavior is unchanged from before.
     const includeHidden = query.include_hidden === 'true'
-    // Feedback #97 — topic (Movie Night, Sports & Fitness, ...) and a
-    // "hide anything starting after HH:MM" time-of-day cutoff.
+    // Feedback #97 — topic (Movie Night, Sports & Fitness, ...) and an
+    // hours-of-day range ("only show events starting between HH:MM and HH:MM").
     const topics = parseTopicsParam(query.topics)
     const beforeTime = parseBeforeTimeParam(query.before_time)
+    const afterTime = parseAfterTimeParam(query.after_time)
 
     let cursorStartDate: string | null = null
     let cursorSortTime: string | null = null
@@ -453,7 +461,7 @@ export async function eventsRoutes(app: FastifyInstance) {
       eq(events.status, 'approved'),
       isNull(events.deletedAt),
       gte(events.startDate, todayInChicago()),
-      ...buildEventFilterConditions(topics, beforeTime),
+      ...buildEventFilterConditions(topics, beforeTime, afterTime),
     ]
 
     // Events with no specific start_time (null = no specific time, distinct
@@ -609,7 +617,7 @@ export async function eventsRoutes(app: FastifyInstance) {
   // list above shows; see week-query.ts's own header for why this is a
   // deliberate parallel query rather than a variant of the CTE above.
   app.get('/events/week', { preHandler: requireAuth }, async (request, reply) => {
-    const query = request.query as { start?: string; topics?: string; before_time?: string }
+    const query = request.query as { start?: string; topics?: string; before_time?: string; after_time?: string }
     const weekStart = query.start
     if (!weekStart || !/^\d{4}-\d{2}-\d{2}$/.test(weekStart)) {
       return reply.code(400).send({ error: { message: 'start (YYYY-MM-DD) is required' } })
@@ -617,8 +625,9 @@ export async function eventsRoutes(app: FastifyInstance) {
     const userId = request.currentUser?.id ?? null
     const topics = parseTopicsParam(query.topics)
     const beforeTime = parseBeforeTimeParam(query.before_time)
+    const afterTime = parseAfterTimeParam(query.after_time)
 
-    const weekEvents = await getEventsForWeek(weekStart, topics, beforeTime, userId)
+    const weekEvents = await getEventsForWeek(weekStart, topics, beforeTime, afterTime, userId)
     return reply.send({ data: weekEvents })
   })
 }

@@ -20,5 +20,13 @@ export function useMultiImageUpload(initial: UploadedImage[] = []) {
     setImages((prev) => prev.filter((_, i) => i !== index))
   }
 
-  return { images, fileInputRef, uploading, attachFiles, removeAt }
+  // For a composer that stays mounted after a successful post (e.g.
+  // CommentsSection.tsx's reply box, unlike FeedbackForm's new-post form,
+  // which unmounts on submit and so never needed this) — clears the
+  // attached set back to empty rather than removing one at a time.
+  function reset() {
+    setImages([])
+  }
+
+  return { images, fileInputRef, uploading, attachFiles, removeAt, reset }
 }

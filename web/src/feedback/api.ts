@@ -21,6 +21,7 @@ export interface FeedbackComment {
   id: string
   feedback_id: string
   body: string
+  images: UploadedImage[]
   created_at: string
   updated_at: string
   author_id: string
@@ -151,11 +152,11 @@ export async function fetchFeedbackComments(id: string): Promise<FeedbackComment
   return body.data
 }
 
-export async function createFeedbackComment(id: string, body: string): Promise<FeedbackComment> {
+export async function createFeedbackComment(id: string, body: string, images: UploadedImage[] = []): Promise<FeedbackComment> {
   const response = await fetch(`${API_URL}/feedback/${id}/comments`, {
     method: 'POST',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
-    body: JSON.stringify({ body }),
+    body: JSON.stringify({ body, images }),
   })
   if (!response.ok) {
     throw new Error(`Failed to post comment: ${response.status}`)
@@ -164,11 +165,16 @@ export async function createFeedbackComment(id: string, body: string): Promise<F
   return responseBody.data
 }
 
-export async function updateFeedbackComment(id: string, commentId: string, body: string): Promise<FeedbackComment> {
+export async function updateFeedbackComment(
+  id: string,
+  commentId: string,
+  body: string,
+  images: UploadedImage[] = [],
+): Promise<FeedbackComment> {
   const response = await fetch(`${API_URL}/feedback/${id}/comments/${commentId}`, {
     method: 'PATCH',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
-    body: JSON.stringify({ body }),
+    body: JSON.stringify({ body, images }),
   })
   if (!response.ok) {
     throw new Error(`Failed to update comment: ${response.status}`)

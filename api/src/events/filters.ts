@@ -1,4 +1,4 @@
-import { eq, inArray, isNull, lte, or, type SQL } from 'drizzle-orm'
+import { eq, gte, inArray, isNull, lte, or, type SQL } from 'drizzle-orm'
 
 import { events } from '../db/schema.js'
 
@@ -17,21 +17,35 @@ export function parseTopicsParam(raw: string | undefined): string[] {
 }
 
 // 'HH:MM' — validated loosely (must parse as a real time-of-day) since it
-// only ever narrows a WHERE clause, never gets stored.
-export function parseBeforeTimeParam(raw: string | undefined): string | null {
+// only ever narrows a WHERE clause, never gets stored. Shared by both ends
+// of the hours range below (feedback, 2026-08-17: "closer to [Google Maps'
+// Price per person]... you can set range").
+function parseTimeParam(raw: string | undefined): string | null {
   if (!raw || !/^\d{2}:\d{2}$/.test(raw)) return null
   return `${raw}:00`
 }
 
+export function parseAfterTimeParam(raw: string | undefined): string | null {
+  return parseTimeParam(raw)
+}
+
+export function parseBeforeTimeParam(raw: string | undefined): string | null {
+  return parseTimeParam(raw)
+}
+
 // Topic: only applied when at least one topic was requested (an event with
 // no topic set is excluded once any filter is active — there's nothing to
-// match). Time cutoff: "hide anything starting after HH:MM" — an all-day or
-// no-specific-time event isn't affected, since neither represents a genuine
-// late-in-the-day commitment the filter is meant to screen out.
-export function buildEventFilterConditions(topics: string[], beforeTime: string | null): SQL[] {
+// match). Hours range: "only show events starting between HH:MM and HH:MM" —
+// an all-day or no-specific-time event isn't affected by either end, since
+// neither represents a genuine time-of-day commitment the filter is meant
+// to screen by.
+export function buildEventFilterConditions(topics: string[], beforeTime: string | null, afterTime: string | null): SQL[] {
   const conditions: SQL[] = []
   if (topics.length > 0) {
     conditions.push(inArray(events.topic, topics))
+  }
+  if (afterTime) {
+    conditions.push(or(isNull(events.startTime), eq(events.allDay, true), gte(events.startTime, afterTime))!)
   }
   if (beforeTime) {
     conditions.push(or(isNull(events.startTime), eq(events.allDay, true), lte(events.startTime, beforeTime))!)

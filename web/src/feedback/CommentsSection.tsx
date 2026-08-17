@@ -12,36 +12,42 @@ import {
   updateFeedbackComment,
   type FeedbackComment,
 } from './api'
+import { FeedbackImages, PhotoPicker, makePasteHandler } from './FeedbackForm'
+import { useMultiImageUpload } from './useMultiImageUpload'
 
 // Mirrors events/CommentsSection.tsx exactly (see that file for the history
 // behind the icon/text alignment fix and the empty-state posture below) —
 // feedback #98 is the reply thread this codebase's Feedback tab never had,
 // replacing the old admin-only completionNote field: any member can reply,
 // and the post's own author gets an in-app notification (see
-// feedback/notifications.ts / InstitutionBanner.tsx's badge).
+// feedback/notifications.ts / InstitutionBanner.tsx's badge). Photo
+// attachments (feedback, 2026-08-17: "image pasting isn't working in
+// feedback replies. It should work the same way it would in the original
+// post") reuse FeedbackForm.tsx's PhotoPicker/paste-handler and
+// useMultiImageUpload directly rather than a second copy.
 function CommentItem({
   comment,
   onUpdated,
   onDeleted,
+  onImageClick,
 }: {
   comment: FeedbackComment
   onUpdated: (updated: FeedbackComment) => void
   onDeleted: (id: string) => void
+  onImageClick: (url: string) => void
 }) {
   const [editing, setEditing] = useState(false)
   const [body, setBody] = useState(comment.body)
   const [saving, setSaving] = useState(false)
+  const { images, fileInputRef, uploading, attachFiles, removeAt } = useMultiImageUpload(comment.images)
+  const handlePaste = makePasteHandler((files) => void attachFiles(files))
 
   async function save() {
     const trimmed = body.trim()
-    if (!trimmed || trimmed === comment.body) {
-      setEditing(false)
-      setBody(comment.body)
-      return
-    }
+    if (!trimmed) return
     setSaving(true)
     try {
-      onUpdated(await updateFeedbackComment(comment.feedback_id, comment.id, trimmed))
+      onUpdated(await updateFeedbackComment(comment.feedback_id, comment.id, trimmed, images))
       setEditing(false)
     } catch {
       // leave the form open with the user's text so nothing typed is lost
@@ -69,9 +75,17 @@ function CommentItem({
           <span style={{ color: 'var(--ion-color-medium)' }}>{formatDate(comment.created_at)}</span>
         </p>
         {editing ? (
-          <>
+          <div onPaste={handlePaste}>
             <IonTextarea value={body} onIonInput={(e) => setBody(e.detail.value ?? '')} autoGrow autofocus />
-            <IonButton size="small" fill="outline" disabled={saving || !body.trim()} onClick={save}>
+            <PhotoPicker
+              images={images}
+              uploading={uploading}
+              fileInputRef={fileInputRef}
+              onFiles={(files) => void attachFiles(files)}
+              onRemove={removeAt}
+              onImageClick={onImageClick}
+            />
+            <IonButton size="small" fill="outline" disabled={saving || uploading || !body.trim()} onClick={save}>
               Save
             </IonButton>
             <IonButton
@@ -86,10 +100,11 @@ function CommentItem({
             >
               Cancel
             </IonButton>
-          </>
+          </div>
         ) : (
           <>
             <p style={{ margin: '4px 0', whiteSpace: 'pre-wrap' }}>{comment.body}</p>
+            <FeedbackImages images={comment.images} onImageClick={onImageClick} />
             {(comment.can_edit || comment.can_delete) && (
               <div style={{ display: 'flex', gap: 4 }}>
                 {comment.can_edit && (
@@ -111,11 +126,13 @@ function CommentItem({
   )
 }
 
-export function CommentsSection({ feedbackId }: { feedbackId: string }) {
+export function CommentsSection({ feedbackId, onImageClick }: { feedbackId: string; onImageClick: (url: string) => void }) {
   const [comments, setComments] = useState<FeedbackComment[] | null>(null)
   const [error, setError] = useState(false)
   const [newBody, setNewBody] = useState('')
   const [posting, setPosting] = useState(false)
+  const { images: newImages, fileInputRef, uploading, attachFiles, removeAt, reset: resetNewImages } = useMultiImageUpload([])
+  const handlePaste = makePasteHandler((files) => void attachFiles(files))
 
   useEffect(() => {
     setComments(null)
@@ -130,9 +147,10 @@ export function CommentsSection({ feedbackId }: { feedbackId: string }) {
     if (!trimmed) return
     setPosting(true)
     try {
-      const created = await createFeedbackComment(feedbackId, trimmed)
+      const created = await createFeedbackComment(feedbackId, trimmed, newImages)
       setComments((prev) => [created, ...(prev ?? [])])
       setNewBody('')
+      resetNewImages()
     } catch {
       setError(true)
     } finally {
@@ -152,9 +170,10 @@ export function CommentsSection({ feedbackId }: { feedbackId: string }) {
           comment={comment}
           onUpdated={(updated) => setComments((prev) => prev?.map((c) => (c.id === updated.id ? updated : c)) ?? null)}
           onDeleted={(id) => setComments((prev) => prev?.filter((c) => c.id !== id) ?? null)}
+          onImageClick={onImageClick}
         />
       ))}
-      <div style={headingContentGap}>
+      <div style={headingContentGap} onPaste={handlePaste}>
         <IonItem lines="none" style={{ '--padding-start': '0', '--min-height': '40px' } as React.CSSProperties}>
           <IonIcon
             icon={addOutline}
@@ -169,8 +188,16 @@ export function CommentsSection({ feedbackId }: { feedbackId: string }) {
             style={{ '--padding-top': '16px', '--padding-bottom': '0px' } as React.CSSProperties}
           />
         </IonItem>
+        <PhotoPicker
+          images={newImages}
+          uploading={uploading}
+          fileInputRef={fileInputRef}
+          onFiles={(files) => void attachFiles(files)}
+          onRemove={removeAt}
+          onImageClick={onImageClick}
+        />
         {newBody.trim() && (
-          <IonButton fill="outline" disabled={posting} onClick={post}>
+          <IonButton fill="outline" disabled={posting || uploading} onClick={post}>
             Post
           </IonButton>
         )}

@@ -319,6 +319,22 @@ export const feedbackComments = pgTable('feedback_comments', {
   ...timestamps,
 })
 
+// One row per photo attached to a reply (feedback, 2026-08-17: "image
+// pasting isn't working in feedback replies. It should work the same way it
+// would in the original post") — same shape as feedbackImages above,
+// including a reply being able to carry more than one photo and
+// `position` preserving attach order for the same reason.
+export const feedbackCommentImages = pgTable('feedback_comment_images', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  feedbackCommentId: uuid('feedback_comment_id')
+    .notNull()
+    .references(() => feedbackComments.id),
+  imageUrl: text('image_url').notNull(),
+  thumbnailUrl: text('thumbnail_url').notNull(),
+  position: integer('position').notNull().default(0),
+  ...timestamps,
+})
+
 // Camps (feedback #50) is a deliberately fresh, non-shared clone of the
 // events tables above — camps and events are expected to diverge over time,
 // so this is its own set of tables rather than a reuse of events/eventSources.

@@ -31,6 +31,7 @@ export async function getEventsForWeek(
   weekStart: string,
   topics: string[],
   beforeTime: string | null,
+  afterTime: string | null,
   userId: string | null,
 ) {
   const weekEnd = toISODate(addDays(parseISODate(weekStart), 6))
@@ -40,7 +41,7 @@ export async function getEventsForWeek(
     isNull(events.deletedAt),
     gte(events.startDate, weekStart),
     lte(events.startDate, weekEnd),
-    ...buildEventFilterConditions(topics, beforeTime),
+    ...buildEventFilterConditions(topics, beforeTime, afterTime),
   ]
 
   const sortTimeExpr = sql`coalesce(${events.startTime}, '23:59:59'::time)`

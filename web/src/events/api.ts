@@ -140,16 +140,18 @@ export interface FetchEventsResult {
   hiddenCount: number
 }
 
-// Feedback #97's topic + "hide anything starting after HH:MM" filters —
-// shared query-param shape between the paginated list (fetchEvents below)
-// and the calendar week view (fetchEventsForWeek).
+// Feedback #97's topic + hours-of-day-range filters — shared query-param
+// shape between the paginated list (fetchEvents below) and the calendar
+// week view (fetchEventsForWeek).
 export interface EventFilters {
   topics?: string[]
+  afterTime?: string // 'HH:MM'
   beforeTime?: string // 'HH:MM'
 }
 
 function applyFilterParams(url: URL, filters?: EventFilters) {
   if (filters?.topics?.length) url.searchParams.set('topics', filters.topics.join(','))
+  if (filters?.afterTime) url.searchParams.set('after_time', filters.afterTime)
   if (filters?.beforeTime) url.searchParams.set('before_time', filters.beforeTime)
 }
 

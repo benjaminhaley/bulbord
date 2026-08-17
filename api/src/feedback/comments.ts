@@ -1,11 +1,13 @@
-import { and, desc, eq, isNull } from 'drizzle-orm'
+import { and, asc, desc, eq, inArray, isNull } from 'drizzle-orm'
 import type { FastifyInstance } from 'fastify'
 
 import { requireAuth } from '../auth/plugin.js'
 import { db } from '../db/client.js'
-import { feedback, feedbackComments, eventsLog, users } from '../db/schema.js'
+import { feedback, feedbackComments, feedbackCommentImages, eventsLog, users } from '../db/schema.js'
 import { canDeleteFeedbackComment, canEditFeedbackComment } from './comment-permissions.js'
 import { notifyFeedbackReply } from './notifications.js'
+
+type CommentImage = { imageUrl: string; thumbnailUrl: string }
 
 async function findComment(feedbackId: string, commentId: string) {
   const [existing] = await db
@@ -16,16 +18,56 @@ async function findComment(feedbackId: string, commentId: string) {
   return existing ?? null
 }
 
+// Same batched-by-parent-id shape as feedback/routes.ts's
+// fetchImagesByFeedbackId, one level down (per-comment instead of
+// per-post) — a reply can carry more than one photo (feedback, 2026-08-17)
+// same as the post itself.
+async function fetchImagesByCommentId(commentIds: string[]): Promise<Map<string, CommentImage[]>> {
+  const map = new Map<string, CommentImage[]>()
+  if (commentIds.length === 0) return map
+
+  const rows = await db
+    .select({
+      feedbackCommentId: feedbackCommentImages.feedbackCommentId,
+      imageUrl: feedbackCommentImages.imageUrl,
+      thumbnailUrl: feedbackCommentImages.thumbnailUrl,
+    })
+    .from(feedbackCommentImages)
+    .where(and(inArray(feedbackCommentImages.feedbackCommentId, commentIds), isNull(feedbackCommentImages.deletedAt)))
+    .orderBy(asc(feedbackCommentImages.position), asc(feedbackCommentImages.createdAt))
+
+  for (const row of rows) {
+    const list = map.get(row.feedbackCommentId) ?? []
+    list.push({ imageUrl: row.imageUrl, thumbnailUrl: row.thumbnailUrl })
+    map.set(row.feedbackCommentId, list)
+  }
+  return map
+}
+
+async function insertCommentImages(commentId: string, images: { image_url: string; thumbnail_url: string }[]) {
+  if (images.length === 0) return
+  await db.insert(feedbackCommentImages).values(
+    images.map((img, index) => ({
+      feedbackCommentId: commentId,
+      imageUrl: img.image_url,
+      thumbnailUrl: img.thumbnail_url,
+      position: index,
+    })),
+  )
+}
+
 function serializeComment(
   c: Pick<typeof feedbackComments.$inferSelect, 'id' | 'feedbackId' | 'userId' | 'body' | 'createdAt' | 'updatedAt'>,
   authorName: string | null,
   authorAvatarUrl: string | null,
+  images: CommentImage[],
   currentUser: { id: string; roles: string[] } | null,
 ) {
   return {
     id: c.id,
     feedback_id: c.feedbackId,
     body: c.body,
+    images: images.map((img) => ({ image_url: img.imageUrl, thumbnail_url: img.thumbnailUrl })),
     created_at: c.createdAt,
     updated_at: c.updatedAt,
     author_id: c.userId,
@@ -68,8 +110,12 @@ export async function feedbackCommentsRoutes(app: FastifyInstance) {
       .where(and(eq(feedbackComments.feedbackId, id), isNull(feedbackComments.deletedAt)))
       .orderBy(desc(feedbackComments.createdAt))
 
+    const imagesByCommentId = await fetchImagesByCommentId(rows.map((row) => row.id))
+
     return reply.send({
-      data: rows.map((row) => serializeComment(row, row.authorName, row.authorAvatarUrl, currentUser)),
+      data: rows.map((row) =>
+        serializeComment(row, row.authorName, row.authorAvatarUrl, imagesByCommentId.get(row.id) ?? [], currentUser),
+      ),
       has_more: false,
       next_cursor: null,
     })
@@ -77,11 +123,12 @@ export async function feedbackCommentsRoutes(app: FastifyInstance) {
 
   app.post('/feedback/:id/comments', { preHandler: requireAuth }, async (request, reply) => {
     const { id } = request.params as { id: string }
-    const body = request.body as { body?: string }
+    const body = request.body as { body?: string; images?: { image_url: string; thumbnail_url: string }[] }
     const text = body.body?.trim()
     if (!text) {
       return reply.code(400).send({ error: { message: 'body is required' } })
     }
+    const images = (body.images ?? []).filter((img) => img.image_url && img.thumbnail_url)
 
     const [item] = await db
       .select({ id: feedback.id })
@@ -98,29 +145,43 @@ export async function feedbackCommentsRoutes(app: FastifyInstance) {
       .values({ feedbackId: id, userId: currentUser.id, body: text })
       .returning()
 
-    await db.insert(eventsLog).values({
-      actor: currentUser.id,
-      action: 'feedback_comment_created',
-      metadata: { feedbackId: id, commentId: created.id },
-    })
+    await Promise.all([
+      insertCommentImages(created.id, images),
+      db.insert(eventsLog).values({
+        actor: currentUser.id,
+        action: 'feedback_comment_created',
+        metadata: { feedbackId: id, commentId: created.id },
+      }),
+    ])
 
     // Best-effort, not awaited into the response — a failed send shouldn't
     // hold up or fail the reply itself (feedback #98's email addendum, see
-    // notifications.ts for the full reasoning).
-    notifyFeedbackReply(id, currentUser.id, text).catch((err) => {
+    // notifications.ts for the full reasoning). Passes the already-known
+    // image URLs straight through rather than having the notifier re-query
+    // for what was just inserted.
+    notifyFeedbackReply(
+      id,
+      currentUser.id,
+      text,
+      images.map((img) => img.image_url),
+    ).catch((err) => {
       console.error('feedback reply email failed', err)
     })
 
-    return reply.code(201).send({ data: serializeComment(created, currentUser.name, currentUser.avatarUrl, currentUser) })
+    const createdImages = images.map((img) => ({ imageUrl: img.image_url, thumbnailUrl: img.thumbnail_url }))
+    return reply
+      .code(201)
+      .send({ data: serializeComment(created, currentUser.name, currentUser.avatarUrl, createdImages, currentUser) })
   })
 
   app.patch('/feedback/:id/comments/:commentId', { preHandler: requireAuth }, async (request, reply) => {
     const { id, commentId } = request.params as { id: string; commentId: string }
-    const body = request.body as { body?: string }
+    const body = request.body as { body?: string; images?: { image_url: string; thumbnail_url: string }[] }
     const text = body.body?.trim()
     if (!text) {
       return reply.code(400).send({ error: { message: 'body is required' } })
     }
+    const images = (body.images ?? []).filter((img) => img.image_url && img.thumbnail_url)
 
     const currentUser = request.currentUser!
     const existing = await findComment(id, commentId)
@@ -131,16 +192,26 @@ export async function feedbackCommentsRoutes(app: FastifyInstance) {
       return reply.code(403).send({ error: { message: 'Forbidden' } })
     }
 
+    // Same full-replace posture as feedback post edits (PATCH /feedback/:id)
+    // — the edit form always resends the complete desired photo set, so old
+    // rows are soft-deleted and the new set inserted fresh rather than
+    // reconciled as an add/remove diff.
     const [[updated]] = await Promise.all([
       db.update(feedbackComments).set({ body: text, updatedAt: new Date() }).where(eq(feedbackComments.id, commentId)).returning(),
+      db
+        .update(feedbackCommentImages)
+        .set({ deletedAt: new Date(), updatedAt: new Date() })
+        .where(and(eq(feedbackCommentImages.feedbackCommentId, commentId), isNull(feedbackCommentImages.deletedAt))),
       db.insert(eventsLog).values({
         actor: currentUser.id,
         action: 'feedback_comment_updated',
         metadata: { feedbackId: id, commentId },
       }),
     ])
+    await insertCommentImages(commentId, images)
 
-    return reply.send({ data: serializeComment(updated, currentUser.name, currentUser.avatarUrl, currentUser) })
+    const updatedImages = images.map((img) => ({ imageUrl: img.image_url, thumbnailUrl: img.thumbnail_url }))
+    return reply.send({ data: serializeComment(updated, currentUser.name, currentUser.avatarUrl, updatedImages, currentUser) })
   })
 
   app.delete('/feedback/:id/comments/:commentId', { preHandler: requireAuth }, async (request, reply) => {

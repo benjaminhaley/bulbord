@@ -19,18 +19,16 @@ export interface FeedbackReplyEmailParams {
   replyBody: string
   feedbackTitle: string
   feedbackNumber: number
-  // The feedback post's own attached photos (feedback_images) — replies
-  // themselves don't support photo attachments today, only the top-level
-  // post does, so this is the full set of images that could exist on this
-  // thread. Shown for context (so the email is readable standalone, without
-  // opening the app to see what the reply is about), not because they're
-  // new with this reply.
-  postImageUrls: string[]
+  // This specific reply's own attached photos (feedback_comment_images,
+  // feedback #98's photo-attachment follow-up) — the actual "images that
+  // were posted" with this reply, not the original post's own photos
+  // (those are still reachable via the link below).
+  replyImageUrls: string[]
   apiUrl: string
   linkUrl: string
 }
 
-// avatarUrl/postImageUrls are raw relative paths (e.g. "/uploads/x.jpg") —
+// avatarUrl/replyImageUrls are raw relative paths (e.g. "/uploads/x.jpg") —
 // apiUrl turns them into absolute URLs an email client can actually load,
 // same as newsletter/template.ts's own thumbnail images.
 export function feedbackReplyHtml(params: FeedbackReplyEmailParams): string {
@@ -40,8 +38,8 @@ export function feedbackReplyHtml(params: FeedbackReplyEmailParams): string {
   const avatar = params.replierAvatarUrl
     ? `<img src="${params.apiUrl}${params.replierAvatarUrl}" width="40" height="40" style="display:block;width:40px;height:40px;object-fit:cover;border-radius:50%;margin-bottom:8px;" alt="" />`
     : ''
-  const postImages = params.postImageUrls.length
-    ? `<div style="margin:12px 0;">${params.postImageUrls
+  const replyImages = params.replyImageUrls.length
+    ? `<div style="margin:12px 0;">${params.replyImageUrls
         .map(
           (url) =>
             `<img src="${params.apiUrl}${url}" width="120" height="120" style="display:inline-block;width:120px;height:120px;object-fit:cover;border-radius:8px;margin:0 8px 8px 0;" alt="" />`,
@@ -54,7 +52,7 @@ export function feedbackReplyHtml(params: FeedbackReplyEmailParams): string {
       <p style="margin:0 0 4px;color:#666666;font-size:14px;">#${params.feedbackNumber} · ${title}</p>
       <p style="margin:0 0 4px;"><strong>${name}</strong> replied:</p>
       <p style="white-space:pre-wrap;margin:0 0 8px;">${body}</p>
-      ${postImages}
+      ${replyImages}
       <p><a href="${params.linkUrl}" style="color:#2c2c2c;">View and reply</a></p>
     </div>
   `

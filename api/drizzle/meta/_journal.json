@@ -225,6 +225,13 @@
       "when": 1786921910897,
       "tag": "0031_cold_lady_mastermind",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1786965137733,
+      "tag": "0032_serious_vermin",
+      "breakpoints": true
     }
   ]
 }

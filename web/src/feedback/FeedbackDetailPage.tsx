@@ -179,7 +179,7 @@ export function FeedbackDetailPage() {
               {formatDate(item.created_at)}
               {item.completed_at ? ' · Completed' : item.backlogged_at ? ' · Backlogged' : item.in_progress_at ? ' · In progress' : ''}
             </IonNote>
-            <CommentsSection feedbackId={item.id} />
+            <CommentsSection feedbackId={item.id} onImageClick={(url) => setLightboxSrc(`${API_URL}${url}`)} />
           </>
         )}
       </IonContent>

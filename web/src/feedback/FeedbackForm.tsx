@@ -40,7 +40,11 @@ export function FeedbackImages({ images, onImageClick }: { images: UploadedImage
   )
 }
 
-function PhotoPicker({
+// Exported so CommentsSection.tsx's reply composer/editor can reuse the
+// exact same attach-photo UI (feedback, 2026-08-17: "image pasting isn't
+// working in feedback replies. It should work the same way it would in the
+// original post").
+export function PhotoPicker({
   images,
   uploading,
   fileInputRef,
@@ -100,7 +104,8 @@ function PhotoPicker({
   )
 }
 
-function makePasteHandler(onFiles: (files: File[]) => void) {
+// Exported for the same reason as PhotoPicker above.
+export function makePasteHandler(onFiles: (files: File[]) => void) {
   return function handlePaste(e: React.ClipboardEvent) {
     const files = Array.from(e.clipboardData.items)
       .filter((item) => item.type.startsWith('image/'))
