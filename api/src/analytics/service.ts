@@ -171,7 +171,14 @@ export async function getAnalyticsSummary(actorFilter?: ActorFilter): Promise<An
     : []
   const memberById = new Map(members.map((m) => [m.id, m]))
 
+  // Unlike `app_opened` (always a real member's own currentUser.id), the
+  // full events_log table this query now scans also has non-member actor
+  // strings — "system:...", "claude:...", "admin:<uuid>" script/cron/audit
+  // rows — which have no place under "by member." isUuid() (the same check
+  // already used to resolve names below) doubles as the member/non-member
+  // filter here.
   const lastActiveByMember = lastActiveRows
+    .filter((row) => isUuid(row.actor))
     .map((row) => ({
       userId: row.actor,
       name: memberById.get(row.actor)?.name ?? row.actor,
