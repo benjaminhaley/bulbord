@@ -127,8 +127,10 @@ export async function adminRoutes(app: FastifyInstance) {
   // members, who's viewing/sharing this week, a 30-day daily-active chart,
   // last-active-per-member, and a curated recent-activity log. See
   // analytics/service.ts for what's tracked and why.
-  app.get('/admin/analytics/summary', { preHandler: requireRole('admin') }, async (_request, reply) => {
-    const summary = await getAnalyticsSummary()
+  app.get('/admin/analytics/summary', { preHandler: requireRole('admin') }, async (request, reply) => {
+    const { actor_id, actor_mode } = request.query as { actor_id?: string; actor_mode?: string }
+    const mode = actor_mode === 'exclude' ? 'exclude' : 'include'
+    const summary = await getAnalyticsSummary(actor_id ? { actorId: actor_id, mode } : undefined)
     return reply.send({
       data: {
         active_today: summary.activeToday,

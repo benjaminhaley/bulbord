@@ -12,6 +12,10 @@ import {
   IonList,
   IonPage,
   IonRow,
+  IonSegment,
+  IonSegmentButton,
+  IonSelect,
+  IonSelectOption,
   IonSpinner,
   IonText,
   IonTitle,
@@ -22,7 +26,7 @@ import { useEffect, useState } from 'react'
 import { formatRelativeDateTime } from '../format'
 import { secondaryTextStyle, sectionDividerStyle } from '../theme/layout'
 import { Avatar } from '../uploads/Avatar'
-import { fetchAnalyticsSummary, type AnalyticsSummary } from './api'
+import { fetchAdminUsers, fetchAnalyticsSummary, type AdminUser, type AnalyticsActorFilter, type AnalyticsSummary } from './api'
 import { DauChart } from './DauChart'
 
 function StatTile({ value, label }: { value: number; label: string }) {
@@ -56,12 +60,32 @@ function actionLabel(action: string): string {
 export function AnalyticsPage() {
   const [summary, setSummary] = useState<AnalyticsSummary | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [members, setMembers] = useState<AdminUser[]>([])
+  // Feedback #101: "make it easy to include or exclude a person" from the
+  // recent-activity log below — undefined actorId means no filter (the
+  // default, everyone shown), matching every other list on this page.
+  const [actorId, setActorId] = useState<string | undefined>(undefined)
+  const [actorMode, setActorMode] = useState<AnalyticsActorFilter['mode']>('include')
 
   useEffect(() => {
-    fetchAnalyticsSummary()
+    fetchAdminUsers()
+      .then(setMembers)
+      .catch(() => {
+        /* the person filter is a nice-to-have on top of the log — a failed
+           member-list fetch shouldn't block the rest of this page */
+      })
+  }, [])
+
+  // Refetches the whole summary on a filter change rather than a
+  // log-only endpoint — the stat tiles/DAU chart/last-active list stay on
+  // screen from the previous response while the new one loads (no
+  // full-page flash to a spinner), since only the recent-activity log
+  // below is actually affected by this filter.
+  useEffect(() => {
+    fetchAnalyticsSummary(actorId ? { actorId, mode: actorMode } : undefined)
       .then(setSummary)
       .catch((err) => setError(err instanceof Error ? err.message : 'Could not load analytics'))
-  }, [])
+  }, [actorId, actorMode])
 
   return (
     <IonPage>
@@ -112,7 +136,38 @@ export function AnalyticsPage() {
 
             <hr style={sectionDividerStyle} />
             <h2>Recent activity</h2>
-            {summary.recent_log.length === 0 && <p style={secondaryTextStyle}>No activity logged yet.</p>}
+            <IonItem lines="none" style={{ '--padding-start': 0 } as React.CSSProperties}>
+              <IonLabel>Filter by person</IonLabel>
+              <IonSelect
+                slot="end"
+                interface="popover"
+                placeholder="Everyone"
+                value={actorId ?? ''}
+                onIonChange={(e) => setActorId((e.detail.value as string) || undefined)}
+              >
+                <IonSelectOption value="">Everyone</IonSelectOption>
+                {members.map((m) => (
+                  <IonSelectOption key={m.id} value={m.id}>
+                    {m.name}
+                  </IonSelectOption>
+                ))}
+              </IonSelect>
+            </IonItem>
+            {actorId && (
+              <IonSegment
+                value={actorMode}
+                onIonChange={(e) => setActorMode(e.detail.value as AnalyticsActorFilter['mode'])}
+                style={{ marginBottom: 8 }}
+              >
+                <IonSegmentButton value="include">
+                  <IonLabel>Only them</IonLabel>
+                </IonSegmentButton>
+                <IonSegmentButton value="exclude">
+                  <IonLabel>Hide them</IonLabel>
+                </IonSegmentButton>
+              </IonSegment>
+            )}
+            {summary.recent_log.length === 0 && <p style={secondaryTextStyle}>No activity logged{actorId ? ' for this filter' : ' yet'}.</p>}
             <IonList inset>
               {summary.recent_log.map((entry) => (
                 <IonItem key={entry.id}>

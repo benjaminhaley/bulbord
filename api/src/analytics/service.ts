@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, inArray, notInArray, sql } from 'drizzle-orm'
+import { and, desc, eq, gte, inArray, ne, notInArray, sql } from 'drizzle-orm'
 
 import { todayInChicago } from '../dates.js'
 import { db } from '../db/client.js'
@@ -92,7 +92,18 @@ export interface AnalyticsSummary {
   recentLog: { id: string; actor: string; actorName: string; action: string; metadata: unknown; createdAt: Date }[]
 }
 
-export async function getAnalyticsSummary(): Promise<AnalyticsSummary> {
+// Feedback #101: "in analytics recent activity, make it easy to include or
+// exclude a person from the screen." Scoped to the recent-activity log only
+// (the stat tiles/DAU chart/last-active list above it aren't what the
+// feedback is about) — 'include' narrows the log to just that person's own
+// actions, 'exclude' hides them (e.g. filtering out Ben's own constant
+// admin/dev-tools activity to see what real members are doing).
+export interface ActorFilter {
+  actorId: string
+  mode: 'include' | 'exclude'
+}
+
+export async function getAnalyticsSummary(actorFilter?: ActorFilter): Promise<AnalyticsSummary> {
   const today = todayInChicago()
   const dauSince = new Date(Date.now() - DAU_WINDOW_DAYS * 24 * 60 * 60 * 1000)
   const aggSince = new Date(Date.now() - AGGREGATE_WINDOW_DAYS * 24 * 60 * 60 * 1000)
@@ -129,7 +140,16 @@ export async function getAnalyticsSummary(): Promise<AnalyticsSummary> {
     db
       .select({ id: eventsLog.id, actor: eventsLog.actor, action: eventsLog.action, metadata: eventsLog.metadata, createdAt: eventsLog.createdAt })
       .from(eventsLog)
-      .where(notInArray(eventsLog.action, EXCLUDED_LOG_ACTIONS as unknown as string[]))
+      .where(
+        and(
+          notInArray(eventsLog.action, EXCLUDED_LOG_ACTIONS as unknown as string[]),
+          actorFilter
+            ? actorFilter.mode === 'include'
+              ? eq(eventsLog.actor, actorFilter.actorId)
+              : ne(eventsLog.actor, actorFilter.actorId)
+            : undefined,
+        ),
+      )
       .orderBy(desc(eventsLog.createdAt))
       .limit(RECENT_LOG_LIMIT),
   ])

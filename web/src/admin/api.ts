@@ -167,8 +167,15 @@ export interface AnalyticsSummary {
   recent_log: { id: string; actor: string; actor_name: string; action: string; metadata: unknown; created_at: string }[]
 }
 
-export async function fetchAnalyticsSummary(): Promise<AnalyticsSummary> {
-  const response = await fetch(`${API_URL}/admin/analytics/summary`, { headers: authHeaders() })
+// Feedback #101: narrows (or hides) the recent-activity log to one person.
+export interface AnalyticsActorFilter {
+  actorId: string
+  mode: 'include' | 'exclude'
+}
+
+export async function fetchAnalyticsSummary(filter?: AnalyticsActorFilter): Promise<AnalyticsSummary> {
+  const params = filter ? `?actor_id=${encodeURIComponent(filter.actorId)}&actor_mode=${filter.mode}` : ''
+  const response = await fetch(`${API_URL}/admin/analytics/summary${params}`, { headers: authHeaders() })
   if (!response.ok) {
     throw new Error(`Failed to fetch analytics: ${response.status}`)
   }
