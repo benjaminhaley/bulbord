@@ -5,6 +5,7 @@ import { requireAuth } from '../auth/plugin.js'
 import { db } from '../db/client.js'
 import { feedback, feedbackComments, eventsLog, users } from '../db/schema.js'
 import { canDeleteFeedbackComment, canEditFeedbackComment } from './comment-permissions.js'
+import { notifyFeedbackReply } from './notifications.js'
 
 async function findComment(feedbackId: string, commentId: string) {
   const [existing] = await db
@@ -101,6 +102,13 @@ export async function feedbackCommentsRoutes(app: FastifyInstance) {
       actor: currentUser.id,
       action: 'feedback_comment_created',
       metadata: { feedbackId: id, commentId: created.id },
+    })
+
+    // Best-effort, not awaited into the response — a failed send shouldn't
+    // hold up or fail the reply itself (feedback #98's email addendum, see
+    // notifications.ts for the full reasoning).
+    notifyFeedbackReply(id, currentUser.id, text).catch((err) => {
+      console.error('feedback reply email failed', err)
     })
 
     return reply.code(201).send({ data: serializeComment(created, currentUser.name, currentUser.avatarUrl, currentUser) })

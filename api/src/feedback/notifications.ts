@@ -1,7 +1,10 @@
-import { and, eq, gt, isNull, ne } from 'drizzle-orm'
+import { and, asc, eq, gt, isNull, ne } from 'drizzle-orm'
 
 import { db } from '../db/client.js'
-import { feedback, feedbackComments, users } from '../db/schema.js'
+import { feedback, feedbackComments, feedbackImages, users } from '../db/schema.js'
+import { requireEnv } from '../env.js'
+import { sendEmail } from '../newsletter/mailer.js'
+import { feedbackReplyHtml, feedbackReplySubject } from './template.js'
 
 // feedback #98's red-dot count: comments on a feedback post the viewer
 // authored, made by someone other than the viewer, created since the viewer
@@ -37,4 +40,49 @@ export async function getUnseenFeedbackReplyCount(userId: string, feedbackReplie
 // seen, not just the specific item that was read).
 export async function markFeedbackRepliesSeen(userId: string): Promise<void> {
   await db.update(users).set({ feedbackRepliesSeenAt: new Date() }).where(eq(users.id, userId))
+}
+
+// Reverses the original "in-app only, no email" decision (feedback #98,
+// same day): "the reply, including any images that were posted... so
+// ideally they can read it even before clicking back into the app." Only
+// fires when someone other than the feedback's own author replies — same
+// no-self-notify rule as the in-app badge above, and the same reasoning
+// user_connections' `notify` flag applies to its own alert email (nothing
+// to tell someone about their own action). Best-effort: called from
+// comments.ts without being awaited into the response, and a failed send is
+// logged, not thrown — same graceful-degrade posture as
+// connections/service.ts's notifyConnectionAdded.
+export async function notifyFeedbackReply(feedbackId: string, replierId: string, replyBody: string): Promise<void> {
+  const [item] = await db
+    .select({ title: feedback.title, number: feedback.number, createdByUserId: feedback.createdByUserId })
+    .from(feedback)
+    .where(eq(feedback.id, feedbackId))
+    .limit(1)
+  if (!item?.createdByUserId || item.createdByUserId === replierId) return
+
+  const [[author], [replier], images] = await Promise.all([
+    db.select({ email: users.email }).from(users).where(eq(users.id, item.createdByUserId)).limit(1),
+    db.select({ name: users.name, avatarUrl: users.avatarUrl }).from(users).where(eq(users.id, replierId)).limit(1),
+    db
+      .select({ imageUrl: feedbackImages.imageUrl })
+      .from(feedbackImages)
+      .where(and(eq(feedbackImages.feedbackId, feedbackId), isNull(feedbackImages.deletedAt)))
+      .orderBy(asc(feedbackImages.position)),
+  ])
+  if (!author?.email) return
+
+  const apiUrl = requireEnv('PUBLIC_API_URL')
+  const webUrl = requireEnv('PUBLIC_WEB_URL')
+  const replierName = replier?.name ?? 'Someone'
+  const html = feedbackReplyHtml({
+    replierName,
+    replierAvatarUrl: replier?.avatarUrl ?? null,
+    replyBody,
+    feedbackTitle: item.title,
+    feedbackNumber: item.number,
+    postImageUrls: images.map((img) => img.imageUrl),
+    apiUrl,
+    linkUrl: `${webUrl}/feedback/${feedbackId}`,
+  })
+  await sendEmail(author.email, feedbackReplySubject(replierName, item.title), html)
 }

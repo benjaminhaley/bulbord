@@ -1,6 +1,6 @@
 import { IonButton, IonIcon, IonItem, IonLabel, IonList, IonSpinner, IonToast } from '@ionic/react'
-import { chevronBack, chevronForward } from 'ionicons/icons'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { chevronBack, chevronForward, closeOutline } from 'ionicons/icons'
+import { useEffect, useMemo, useState } from 'react'
 
 import { fetchEventsForWeek, type Event, type EventFilters, type InterestStatus } from './api'
 import { closeSliding, EventRow, TOAST_MESSAGES, type SwipeToast } from './EventsPage'
@@ -67,10 +67,6 @@ export function CalendarWeekView({ filters, multiTouch }: { filters: EventFilter
   const [swipeToast, setSwipeToast] = useState<SwipeToast | null>(null)
   const [selectedDay, setSelectedDay] = useState<string | null>(null)
   const { setInterest, clearInterest } = useEventInterest(updateEvent)
-  // Tapping a day in the strip scrolls its agenda heading into view (a day
-  // with no events has nothing to scroll to, but still gets the selected
-  // highlight below, so the tap always visibly does something).
-  const dayHeadingRefs = useRef<Record<string, HTMLDivElement | null>>({})
 
   const topicsKey = filters.topics?.join(',') ?? ''
   useEffect(() => {
@@ -114,9 +110,13 @@ export function CalendarWeekView({ filters, multiTouch }: { filters: EventFilter
     }
   }
 
+  // Tapping a day filters the agenda down to just that day (feedback,
+  // 2026-08-17: "clicking the date still doesn't focus in on just the
+  // events for that date") — tapping the already-selected day again clears
+  // the filter back to the full week, so the strip itself doubles as the
+  // "back to week" control.
   function selectDay(day: string) {
-    setSelectedDay(day)
-    dayHeadingRefs.current[day]?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    setSelectedDay((prev) => (prev === day ? null : day))
   }
 
   function shiftWeek(days: number) {
@@ -181,6 +181,13 @@ export function CalendarWeekView({ filters, multiTouch }: { filters: EventFilter
         })}
       </div>
 
+      {selectedDay && (
+        <IonItem button lines="none" detail={false} onClick={() => setSelectedDay(null)}>
+          <IonIcon icon={closeOutline} slot="start" color="medium" />
+          <IonLabel color="medium">Show full week</IonLabel>
+        </IonItem>
+      )}
+
       {weekEvents === null && !error && (
         <div className="coming-soon">
           <IonSpinner name="dots" />
@@ -191,28 +198,52 @@ export function CalendarWeekView({ filters, multiTouch }: { filters: EventFilter
           <p>Coming soon</p>
         </div>
       )}
-      {weekEvents !== null && weekEvents.length === 0 && (
-        <div className="coming-soon">
-          <p>No events this week</p>
-        </div>
-      )}
-      {weekEvents !== null && weekEvents.length > 0 && (
-        <IonList>
-          {days.map((day) => {
-            const dayEvents = eventsByDay.get(day) ?? []
-            if (dayEvents.length === 0) return null
-            return (
-              <div key={day}>
-                <IonItem lines="none">
-                  <IonLabel color="medium">{dayHeading(day)}</IonLabel>
-                </IonItem>
-                {dayEvents.map((event) => (
+      {weekEvents !== null && !error && (
+        <>
+          {/* Selecting a day (feedback, 2026-08-17) filters the agenda down
+              to just that day's events, as a flat list — no per-day heading
+              (the strip above already shows which day this is, so
+              repeating it here would be the same fact twice), and no
+              Starred/New/Dismissed-style grouping (confirmed with Ben:
+              Calendar is the date-based view, List stays the status-based
+              one — the two are deliberately different shapes, not the same
+              view with a filter toggle). Full-week mode keeps its own
+              per-day headings, since it spans more than one day. */}
+          {selectedDay ? (
+            (eventsByDay.get(selectedDay)?.length ?? 0) === 0 ? (
+              <div className="coming-soon">
+                <p>No events on {dayHeading(selectedDay)}</p>
+              </div>
+            ) : (
+              <IonList>
+                {(eventsByDay.get(selectedDay) ?? []).map((event) => (
                   <EventRow key={event.id} event={event} multiTouch={multiTouch} onSwipe={handleSwipe} />
                 ))}
-              </div>
+              </IonList>
             )
-          })}
-        </IonList>
+          ) : weekEvents.length === 0 ? (
+            <div className="coming-soon">
+              <p>No events this week</p>
+            </div>
+          ) : (
+            <IonList>
+              {days.map((day) => {
+                const dayEvents = eventsByDay.get(day) ?? []
+                if (dayEvents.length === 0) return null
+                return (
+                  <div key={day}>
+                    <IonItem lines="none">
+                      <IonLabel color="medium">{dayHeading(day)}</IonLabel>
+                    </IonItem>
+                    {dayEvents.map((event) => (
+                      <EventRow key={event.id} event={event} multiTouch={multiTouch} onSwipe={handleSwipe} />
+                    ))}
+                  </div>
+                )
+              })}
+            </IonList>
+          )}
+        </>
       )}
       <IonToast
         isOpen={!!swipeToast}
