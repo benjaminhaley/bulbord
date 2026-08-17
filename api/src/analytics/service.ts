@@ -166,8 +166,13 @@ export async function getAnalyticsSummary(actorFilter?: ActorFilter): Promise<An
   ])
 
   const actorIds = [...new Set([...lastActiveRows.map((r) => r.actor), ...recentLogRows.map((r) => r.actor)])].filter(isUuid)
+  // deletedAt is selected (but not filtered on here) specifically so
+  // recentLog below can still resolve a real name for an action a
+  // since-deleted account took — that's a legitimate audit-trail need —
+  // while lastActiveByMember (below) can separately exclude them, since a
+  // defunct/duplicate account has no business in a "who's active" list.
   const members = actorIds.length
-    ? await db.select({ id: users.id, name: users.name, avatarUrl: users.avatarUrl }).from(users).where(inArray(users.id, actorIds))
+    ? await db.select({ id: users.id, name: users.name, avatarUrl: users.avatarUrl, deletedAt: users.deletedAt }).from(users).where(inArray(users.id, actorIds))
     : []
   const memberById = new Map(members.map((m) => [m.id, m]))
 
@@ -176,9 +181,12 @@ export async function getAnalyticsSummary(actorFilter?: ActorFilter): Promise<An
   // strings — "system:...", "claude:...", "admin:<uuid>" script/cron/audit
   // rows — which have no place under "by member." isUuid() (the same check
   // already used to resolve names below) doubles as the member/non-member
-  // filter here.
+  // filter here. Also excludes soft-deleted/duplicate accounts (found live,
+  // 2026-08-17: several old pre-rename "Ben Haley" test accounts from the
+  // passkey rework surfaced here once this query stopped being scoped to
+  // just app_opened) — a defunct account isn't a real "who's active" entry.
   const lastActiveByMember = lastActiveRows
-    .filter((row) => isUuid(row.actor))
+    .filter((row) => isUuid(row.actor) && memberById.get(row.actor)?.deletedAt == null)
     .map((row) => ({
       userId: row.actor,
       name: memberById.get(row.actor)?.name ?? row.actor,
