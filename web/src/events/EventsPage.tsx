@@ -1,6 +1,7 @@
 import {
   IonAccordion,
   IonAccordionGroup,
+  IonBadge,
   IonButton,
   IonButtons,
   IonContent,
@@ -14,15 +15,13 @@ import {
   IonList,
   IonNote,
   IonPage,
-  IonSegment,
-  IonSegmentButton,
   IonSpinner,
   IonTitle,
   IonToast,
   IonToolbar,
   useIonViewWillEnter,
 } from '@ionic/react'
-import { addOutline, calendarOutline, closeOutline, eyeOffOutline, listOutline, sparkles, star } from 'ionicons/icons'
+import { addOutline, calendarOutline, closeOutline, eyeOffOutline, filterOutline, listOutline, sparkles, star } from 'ionicons/icons'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { useAuth } from '../auth/AuthContext'
@@ -139,6 +138,9 @@ export function EventsPage() {
   // per-user preference" posture as every other view-state in this app.
   const [viewMode, setViewMode] = useState<'list' | 'calendar'>('list')
   const [filters, setFilters] = useState<EventFilters>({ topics: [], beforeTime: '' })
+  const [filtersOpen, setFiltersOpen] = useState(false)
+  const activeFilterCount = (filters.topics?.length ?? 0) + (filters.beforeTime ? 1 : 0)
+  const hasActiveFilters = activeFilterCount > 0
   const didInitialFetch = useRef(false)
 
   function loadEvents() {
@@ -231,6 +233,25 @@ export function EventsPage() {
         <IonToolbar>
           <IonTitle>Events</IonTitle>
           <IonButtons slot="end">
+            {/* Feedback (2026-08-17): the List/Calendar segment and the
+                filter chip row each used to be their own full-width toolbar
+                — "put the calendar toggle and filter toggle up here [next
+                to the title]. Both should be out of the way like this."
+                Both are now single icon buttons in the main toolbar, same
+                row as the existing post/sources buttons — no permanent
+                second/third row at all. Calendar is a pressed-state toggle
+                (one static icon, colored primary only while active) rather
+                than swapping icon+label, so it reads as "this view is on,"
+                not "tap to see a different icon." Filter is the same
+                pressed-state shape, plus a count badge so an applied filter
+                is visible even while its chip row is collapsed. */}
+            <IonButton onClick={() => setViewMode((v) => (v === 'list' ? 'calendar' : 'list'))} aria-label="Toggle calendar view">
+              <IonIcon slot="icon-only" icon={calendarOutline} color={viewMode === 'calendar' ? 'primary' : undefined} />
+            </IonButton>
+            <IonButton onClick={() => setFiltersOpen((v) => !v)} aria-label="Toggle filters">
+              <IonIcon slot="icon-only" icon={filterOutline} color={hasActiveFilters || filtersOpen ? 'primary' : undefined} />
+              {hasActiveFilters && <IonBadge color="primary">{activeFilterCount}</IonBadge>}
+            </IonButton>
             {user && (
               <IonButton onClick={() => setShowForm((v) => !v)}>
                 <IonIcon slot="icon-only" icon={showForm ? closeOutline : addOutline} />
@@ -241,35 +262,16 @@ export function EventsPage() {
             </IonButton>
           </IonButtons>
         </IonToolbar>
-        {/* Feedback #97: List (the existing Starred/New/Dismissed accordion)
-            vs. Calendar (a Sunday-Saturday week strip + agenda, see
-            CalendarWeekView.tsx) — same "second stacked IonToolbar" pattern
-            InstitutionBanner's own doc comment already establishes.
-            Compact single-line segment (feedback, 2026-08-16: "way too
-            big... maybe just make it a toggle at the top") — layout=
-            "icon-start" puts the icon beside the label instead of Ionic's
-            default stacked-above, and a reduced --min-height shrinks the
-            surrounding toolbar to match. */}
-        <IonToolbar style={{ '--min-height': '40px' } as React.CSSProperties}>
-          <IonSegment value={viewMode} onIonChange={(e) => setViewMode(e.detail.value as 'list' | 'calendar')}>
-            <IonSegmentButton value="list" layout="icon-start">
-              <IonIcon icon={listOutline} />
-              <IonLabel>List</IonLabel>
-            </IonSegmentButton>
-            <IonSegmentButton value="calendar" layout="icon-start">
-              <IonIcon icon={calendarOutline} />
-              <IonLabel>Calendar</IonLabel>
-            </IonSegmentButton>
-          </IonSegment>
-        </IonToolbar>
         {/* Feedback (2026-08-16): "filters are clunky... base it on a more
             modern app like Google Maps" — a horizontally-scrollable row of
             instant-apply chips, replacing the earlier filter-button +
-            IonModal sheet. See EventFilterChips.tsx's own header for the
-            full reasoning. */}
-        <IonToolbar style={{ '--min-height': '40px', '--padding-start': '0', '--padding-end': '0' } as React.CSSProperties}>
-          <EventFilterChips filters={filters} onChange={setFilters} />
-        </IonToolbar>
+            IonModal sheet. Collapsed by default now (see the header-button
+            comment above) — only rendered while filtersOpen. */}
+        {filtersOpen && (
+          <IonToolbar style={{ '--min-height': '40px', '--padding-start': '0', '--padding-end': '0' } as React.CSSProperties}>
+            <EventFilterChips filters={filters} onChange={setFilters} />
+          </IonToolbar>
+        )}
       </IonHeader>
       <IonContent fullscreen onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd} onTouchCancel={handleTouchEnd}>
         {showForm && (
