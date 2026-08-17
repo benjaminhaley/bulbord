@@ -1,6 +1,4 @@
 import {
-  IonAccordion,
-  IonAccordionGroup,
   IonBadge,
   IonButton,
   IonButtons,
@@ -21,7 +19,7 @@ import {
   IonToolbar,
   useIonViewWillEnter,
 } from '@ionic/react'
-import { addOutline, calendarOutline, closeOutline, eyeOffOutline, filterOutline, listOutline, sparkles, star } from 'ionicons/icons'
+import { addOutline, calendarOutline, closeOutline, eyeOffOutline, filterOutline, listOutline, star } from 'ionicons/icons'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { useAuth } from '../auth/AuthContext'
@@ -29,7 +27,7 @@ import { InstitutionBanner } from '../app/InstitutionBanner'
 import { API_URL } from '../config'
 import { Avatar } from '../uploads/Avatar'
 import { CalendarWeekView } from './CalendarWeekView'
-import { EventFilterChips } from './EventFilterChips'
+import { DEFAULT_INTEREST_FILTER, EventFilterChips } from './EventFilterChips'
 import { createEvent, fetchEvents, type Event, type EventFilters, type InterestStatus } from './api'
 import { EventForm } from './EventForm'
 import { formatWhen, locationLabel, teaser } from './format'
@@ -123,13 +121,6 @@ export function EventsPage() {
   // Occurrences the next-occurrence collapse is currently suppressing
   // (feedback #48) — 0 once revealHidden() below has fetched everything.
   const [hiddenCount, setHiddenCount] = useState(0)
-  // Which accordion section(s) start open — New by default, or Starred if
-  // New is already empty ("complete") on first load (feedback, 2026-08-06).
-  // Computed once per page visit, not re-derived every time the underlying
-  // counts change (e.g. from swiping), so the user's own manual expand/
-  // collapse choices aren't stomped mid-session.
-  const [expandedSections, setExpandedSections] = useState<string[]>([])
-  const hasSetDefaultExpansion = useRef(false)
   const { setInterest, clearInterest } = useEventInterest(updateEvent)
 
   // Feedback #97: List/Calendar view toggle, and the topic/time-cutoff
@@ -139,8 +130,19 @@ export function EventsPage() {
   const [viewMode, setViewMode] = useState<'list' | 'calendar'>('list')
   const [filters, setFilters] = useState<EventFilters>({ topics: [], afterTime: '', beforeTime: '' })
   const [filtersOpen, setFiltersOpen] = useState(false)
+  // Feedback (2026-08-17): "remove the accordion sections, just as you do
+  // for the calendar view, and instead make interest one of the selectable
+  // dropdowns, where the default is everything but dismissed" — replaces
+  // the old Starred/New/Dismissed IonAccordionGroup entirely. A client-side
+  // filter (not sent to the API) since interest_status is already present
+  // on every fetched event, same reasoning Calendar's own view never needed
+  // a server round-trip for this either.
+  const [interestFilter, setInterestFilter] = useState<string[]>(DEFAULT_INTEREST_FILTER)
   const activeFilterCount =
-    (filters.topics?.length ?? 0) + (filters.afterTime ? 1 : 0) + (filters.beforeTime ? 1 : 0)
+    (filters.topics?.length ?? 0) +
+    (filters.afterTime ? 1 : 0) +
+    (filters.beforeTime ? 1 : 0) +
+    (interestFilter.length !== DEFAULT_INTEREST_FILTER.length || !DEFAULT_INTEREST_FILTER.every((v) => interestFilter.includes(v)) ? 1 : 0)
   const hasActiveFilters = activeFilterCount > 0
   const didInitialFetch = useRef(false)
 
@@ -149,11 +151,6 @@ export function EventsPage() {
       .then(({ events, hiddenCount }) => {
         setEvents(events)
         setHiddenCount(hiddenCount)
-        if (!hasSetDefaultExpansion.current) {
-          hasSetDefaultExpansion.current = true
-          const hasNew = events.some((e) => e.interest_status === null)
-          setExpandedSections([hasNew ? 'new' : 'starred'])
-        }
       })
       .catch(() => setError(true))
   }
@@ -189,9 +186,12 @@ export function EventsPage() {
       .catch(() => setError(true))
   }
 
-  const starredEvents = useMemo(() => events?.filter((e) => e.interest_status === 'interested') ?? [], [events])
-  const newEvents = useMemo(() => events?.filter((e) => e.interest_status === null) ?? [], [events])
-  const dismissedEvents = useMemo(() => events?.filter((e) => e.interest_status === 'dismissed') ?? [], [events])
+  // 'new' stands in for interest_status === null (no swipe yet) — same
+  // vocabulary EVENT_INTEREST_OPTIONS uses in the Interest sheet.
+  const visibleEvents = useMemo(
+    () => events?.filter((e) => interestFilter.includes(e.interest_status ?? 'new')) ?? [],
+    [events, interestFilter],
+  )
 
   function updateEvent(updated: Event) {
     setEvents((prev) => prev?.map((e) => (e.id === updated.id ? updated : e)) ?? null)
@@ -270,7 +270,11 @@ export function EventsPage() {
             comment above) — only rendered while filtersOpen. */}
         {filtersOpen && (
           <IonToolbar style={{ '--min-height': '40px', '--padding-start': '0', '--padding-end': '0' } as React.CSSProperties}>
-            <EventFilterChips filters={filters} onChange={setFilters} />
+            <EventFilterChips
+              filters={filters}
+              onChange={setFilters}
+              interest={viewMode === 'list' ? { value: interestFilter, onChange: setInterestFilter } : undefined}
+            />
           </IonToolbar>
         )}
       </IonHeader>
@@ -303,83 +307,37 @@ export function EventsPage() {
             <p>No upcoming events yet</p>
           </div>
         )}
+        {/* Feedback (2026-08-17): "remove the accordion sections, just as
+            you do for the calendar view" — a single flat, chronological
+            list (same shape as CalendarWeekView's own agenda), filtered by
+            the Interest chip's selection rather than split into separate
+            Starred/New/Dismissed sections. */}
         {viewMode === 'list' && events !== null && events.length > 0 && (
-          <IonAccordionGroup
-            multiple
-            value={expandedSections}
-            onIonChange={(e) => setExpandedSections(e.detail.value as string[])}
-          >
-            <IonAccordion value="starred">
-              <IonItem slot="header">
-                <IonIcon slot="start" icon={star} color="warning" />
-                <IonLabel>Starred ({starredEvents.length})</IonLabel>
+          <IonList>
+            {visibleEvents.map((event) => (
+              <EventRow
+                key={event.id}
+                event={event}
+                multiTouch={multiTouch}
+                onSwipe={handleSwipe}
+                dimmed={event.interest_status === 'dismissed'}
+              />
+            ))}
+            {visibleEvents.length === 0 && (
+              <IonItem lines="none">
+                <IonLabel className="ion-text-center" color="medium">
+                  No events match your Interest filter
+                </IonLabel>
               </IonItem>
-              <div slot="content">
-                {starredEvents.length === 0 && (
-                  <div className="coming-soon">
-                    <p>No starred events yet</p>
-                  </div>
-                )}
-                {starredEvents.length > 0 && (
-                  <IonList>
-                    {starredEvents.map((event) => (
-                      <EventRow key={event.id} event={event} multiTouch={multiTouch} onSwipe={handleSwipe} />
-                    ))}
-                  </IonList>
-                )}
-              </div>
-            </IonAccordion>
-            <IonAccordion value="new">
-              <IonItem slot="header">
-                <IonIcon slot="start" icon={sparkles} />
-                <IonLabel>New ({newEvents.length})</IonLabel>
-              </IonItem>
-              <div slot="content">
-                {newEvents.length === 0 && (
-                  <div className="coming-soon">
-                    <p>No new events</p>
-                  </div>
-                )}
-                {newEvents.length > 0 && (
-                  <IonList>
-                    {newEvents.map((event) => (
-                      <EventRow key={event.id} event={event} multiTouch={multiTouch} onSwipe={handleSwipe} />
-                    ))}
-                  </IonList>
-                )}
-                {hiddenCount > 0 && (
-                  <IonItem button lines="none" detail={false} onClick={revealHidden}>
-                    <IonLabel color="medium" className="ion-text-center">
-                      Show {hiddenCount} hidden repeating {hiddenCount === 1 ? 'event' : 'events'}
-                    </IonLabel>
-                  </IonItem>
-                )}
-              </div>
-            </IonAccordion>
-            {/* Same square/dropdown shape as Starred/New (feedback,
-                2026-08-14: "should look just like the new and star
-                sections... same kind of square drop down"), replacing the
-                earlier plain centered "Show N dismissed events" link —
-                muted icon/label color is the only deemphasis, not a
-                different layout. */}
-            {dismissedEvents.length > 0 && (
-              <IonAccordion value="dismissed">
-                <IonItem slot="header">
-                  <IonIcon slot="start" icon={eyeOffOutline} color="medium" />
-                  <IonLabel color="medium">
-                    Dismissed ({dismissedEvents.length})
-                  </IonLabel>
-                </IonItem>
-                <div slot="content">
-                  <IonList>
-                    {dismissedEvents.map((event) => (
-                      <EventRow key={event.id} event={event} multiTouch={multiTouch} onSwipe={handleSwipe} dimmed />
-                    ))}
-                  </IonList>
-                </div>
-              </IonAccordion>
             )}
-          </IonAccordionGroup>
+            {hiddenCount > 0 && (
+              <IonItem button lines="none" detail={false} onClick={revealHidden}>
+                <IonLabel color="medium" className="ion-text-center">
+                  Show {hiddenCount} hidden repeating {hiddenCount === 1 ? 'event' : 'events'}
+                </IonLabel>
+              </IonItem>
+            )}
+          </IonList>
         )}
       </IonContent>
       <IonToast
