@@ -4,21 +4,40 @@ import { db } from '../db/client.js'
 import { users } from '../db/schema.js'
 import { requireEnv } from '../env.js'
 import { sendEmail } from '../newsletter/mailer.js'
-import { createNotification } from './service.js'
+import { createNotification, type NotificationType } from './service.js'
 import { contentCommentHtml, contentCommentSubject } from './template.js'
 
 // Feedback #100: "I will also want a notification if someone replies to an
 // event that you created" — extended to Camps too (confirmed with Ben,
 // same effort/parity as Events since Camps mirrors Events' comment system
-// exactly). Shared by events/comments.ts and camps/comments.ts rather than
-// duplicated per feature — this is genuinely generic "someone commented on
-// content you created" infra, not part of the Camps-vs-Events divergence
-// this codebase otherwise deliberately keeps unshared (see CLAUDE.md's
-// Camps section). Same no-self-notify / best-effort-email posture as
-// connections/service.ts's notifyConnectionAdded and
-// feedback/notifications.ts's notifyFeedbackReply.
+// exactly), and to Sports & Clubs for the same reason once that tab shipped.
+// Shared by events/comments.ts, camps/comments.ts, and
+// sports-clubs/comments.ts rather than duplicated per feature — this is
+// genuinely generic "someone commented on content you created" infra, not
+// part of the per-tab divergence this codebase otherwise deliberately keeps
+// unshared (see CLAUDE.md's Camps section). Same no-self-notify /
+// best-effort-email posture as connections/service.ts's notifyConnectionAdded
+// and feedback/notifications.ts's notifyFeedbackReply.
+const CONTENT_KIND_PATH: Record<'event' | 'camp' | 'sports_club', string> = {
+  event: 'events',
+  camp: 'camps',
+  sports_club: 'sports-clubs',
+}
+const CONTENT_KIND_NOTIFICATION_TYPE: Record<'event' | 'camp' | 'sports_club', NotificationType> = {
+  event: 'event_comment',
+  camp: 'camp_comment',
+  sports_club: 'sports_club_comment',
+}
+// Grammar label, distinct from the path/type keys above ("commented on your
+// sports club" reads right; "commented on your sports_club" wouldn't).
+const CONTENT_KIND_LABEL: Record<'event' | 'camp' | 'sports_club', string> = {
+  event: 'event',
+  camp: 'camp',
+  sports_club: 'sports club',
+}
+
 export async function notifyContentComment(params: {
-  contentKind: 'event' | 'camp'
+  contentKind: 'event' | 'camp' | 'sports_club'
   contentId: string
   contentTitle: string
   creatorUserId: string | null
@@ -38,13 +57,13 @@ export async function notifyContentComment(params: {
   ])
 
   const commenterName = commenter?.name ?? 'Someone'
-  const targetPath = contentKind === 'event' ? `/events/${contentId}` : `/camps/${contentId}`
+  const targetPath = `/${CONTENT_KIND_PATH[contentKind]}/${contentId}`
 
   await createNotification({
     userId: creatorUserId,
-    type: contentKind === 'event' ? 'event_comment' : 'camp_comment',
+    type: CONTENT_KIND_NOTIFICATION_TYPE[contentKind],
     actorUserId: commenterId,
-    message: `${commenterName} commented on your ${contentKind}: ${contentTitle}`,
+    message: `${commenterName} commented on your ${CONTENT_KIND_LABEL[contentKind]}: ${contentTitle}`,
     targetPath,
   })
 
@@ -56,7 +75,7 @@ export async function notifyContentComment(params: {
     commenterName,
     commenterAvatarUrl: commenter?.avatarUrl ?? null,
     commentBody,
-    contentKind,
+    contentKindLabel: CONTENT_KIND_LABEL[contentKind],
     contentTitle,
     apiUrl,
     linkUrl: `${webUrl}${targetPath}`,

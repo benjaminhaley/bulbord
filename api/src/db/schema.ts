@@ -178,7 +178,7 @@ export const notifications = pgTable('notifications', {
   userId: uuid('user_id')
     .notNull()
     .references(() => users.id), // the recipient
-  type: text('type').notNull(), // 'friend_added' | 'feedback_reply' | 'event_comment' | 'camp_comment'
+  type: text('type').notNull(), // 'friend_added' | 'feedback_reply' | 'event_comment' | 'camp_comment' | 'sports_club_comment'
   actorUserId: uuid('actor_user_id').references(() => users.id), // who triggered it, for the avatar shown in the list
   message: text('message').notNull(),
   targetPath: text('target_path').notNull(), // e.g. '/friends', '/feedback/:id', '/events/:id', '/camps/:id'
@@ -568,5 +568,184 @@ export const schoolBreaks = pgTable('school_breaks', {
   // since camps run week-by-week over the summer.
   splitWeekly: boolean('split_weekly').notNull().default(false),
   notes: text('notes'), // source citation, same convention as eventSources.notes
+  ...timestamps,
+})
+
+// Sports & Clubs (a fourth content tab, alongside Events/Camps/Feedback) is
+// another deliberately fresh, non-shared clone — same rationale as Camps'
+// header comment above: dance classes, park-district leagues, school clubs
+// etc. are expected to diverge from both events and camps over time, so this
+// is its own set of tables rather than a reuse of either.
+export const sportsClubSources = pgTable('sports_club_sources', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  name: text('name').notNull(),
+  url: text('url').notNull(),
+  type: text('type').notNull(), // 'provider_website' today, mirrors campSources.type
+  isActive: boolean('is_active').notNull().default(true),
+  lastCheckedAt: timestamp('last_checked_at', { withTimezone: true }),
+  notes: text('notes'),
+  ...timestamps,
+})
+
+// A real bookable/attendable tier of a listing that genuinely has more than
+// one — different age levels each meeting at a different time (Uniting
+// Voices Chicago's Allegro/Vivace/Presto), a half-day/full-day split, etc.
+// Added after the first real seed pass (2026-08-18) crammed exactly this
+// kind of multi-tier fact into cadenceNote as prose ("Allegro 4:45-5:45pm,
+// Vivace 5:45-6:45pm, Presto 6:45-7:45pm...") and read as a wall of text —
+// same lesson Camps already learned the hard way with CampOptionLine (see
+// that interface's own comment). Each field is independently nullable — a
+// table cell shows "—" for a null field rather than fabricating one; `note`
+// is the escape hatch for anything that doesn't fit the other columns.
+// cadenceNote stays reserved for the *single*-cadence case (most listings)
+// or for genuine non-schedule extras once a listing has real options — see
+// web/src/sports-clubs/format.ts's OptionsTable-equivalent for how this
+// renders, and web/src/sports-clubs/SportsClubDetailPage.tsx for why it
+// suppresses the top summary line the same way Camps' own detail page does
+// once a real options table exists.
+export interface SportsClubOptionLine {
+  label: string
+  start_time: string | null
+  end_time: string | null
+  price: string | null
+  price_unit: string | null
+  age_min: number | null
+  age_max: number | null
+  note: string | null
+}
+
+export const sportsClubs = pgTable('sports_clubs', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  title: text('title').notNull(), // the exact activity, e.g. "T-ball", "Chess Club", "Ballet — Beginner"
+  description: text('description'),
+  // Fixed app-layer picker (Dance, Sports & Athletics, Martial Arts, Music,
+  // Art & Creative, Academic & Clubs, Other) — plain text like
+  // events.topic/users.role, no DB enum, validated only at the application
+  // layer (see web/src/sports-clubs/format.ts's CATEGORY_OPTIONS).
+  category: text('category'),
+  // The key new field this tab needed that neither events nor camps have: a
+  // "fixed_session" activity has a real cohort with its own first/last day
+  // (a dance term, a sports season) — sorted by firstDate and hidden by
+  // default once started. An "ongoing" activity has no cohort to start late
+  // for (a standing weekly club you can join anytime) — sorted by its next
+  // upcoming occurrence instead, and never hidden just for being underway.
+  // See sports-clubs/sorting.ts for the sort/hide logic this drives.
+  scheduleType: text('schedule_type').notNull().default('fixed_session'), // 'fixed_session' | 'ongoing'
+  // The cohort's first/last day for a fixed_session activity. Null lastDate
+  // means no known end (true for most 'ongoing' rows, which otherwise share
+  // this same pair of columns rather than a separate schema shape).
+  firstDate: date('first_date'),
+  lastDate: date('last_date'),
+  // Human-readable schedule pattern ("Every Tuesday, 4:00–5:00pm during the
+  // school year") — free text like camps.bookingInstructions, since real
+  // recurrence patterns vary too much per provider to usefully structure;
+  // the actual ground-truth dates live in sportsClubOccurrences below, which
+  // this note summarizes but never generates from.
+  cadenceNote: text('cadence_note'),
+  ageMin: integer('age_min'), // years
+  ageMax: integer('age_max'), // years
+  price: numeric('price', { precision: 6, scale: 2 }),
+  priceUnit: text('price_unit'), // free text: "per class", "per season", "per month"
+  // A standardized weekly-equivalent price (feedback, 2026-08-18: "can you
+  // standardize price as a weekly number?") — every listing's price/priceUnit
+  // above is genuinely different shapes (per month, per class, per season,
+  // per 8-week session...), which makes them hard to compare at a glance.
+  // This is a hand-computed conversion from the real price/priceUnit above
+  // (never fabricated from nothing — null whenever price itself is null, or
+  // when price is a range with no single confirmed figure to convert, e.g.
+  // a sliding scale) using the listing's own real known cadence (its actual
+  // session length, or a 52/12 weeks-per-month average) — see
+  // sports-clubs/seed-2026-08-18-providers.ts and
+  // backfill-2026-08-18-price-per-week.ts for the exact per-listing math.
+  // Always shown as an approximation (with a "~" prefix — see
+  // web/src/sports-clubs/format.ts's priceLabel), never presented as if it
+  // were itself a directly published rate; the real price/priceUnit stays
+  // visible too (see format.ts's originalPriceLabel), so the standardized
+  // number is always traceable back to its real source.
+  pricePerWeek: numeric('price_per_week', { precision: 6, scale: 2 }),
+  // Escape hatch for anything the single price/priceUnit pair can't capture
+  // (a tiered rate, a sibling discount) — mirrors camps.optionsNote.
+  priceNote: text('price_note'),
+  // Structured tier breakdown for a listing with real, distinct bookable
+  // options (see SportsClubOptionLine above) — null/empty for the ordinary
+  // single-cadence listing, which relies on cadenceNote/price/priceUnit
+  // instead. Seed-only, same posture as camps.options — never settable
+  // through the member self-service POST/PATCH body.
+  options: jsonb('options').$type<SportsClubOptionLine[]>(),
+  address: text('address'),
+  locationName: text('location_name'),
+  latitude: numeric('latitude', { precision: 9, scale: 6 }),
+  longitude: numeric('longitude', { precision: 9, scale: 6 }),
+  distanceMiles: numeric('distance_miles', { precision: 5, scale: 2 }), // straight-line miles from Nettelhorst, see sports-clubs/geo.ts
+  // Whether sign-up is actually open right now — same enum and same
+  // "checked against the real system, not a stated policy" posture as
+  // camps.bookingStatus. Null means genuinely unresearched/unconfirmable.
+  signupStatus: text('signup_status'), // 'open' | 'full' | 'waitlist' | 'not_opened'
+  // Short "how to sign up" blurb, pairs with the sourceUrl link — mirrors
+  // camps.bookingInstructions' post-trim "short info, mainly the link" shape.
+  signupInstructions: text('signup_instructions'),
+  sourceUrl: text('source_url'),
+  sourceId: uuid('source_id').references(() => sportsClubSources.id),
+  // NOT NULL — same guaranteed-image invariant as events/camps above (real
+  // photo or a generated placeholder, computed before every insert).
+  imageUrl: text('image_url').notNull(),
+  thumbnailUrl: text('thumbnail_url').notNull(),
+  status: text('status').notNull().default('pending'), // 'pending' | 'approved' | 'rejected'
+  submittedByUserId: uuid('submitted_by_user_id'),
+  approvedByUserId: uuid('approved_by_user_id'),
+  ...timestamps,
+})
+
+// The individual dates a sports_clubs row actually meets on — new to this
+// tab, no direct events/camps precedent table (events' recurring listings,
+// e.g. the Bike Bus, use many flat event rows sharing one sourceUrl instead,
+// which works there because events carry no series-level metadata that
+// would risk drifting across N duplicated rows; sports_clubs' ages/cost/
+// signup-status genuinely can't be duplicated safely, hence this being a
+// real child table instead). Generated for a bounded known window (e.g.
+// through the end of the current season/school year), not enumerated
+// forever — same approach as the Bike Bus's per-Friday event rows.
+export const sportsClubOccurrences = pgTable('sports_club_occurrences', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  sportsClubId: uuid('sports_club_id')
+    .notNull()
+    .references(() => sportsClubs.id),
+  date: date('date').notNull(),
+  startTime: time('start_time'),
+  endTime: time('end_time'),
+  // Escape hatch for a specific deviation from the normal cadence — "make-up
+  // session", "moved from Tuesday" — since the actual date/time columns
+  // above are already the ground truth for when it really happens.
+  note: text('note'),
+  ...timestamps,
+})
+
+// One row per (user, sports club) ever swiped, toggled via deletedAt — same
+// shape as eventInterests/campInterests above.
+export const sportsClubInterests = pgTable(
+  'sports_club_interests',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id),
+    sportsClubId: uuid('sports_club_id')
+      .notNull()
+      .references(() => sportsClubs.id),
+    status: text('status').notNull(), // 'interested' | 'dismissed'
+    ...timestamps,
+  },
+  (table) => [uniqueIndex('sports_club_interests_user_sports_club_idx').on(table.userId, table.sportsClubId)],
+)
+
+export const sportsClubComments = pgTable('sports_club_comments', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  sportsClubId: uuid('sports_club_id')
+    .notNull()
+    .references(() => sportsClubs.id),
+  userId: uuid('user_id')
+    .notNull()
+    .references(() => users.id),
+  body: text('body').notNull(),
   ...timestamps,
 })

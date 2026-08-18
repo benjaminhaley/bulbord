@@ -1,0 +1,1 @@
+ALTER TABLE "sports_clubs" ADD COLUMN "price_per_week" numeric(6, 2);

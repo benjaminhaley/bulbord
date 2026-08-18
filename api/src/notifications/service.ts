@@ -11,7 +11,7 @@ import { notifications, users } from '../db/schema.js'
 // createNotification() below, so the badge count and the /notifications
 // list are always the same underlying data, never two mechanisms that can
 // drift apart.
-type NotificationType = 'friend_added' | 'feedback_reply' | 'event_comment' | 'camp_comment'
+export type NotificationType = 'friend_added' | 'feedback_reply' | 'event_comment' | 'camp_comment' | 'sports_club_comment'
 
 export interface CreateNotificationInput {
   userId: string // recipient

@@ -246,6 +246,27 @@
       "when": 1786982437553,
       "tag": "0034_cooing_toxin",
       "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1787054639899,
+      "tag": "0035_heavy_sleeper",
+      "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1787084054285,
+      "tag": "0036_rare_glorian",
+      "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1787088056525,
+      "tag": "0037_abnormal_norrin_radd",
+      "breakpoints": true
     }
   ]
 }

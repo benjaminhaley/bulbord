@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { camps, events } from './schema.js'
+import { camps, events, sportsClubs } from './schema.js'
 
 // Guards the actual guarantee behind "you're not allowed to create a camp or
 // event without an image" (feedback, 2026-08-14) — a real Postgres NOT NULL
@@ -22,5 +22,10 @@ describe('events/camps image columns stay NOT NULL', () => {
   it('camps.imageUrl/thumbnailUrl are NOT NULL', () => {
     expect(camps.imageUrl.notNull).toBe(true)
     expect(camps.thumbnailUrl.notNull).toBe(true)
+  })
+
+  it('sportsClubs.imageUrl/thumbnailUrl are NOT NULL', () => {
+    expect(sportsClubs.imageUrl.notNull).toBe(true)
+    expect(sportsClubs.thumbnailUrl.notNull).toBe(true)
   })
 })

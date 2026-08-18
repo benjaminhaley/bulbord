@@ -1,0 +1,1 @@
+ALTER TABLE "sports_clubs" ADD COLUMN "options" jsonb;

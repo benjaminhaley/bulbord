@@ -10,7 +10,10 @@ interface UploadResponse {
   data: UploadedImage
 }
 
-export async function uploadImage(file: File | Blob, folder?: 'feedback' | 'profiles' | 'events' | 'camps'): Promise<UploadedImage> {
+export async function uploadImage(
+  file: File | Blob,
+  folder?: 'feedback' | 'profiles' | 'events' | 'camps' | 'sportsclubs',
+): Promise<UploadedImage> {
   // Field order matters here: @fastify/multipart's request.file() only sees
   // fields that arrived before the file part in the multipart stream, so a
   // large enough file can make the server resolve the file before ever

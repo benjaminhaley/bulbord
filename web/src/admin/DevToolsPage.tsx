@@ -24,6 +24,7 @@ import {
   peopleOutline,
   personAddOutline,
   refreshOutline,
+  ribbonOutline,
   sunnyOutline,
 } from 'ionicons/icons'
 import { useEffect, useState } from 'react'
@@ -208,11 +209,18 @@ export function DevToolsPage() {
               <p>View existing event sources, or add a new one.</p>
             </IonLabel>
           </IonItem>
-          <IonItem button routerLink="/camp-sources" lines="none">
+          <IonItem button routerLink="/camp-sources">
             <IonIcon slot="start" icon={globeOutline} />
             <IonLabel className="ion-text-wrap">
               <h2>Manage camp sources</h2>
               <p>View existing camp sources, or add a new one.</p>
+            </IonLabel>
+          </IonItem>
+          <IonItem button routerLink="/sports-club-sources" lines="none">
+            <IonIcon slot="start" icon={ribbonOutline} />
+            <IonLabel className="ion-text-wrap">
+              <h2>Manage sports & clubs sources</h2>
+              <p>View existing sports/clubs sources, or add a new one.</p>
             </IonLabel>
           </IonItem>
           <IonItem lines="none">

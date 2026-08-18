@@ -20,7 +20,7 @@ export function contentCommentHtml(params: {
   commenterName: string
   commenterAvatarUrl: string | null
   commentBody: string
-  contentKind: 'event' | 'camp'
+  contentKindLabel: string // e.g. "event", "camp", "sports club" — the grammar-ready label, not a raw type key
   contentTitle: string
   apiUrl: string
   linkUrl: string
@@ -34,7 +34,7 @@ export function contentCommentHtml(params: {
   return `
     <div style="font-family:-apple-system,Helvetica,Arial,sans-serif;color:#111111;font-size:16px;line-height:1.5;max-width:${EMAIL_MAX_WIDTH}px;margin:0 auto;">
       ${photo}
-      <p><strong>${name}</strong> commented on your ${params.contentKind}, <strong>${title}</strong>:</p>
+      <p><strong>${name}</strong> commented on your ${params.contentKindLabel}, <strong>${title}</strong>:</p>
       <p style="white-space:pre-wrap;">${body}</p>
       <p><a href="${params.linkUrl}" style="color:#2c2c2c;">View comment</a></p>
     </div>

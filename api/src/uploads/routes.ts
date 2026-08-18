@@ -6,7 +6,7 @@ import { getImageObject, imageUrl, uploadImage } from './storage.js'
 // Bucket objects are private (Railway buckets have no public-URL mode), so
 // every image is served through this proxy. Keys are content-addressed
 // (uuid-based), so a long, immutable cache is always safe.
-const UPLOAD_FOLDERS = ['feedback', 'profiles', 'events', 'camps'] as const
+const UPLOAD_FOLDERS = ['feedback', 'profiles', 'events', 'camps', 'sportsclubs'] as const
 type UploadFolder = (typeof UPLOAD_FOLDERS)[number]
 
 function isUploadFolder(value: unknown): value is UploadFolder {

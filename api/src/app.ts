@@ -15,6 +15,8 @@ import { feedbackCommentsRoutes } from './feedback/comments.js'
 import { feedbackRoutes } from './feedback/routes.js'
 import { newsletterRoutes } from './newsletter/routes.js'
 import { notificationsRoutes } from './notifications/routes.js'
+import { sportsClubCommentsRoutes } from './sports-clubs/comments.js'
+import { sportsClubsRoutes } from './sports-clubs/routes.js'
 import { uploadsRoutes } from './uploads/routes.js'
 
 export async function buildApp() {
@@ -41,6 +43,8 @@ export async function buildApp() {
   await app.register(feedbackCommentsRoutes)
   await app.register(newsletterRoutes)
   await app.register(notificationsRoutes)
+  await app.register(sportsClubsRoutes)
+  await app.register(sportsClubCommentsRoutes)
   await app.register(uploadsRoutes)
 
   return app

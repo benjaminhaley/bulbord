@@ -1,7 +1,7 @@
 import { IonApp, IonIcon, IonLabel, IonRouterOutlet, IonTabBar, IonTabButton, IonTabs } from '@ionic/react'
 import { IonReactRouter } from '@ionic/react-router'
 import { Redirect, Route } from 'react-router-dom'
-import { calendarOutline, chatbubbleOutline, sunnyOutline } from 'ionicons/icons'
+import { calendarOutline, chatbubbleOutline, ribbonOutline, sunnyOutline } from 'ionicons/icons'
 
 import { AdminRoute } from '../admin/AdminRoute'
 import { AnalyticsPage } from '../admin/AnalyticsPage'
@@ -26,6 +26,10 @@ import { CampsPage } from '../camps/CampsPage'
 import { CampDetailPage } from '../camps/CampDetailPage'
 import { CampSourcesPage } from '../camps/CampSourcesPage'
 import { CampSourceDetailPage } from '../camps/CampSourceDetailPage'
+import { SportsClubsPage } from '../sports-clubs/SportsClubsPage'
+import { SportsClubDetailPage } from '../sports-clubs/SportsClubDetailPage'
+import { SportsClubSourcesPage } from '../sports-clubs/SportsClubSourcesPage'
+import { SportsClubSourceDetailPage } from '../sports-clubs/SportsClubSourceDetailPage'
 import { FeedbackDetailPage } from '../feedback/FeedbackDetailPage'
 import { FeedbackPage } from '../feedback/FeedbackPage'
 import { NotificationSettingsPage } from '../notifications/NotificationSettingsPage'
@@ -49,6 +53,10 @@ export function App() {
                   <AdminRoute exact path="/camp-sources" component={CampSourcesPage} />
                   <AdminRoute exact path="/camp-sources/:id" component={CampSourceDetailPage} />
                   <Route exact path="/camps/:id" component={CampDetailPage} />
+                  <Route exact path="/sports-clubs" component={SportsClubsPage} />
+                  <AdminRoute exact path="/sports-club-sources" component={SportsClubSourcesPage} />
+                  <AdminRoute exact path="/sports-club-sources/:id" component={SportsClubSourceDetailPage} />
+                  <Route exact path="/sports-clubs/:id" component={SportsClubDetailPage} />
                   <Route exact path="/feedback" component={FeedbackPage} />
                   <Route exact path="/feedback/:id" component={FeedbackDetailPage} />
                   <Route exact path="/account" component={AccountPage} />
@@ -74,6 +82,10 @@ export function App() {
                   <IonTabButton tab="camps" href="/camps">
                     <IonIcon icon={sunnyOutline} />
                     <IonLabel>Camps</IonLabel>
+                  </IonTabButton>
+                  <IonTabButton tab="sports-clubs" href="/sports-clubs">
+                    <IonIcon icon={ribbonOutline} />
+                    <IonLabel>Sports & Clubs</IonLabel>
                   </IonTabButton>
                   <IonTabButton tab="feedback" href="/feedback">
                     <IonIcon icon={chatbubbleOutline} />

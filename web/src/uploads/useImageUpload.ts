@@ -7,7 +7,7 @@ import { uploadImage, type UploadedImage } from './api'
 // + upload-in-flight shape, just a different folder and a different place to
 // put the result.
 export function useImageUpload(
-  folder: 'feedback' | 'profiles' | 'events' | 'camps',
+  folder: 'feedback' | 'profiles' | 'events' | 'camps' | 'sportsclubs',
   onUploaded: (image: UploadedImage) => void,
 ) {
   // A count, not a flag: feedback's multi-photo picker can have several
