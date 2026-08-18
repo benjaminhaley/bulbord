@@ -46,8 +46,8 @@ export function App() {
                   <AdminRoute exact path="/event-sources/:id" component={SourceDetailPage} />
                   <Route exact path="/events/:id" component={EventDetailPage} />
                   <Route exact path="/camps" component={CampsPage} />
-                  <Route exact path="/camp-sources" component={CampSourcesPage} />
-                  <Route exact path="/camp-sources/:id" component={CampSourceDetailPage} />
+                  <AdminRoute exact path="/camp-sources" component={CampSourcesPage} />
+                  <AdminRoute exact path="/camp-sources/:id" component={CampSourceDetailPage} />
                   <Route exact path="/camps/:id" component={CampDetailPage} />
                   <Route exact path="/feedback" component={FeedbackPage} />
                   <Route exact path="/feedback/:id" component={FeedbackDetailPage} />

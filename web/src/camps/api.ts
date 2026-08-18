@@ -198,6 +198,10 @@ interface CampSourceDetailResponse {
   data: CampSourceDetail
 }
 
+interface CampSourceResponse {
+  data: CampSource
+}
+
 interface CampCommentsResponse {
   data: CampComment[]
 }
@@ -316,6 +320,30 @@ export async function fetchCampSource(id: string): Promise<CampSourceDetail> {
     throw new Error(`Failed to fetch camp source: ${response.status}`)
   }
   const body = (await response.json()) as CampSourceDetailResponse
+  return body.data
+}
+
+// Admin-only (feedback #102 follow-up, "camps... sources should be moved" —
+// same treatment as events/api.ts's createEventSource). No `type` field —
+// unlike events, every real camp source has been "provider_website" in
+// practice, so the server hardcodes it.
+export interface CampSourceInput {
+  name: string
+  url: string
+  notes: string
+}
+
+export async function createCampSource(input: CampSourceInput): Promise<CampSource> {
+  const response = await fetch(`${API_URL}/camp-sources`, {
+    method: 'POST',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  })
+  if (!response.ok) {
+    const body = await response.json().catch(() => null)
+    throw new Error(body?.error?.message ?? `Failed to create camp source: ${response.status}`)
+  }
+  const body = (await response.json()) as CampSourceResponse
   return body.data
 }
 

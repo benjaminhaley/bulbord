@@ -197,12 +197,22 @@ export function DevToolsPage() {
           </IonItem>
           {/* Feedback (2026-08-17, "consolidate these icons"): sources used
               to be one tap away from the Events tab itself (a standalone
-              list icon) — moved here since adding one is now admin-only. */}
-          <IonItem button routerLink="/event-sources" lines="none">
+              list icon) — moved here since adding one is now admin-only.
+              Renamed "Manage sources" → "Manage event sources" once Camps
+              got the same treatment (feedback #102 follow-up) and there
+              were two of these. */}
+          <IonItem button routerLink="/event-sources">
             <IonIcon slot="start" icon={globeOutline} />
             <IonLabel className="ion-text-wrap">
-              <h2>Manage sources</h2>
+              <h2>Manage event sources</h2>
               <p>View existing event sources, or add a new one.</p>
+            </IonLabel>
+          </IonItem>
+          <IonItem button routerLink="/camp-sources" lines="none">
+            <IonIcon slot="start" icon={globeOutline} />
+            <IonLabel className="ion-text-wrap">
+              <h2>Manage camp sources</h2>
+              <p>View existing camp sources, or add a new one.</p>
             </IonLabel>
           </IonItem>
           <IonItem lines="none">

@@ -21,7 +21,7 @@ import {
   IonToolbar,
   useIonViewWillEnter,
 } from '@ionic/react'
-import { addOutline, closeOutline, eyeOffOutline, listOutline, star, starOutline } from 'ionicons/icons'
+import { addOutline, closeOutline, eyeOffOutline, star, starOutline } from 'ionicons/icons'
 import { useMemo, useState } from 'react'
 
 import { useAuth } from '../auth/AuthContext'
@@ -271,14 +271,16 @@ export function CampsPage() {
         <IonToolbar>
           <IonTitle>Camps</IonTitle>
           <IonButtons slot="end">
+            {/* Feedback #102 follow-up ("be sure the camps page gets the
+                same treatment, particularly sources should be moved"): the
+                sources-list icon is gone — adding one is admin-only now,
+                moved to Developer Tools (see events/EventsPage.tsx's own
+                identical change). */}
             {user && (
               <IonButton onClick={() => setShowForm((v) => !v)}>
                 <IonIcon slot="icon-only" icon={showForm ? closeOutline : addOutline} />
               </IonButton>
             )}
-            <IonButton routerLink="/camp-sources">
-              <IonIcon slot="icon-only" icon={listOutline} />
-            </IonButton>
           </IonButtons>
         </IonToolbar>
       </IonHeader>

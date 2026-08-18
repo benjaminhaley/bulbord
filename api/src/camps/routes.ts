@@ -1,7 +1,7 @@
 import { and, asc, eq, getTableColumns, gte, isNull, sql, type SQLWrapper } from 'drizzle-orm'
 import type { FastifyInstance } from 'fastify'
 
-import { requireAuth } from '../auth/plugin.js'
+import { requireAuth, requireRole } from '../auth/plugin.js'
 import { db } from '../db/client.js'
 import { campComments, campInterests, campSources, camps, eventsLog, schoolBreaks, users } from '../db/schema.js'
 import { todayInChicago } from '../dates.js'
@@ -624,6 +624,37 @@ export async function campsRoutes(app: FastifyInstance) {
       has_more: false,
       next_cursor: null,
     })
+  })
+
+  // Same treatment as events/routes.ts's POST /event-sources (feedback
+  // #102 follow-up, "be sure the camps page gets the same treatment,
+  // particularly sources should be moved"): admin-only, since a junk source
+  // shouldn't silently show up in the hand-researched provider list. Unlike
+  // events, camp sources have only ever had one real `type` value in
+  // practice ("provider_website" — see CLAUDE.md's Camps section: hand-
+  // researched providers, not a scraping pipeline with several source
+  // shapes) — so it's hardcoded here rather than a client-supplied field.
+  app.post('/camp-sources', { preHandler: requireRole('admin') }, async (request, reply) => {
+    const body = request.body as { name?: string; url?: string; notes?: string }
+    const name = body.name?.trim()
+    const url = body.url?.trim()
+    if (!name || !url) {
+      return reply.code(400).send({ error: { message: 'name and url are required' } })
+    }
+
+    const currentUser = request.currentUser!
+    const [created] = await db
+      .insert(campSources)
+      .values({ name, url, type: 'provider_website', notes: body.notes?.trim() || null, isActive: true })
+      .returning({ id: campSources.id })
+
+    await db.insert(eventsLog).values({
+      actor: currentUser.id,
+      action: 'camp_source_created',
+      metadata: { sourceId: created.id },
+    })
+
+    return reply.code(201).send({ data: { id: created.id, name, url, type: 'provider_website', camp_count: 0 } })
   })
 
   app.get('/camp-sources/:id', { preHandler: requireAuth }, async (request, reply) => {
