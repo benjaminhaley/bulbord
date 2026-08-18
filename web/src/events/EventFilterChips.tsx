@@ -1,5 +1,5 @@
-import { IonButton, IonCheckbox, IonChip, IonIcon, IonItem, IonLabel, IonModal, IonRadio, IonRadioGroup, IonRange } from '@ionic/react'
-import { calendarOutline, chevronDownOutline, eyeOffOutline, listOutline, sparkles, star } from 'ionicons/icons'
+import { IonButton, IonCheckbox, IonChip, IonIcon, IonItem, IonLabel, IonModal, IonRange } from '@ionic/react'
+import { calendarOutline, chevronDownOutline, eyeOffOutline, sparkles, star } from 'ionicons/icons'
 import { useState } from 'react'
 
 import type { EventFilters } from './api'
@@ -154,52 +154,6 @@ function CheckboxSheet({
   )
 }
 
-const VIEW_OPTIONS: { value: 'list' | 'calendar'; label: string; icon: string }[] = [
-  { value: 'list', label: 'List', icon: listOutline },
-  { value: 'calendar', label: 'Calendar', icon: calendarOutline },
-]
-
-// Feedback (2026-08-17, "consolidate these icons"): the List/Calendar toggle
-// used to be its own standalone toolbar icon — "make the calendar something
-// in the filter view. It's one of the filters that can pop open." A single
-// choice rather than a multi-select list (unlike Topic/Interest below), so
-// picking an option both applies it and dismisses the sheet immediately,
-// same interaction as JoinGate.tsx's RolePicker.
-function ViewSheet({
-  isOpen,
-  onDismiss,
-  value,
-  onChange,
-}: {
-  isOpen: boolean
-  onDismiss: () => void
-  value: 'list' | 'calendar'
-  onChange: (next: 'list' | 'calendar') => void
-}) {
-  return (
-    <IonModal isOpen={isOpen} onDidDismiss={onDismiss} breakpoints={[0, 0.3]} initialBreakpoint={0.3} handle>
-      <div style={{ padding: '8px 16px 24px' }}>
-        <h2 style={{ margin: '0 0 8px' }}>View</h2>
-        <IonRadioGroup
-          value={value}
-          onIonChange={(e) => {
-            onChange(e.detail.value)
-            onDismiss()
-          }}
-        >
-          {VIEW_OPTIONS.map((option) => (
-            <IonItem key={option.value} lines="none" style={{ '--padding-start': '0' } as React.CSSProperties}>
-              <IonIcon icon={option.icon} slot="start" />
-              <IonLabel>{option.label}</IonLabel>
-              <IonRadio slot="end" value={option.value} />
-            </IonItem>
-          ))}
-        </IonRadioGroup>
-      </div>
-    </IonModal>
-  )
-}
-
 function HoursSheet({
   isOpen,
   onDismiss,
@@ -278,7 +232,6 @@ export function EventFilterChips({
   // this chip only renders when a caller actually passes it.
   interest?: { value: string[]; onChange: (next: string[]) => void }
 }) {
-  const [viewSheetOpen, setViewSheetOpen] = useState(false)
   const [topicSheetOpen, setTopicSheetOpen] = useState(false)
   const [hoursSheetOpen, setHoursSheetOpen] = useState(false)
   const [interestSheetOpen, setInterestSheetOpen] = useState(false)
@@ -286,7 +239,6 @@ export function EventFilterChips({
   const afterTime = filters.afterTime ?? ''
   const beforeTime = filters.beforeTime ?? ''
 
-  const viewLabel = VIEW_OPTIONS.find((option) => option.value === view.value)!.label
   const topicLabel = topics.length === 0 ? 'Topic' : topics.length === 1 ? topics[0] : `${topics.length} topics`
   const hoursLabel = !afterTime && !beforeTime ? 'Hours' : `${afterTime ? shortTimeLabel(afterTime) : '12am'}–${beforeTime ? shortTimeLabel(beforeTime) : '12am'}`
   const interestIsDefault =
@@ -310,14 +262,21 @@ export function EventFilterChips({
 
   return (
     <div style={{ display: 'flex', gap: 8, padding: '6px 12px', overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+      {/* Feedback (2026-08-18): a text label + chevron ("List ▾") read as
+          just another dropdown filter, indistinguishable from Topic/Hours —
+          "instead of list here, so the calendar icon has a toggle." This is
+          the one chip that's a direct binary switch, not a picker with its
+          own sheet, so it gets the same icon-only pressed-state shape the
+          original standalone toolbar button had (see this file's git
+          history) rather than a label. */}
       <IonChip
         outline={view.value === 'list'}
         color={view.value === 'calendar' ? 'primary' : 'medium'}
-        onClick={() => setViewSheetOpen(true)}
+        onClick={() => view.onChange(view.value === 'list' ? 'calendar' : 'list')}
         style={chipStyle}
+        aria-label="Toggle calendar view"
       >
-        <IonLabel style={labelStyle}>{viewLabel}</IonLabel>
-        <IonIcon icon={chevronDownOutline} />
+        <IonIcon icon={calendarOutline} />
       </IonChip>
       <IonChip
         outline={topics.length === 0}
@@ -349,7 +308,6 @@ export function EventFilterChips({
         </IonChip>
       )}
 
-      <ViewSheet isOpen={viewSheetOpen} onDismiss={() => setViewSheetOpen(false)} value={view.value} onChange={view.onChange} />
       <CheckboxSheet
         isOpen={topicSheetOpen}
         onDismiss={() => setTopicSheetOpen(false)}
