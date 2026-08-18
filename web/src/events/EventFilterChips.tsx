@@ -276,7 +276,12 @@ export function EventFilterChips({
         style={chipStyle}
         aria-label="Toggle calendar view"
       >
-        <IonIcon icon={calendarOutline} />
+        {/* ion-chip's shadow CSS gives a slotted icon an asymmetric margin
+            meant for icon-before-label or icon-after-label spacing — with no
+            label, this icon is simultaneously :first-child and :last-child,
+            so both rules apply and the icon skews off-center. Zeroing the
+            margin here lets the chip's own (symmetric) padding center it. */}
+        <IonIcon icon={calendarOutline} style={{ margin: 0 }} />
       </IonChip>
       <IonChip
         outline={topics.length === 0}
