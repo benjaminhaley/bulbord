@@ -147,16 +147,36 @@ export function ChooseFriendsScreen({
   // fully-onboarded member adding one more friend later.
   const [finished, setFinished] = useState(false)
 
+  // Both effects below guard their async continuations with a "still
+  // mounted" flag — without it, a fetch that resolves after this screen has
+  // already unmounted (e.g. a fast test/story tearing down before a real
+  // network round-trip finishes) calls setState on an unmounted component.
+  // In a jsdom/browser-mode test run that surfaces as an unhandled
+  // rejection attributed to whichever *other* test happens to be running
+  // when the leaked promise finally settles — the same class of async-
+  // lifecycle gotcha this codebase's IonModal testing notes already
+  // document (see CLAUDE.md's Testing section), just from a plain
+  // useEffect fetch rather than an overlay component's own lifecycle.
   useEffect(() => {
     if (preview) {
       setSuggestions(DEMO_SUGGESTIONS)
       setLoadingSuggestions(false)
       return
     }
+    let cancelled = false
     fetchSuggestions()
-      .then(setSuggestions)
-      .catch((err) => setError(err instanceof Error ? err.message : 'Could not load suggestions'))
-      .finally(() => setLoadingSuggestions(false))
+      .then((result) => {
+        if (!cancelled) setSuggestions(result)
+      })
+      .catch((err) => {
+        if (!cancelled) setError(err instanceof Error ? err.message : 'Could not load suggestions')
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingSuggestions(false)
+      })
+    return () => {
+      cancelled = true
+    }
   }, [preview])
 
   useEffect(() => {
@@ -167,13 +187,23 @@ export function ChooseFriendsScreen({
       return
     }
     setSearching(true)
+    let cancelled = false
     const handle = setTimeout(() => {
       searchMembers(trimmed)
-        .then(setSearchResults)
-        .catch(() => setSearchResults([]))
-        .finally(() => setSearching(false))
+        .then((result) => {
+          if (!cancelled) setSearchResults(result)
+        })
+        .catch(() => {
+          if (!cancelled) setSearchResults([])
+        })
+        .finally(() => {
+          if (!cancelled) setSearching(false)
+        })
     }, 300)
-    return () => clearTimeout(handle)
+    return () => {
+      cancelled = true
+      clearTimeout(handle)
+    }
   }, [query])
 
   async function handleAdd(member: MemberSummary) {
