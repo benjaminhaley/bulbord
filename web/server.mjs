@@ -19,11 +19,18 @@ const distDir = path.join(path.dirname(fileURLToPath(import.meta.url)), 'dist')
 // hashed and safe to cache forever, so they're explicitly told to.
 const assets = sirv(distDir, {
   single: true,
+  // Inverted from an isolated "/index.html" check, which sirv's own SPA
+  // fallback never actually calls setHeaders with — it fires with the
+  // *requested* pathname (e.g. "/", "/sports-clubs"), not the file it
+  // resolves to, so index.html was still going out uncached in practice.
+  // Everything is no-cache by default; only real asset files under
+  // /assets/ (Vite's own content-hashed, safe-forever bundles) opt into
+  // long-lived caching.
   setHeaders(res, pathname) {
-    if (pathname === '/index.html') {
-      res.setHeader('Cache-Control', 'no-cache')
-    } else if (pathname.startsWith('/assets/')) {
+    if (pathname.startsWith('/assets/')) {
       res.setHeader('Cache-Control', 'public, max-age=31536000, immutable')
+    } else {
+      res.setHeader('Cache-Control', 'no-cache')
     }
   },
 })
