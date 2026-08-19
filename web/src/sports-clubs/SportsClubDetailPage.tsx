@@ -12,6 +12,7 @@ import { CommentsSection } from './CommentsSection'
 import {
   calendarEventForSportsClub,
   distanceLabel,
+  isLocationRedundantWithTitle,
   mapUrl,
   occurrenceLabel,
   optionAgeCell,
@@ -214,6 +215,16 @@ export function SportsClubDetailPage() {
               <p style={{ ...factLineStyle, color: 'var(--ion-color-medium)' }}>Posted by {club.submitted_by.name}</p>
             )}
             {details && <p style={factLineStyle}>{details}</p>}
+            {/* price_note (feedback #109, 2026-08-19): a short end-user fact
+                — a sibling discount, an alternate tier, why a price isn't
+                published — never a narration of how the number was
+                researched ("Confirmed via the studio's Mindbody store
+                for..."), which read as unwanted process explanation. The
+                data itself was cleaned up (see backfill-2026-08-19-audit-
+                fixes.ts and the Dance on Broadway rebuild, whose own
+                price_note is null now that price_per_week is a plain,
+                self-evident division of a real published total — no
+                explanation needed at all), not the rendering rule. */}
             {!hasOptions && club.price_note && <p style={factLineStyle}>{club.price_note}</p>}
             {!hasOptions && originalPrice && (
               <p style={{ ...factLineStyle, color: 'var(--ion-color-medium)', fontSize: '0.85em' }}>Published rate: {originalPrice}</p>
@@ -221,7 +232,9 @@ export function SportsClubDetailPage() {
             {club.interested_count > 0 && (
               <InterestedBadge sportsClubId={club.id} count={club.interested_count} people={club.interested_people} emphasized />
             )}
-            {club.location_name && <p style={factLineStyle}>{club.location_name}</p>}
+            {club.location_name && !isLocationRedundantWithTitle(club.title, club.location_name) && (
+              <p style={factLineStyle}>{club.location_name}</p>
+            )}
             {club.address && (
               <p style={factLineStyle}>
                 <a href={mapUrl(club.address)} target="_blank" rel="noreferrer">

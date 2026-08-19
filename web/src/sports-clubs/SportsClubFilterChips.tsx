@@ -97,13 +97,19 @@ const TIME_SHORT_LABELS: Record<TimeOfDayBucket, string> = {
   evening: 'Evening',
 }
 
+// Age isn't a checkbox-list option like Topic/Day/Time — it's a plain
+// numeric range 0-18 (see CampFilterChips.tsx's identically-scoped choice
+// for Camps' own copy of this same idea).
+const AGE_OPTIONS: CheckboxOption<number>[] = Array.from({ length: 19 }, (_, i) => ({ value: i, label: String(i) }))
+
 export interface SportsClubFilters {
   categories: string[]
   days: ScheduleDay[]
   times: TimeOfDayBucket[]
+  ages: number[]
 }
 
-export const DEFAULT_SPORTS_CLUB_FILTERS: SportsClubFilters = { categories: [], days: [], times: [] }
+export const DEFAULT_SPORTS_CLUB_FILTERS: SportsClubFilters = { categories: [], days: [], times: [], ages: [] }
 
 export function SportsClubFilterChips({
   filters,
@@ -115,13 +121,18 @@ export function SportsClubFilterChips({
   const [topicSheetOpen, setTopicSheetOpen] = useState(false)
   const [daySheetOpen, setDaySheetOpen] = useState(false)
   const [timeSheetOpen, setTimeSheetOpen] = useState(false)
+  const [ageSheetOpen, setAgeSheetOpen] = useState(false)
 
-  const { categories, days, times } = filters
+  const { categories, days, times, ages } = filters
   const topicLabel =
     categories.length === 0 ? 'Topic' : categories.length === 1 ? categoryLabel(categories[0]) : `${categories.length} topics`
   const dayLabel =
     days.length === 0 ? 'Day' : days.length === 1 ? DAY_OPTIONS.find((o) => o.value === days[0])!.label : `${days.length} days`
   const timeLabel = times.length === 0 ? 'Time' : times.length === 1 ? TIME_SHORT_LABELS[times[0]] : `${times.length} times`
+  // Default-on and unbounded in count (feedback #103: a household can have
+  // several kids across different grades), so this label reads a plain
+  // count sooner than Topic/Day/Time's own 1-value-shows-the-value rule.
+  const ageLabel = ages.length === 0 ? 'Age' : ages.length <= 3 ? `Ages ${ages.join(', ')}` : `${ages.length} ages`
 
   const chipStyle: React.CSSProperties = { flexShrink: 0 }
   const labelStyle: React.CSSProperties = { whiteSpace: 'nowrap' }
@@ -148,6 +159,10 @@ export function SportsClubFilterChips({
         style={chipStyle}
       >
         <IonLabel style={labelStyle}>{timeLabel}</IonLabel>
+        <IonIcon icon={chevronDownOutline} />
+      </IonChip>
+      <IonChip outline={ages.length === 0} color={ages.length > 0 ? 'primary' : 'medium'} onClick={() => setAgeSheetOpen(true)} style={chipStyle}>
+        <IonLabel style={labelStyle}>{ageLabel}</IonLabel>
         <IonIcon icon={chevronDownOutline} />
       </IonChip>
 
@@ -177,6 +192,15 @@ export function SportsClubFilterChips({
         selected={times}
         onChange={(next) => onChange({ ...filters, times: next })}
         breakpoint={0.35}
+      />
+      <SingleGroupSheet
+        isOpen={ageSheetOpen}
+        onDismiss={() => setAgeSheetOpen(false)}
+        title="Age"
+        options={AGE_OPTIONS}
+        selected={ages}
+        onChange={(next) => onChange({ ...filters, ages: next })}
+        breakpoint={0.6}
       />
     </div>
   )

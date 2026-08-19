@@ -21,16 +21,19 @@ import {
   IonToolbar,
   useIonViewWillEnter,
 } from '@ionic/react'
-import { addOutline, closeOutline, eyeOffOutline, star, starOutline } from 'ionicons/icons'
+import { addOutline, closeOutline, eyeOffOutline, filterOutline, star, starOutline } from 'ionicons/icons'
 import { useMemo, useState } from 'react'
 
 import { useAuth } from '../auth/AuthContext'
 import { InstitutionBanner } from '../app/InstitutionBanner'
 import { API_URL } from '../config'
+import { defaultAgesForKids } from '../gradeAges'
 import { Avatar } from '../uploads/Avatar'
 import { createCamp, fetchCampsByBreak, type BreakBucket, type Camp, type InterestStatus } from './api'
+import { CampFilterChips } from './CampFilterChips'
 import { CampForm } from './CampForm'
 import { bookingStatusChipStyle, bookingStatusLabel, campDetailsLine, distanceLabel, formatDateRange, locationLabel, timeLabel } from './format'
+import { matchesCampAgeFilter } from './filters'
 import { applyInterestUpdateAcrossBuckets } from './grouping'
 import { InterestedBadge } from './InterestedBadge'
 import { useCampInterest } from './useCampInterest'
@@ -174,6 +177,11 @@ export function CampsPage() {
   const [swipeToast, setSwipeToast] = useState<SwipeToast | null>(null)
   const [multiTouch, setMultiTouch] = useState(false)
   const [showForm, setShowForm] = useState(false)
+  // Feedback #103 (2026-08-19): Camps' first filter at all — Age, defaulted
+  // on to the viewer's own kids' permissive ages (see ../gradeAges.ts)
+  // rather than starting empty/off the way Events'/Sports & Clubs' chips do.
+  const [ages, setAges] = useState<number[]>(() => defaultAgesForKids(user?.kids ?? []))
+  const [filtersOpen, setFiltersOpen] = useState(false)
 
   function updateCampInBuckets(updated: Camp) {
     setBuckets((prev) => (prev ? applyInterestUpdateAcrossBuckets(prev, updated.id, updated) : null))
@@ -203,16 +211,19 @@ export function CampsPage() {
   const displayBuckets = useMemo(() => {
     if (!buckets) return []
     return buckets
-      .map((bucket) => ({
-        ...bucket,
-        visibleCamps: [
-          ...bucket.camps.filter((c) => c.interest_status === 'interested'),
-          ...bucket.camps.filter((c) => c.interest_status === null),
-        ],
-        dismissedCamps: bucket.camps.filter((c) => c.interest_status === 'dismissed'),
-      }))
-      .filter((bucket) => bucket.camps.length > 0)
-  }, [buckets])
+      .map((bucket) => {
+        const filteredCamps = bucket.camps.filter((c) => matchesCampAgeFilter(c, ages))
+        return {
+          ...bucket,
+          visibleCamps: [
+            ...filteredCamps.filter((c) => c.interest_status === 'interested'),
+            ...filteredCamps.filter((c) => c.interest_status === null),
+          ],
+          dismissedCamps: filteredCamps.filter((c) => c.interest_status === 'dismissed'),
+        }
+      })
+      .filter((bucket) => bucket.visibleCamps.length > 0 || bucket.dismissedCamps.length > 0)
+  }, [buckets, ages])
 
   // Which buckets' dismissed camps have been revealed — a one-time reveal
   // for the current page view (matches EventsPage's revealHidden), not a
@@ -275,7 +286,13 @@ export function CampsPage() {
                 same treatment, particularly sources should be moved"): the
                 sources-list icon is gone — adding one is admin-only now,
                 moved to Developer Tools (see events/EventsPage.tsx's own
-                identical change). */}
+                identical change). Filter toggle mirrors Events'/Sports &
+                Clubs' own "out of the way" collapsed-icon-plus-badge pattern
+                (feedback #103) — Camps' first filter at all. */}
+            <IonButton onClick={() => setFiltersOpen((v) => !v)} aria-label="Toggle filters">
+              <IonIcon slot="icon-only" icon={filterOutline} color={ages.length > 0 || filtersOpen ? 'primary' : undefined} />
+              {ages.length > 0 && <IonBadge color="primary">{ages.length}</IonBadge>}
+            </IonButton>
             {user && (
               <IonButton onClick={() => setShowForm((v) => !v)}>
                 <IonIcon slot="icon-only" icon={showForm ? closeOutline : addOutline} />
@@ -283,6 +300,7 @@ export function CampsPage() {
             )}
           </IonButtons>
         </IonToolbar>
+        {filtersOpen && <CampFilterChips ages={ages} onChange={setAges} />}
       </IonHeader>
       <IonContent fullscreen onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd} onTouchCancel={handleTouchEnd}>
         {showForm && (
@@ -310,6 +328,11 @@ export function CampsPage() {
         {buckets !== null && !hasAnyCamps && (
           <div className="coming-soon">
             <p>No upcoming camps yet</p>
+          </div>
+        )}
+        {buckets !== null && hasAnyCamps && displayBuckets.length === 0 && (
+          <div className="coming-soon">
+            <p>No camps match this age filter</p>
           </div>
         )}
         {displayBuckets.length > 0 && (

@@ -27,13 +27,15 @@ import { useMemo, useState } from 'react'
 import { InstitutionBanner } from '../app/InstitutionBanner'
 import { useAuth } from '../auth/AuthContext'
 import { API_URL } from '../config'
+import { defaultAgesForKids } from '../gradeAges'
 import { Avatar } from '../uploads/Avatar'
 import { createSportsClub, fetchSportsClubs, type InterestStatus, type SportsClubListItem } from './api'
-import { matchesCategoryFilter, matchesScheduleFilter } from './filters'
+import { matchesCategoryFilter, matchesScheduleFilter, matchesSportsClubAgeFilter } from './filters'
 import {
   CATEGORY_OPTIONS,
   categoryLabel,
   distanceLabel,
+  isLocationRedundantWithTitle,
   locationLabel,
   nextOccurrenceDayTimeLabel,
   scheduleSummary,
@@ -80,6 +82,7 @@ function SportsClubRow({
   onToggleStar: (e: React.MouseEvent, club: SportsClubListItem) => void
 }) {
   const location = locationLabel({ locationName: club.location_name, address: club.address })
+  const locationRedundant = isLocationRedundantWithTitle(club.title, club.location_name)
   const details = sportsClubDetailsLine(club)
   const dayTime = nextOccurrenceDayTimeLabel(club.occurrences) ?? club.cadence_note
   const isStarred = club.interest_status === 'interested'
@@ -123,7 +126,8 @@ function SportsClubRow({
           </p>
           {location && (
             <IonNote>
-              {location} · {distanceLabel(club.distance_miles)}
+              {!locationRedundant && `${location} · `}
+              {distanceLabel(club.distance_miles)}
             </IonNote>
           )}
           <p className="teaser">{details}</p>
@@ -159,8 +163,10 @@ export function SportsClubsPage() {
   const [showForm, setShowForm] = useState(false)
   const [showStarted, setShowStarted] = useState(false)
   const [filtersOpen, setFiltersOpen] = useState(false)
-  const [filters, setFilters] = useState(DEFAULT_SPORTS_CLUB_FILTERS)
-  const activeFilterCount = filters.categories.length + filters.days.length + filters.times.length
+  // Age defaults on to the viewer's own kids' permissive ages (feedback
+  // #103, 2026-08-19) — every other filter here still defaults empty/off.
+  const [filters, setFilters] = useState(() => ({ ...DEFAULT_SPORTS_CLUB_FILTERS, ages: defaultAgesForKids(user?.kids ?? []) }))
+  const activeFilterCount = filters.categories.length + filters.days.length + filters.times.length + filters.ages.length
   const hasActiveFilters = activeFilterCount > 0
 
   function updateClubInList(updated: { id: string }) {
@@ -195,7 +201,10 @@ export function SportsClubsPage() {
   const filteredClubs = useMemo(() => {
     if (!clubs) return null
     return clubs.filter(
-      (c) => matchesCategoryFilter(c, filters.categories) && matchesScheduleFilter(c, filters.days, filters.times),
+      (c) =>
+        matchesCategoryFilter(c, filters.categories) &&
+        matchesScheduleFilter(c, filters.days, filters.times) &&
+        matchesSportsClubAgeFilter(c, filters.ages),
     )
   }, [clubs, filters])
 

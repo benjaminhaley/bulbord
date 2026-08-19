@@ -6,6 +6,7 @@ import {
   CATEGORY_OPTIONS,
   categoryLabel,
   distanceLabel,
+  isLocationRedundantWithTitle,
   locationLabel,
   mapUrl,
   nextOccurrenceDayTimeLabel,
@@ -57,14 +58,14 @@ describe('priceLabel', () => {
     expect(priceLabel(null)).toBe('Price: not published')
   })
 
-  it('shows the standardized weekly figure with a "~" prefix, dropping the "Price:" label once known', () => {
-    expect(priceLabel('45.00')).toBe('~$45/week')
+  it('shows the standardized weekly figure with no hedge prefix, dropping the "Price:" label once known', () => {
+    expect(priceLabel('45.00')).toBe('$45/week')
   })
 
   it('rounds a non-integer amount to the nearest whole dollar', () => {
-    expect(priceLabel('12.50')).toBe('~$13/week')
-    expect(priceLabel('8.07')).toBe('~$8/week')
-    expect(priceLabel('1.43')).toBe('~$1/week')
+    expect(priceLabel('12.50')).toBe('$13/week')
+    expect(priceLabel('8.07')).toBe('$8/week')
+    expect(priceLabel('1.43')).toBe('$1/week')
   })
 })
 
@@ -193,14 +194,14 @@ describe('categoryLabel', () => {
 
 describe('sportsClubDetailsLine', () => {
   it('joins the standardized weekly price and age, in that order', () => {
-    expect(sportsClubDetailsLine({ price_per_week: '45.00', age_min: 5, age_max: 12 })).toBe('~$45/week · Ages: 5-12')
+    expect(sportsClubDetailsLine({ price_per_week: '45.00', age_min: 5, age_max: 12 })).toBe('$45/week · Ages: 5-12')
   })
 
   it('suppresses price and/or age when a real options table makes them redundant', () => {
     const club = { price_per_week: '45.00', age_min: 5, age_max: 12 }
     expect(sportsClubDetailsLine(club, { includePrice: false, includeAge: false })).toBe('')
     expect(sportsClubDetailsLine(club, { includePrice: false })).toBe('Ages: 5-12')
-    expect(sportsClubDetailsLine(club, { includeAge: false })).toBe('~$45/week')
+    expect(sportsClubDetailsLine(club, { includeAge: false })).toBe('$45/week')
   })
 })
 
@@ -216,9 +217,14 @@ describe('option cell formatters', () => {
     expect(optionAgeCell(8, 8)).toBe('8')
   })
 
-  it('optionPriceCell mirrors priceLabel without the "Price:" prefix', () => {
+  it('optionPriceCell shows the total alone when price_unit has no week count to derive a weekly rate from', () => {
     expect(optionPriceCell(null, null)).toBe('—')
     expect(optionPriceCell('45.00', 'per class')).toBe('$45 per class')
+  })
+
+  it('optionPriceCell shows a weekly rate plus the real total, dropping the week-count prose, when price_unit states one', () => {
+    expect(optionPriceCell('475.00', 'per 15-week series')).toBe('$32/wk · $475')
+    expect(optionPriceCell('221.00', 'per 8-week session')).toBe('$28/wk · $221')
   })
 })
 
@@ -292,5 +298,23 @@ describe('locationLabel / shortAddress / mapUrl', () => {
     expect(mapUrl('123 Main St, Chicago, IL 60613')).toBe(
       'https://www.google.com/maps/search/?api=1&query=123%20Main%20St%2C%20Chicago%2C%20IL%2060613',
     )
+  })
+})
+
+describe('isLocationRedundantWithTitle', () => {
+  it('flags a location name that is the title\'s own prefix', () => {
+    expect(isLocationRedundantWithTitle('Dance on Broadway — Lovebug Tots', 'Dance on Broadway')).toBe(true)
+  })
+
+  it('is case-insensitive', () => {
+    expect(isLocationRedundantWithTitle('dance on broadway — Lovebug Tots', 'Dance on Broadway')).toBe(true)
+  })
+
+  it('is false when the location name is genuinely distinct from the title', () => {
+    expect(isLocationRedundantWithTitle('Chicago Park District — Basketball', 'Gill Park')).toBe(false)
+  })
+
+  it('is false when there is no location name', () => {
+    expect(isLocationRedundantWithTitle('Chicago Park District — Basketball', null)).toBe(false)
   })
 })

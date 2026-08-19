@@ -7,9 +7,23 @@
 // no round-trip needed to apply either filter. Own file, not format.ts,
 // since filtering (which rows survive) is a different concern from
 // formatting (how a surviving row's text reads).
+import { matchesAgeFilter } from '../gradeAges'
 import type { SportsClubOccurrence } from './api'
 
 export type ScheduleDay = 0 | 1 | 2 | 3 | 4 | 5 | 6
+
+export interface AgeFilterable {
+  age_min: number | null
+  age_max: number | null
+}
+
+// Feedback #103 (2026-08-19) — matchesAgeFilter itself is genuinely shared
+// with Camps (see ../gradeAges.ts), this thin wrapper just keeps the
+// SportsClub-typed call site consistent with matchesCategoryFilter/
+// matchesScheduleFilter below.
+export function matchesSportsClubAgeFilter(club: AgeFilterable, selectedAges: number[]): boolean {
+  return matchesAgeFilter(club.age_min, club.age_max, selectedAges)
+}
 
 export const DAY_OPTIONS: { value: ScheduleDay; label: string }[] = [
   { value: 0, label: 'Sun' },
@@ -65,25 +79,29 @@ export interface ScheduleFilterable {
   occurrences: SportsClubOccurrence[]
 }
 
-// Matches against the club's own real next occurrence — the same source
-// nextOccurrenceDayTimeLabel (format.ts) already reads. A club with no
-// occurrence data at all (an ongoing club with no confirmed day/time yet, or
-// a fixed_session whose cadence isn't structured beyond cadence_note) is
-// never excluded by an active schedule filter — same "never hide what we
-// don't have real data for" posture as Events' own Hours filter (CLAUDE.md):
-// there's nothing concrete to check it against, so excluding it would just
-// be a guess, not a real non-match.
+// Checks the club's real occurrence set, not just its single soonest one
+// (feedback #107's split surfaced a real case this needs to handle: a class
+// that genuinely meets on two different weekdays each week — e.g. "Beginner
+// (Mon & Wed)" — still needs to match a Wednesday filter even when the
+// chronologically-next occurrence happens to fall on Monday). Feedback #106
+// (2026-08-19), from a live screenshot: a member filtered for Friday
+// morning and still saw a listing with no known schedule at all ("Schedule
+// not specified") — "anything without a schedule should automatically be
+// eliminated." This reverses the original "never hide what we don't have
+// real data for" posture (Events' Hours filter keeps that posture — see
+// CLAUDE.md — since this is a deliberate, narrower divergence, not a step
+// toward matching it): a club with no occurrence data, or none whose known
+// day/time satisfies an active filter, can never be shown to satisfy a
+// specific day/time the member asked for, so it's excluded rather than
+// shown on a guess.
 export function matchesScheduleFilter(club: ScheduleFilterable, days: ScheduleDay[], times: TimeOfDayBucket[]): boolean {
   if (days.length === 0 && times.length === 0) return true
-  const next = club.occurrences[0]
-  if (!next) return true
-  if (days.length > 0) {
-    const weekday = new Date(`${next.date}T00:00:00`).getDay() as ScheduleDay
-    if (!days.includes(weekday)) return false
-  }
-  if (times.length > 0) {
-    if (!next.start_time) return true
-    if (!times.includes(timeOfDayBucket(next.start_time))) return false
-  }
-  return true
+  if (club.occurrences.length === 0) return false
+  const dayMatches =
+    days.length === 0
+      ? club.occurrences
+      : club.occurrences.filter((o) => days.includes(new Date(`${o.date}T00:00:00`).getDay() as ScheduleDay))
+  if (dayMatches.length === 0) return false
+  if (times.length === 0) return true
+  return dayMatches.some((o) => o.start_time != null && times.includes(timeOfDayBucket(o.start_time)))
 }

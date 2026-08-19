@@ -154,19 +154,21 @@ export function ageRangeLabel(ageMin: number | null, ageMax: number | null): str
 // prices come in genuinely different shapes (per month, per class, per
 // season...), which makes them hard to compare at a glance; price_per_week
 // is a hand-computed conversion (see db/schema.ts's pricePerWeek) shown
-// here as the one PRIMARY price figure. Always prefixed with "~" — it's a
-// derived approximation, never presented as if it were itself a directly
-// published rate, same posture as Camps' price_is_estimated flag. Rounded
-// to the nearest whole dollar (feedback, 2026-08-18: precise cents on an
-// already-approximate number read as false precision — the exact published
-// rate is still available verbatim via originalPriceLabel below). No
-// "Price:" label once a real amount is known (self-evident via the $ sign
-// and /week suffix) — the label stays only for the unpublished case.
+// here as the one PRIMARY price figure. Rounded to the nearest whole dollar
+// (feedback, 2026-08-18: precise cents on an already-approximate number
+// read as false precision — the exact published rate is still available
+// verbatim via originalPriceLabel below). No "~" prefix (feedback #105,
+// 2026-08-19: "don't say ~34 per week say 34 per week" — a real, math-
+// derived weekly figure reads as an unnecessary hedge, not an estimate; use
+// originalPriceLabel alongside it for full transparency on how it was
+// derived instead of hedging the number itself). No "Price:" label once a
+// real amount is known (self-evident via the $ sign and /week suffix) — the
+// label stays only for the unpublished case.
 export function priceLabel(pricePerWeek: string | null): string {
   if (pricePerWeek == null) return 'Price: not published'
   const value = Number(pricePerWeek)
   if (Number.isNaN(value)) return 'Price: not published'
-  return `~$${Math.round(value)}/week`
+  return `$${Math.round(value)}/week`
 }
 
 // The real, originally published rate (e.g. "$265 per session") — never
@@ -220,7 +222,7 @@ export interface DetailedSportsClub {
 }
 
 // Price/age, in that order, always shown by default — joined for the
-// compact "~$45/week · Ages: 5-13" line shared by the list row and the
+// compact "$45/week · Ages: 5-13" line shared by the list row and the
 // detail page. Distance lives next to the address instead, same as Camps.
 // includePrice/includeAge default to true (the list row always wants both —
 // there's no options table there to fall back on); the detail page passes
@@ -255,12 +257,32 @@ export function optionAgeCell(ageMin: number | null, ageMax: number | null): str
   return `up to ${ageMax}`
 }
 
+// Extracts a real session length from price_unit text like "per 15-week
+// series"/"per 8-week session" when the unit states one explicitly — never
+// invented, just arithmetic on a real, stated week count. Returns null for
+// a unit with no week count to divide by (per class, per month, per
+// season), which falls back to showing the total alone below.
+function parseWeekCount(priceUnit: string | null): number | null {
+  if (!priceUnit) return null
+  const match = priceUnit.match(/(\d+)-week/)
+  return match ? Number(match[1]) : null
+}
+
+// Feedback #108 (2026-08-19), from a screenshot of an Options table's Price
+// column overflowing the screen ("$475.00 per 15-week series" cut off
+// mid-word): a weekly rate plus the real total, never the session-length
+// prose — "shouldn't take much horizontal space... don't bother saying in
+// this table that it's 15 weeks." When price_unit states a real week count,
+// show both figures (`$34/wk · $475`); otherwise (per class/month/season,
+// no week count to divide by) show just the total, same as before.
 export function optionPriceCell(price: string | null, priceUnit: string | null): string {
   if (price == null) return '—'
   const value = Number(price)
   if (Number.isNaN(value)) return '—'
-  const amount = `$${Number.isInteger(value) ? value.toFixed(0) : value.toFixed(2)}`
-  return priceUnit ? `${amount} ${priceUnit}` : amount
+  const total = `$${Number.isInteger(value) ? value.toFixed(0) : value.toFixed(2)}`
+  const weeks = parseWeekCount(priceUnit)
+  if (weeks) return `$${Math.round(value / weeks)}/wk · ${total}`
+  return priceUnit ? `${total} ${priceUnit}` : total
 }
 
 // Options are shown in the array's own order (not re-sorted) — unlike
@@ -283,6 +305,18 @@ export function locationLabel(club: LocatableSportsClub): string | null {
 
 export function shortAddress(address: string): string {
   return address.replace(CITY_STATE_ZIP, '').trim()
+}
+
+// A listing's own location line duplicates its title when the venue name is
+// already spelled out as the title's own prefix (e.g. "Dance on Broadway —
+// Lovebug Tots" / locationName "Dance on Broadway") — showing it twice reads
+// as redundant and, on a narrow list row, causes real text overflow
+// (feedback #104, 2026-08-19: "it's already the location... causes text
+// overflow"). Distance is never suppressed by this — it's never duplicated
+// information, unlike the venue name itself.
+export function isLocationRedundantWithTitle(title: string, locationName: string | null): boolean {
+  if (!locationName) return false
+  return title.trim().toLowerCase().startsWith(locationName.trim().toLowerCase())
 }
 
 export function mapUrl(address: string): string {
