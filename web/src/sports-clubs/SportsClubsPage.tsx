@@ -21,7 +21,7 @@ import {
   IonToolbar,
   useIonViewWillEnter,
 } from '@ionic/react'
-import { addOutline, closeOutline, eyeOffOutline, star, starOutline } from 'ionicons/icons'
+import { addOutline, closeOutline, eyeOffOutline, filterOutline, star, starOutline } from 'ionicons/icons'
 import { useMemo, useState } from 'react'
 
 import { InstitutionBanner } from '../app/InstitutionBanner'
@@ -29,6 +29,7 @@ import { useAuth } from '../auth/AuthContext'
 import { API_URL } from '../config'
 import { Avatar } from '../uploads/Avatar'
 import { createSportsClub, fetchSportsClubs, type InterestStatus, type SportsClubListItem } from './api'
+import { matchesCategoryFilter, matchesScheduleFilter } from './filters'
 import {
   CATEGORY_OPTIONS,
   distanceLabel,
@@ -40,6 +41,7 @@ import {
   sportsClubDetailsLine,
 } from './format'
 import { InterestedBadge } from './InterestedBadge'
+import { DEFAULT_SPORTS_CLUB_FILTERS, SportsClubFilterChips } from './SportsClubFilterChips'
 import { SportsClubForm } from './SportsClubForm'
 import { useSportsClubInterest } from './useSportsClubInterest'
 
@@ -155,6 +157,10 @@ export function SportsClubsPage() {
   const [multiTouch, setMultiTouch] = useState(false)
   const [showForm, setShowForm] = useState(false)
   const [showStarted, setShowStarted] = useState(false)
+  const [filtersOpen, setFiltersOpen] = useState(false)
+  const [filters, setFilters] = useState(DEFAULT_SPORTS_CLUB_FILTERS)
+  const activeFilterCount = filters.categories.length + filters.days.length + filters.times.length
+  const hasActiveFilters = activeFilterCount > 0
 
   function updateClubInList(updated: { id: string }) {
     setClubs((prev) => (prev ? prev.map((c) => (c.id === updated.id ? { ...c, ...updated } : c)) : null))
@@ -180,6 +186,18 @@ export function SportsClubsPage() {
     reload(true)
   }
 
+  // Feedback (2026-08-19): "filter here, which allows you to filter by
+  // topic. And schedule..." — applied before grouping, so a narrowed Topic
+  // selection simply removes non-matching accordion sections entirely
+  // (each accordion already IS a category) rather than needing a separate
+  // suppression mechanism.
+  const filteredClubs = useMemo(() => {
+    if (!clubs) return null
+    return clubs.filter(
+      (c) => matchesCategoryFilter(c, filters.categories) && matchesScheduleFilter(c, filters.days, filters.times),
+    )
+  }, [clubs, filters])
+
   // Feedback (2026-08-18): "let's go ahead and have things organized by
   // category to start, so one accordion fold per category" — replaces the
   // earlier flat-sorted-list design. Clubs arrive already sorted by
@@ -191,12 +209,12 @@ export function SportsClubsPage() {
   // there's no fixed calendar structure here that needs an empty section
   // shown as "nothing yet."
   const categoryGroups = useMemo(() => {
-    if (!clubs) return []
+    if (!filteredClubs) return []
     return CATEGORY_OPTIONS.map((category) => ({
       category,
-      clubs: clubs.filter((c) => (c.category ?? FALLBACK_CATEGORY) === category),
+      clubs: filteredClubs.filter((c) => (c.category ?? FALLBACK_CATEGORY) === category),
     })).filter((group) => group.clubs.length > 0)
-  }, [clubs])
+  }, [filteredClubs])
 
   function handleSwipe(e: { target: EventTarget | null }, club: SportsClubListItem, status: InterestStatus) {
     closeSliding(e.target)
@@ -239,6 +257,14 @@ export function SportsClubsPage() {
         <IonToolbar>
           <IonTitle>Sports & Clubs</IonTitle>
           <IonButtons slot="end">
+            {/* Same filterOutline toggle + count-badge shape Events settled
+                on (feedback #97/#102) — a pressed-state icon, color primary
+                only while a filter is active or the chip row is open, plus
+                a badge so an applied filter stays visible while collapsed. */}
+            <IonButton onClick={() => setFiltersOpen((v) => !v)} aria-label="Toggle filters">
+              <IonIcon slot="icon-only" icon={filterOutline} color={hasActiveFilters || filtersOpen ? 'primary' : undefined} />
+              {hasActiveFilters && <IonBadge color="primary">{activeFilterCount}</IonBadge>}
+            </IonButton>
             {user && (
               <IonButton onClick={() => setShowForm((v) => !v)}>
                 <IonIcon slot="icon-only" icon={showForm ? closeOutline : addOutline} />
@@ -246,6 +272,11 @@ export function SportsClubsPage() {
             )}
           </IonButtons>
         </IonToolbar>
+        {filtersOpen && (
+          <IonToolbar style={{ '--min-height': '40px', '--padding-start': '0', '--padding-end': '0' } as React.CSSProperties}>
+            <SportsClubFilterChips filters={filters} onChange={setFilters} />
+          </IonToolbar>
+        )}
       </IonHeader>
       <IonContent fullscreen onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd} onTouchCancel={handleTouchEnd}>
         {showForm && (
@@ -273,6 +304,11 @@ export function SportsClubsPage() {
         {clubs !== null && clubs.length === 0 && (
           <div className="coming-soon">
             <p>Coming soon</p>
+          </div>
+        )}
+        {clubs !== null && clubs.length > 0 && filteredClubs !== null && filteredClubs.length === 0 && (
+          <div className="coming-soon">
+            <p>No listings match these filters</p>
           </div>
         )}
         {categoryGroups.length > 0 && (
