@@ -6,3 +6,13 @@
 export function todayInChicago(now = new Date()): string {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Chicago' }).format(now)
 }
+
+// Plain date-string arithmetic (no further timezone conversion needed —
+// the input is already a real calendar-day string, e.g. from
+// todayInChicago() above) — used by events/routes.ts's next-7-days
+// visibility rule (feedback #111).
+export function addDays(dateStr: string, days: number): string {
+  const d = new Date(`${dateStr}T00:00:00Z`)
+  d.setUTCDate(d.getUTCDate() + days)
+  return d.toISOString().slice(0, 10)
+}

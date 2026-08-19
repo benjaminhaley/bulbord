@@ -1,10 +1,10 @@
-import { and, asc, eq, getTableColumns, gte, isNull, sql } from 'drizzle-orm'
+import { and, asc, eq, getTableColumns, gte, isNull, lte, or, sql } from 'drizzle-orm'
 import type { FastifyInstance } from 'fastify'
 
 import { requireAuth, requireRole } from '../auth/plugin.js'
 import { db } from '../db/client.js'
 import { events, eventSources, eventInterests, eventsLog, users } from '../db/schema.js'
-import { todayInChicago } from '../dates.js'
+import { addDays, todayInChicago } from '../dates.js'
 // Reused rather than duplicated for the preview-meta route below (feedback
 // #73 follow-up) — these are the existing, already-tested formatters, just
 // living in newsletter/ for historical reasons (their byte-identical-parity
@@ -498,10 +498,20 @@ export async function eventsRoutes(app: FastifyInstance) {
       cursorId = id ?? null
     }
 
+    const today = todayInChicago()
+    // Feedback #111 (2026-08-19): a recurring series' later occurrences used
+    // to always hide behind "Show N hidden repeating events," even one
+    // starting just as soon as the series' own next occurrence — a member
+    // saw only one of two block parties happening the same weekend until
+    // they tapped reveal. Any occurrence within the next 7 days now shows
+    // by default alongside the series' soonest one; only occurrences
+    // further out than that AND not the soonest stay behind the reveal.
+    const sevenDaysOut = addDays(today, 7)
+
     const conditions = [
       eq(events.status, 'approved'),
       isNull(events.deletedAt),
-      gte(events.startDate, todayInChicago()),
+      gte(events.startDate, today),
       ...buildEventFilterConditions(topics, beforeTime, afterTime),
     ]
 
@@ -557,11 +567,11 @@ export async function eventsRoutes(app: FastifyInstance) {
       cursorStartDate && cursorSortTime && cursorId
         ? sql`(${nextOccurrence.startDate}, ${nextOccurrence.sortTime}, ${nextOccurrence.id}) > (${cursorStartDate}, ${cursorSortTime}::time, ${cursorId})`
         : null
-    // includeHidden drops the rn=1 filter entirely (every occurrence, not
-    // just the soonest per series); with neither condition present (hidden
-    // included, no cursor) we need an explicit `true` since .where() can't
-    // take an empty condition.
-    const rnCondition = includeHidden ? null : eq(nextOccurrence.rn, 1)
+    // includeHidden drops the rn=1-or-within-7-days filter entirely (every
+    // occurrence, not just the visible-by-default ones); with neither
+    // condition present (hidden included, no cursor) we need an explicit
+    // `true` since .where() can't take an empty condition.
+    const rnCondition = includeHidden ? null : or(eq(nextOccurrence.rn, 1), lte(nextOccurrence.startDate, sevenDaysOut))
     const whereClause =
       rnCondition && cursorCondition ? and(rnCondition, cursorCondition) : (rnCondition ?? cursorCondition ?? sql`true`)
 
@@ -604,11 +614,15 @@ export async function eventsRoutes(app: FastifyInstance) {
       // Total suppressed-occurrence count across the whole upcoming window,
       // not just this page — same nextOccurrence CTE, reused in a second,
       // independent query rather than folded into the paginated one above.
+      // Matches rnCondition's own visibility rule: an occurrence only stays
+      // hidden if it's neither the series' soonest nor within 7 days.
       includeHidden
         ? Promise.resolve([{ count: 0 }])
         : db
             .with(nextOccurrence)
-            .select({ count: sql<number>`count(*) filter (where ${nextOccurrence.rn} > 1)::int` })
+            .select({
+              count: sql<number>`count(*) filter (where ${nextOccurrence.rn} > 1 and ${nextOccurrence.startDate} > ${sevenDaysOut})::int`,
+            })
             .from(nextOccurrence),
     ])
 
