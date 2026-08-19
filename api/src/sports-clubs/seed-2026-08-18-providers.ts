@@ -134,17 +134,27 @@ const SOURCES: SourceSpec[] = [
   {
     key: 'danceonbroadway',
     name: 'Dance on Broadway',
-    url: 'https://www.danceonbroadway.com/',
+    // Corrected 2026-08-19 — danceonbroadway.com (the original URL here) is
+    // an unrelated parked placeholder domain, never the real studio; it was
+    // never actually reached by the original research pass. The real site
+    // is danceonbroadwaychi.com, with a fully public schedule PDF and real
+    // Mindbody pricing, neither behind a login the way this note originally
+    // assumed. This single vague listing is also now stale in shape — see
+    // backfill-2026-08-19-dance-on-broadway-rebuild.ts, which replaces it
+    // with 16 real level-based listings (one per the studio's own official
+    // class level) and is the actual source of truth for this provider's
+    // data; a fresh-DB seed run needs that backfill re-applied afterward.
+    url: 'https://danceonbroadwaychi.com/',
     notes:
-      "Literally around the corner from Nettelhorst (3126 N Broadway). Real youth program spanning 18mo-teen, real Fall term (Aug 31-Dec 20, 2026) confirmed on their own site. Youth tuition, the exact weekly class-day/time grid, and live registration-fullness all sit behind their Mindbody widget, which returned HTTP 403 to a direct fetch — recommend a headless-browser spot-check, same technique this app already used for Unicoi's camp calendar.",
-    imageSourceUrls: ['https://www.danceonbroadway.com/'],
+      'Real youth program spanning 18mo-teen at 3126 N Broadway, real Fall Season 7 term (Aug 31-Dec 20, 2026), real per-level age eligibility, and real Mindbody pricing ($475/14-week series) — all confirmed directly and fully publicly at danceonbroadwaychi.com/youthschedule and /youth-class-level-descriptions. See backfill-2026-08-19-dance-on-broadway-rebuild.ts for the full 15-level breakdown and sourcing method.',
+    imageSourceUrls: ['https://danceonbroadwaychi.com/', 'https://www.facebook.com/danceonbroadwaychi/'],
   },
   {
     key: 'tutuschool',
     name: 'Tutu School (Roscoe Village)',
-    url: 'https://www.tutuschool.com/roscoevillage',
+    url: 'https://tutuschool.com/roscoe/',
     notes:
-      'Real, confirmed rolling/always-open enrollment for ages 6mo-8yr, real published monthly membership rate ($112/mo, billed the 1st of each month). Exact single-class time slot within their published weekly operating windows was not isolated.',
+      "Real, confirmed rolling/always-open enrollment for ages 6mo-8yr, real published monthly membership rate ($112/mo, billed the 1st of each month) — reconfirmed 2026-08-19. URL corrected: the original /roscoevillage slug 404s now; the site restructured to /roscoe/ at some point after this research pass. Exact single-class time slot within their published weekly operating windows still not isolated.",
     imageSourceUrls: ['https://www.tutuschool.com/roscoevillage', 'https://www.facebook.com/TutuSchoolChicago'],
   },
   {
@@ -174,10 +184,10 @@ const SOURCES: SourceSpec[] = [
   {
     key: 'musicplayhouse',
     name: 'The Music Playhouse (Sheil Park)',
-    url: 'https://www.themusicplayhouse.com/',
+    url: 'https://www.themusicplayhouseofchicago.com/',
     notes:
-      'Real semester dates (Fall 2026: Sept 14-Nov 20) and a real, clearly published per-unit price ($250 for the full 10-week semester, $200 for siblings, $28/class drop-in) confirmed directly on their own site. Exact weekly day/time not published; their booking widget (Sawyer) 403\'d a direct fetch.',
-    imageSourceUrls: ['https://www.themusicplayhouse.com/'],
+      "URL corrected 2026-08-19: themusicplayhouse.com (the original URL here) has been compromised/hijacked and now serves unrelated Indonesian-language gambling content, not the music school — a domain-level takeover of the old URL, unrelated to the studio's own real operations. The real site is themusicplayhouseofchicago.com. Real semester dates (Fall 2026: Sept 14-Nov 20) and a real, clearly published per-unit price ($250 for the full 10-week semester, $200 for siblings, $28/class drop-in) confirmed directly on their own site, reconfirmed unchanged. Exact weekly day/time not published; Sawyer's own marketplace listing 403'd a direct fetch too.",
+    imageSourceUrls: ['https://www.themusicplayhouseofchicago.com/'],
   },
   {
     key: 'unitingvoices',
@@ -320,27 +330,11 @@ interface ListingSpec {
 
 const LISTINGS: ListingSpec[] = [
   // ---- Dance ----
-  {
-    sourceKey: 'danceonbroadway',
-    title: 'Dance on Broadway',
-    description: 'Ballet, tap, jazz, hip-hop, contemporary, acro, and musical theater classes by age and level.',
-    category: 'Dance',
-    scheduleType: 'fixed_session',
-    firstDate: '2026-08-31',
-    lastDate: '2026-12-20',
-    cadenceNote: 'Exact weekly class day/time varies by level — see the studio for the full schedule.',
-    ageMin: 1,
-    ageMax: 18,
-    price: null,
-    priceUnit: null,
-    priceNote: 'Youth tuition disclosed at registration, not published on the site.',
-    address: '3126 N Broadway, Chicago, IL 60657',
-    lat: 41.9395,
-    lng: -87.6449,
-    signupStatus: 'open',
-    signupInstructions: 'Register online via the studio\'s class schedule.',
-    sourceUrl: 'https://www.danceonbroadway.com/',
-  },
+  // Dance on Broadway has no entry here (removed 2026-08-19) — the
+  // 'danceonbroadway' SOURCES row above still seeds fine on its own, but
+  // this single vague listing was superseded by 16 real level-based ones;
+  // see backfill-2026-08-19-dance-on-broadway-rebuild.ts, the actual source
+  // of truth for this provider, which must be re-run after a fresh seed.
   {
     sourceKey: 'tutuschool',
     title: 'Tutu School',
@@ -361,7 +355,7 @@ const LISTINGS: ListingSpec[] = [
     lng: -87.6789,
     signupStatus: 'open',
     signupInstructions: 'Registration is always ongoing — enroll anytime.',
-    sourceUrl: 'https://www.tutuschool.com/roscoevillage',
+    sourceUrl: 'https://tutuschool.com/roscoe/classes/',
   },
   {
     sourceKey: 'dovetail',
@@ -449,7 +443,7 @@ const LISTINGS: ListingSpec[] = [
     lng: -87.6641,
     signupStatus: null,
     signupInstructions: 'Pre-registration online is always required — full semester or drop-in.',
-    sourceUrl: 'https://www.themusicplayhouse.com/',
+    sourceUrl: 'https://www.themusicplayhouseofchicago.com/programs.html',
   },
   {
     sourceKey: 'unitingvoices',
