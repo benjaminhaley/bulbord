@@ -17,6 +17,31 @@ export const CATEGORY_OPTIONS = [
   'Other',
 ]
 
+// Feedback (2026-08-19): "make sure all topics have a relevant emoji or a
+// unicode icon... doesn't have to be very showy just something that
+// visually represents them well." Plain emoji characters prepended to the
+// label text, not IonIcon SVGs — a deliberate, explicit ask, and simpler:
+// no icon asset/component needed anywhere a bare category string is shown
+// (the accordion headers, the Topic filter checkboxes, the post form's
+// category picker). Kept as a Record (not folded into CATEGORY_OPTIONS
+// itself) since CATEGORY_OPTIONS is also the real, stored value written to
+// sports_clubs.category — every existing caller that needs the plain string
+// (grouping, filtering, the DB write) keeps working unchanged.
+const CATEGORY_ICONS: Record<string, string> = {
+  Dance: '💃',
+  'Sports & Athletics': '🏃',
+  'Martial Arts': '🥋',
+  Music: '🎵',
+  'Art & Creative': '🎨',
+  'Academic & Clubs': '📚',
+  Other: '🔹',
+}
+
+export function categoryLabel(category: string): string {
+  const icon = CATEGORY_ICONS[category]
+  return icon ? `${icon} ${category}` : category
+}
+
 function shortDateLabel(dateStr: string): string {
   return new Date(`${dateStr}T00:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
 }

@@ -3,6 +3,8 @@ import { describe, expect, it } from 'vitest'
 import {
   ageRangeLabel,
   calendarEventForSportsClub,
+  CATEGORY_OPTIONS,
+  categoryLabel,
   distanceLabel,
   locationLabel,
   mapUrl,
@@ -172,6 +174,20 @@ describe('nextOccurrenceDayTimeLabel', () => {
         { date: '2026-10-01', start_time: '09:00:00', end_time: null, note: null },
       ]),
     ).toBe('Thursdays, 4:45 pm')
+  })
+})
+
+describe('categoryLabel', () => {
+  it('prepends a relevant emoji for every real category option', () => {
+    for (const category of CATEGORY_OPTIONS) {
+      const label = categoryLabel(category)
+      expect(label).not.toBe(category)
+      expect(label.endsWith(category)).toBe(true)
+    }
+  })
+
+  it('falls back to the bare string for an unrecognized category', () => {
+    expect(categoryLabel('Something Unmapped')).toBe('Something Unmapped')
   })
 })
 

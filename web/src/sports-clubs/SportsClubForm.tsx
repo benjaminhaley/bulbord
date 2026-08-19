@@ -17,7 +17,7 @@ import { useState } from 'react'
 import { API_URL } from '../config'
 import type { UploadedImage } from '../uploads/api'
 import { type ScheduleType, type SportsClub, type SportsClubInput } from './api'
-import { CATEGORY_OPTIONS } from './format'
+import { CATEGORY_OPTIONS, categoryLabel } from './format'
 import { useSportsClubImageUpload } from './useSportsClubImageUpload'
 
 // Shared by the date/time <input>s below — IonInput doesn't support
@@ -114,7 +114,7 @@ export function SportsClubForm({
         <IonSelect value={category || null} onIonChange={(e) => setCategory(e.detail.value ?? '')} interface="action-sheet">
           {CATEGORY_OPTIONS.map((option) => (
             <IonSelectOption key={option} value={option}>
-              {option}
+              {categoryLabel(option)}
             </IonSelectOption>
           ))}
         </IonSelect>

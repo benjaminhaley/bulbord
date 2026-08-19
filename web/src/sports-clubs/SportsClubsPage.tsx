@@ -32,6 +32,7 @@ import { createSportsClub, fetchSportsClubs, type InterestStatus, type SportsClu
 import { matchesCategoryFilter, matchesScheduleFilter } from './filters'
 import {
   CATEGORY_OPTIONS,
+  categoryLabel,
   distanceLabel,
   locationLabel,
   nextOccurrenceDayTimeLabel,
@@ -318,7 +319,7 @@ export function SportsClubsPage() {
                 <IonAccordion key={group.category} value={group.category}>
                   <IonItem slot="header">
                     <IonLabel>
-                      {group.category} <IonNote>({group.clubs.length})</IonNote>
+                      {categoryLabel(group.category)} <IonNote>({group.clubs.length})</IonNote>
                     </IonLabel>
                   </IonItem>
                   <div slot="content">
