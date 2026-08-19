@@ -1,11 +1,13 @@
 // Own copy of events/EventFilterChips.tsx's chip-opens-a-sheet-modal pattern
 // (feedback #97, 2026-08-17, from a Google Maps screenshot) — not imported
 // from events/, per this feature's fresh-non-shared-clone posture
-// (CLAUDE.md). Two chips: Topic (the existing category field, reusing
-// CATEGORY_OPTIONS/matchesCategoryFilter) and Schedule (day-of-week +
-// time-of-day bucket, feedback 2026-08-19), each a plain multi-select
-// checkbox sheet — no Hours-style range slider, since Sports & Clubs'
-// schedule filter is deliberately bucketed rather than continuous.
+// (CLAUDE.md). Three chips: Topic (the existing category field, reusing
+// CATEGORY_OPTIONS/matchesCategoryFilter), Day, and Time (feedback
+// 2026-08-19 — originally one combined "Schedule" chip, split apart the
+// same day into two independent filters so either can be applied without
+// implying the other), each a plain multi-select checkbox sheet — no
+// Hours-style range slider, since the Time filter is deliberately bucketed
+// rather than continuous.
 import { IonButton, IonCheckbox, IonChip, IonContent, IonIcon, IonItem, IonLabel, IonModal } from '@ionic/react'
 import { chevronDownOutline } from 'ionicons/icons'
 import { useState } from 'react'
@@ -44,28 +46,34 @@ function CheckboxGroup<T extends string | number>({
   )
 }
 
-function TopicSheet({
+// Shared by Topic/Day/Time — a title, a Clear button (shown only once
+// something's selected), and a scrollable checkbox list. IonContent (not a
+// bare div) is what actually lets the list scroll within whatever height
+// the dragged-to breakpoint leaves it (feedback, 2026-08-19: Topic's own 7
+// options used to just clip with no way to reach the last few) — the
+// standard Ionic pattern for variable-length sheet content; the title/Clear
+// row stays outside it so it never scrolls out of view itself.
+function SingleGroupSheet<T extends string | number>({
   isOpen,
   onDismiss,
+  title,
+  options,
   selected,
   onChange,
+  breakpoint = 0.5,
 }: {
   isOpen: boolean
   onDismiss: () => void
-  selected: string[]
-  onChange: (next: string[]) => void
+  title: string
+  options: CheckboxOption<T>[]
+  selected: T[]
+  onChange: (next: T[]) => void
+  breakpoint?: number
 }) {
   return (
-    // Feedback (2026-08-19): the checkbox list can run longer than the
-    // sheet's own breakpoint height (7 categories) — it used to just clip
-    // with no way to reach the last few options. IonContent (not a bare
-    // div) makes the list genuinely scroll within whatever height the
-    // dragged-to breakpoint leaves it, the standard Ionic pattern for a
-    // sheet modal with variable-length content; the title/Clear row stays
-    // outside it so it never scrolls out of view itself.
-    <IonModal isOpen={isOpen} onDidDismiss={onDismiss} breakpoints={[0, 0.5, 0.9]} initialBreakpoint={0.5} handle>
+    <IonModal isOpen={isOpen} onDidDismiss={onDismiss} breakpoints={[0, breakpoint, 0.9]} initialBreakpoint={breakpoint} handle>
       <div style={{ padding: '8px 16px 0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <h2 style={{ margin: '0 0 8px' }}>Topic</h2>
+        <h2 style={{ margin: '0 0 8px' }}>{title}</h2>
         {selected.length > 0 && (
           <IonButton fill="clear" size="small" onClick={() => onChange([])}>
             Clear
@@ -73,52 +81,20 @@ function TopicSheet({
         )}
       </div>
       <IonContent className="ion-padding-horizontal">
-        <CheckboxGroup
-          options={CATEGORY_OPTIONS.map((c) => ({ value: c, label: categoryLabel(c) }))}
-          selected={selected}
-          onChange={onChange}
-        />
+        <CheckboxGroup options={options} selected={selected} onChange={onChange} />
       </IonContent>
     </IonModal>
   )
 }
 
-function ScheduleSheet({
-  isOpen,
-  onDismiss,
-  days,
-  times,
-  onChange,
-}: {
-  isOpen: boolean
-  onDismiss: () => void
-  days: ScheduleDay[]
-  times: TimeOfDayBucket[]
-  onChange: (days: ScheduleDay[], times: TimeOfDayBucket[]) => void
-}) {
-  const isCleared = days.length === 0 && times.length === 0
-
-  return (
-    // Same IonContent-scroll fix as TopicSheet above — 10 combined checkboxes
-    // (7 days + 3 time buckets) is even more likely to run past the sheet's
-    // dragged-to height than Topic's own 7.
-    <IonModal isOpen={isOpen} onDidDismiss={onDismiss} breakpoints={[0, 0.65, 0.9]} initialBreakpoint={0.65} handle>
-      <div style={{ padding: '8px 16px 0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <h2 style={{ margin: '0 0 8px' }}>Schedule</h2>
-        {!isCleared && (
-          <IonButton fill="clear" size="small" onClick={() => onChange([], [])}>
-            Clear
-          </IonButton>
-        )}
-      </div>
-      <IonContent className="ion-padding-horizontal">
-        <h3 style={{ margin: '8px 0 0', fontSize: '0.9rem', color: 'var(--ion-color-medium)' }}>Day of week</h3>
-        <CheckboxGroup options={DAY_OPTIONS} selected={days} onChange={(next) => onChange(next, times)} />
-        <h3 style={{ margin: '16px 0 0', fontSize: '0.9rem', color: 'var(--ion-color-medium)' }}>Time of day</h3>
-        <CheckboxGroup options={TIME_OF_DAY_OPTIONS} selected={times} onChange={(next) => onChange(days, next)} />
-      </IonContent>
-    </IonModal>
-  )
+// Short, chip-sized labels for the Time-of-day options — TIME_OF_DAY_OPTIONS'
+// own labels carry a parenthetical range ("Morning (before 12pm)") that's
+// useful inside the sheet but too long once a single selection needs to
+// render inline on the chip itself.
+const TIME_SHORT_LABELS: Record<TimeOfDayBucket, string> = {
+  morning: 'Morning',
+  afternoon: 'Afternoon',
+  evening: 'Evening',
 }
 
 export interface SportsClubFilters {
@@ -137,13 +113,15 @@ export function SportsClubFilterChips({
   onChange: (next: SportsClubFilters) => void
 }) {
   const [topicSheetOpen, setTopicSheetOpen] = useState(false)
-  const [scheduleSheetOpen, setScheduleSheetOpen] = useState(false)
+  const [daySheetOpen, setDaySheetOpen] = useState(false)
+  const [timeSheetOpen, setTimeSheetOpen] = useState(false)
 
   const { categories, days, times } = filters
   const topicLabel =
     categories.length === 0 ? 'Topic' : categories.length === 1 ? categoryLabel(categories[0]) : `${categories.length} topics`
-  const scheduleActive = days.length > 0 || times.length > 0
-  const scheduleLabel = !scheduleActive ? 'Schedule' : `${days.length + times.length} selected`
+  const dayLabel =
+    days.length === 0 ? 'Day' : days.length === 1 ? DAY_OPTIONS.find((o) => o.value === days[0])!.label : `${days.length} days`
+  const timeLabel = times.length === 0 ? 'Time' : times.length === 1 ? TIME_SHORT_LABELS[times[0]] : `${times.length} times`
 
   const chipStyle: React.CSSProperties = { flexShrink: 0 }
   const labelStyle: React.CSSProperties = { whiteSpace: 'nowrap' }
@@ -159,28 +137,46 @@ export function SportsClubFilterChips({
         <IonLabel style={labelStyle}>{topicLabel}</IonLabel>
         <IonIcon icon={chevronDownOutline} />
       </IonChip>
+      <IonChip outline={days.length === 0} color={days.length > 0 ? 'primary' : 'medium'} onClick={() => setDaySheetOpen(true)} style={chipStyle}>
+        <IonLabel style={labelStyle}>{dayLabel}</IonLabel>
+        <IonIcon icon={chevronDownOutline} />
+      </IonChip>
       <IonChip
-        outline={!scheduleActive}
-        color={scheduleActive ? 'primary' : 'medium'}
-        onClick={() => setScheduleSheetOpen(true)}
+        outline={times.length === 0}
+        color={times.length > 0 ? 'primary' : 'medium'}
+        onClick={() => setTimeSheetOpen(true)}
         style={chipStyle}
       >
-        <IonLabel style={labelStyle}>{scheduleLabel}</IonLabel>
+        <IonLabel style={labelStyle}>{timeLabel}</IonLabel>
         <IonIcon icon={chevronDownOutline} />
       </IonChip>
 
-      <TopicSheet
+      <SingleGroupSheet
         isOpen={topicSheetOpen}
         onDismiss={() => setTopicSheetOpen(false)}
+        title="Topic"
+        options={CATEGORY_OPTIONS.map((c) => ({ value: c, label: categoryLabel(c) }))}
         selected={categories}
         onChange={(next) => onChange({ ...filters, categories: next })}
+        breakpoint={0.5}
       />
-      <ScheduleSheet
-        isOpen={scheduleSheetOpen}
-        onDismiss={() => setScheduleSheetOpen(false)}
-        days={days}
-        times={times}
-        onChange={(nextDays, nextTimes) => onChange({ ...filters, days: nextDays, times: nextTimes })}
+      <SingleGroupSheet
+        isOpen={daySheetOpen}
+        onDismiss={() => setDaySheetOpen(false)}
+        title="Day of week"
+        options={DAY_OPTIONS}
+        selected={days}
+        onChange={(next) => onChange({ ...filters, days: next })}
+        breakpoint={0.55}
+      />
+      <SingleGroupSheet
+        isOpen={timeSheetOpen}
+        onDismiss={() => setTimeSheetOpen(false)}
+        title="Time of day"
+        options={TIME_OF_DAY_OPTIONS}
+        selected={times}
+        onChange={(next) => onChange({ ...filters, times: next })}
+        breakpoint={0.35}
       />
     </div>
   )
