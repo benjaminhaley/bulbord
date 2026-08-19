@@ -287,11 +287,13 @@ export function CampsPage() {
                 sources-list icon is gone — adding one is admin-only now,
                 moved to Developer Tools (see events/EventsPage.tsx's own
                 identical change). Filter toggle mirrors Events'/Sports &
-                Clubs' own "out of the way" collapsed-icon-plus-badge pattern
-                (feedback #103) — Camps' first filter at all. */}
+                Clubs' own "out of the way" collapsed-icon pattern (feedback
+                #103) — Camps' first filter at all. No count badge (feedback,
+                2026-08-19: "remove that 4 from the filter icon", applied
+                here too for consistency) — the open chip row's own "4 ages"
+                label already says what's selected. */}
             <IonButton onClick={() => setFiltersOpen((v) => !v)} aria-label="Toggle filters">
               <IonIcon slot="icon-only" icon={filterOutline} color={ages.length > 0 || filtersOpen ? 'primary' : undefined} />
-              {ages.length > 0 && <IonBadge color="primary">{ages.length}</IonBadge>}
             </IonButton>
             {user && (
               <IonButton onClick={() => setShowForm((v) => !v)}>

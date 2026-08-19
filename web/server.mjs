@@ -6,7 +6,27 @@ import { fileURLToPath } from 'node:url'
 import sirv from 'sirv'
 
 const distDir = path.join(path.dirname(fileURLToPath(import.meta.url)), 'dist')
-const assets = sirv(distDir, { single: true })
+// Feedback (2026-08-19): a deployed fix (dropping the "~" price prefix)
+// wasn't showing up on a real device minutes after the deploy went live —
+// traced to index.html being served with no explicit Cache-Control at all.
+// With none set, browsers fall back to heuristic caching keyed off
+// Last-Modified, which can hold onto a stale index.html (and therefore its
+// stale, differently-hashed <script src> reference) well past when a new
+// one exists — the WebView-shell architecture (CLAUDE.md's Platform
+// strategy) depends on every deploy being immediately visible, so this is
+// a real bug, not a one-off fluke. index.html itself must always be
+// revalidated; Vite's actual JS/CSS bundles under /assets/ are content-
+// hashed and safe to cache forever, so they're explicitly told to.
+const assets = sirv(distDir, {
+  single: true,
+  setHeaders(res, pathname) {
+    if (pathname === '/index.html') {
+      res.setHeader('Cache-Control', 'no-cache')
+    } else if (pathname.startsWith('/assets/')) {
+      res.setHeader('Cache-Control', 'public, max-age=31536000, immutable')
+    }
+  },
+})
 const indexHtml = readFileSync(path.join(distDir, 'index.html'), 'utf-8')
 
 // sirv (and the `mime` package underneath it) infers Content-Type from file

@@ -267,13 +267,14 @@ export function SportsClubsPage() {
         <IonToolbar>
           <IonTitle>Sports & Clubs</IonTitle>
           <IonButtons slot="end">
-            {/* Same filterOutline toggle + count-badge shape Events settled
-                on (feedback #97/#102) — a pressed-state icon, color primary
-                only while a filter is active or the chip row is open, plus
-                a badge so an applied filter stays visible while collapsed. */}
+            {/* Same filterOutline pressed-state toggle Events settled on
+                (feedback #97/#102) — color primary only while a filter is
+                active or the chip row is open. No count badge (feedback,
+                2026-08-19: "remove that 4 from the filter icon") — the open
+                chip row's own labels (e.g. "4 ages") already say what's
+                selected, so the number on the icon was redundant. */}
             <IonButton onClick={() => setFiltersOpen((v) => !v)} aria-label="Toggle filters">
               <IonIcon slot="icon-only" icon={filterOutline} color={hasActiveFilters || filtersOpen ? 'primary' : undefined} />
-              {hasActiveFilters && <IonBadge color="primary">{activeFilterCount}</IonBadge>}
             </IonButton>
             {user && (
               <IonButton onClick={() => setShowForm((v) => !v)}>

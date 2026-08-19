@@ -17,7 +17,9 @@ import type { Grade } from './auth/api'
 // age for that kid. Matches the grade options already used at signup
 // (web/src/auth/profileForm.tsx's GRADE_OPTIONS).
 const PERMISSIVE_AGES: Record<Grade, readonly [number, number]> = {
-  'pre-k': [3, 4],
+  // Corrected 2026-08-19, per Ben directly: at Nettelhorst, pre-K is 4-5,
+  // not 3-4 — every other grade's mapping below was already right.
+  'pre-k': [4, 5],
   k: [5, 6],
   '1': [6, 7],
   '2': [7, 8],
