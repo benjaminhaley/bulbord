@@ -46,15 +46,17 @@ export function defaultAgesForKids(kids: { grade: Grade }[]): number[] {
   return [...ages].sort((a, b) => a - b)
 }
 
-// A listing with no known age range at all is never excluded by an active
-// age filter — same "don't hide what we don't have real data for" default
-// posture as most filters in this app (unlike Sports & Clubs' Day/Time
-// filter, which was deliberately narrowed the other way for feedback #106
-// — there's no equivalent explicit ask for age, so this keeps the default).
-// A listing with only one bound known (e.g. "12+") matches any selected age
-// on the open side of that bound.
+// A listing with no known age range at all is excluded once an age filter
+// is active (feedback, 2026-08-19: "Team Training should not show up here
+// given that I have age filtering on... filter should not patch the case.
+// This is kind of a universal rule.") — same reversal Sports & Clubs'
+// Day/Time filter already got for feedback #106: an active filter can't
+// confirm a listing satisfies it, so showing it anyway is a guess, not a
+// real match. A listing with only one bound known (e.g. "12+") still
+// matches any selected age on the open side of that bound — that's real,
+// if partial, data, not the "nothing known at all" case this excludes.
 export function matchesAgeFilter(ageMin: number | null, ageMax: number | null, selectedAges: number[]): boolean {
   if (selectedAges.length === 0) return true
-  if (ageMin == null && ageMax == null) return true
+  if (ageMin == null && ageMax == null) return false
   return selectedAges.some((age) => (ageMin == null || age >= ageMin) && (ageMax == null || age <= ageMax))
 }

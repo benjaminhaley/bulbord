@@ -41,8 +41,8 @@ describe('matchesAgeFilter', () => {
     expect(matchesAgeFilter(null, null, [])).toBe(true)
   })
 
-  it('never excludes a listing with no known age range', () => {
-    expect(matchesAgeFilter(null, null, [7, 8])).toBe(true)
+  it('excludes a listing with no known age range once a filter is active (feedback, 2026-08-19)', () => {
+    expect(matchesAgeFilter(null, null, [7, 8])).toBe(false)
   })
 
   it('matches when any selected age falls within a known range', () => {

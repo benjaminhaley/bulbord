@@ -7,8 +7,8 @@ describe('matchesCampAgeFilter', () => {
     expect(matchesCampAgeFilter({ age_min: 5, age_max: 10 }, [])).toBe(true)
   })
 
-  it('never excludes a camp with no known age range', () => {
-    expect(matchesCampAgeFilter({ age_min: null, age_max: null }, [7, 8])).toBe(true)
+  it('excludes a camp with no known age range once a filter is active', () => {
+    expect(matchesCampAgeFilter({ age_min: null, age_max: null }, [7, 8])).toBe(false)
   })
 
   it('matches when a selected age falls within the camp\'s known range', () => {

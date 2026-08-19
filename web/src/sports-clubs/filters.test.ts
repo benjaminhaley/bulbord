@@ -108,8 +108,8 @@ describe('matchesSportsClubAgeFilter', () => {
     expect(matchesSportsClubAgeFilter({ age_min: 5, age_max: 10 }, [])).toBe(true)
   })
 
-  it('never excludes a club with no known age range', () => {
-    expect(matchesSportsClubAgeFilter({ age_min: null, age_max: null }, [7, 8])).toBe(true)
+  it('excludes a club with no known age range once a filter is active', () => {
+    expect(matchesSportsClubAgeFilter({ age_min: null, age_max: null }, [7, 8])).toBe(false)
   })
 
   it('matches when a selected age falls within the known range', () => {
