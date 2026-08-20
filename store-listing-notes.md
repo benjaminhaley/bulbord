@@ -207,3 +207,12 @@ help text):
 General lesson for any future submission: **never make reviewer access depend on a Universal Link actually
 firing** — build (or reuse) a plain in-app manual-entry path for any credential-delivery mechanism, since a
 review environment's exact tap/paste behavior isn't something this codebase can control or fully test for.
+
+**Outcome**: fix deployed and verified live end-to-end (a real headless-browser run against production — open the
+app → tap Sign In → tap "Have a sign-in link instead?" → paste the demo token → Continue — landed in the real
+Events tab, screenshotted) before touching App Store Connect. `PATCH appStoreReviewDetails` (new demo account
+fields/notes above) → `PATCH reviewSubmissionItems/{id} {resolved:true}` → `PATCH reviewSubmissions/{id}
+{submitted:true}` all returned 200; the app version is back to `WAITING_FOR_REVIEW` as of 2026-08-20 16:58 UTC,
+same submission id (`1611e93d-...`), no new build. (Note: Railway had an active platform-wide deploy-pipeline
+outage — a Google Cloud infra issue — during this pass, which delayed the web deploy by ~45 minutes; unrelated to
+this app's own config, resolved by retrying until Railway's queue cleared.)
