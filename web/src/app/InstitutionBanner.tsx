@@ -26,7 +26,10 @@ export function InstitutionBanner() {
   // Feedback #69: a quiet nudge that events/camps data has gone stale,
   // visible from anywhere without opening Dev Tools first — admin-only,
   // since only Ben acts on it. Independent of the unified notification
-  // badge below (it's an operational nudge, not a member notification).
+  // badge below (it's an operational nudge, not a member notification) —
+  // color="warning" (feedback #114) is what actually marks that
+  // independence visually, since both badges otherwise share the same
+  // corner/size/position on the avatar.
   const showStaleBadge = isAdmin && (freshness?.is_stale ?? false)
   // Feedback #100: one unified badge for every notification type (friend
   // added, feedback reply, event/camp comment) — replaces the earlier three
@@ -69,7 +72,7 @@ export function InstitutionBanner() {
           style={{ display: 'flex', alignItems: 'center', cursor: 'pointer', position: 'relative' }}
         >
           {user && <Avatar url={user.avatarUrl} name={user.name} size={32} />}
-          {showStaleBadge && <BadgeDot corner="top-right" label="Events/camps data needs a refresh" />}
+          {showStaleBadge && <BadgeDot corner="top-right" label="Events/camps data needs a refresh" color="warning" />}
         </div>
       </div>
     </IonToolbar>
