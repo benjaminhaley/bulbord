@@ -1,8 +1,9 @@
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { describe, expect, it, vi } from 'vitest'
 
 import { JoinGate } from './JoinGate'
+import { getToken } from './token'
 
 const mockUseAuth = vi.fn()
 vi.mock('./AuthContext', () => ({ useAuth: () => mockUseAuth() }))
@@ -46,6 +47,31 @@ describe('JoinGate', () => {
     mockUseAuth.mockReturnValue({ user: null, isLoading: false })
     renderGate('/events')
     expect(screen.getByText('Sign In')).toBeInTheDocument()
+  })
+
+  // The manual "have a sign-in link instead?" fallback (added after Apple
+  // rejected build 14 for opening the sign-in link in Safari instead of the
+  // app — see CLAUDE.md's Platform strategy) doesn't depend on Universal
+  // Link hand-off at all: typing/pasting the link directly into this field
+  // never leaves the running app.
+  it('lets a pasted sign-in link store its token and trigger a refresh', () => {
+    const refresh = vi.fn().mockResolvedValue(undefined)
+    mockUseAuth.mockReturnValue({ user: null, isLoading: false, refresh })
+    const { container } = renderGate('/events')
+
+    fireEvent.click(screen.getByText('Have a sign-in link instead?'))
+    const input = container.querySelector('ion-input')!
+    fireEvent(
+      input,
+      new CustomEvent('ionInput', {
+        detail: { value: 'https://nettelhorst.bulbord.com/?signInToken=test-token-123' },
+        bubbles: true,
+      }),
+    )
+    fireEvent.click(screen.getByText('Continue').closest('ion-button')!)
+
+    expect(getToken()).toBe('test-token-123')
+    expect(refresh).toHaveBeenCalled()
   })
 
   it('shows the inviter\'s name once the invite lookup resolves', async () => {

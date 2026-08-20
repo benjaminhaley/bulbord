@@ -70,3 +70,140 @@ audience (parents/staff, not children).
 Capture from the live app once a build exists — Events list, Camps school-break accordion, an event detail page,
 the join/invite screen. Pixel-7-equivalent portrait viewport matches what Playwright's e2e config already uses
 (see CLAUDE.md's Testing section) — reuse that device profile for screenshot capture too.
+
+## Guideline 2.1 rejection response (2026-08-15)
+
+Apple rejected the build asking for more detail in App Review Information, not for a bug fix — no code change
+needed, just a fuller Notes for Review. Two of Apple's 7 asks need Ben's own action (a screen recording can only
+be captured on his physical device; the tested-device list needs his own device model/OS), everything else is
+drafted below ready to paste into App Store Connect's Notes field. **This whole response goes in one paste** —
+Apple's instructions say to include #1-6 in the Notes field for *future* submissions, so all of it belongs there
+together, not just the parts that changed.
+
+**Fresh demo account link** (App Review account, `?signInToken=` mechanism per Login/Platform strategy in
+CLAUDE.md): minted 2026-08-15, verified live against production (`GET /auth/me` returned 200 with the reviewer
+profile) —
+```
+https://nettelhorst.bulbord.com/?signInToken=ODlU_xHPZJBSv7YsAbzvVIXGUlfbcNqWaT3lwk5s2l0
+```
+This is a bearer token with no expiry once set (see Login's Sign-in link entry) — but if a future reviewer
+reports it not working, re-mint one with
+`DATABASE_URL=<Postgres DATABASE_PUBLIC_URL> npx tsx src/auth/update-2026-08-15-mint-reviewer-session.ts` from
+`api/` (script is now committed, reusable for future submissions — looks up the existing App Review account by
+email rather than creating a new one).
+
+---
+
+### Draft reply for App Store Connect's Notes field
+
+**1. Screen recording** — [Ben to record: launch the app on your device → land on the join/sign-in screen →
+sign in (use the demo link above, or your own passkey) → Events tab (scroll list, tap into one event's detail
+page, back out) → Camps tab (expand a school-break section, tap into one camp's detail page) → Friends/Account
+page. No purchase/subscription flow exists in this app (nothing to record there). No sensitive-data permission
+prompts exist either — the only device capability the app touches is the passkey/biometric prompt during sign-in
+and the OS share sheet, both worth including if they trigger naturally in the flow above.]
+
+**2. Devices/OS tested** — [Ben to fill in: model + iOS version build 14 was verified on, e.g. "iPhone 14 Pro,
+iOS 17.5". Also worth adding here: automated Playwright end-to-end tests run in CI on every push, covering the
+full passkey registration/login ceremony via Chrome DevTools Protocol's virtual authenticator — this is in
+addition to, not instead of, the on-device manual pass.]
+
+**3. App description, target audience, problem it solves**
+
+Bulbord is a private, invite-only community bulletin board that helps parents and school staff find local kids'
+events and day-off camp care. It's currently used by one community, Nettelhorst Elementary School in Chicago
+(nettelhorst.bulbord.com); the app is branded at the platform level ("Bulbord") so future school/neighborhood
+communities can be added as their own subdomains without a new app release.
+
+The core problem: school covers ~180 days a year of reliable, easy-to-arrange childcare, but the remaining days
+(summer break, winter/spring break, random school-closure days) are a genuinely hard, time-consuming search
+problem for working parents — comparing camp providers, hours, prices, and age ranges scattered across dozens of
+individual business websites. Bulbord centralizes that into one browsable, school-specific list, organized by
+which school break each camp falls under, with real researched details (hours, price, age range, what to bring,
+booking link) shown consistently for every listing. A second tab does the same for one-off community events
+(park district programs, library events, school-adjacent happenings). A lightweight social layer (who from your
+own school community has starred/is going to a listing, an invite-based "friends" list) supplies the
+word-of-mouth trust signal that's normally the only way parents currently evaluate these options.
+
+Target audience: parents/guardians and staff at Nettelhorst Elementary School today; the same audience at other
+individual school or neighborhood communities once onboarded.
+
+**4. Setup and access instructions**
+
+The app is invite-only — there's no public/anonymous browsing by design (a member vouches for who they invite,
+the same way you'd share this kind of thing with a trusted neighbor). For review, sign in directly with the demo
+link above (no passkey ceremony needed — it delivers an already-authenticated session, since the app's own login
+method is device-passkey/biometric-only and has no username/password). Once signed in, every core feature
+(Events tab, Camps tab, Friends, Feedback, Account) is immediately reachable from the tab bar — no further setup
+or paid unlock required.
+
+**5. External services used**
+
+- WebAuthn/passkeys — native OS credential manager (Face ID/Touch ID/Android biometric), not a third-party auth
+  SDK
+- Resend — transactional/newsletter email delivery (weekly digest, friend-connection alerts, unsubscribe links)
+- Railway — application hosting, Postgres database, and private S3-compatible object storage for user-uploaded
+  and sourced images (served through our own backend proxy, never a public bucket URL)
+- Anthropic Claude API — two narrow, optional backend uses: (a) shortening long scraped event titles for
+  display, (b) an admin-triggered tool that extracts candidate events from a known community source page's text
+  into structured fields for a moderator to review before anything goes live. Both gracefully no-op if
+  unavailable; neither is user-facing AI chat/generation.
+- Wikipedia's public API — looked up only for a movie's official poster image when a recurring "Movie Night"
+  listing names a film; keyless, no account/credential involved
+- Google Maps / Google Calendar / Outlook.com — plain outbound web links only (an address opens Maps in a
+  browser tab, an "Add to Calendar" button opens a prefilled calendar-service page or downloads a standard .ics
+  file) — no API key, SDK, or account linkage on our side
+
+**6. Regional differences**
+
+None — every feature functions identically regardless of region. The app's *content* is scoped to one specific
+school community's local area (Chicago), but that's a content/data choice, not a region-gated feature — someone
+opening the app from any region sees the same app behavior, just local listings relevant to that one community.
+
+**7. Regulated industry / protected third-party material**
+
+Not applicable. The app doesn't operate in a regulated industry (no health, financial, or legal services) and
+doesn't include licensed or protected third-party material — event/camp listing photos are either the poster's
+own upload, an image drawn from that specific business's own public webpage (their own og:image/logo, shown only
+as an informational reference alongside a link back to their own site), or a generated placeholder graphic when
+no real photo is available.
+
+## Second Guideline 2.1 rejection: sign-in link opened Safari, not the app (2026-08-18)
+
+Submission `1611e93d-aca9-4fa3-b1f2-8d7916cf119e` (still build 14 — this round needed no new binary) came back rejected
+again, this time with a real functional finding rather than a missing-info one: "We were unable to sign in since the
+provided url leads to a website in Safari... Please provide us a way to access the app (QR code), not the website."
+
+**Root cause**: the `?signInToken=` link only reaches the app's own `appUrlOpen` handler (`web/src/main.tsx`) via a
+genuine Universal Link hand-off, which depends on how the link is actually invoked — tapping a real rendered
+hyperlink usually works, but pasting into Safari's address bar, or opening from certain review-tooling contexts,
+does not trigger the hand-off at all and just loads the plain website. App Store Connect's own demo-account fields
+are plain text (`demoAccountName` held the full URL) — there's no way to guarantee *how* a reviewer interacts with
+that text, so a mechanism that depends on a real link tap was never going to be reliable here. This is a
+well-known category of failure for Universal-Link-based reviewer access, not specific to this app's config (RP ID,
+AASA, entitlements were all independently re-checked and are still correct).
+
+**Fix, shipped as a pure web change** (no native rebuild needed — see Platform strategy's WebView-shell
+architecture): `web/src/auth/JoinGate.tsx` gained a manual sign-in fallback (`ManualSignInEntry`), reachable from
+the dead-end "you need an invitation" screen via a small "Have a sign-in link instead?" toggle. It's a plain text
+field + Continue button — pasting the link (or just the bare token) and tapping Continue calls the exact same
+`setToken()`/`refresh()` path the URL-param mechanism already used, but entirely from *inside* the running app, so
+there's nothing for iOS to intercept or fail to intercept. `web/src/auth/token.ts`'s new `parseSignInToken()`
+extracts the token from either a full pasted URL or a bare token. Deployed to production and verified live before
+being described to Apple below.
+
+**Updated demo-account fields / Notes for Review** (`appStoreReviewDetail`, same submission/version — resubmitted
+via `PATCH /v1/reviewSubmissionItems/{id} {resolved:true}` then `PATCH /v1/reviewSubmissions/{id} {submitted:true}`,
+not a new reviewSubmission, per Apple's own "edit items in a submission once before resubmission... click Resubmit"
+help text):
+
+- `demoAccountName`: the bare sign-in code (not a URL this time) — same live token as before, reverified against
+  production (`GET /auth/me` returned 200) rather than re-minted, since it has no expiry once set.
+- `demoAccountPassword`: "N/A — passkey-only app, see Notes for the sign-in code's exact steps"
+- Notes: rewritten to give literal in-app tap-path steps (open the app → tap "Sign In" → tap "Have a sign-in link
+  instead?" → paste the code → Continue) instead of a tappable link, plus a short explanation of why this method
+  was added, so the reviewer isn't left to guess if the first thing they try still doesn't work.
+
+General lesson for any future submission: **never make reviewer access depend on a Universal Link actually
+firing** — build (or reuse) a plain in-app manual-entry path for any credential-delivery mechanism, since a
+review environment's exact tap/paste behavior isn't something this codebase can control or fully test for.

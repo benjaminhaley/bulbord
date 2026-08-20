@@ -49,7 +49,7 @@ import {
   type Role,
 } from './profileForm'
 import { ProfileSetupWizard } from './ProfileSetupWizard'
-import { setToken } from './token'
+import { getToken, parseSignInToken, setToken } from './token'
 import { loginWithPasskey, registerPasskey } from './webauthn'
 
 // Shown on every logged-out state (loading, invite, sign-in, dead-end) so a
@@ -114,6 +114,81 @@ function SignInLink({ busy, onSignIn }: { busy: boolean; onSignIn: () => void })
         Sign In
       </a>
     </p>
+  )
+}
+
+// Fallback for anyone who has a real sign-in link (`?signInToken=...`, see
+// Login's Sign-in link entry in CLAUDE.md) but can't rely on tapping it to
+// hand off into the app — most notably an App Store reviewer, whose device
+// is known to sometimes open the link in Safari instead of invoking the
+// Universal Link (Apple rejected build 14 for exactly this, 2026-08-18: "the
+// provided url leads to a website in Safari"). Typing/pasting the link or
+// bare token directly into the running app sidesteps the whole hand-off
+// question — there's nothing for iOS to intercept, since the value never
+// leaves this text field as a real navigation. Collapsed behind a small
+// low-emphasis toggle so it doesn't compete with the real sign-in path for a
+// normal member, who'll essentially never need it.
+function ManualSignInEntry({ onSignedIn }: { onSignedIn: () => Promise<void> }) {
+  const [open, setOpen] = useState(false)
+  const [value, setValue] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function submit() {
+    const token = parseSignInToken(value)
+    if (!token) return
+    setBusy(true)
+    setError(null)
+    try {
+      setToken(token)
+      await onSignedIn()
+      // fetchCurrentUser clears the stored token and leaves `user` null on a
+      // 401 (see auth/api.ts) -- if it's gone again right after we just set
+      // it, the token we were given wasn't valid.
+      if (!getToken()) setError("That link or code didn't work")
+    } catch {
+      setError('Something went wrong -- try again')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  if (!open) {
+    return (
+      <p style={{ margin: '4px 0 0' }}>
+        <a
+          onClick={() => setOpen(true)}
+          style={{ color: 'var(--ion-color-medium)', textDecoration: 'underline', fontSize: '0.75rem', cursor: 'pointer' }}
+        >
+          Have a sign-in link instead?
+        </a>
+      </p>
+    )
+  }
+
+  return (
+    <div style={{ width: '100%', marginTop: 8 }}>
+      <IonItem>
+        <IonLabel position="stacked" style={{ fontSize: '0.75rem' }}>
+          Sign-in link or code
+        </IonLabel>
+        <IonInput value={value} onIonInput={(e) => setValue(e.detail.value ?? '')} placeholder="Paste it here" />
+      </IonItem>
+      {error && (
+        <IonText color="danger">
+          <p style={{ fontSize: '0.75rem', margin: '4px 0 0' }}>{error}</p>
+        </IonText>
+      )}
+      <IonButton
+        expand="block"
+        size="small"
+        className="ion-margin-top"
+        disabled={busy || !value.trim()}
+        onClick={submit}
+      >
+        Continue
+      </IonButton>
+    </div>
   )
 }
 
@@ -293,6 +368,7 @@ function JoinScreen() {
           </IonText>
         )}
         {signInSection}
+        <ManualSignInEntry onSignedIn={refresh} />
       </CenteredMessage>
     )
   }
