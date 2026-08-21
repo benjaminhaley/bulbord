@@ -32,8 +32,13 @@ async function getCroppedImageFile(
   fileName: string,
   fileType: string,
 ): Promise<File> {
-  const scaleX = image.naturalWidth / image.width
-  const scaleY = image.naturalHeight / image.height
+  // getBoundingClientRect(), not the .width/.height IDL properties — see
+  // onImageLoad's own comment below for why those can't be trusted (a real
+  // WebKit race), and why this has to agree with whatever frame of
+  // reference onImageLoad used to build completedCrop in the first place.
+  const { width: renderedWidth, height: renderedHeight } = image.getBoundingClientRect()
+  const scaleX = image.naturalWidth / renderedWidth
+  const scaleY = image.naturalHeight / renderedHeight
   const cropWidth = pixelCrop.width * scaleX
   const cropHeight = pixelCrop.height * scaleY
 
@@ -75,20 +80,56 @@ export function CropModal({
     return () => URL.revokeObjectURL(url)
   }, [file])
 
-  function onImageLoad(e: SyntheticEvent<HTMLImageElement>) {
-    const { width, height } = e.currentTarget
+  // Two distinct races live here, both stemming from the same root cause —
+  // this modal's content (including the just-loaded <img>) can still be
+  // mid-layout (IonModal's open animation hasn't been flushed by the
+  // browser yet) at the exact instant 'load' fires — found 2026-08-21 while
+  // investigating a real onboarding-blocking bug on Safari/iOS, reported as
+  // "no way to actually submit the picture":
+  //
+  // 1. The bare .width/.height IDL properties can fall back to the image's
+  //    *natural* size instead of its CSS-rendered size when layout hasn't
+  //    flushed — reproduced directly with Playwright's real WebKit browser
+  //    (~3 of 5 runs hit it): a 3024x4032 photo rendered at 339x452
+  //    sometimes reported onImageLoad's dimensions as 3024x4032 instead.
+  //    That corrupts completedCrop (computed below in whatever space
+  //    width/height happened to be in) into natural-pixel units;
+  //    getCroppedImageFile then multiplies it *again* by
+  //    naturalSize/renderedSize, over-scaling the crop rect past WebKit's
+  //    ~16384x16384 canvas area cap and silently failing canvas.toBlob() —
+  //    permanently disabling Continue, since avatarUrl never gets set.
+  //    getBoundingClientRect() forces a layout flush, so it can't return a
+  //    stale/wrong-space size the way the bare IDL properties can.
+  //
+  // 2. Even getBoundingClientRect() can legitimately read 0x0 if layout for
+  //    this element hasn't happened *at all* yet — the exact race the
+  //    comment below already flagged for ReactCrop's own auto-complete (a
+  //    CI-only failure at the time), which turns out to affect this
+  //    directly-computed fallback too, once (1) stopped masking it in
+  //    practice. A single measurement attempt can't tell "genuinely zero"
+  //    apart from "not laid out yet", so retry on the next animation frame
+  //    until a real, nonzero box shows up, rather than computing a crop
+  //    against a degenerate one.
+  function measureAndSetInitialCrop(img: HTMLImageElement) {
+    if (!img.isConnected) return
+    const { width, height } = img.getBoundingClientRect()
+    if (width === 0 || height === 0) {
+      requestAnimationFrame(() => measureAndSetInitialCrop(img))
+      return
+    }
     const initial = centerAspectCrop(width, height, 1)
     setCrop(initial)
     // Also set the completed pixel crop directly, from the image's own
     // just-known dimensions — don't rely solely on ReactCrop's internal
     // auto-complete (it fires once, on the crop prop's first
     // undefined -> set transition, using the crop box's live
-    // getBoundingClientRect() at that instant). That can race IonModal's
-    // open animation and read a zero-size box, permanently leaving "Use
-    // Photo" disabled since it only gets that one attempt — caught by a
-    // CI-only e2e failure, but a real user tapping "Use Photo" immediately
-    // (without dragging first) on a slow device could hit the same race.
+    // getBoundingClientRect() at that instant, subject to the same race
+    // described above).
     setCompletedCrop(convertToPixelCrop(initial, width, height))
+  }
+
+  function onImageLoad(e: SyntheticEvent<HTMLImageElement>) {
+    measureAndSetInitialCrop(e.currentTarget)
   }
 
   async function save() {
