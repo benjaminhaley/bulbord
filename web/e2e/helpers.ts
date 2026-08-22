@@ -13,7 +13,7 @@ import { expect, type BrowserContext, type Page } from '@playwright/test'
 // size is much larger than its on-screen crop box to exercise the bug that
 // spec exists to guard — this 80x81 logo is too close to its own display
 // size to ever trigger it.
-export const FIXTURE_PHOTO_PATH = fileURLToPath(new URL('../public/nettelhorst-logo.png', import.meta.url))
+const FIXTURE_PHOTO_PATH = fileURLToPath(new URL('../public/nettelhorst-logo.png', import.meta.url))
 
 // CI's UPLOADS_* env vars are deliberately non-functional (see
 // .github/workflows/ci.yml — UPLOADS_ENDPOINT: http://localhost:0) since no
