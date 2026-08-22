@@ -11,6 +11,9 @@ set -e
 echo "pre-push: format.ts parity (web <-> api)"
 node scripts/check-format-parity.mjs
 
+echo "pre-push: Ionic coverage"
+node scripts/check-ionic-coverage.mjs
+
 echo "pre-push: api typecheck"
 (cd api && npm run typecheck)
 

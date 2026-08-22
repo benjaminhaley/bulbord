@@ -205,6 +205,9 @@ export function SportsClubForm({
         />
       </IonItem>
       <IonItem lines="none">
+        {/* ionic-exception: Ionic has no file-picker component; a hidden
+            native file input triggered by a real button is the standard
+            pattern (see the IonButton below). */}
         <input
           ref={fileInputRef}
           type="file"

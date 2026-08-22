@@ -41,6 +41,15 @@ jobs:
           node-version: 24
       - run: node scripts/check-format-parity.mjs
 
+  ionic-coverage:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: node scripts/check-ionic-coverage.mjs
+
   api:
     runs-on: ubuntu-latest
     services:

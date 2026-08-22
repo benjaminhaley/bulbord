@@ -16,6 +16,7 @@ import {
 import { closeOutline } from 'ionicons/icons'
 import { useState } from 'react'
 
+import { unstyledButtonStyle } from '../theme/layout'
 import { Avatar } from '../uploads/Avatar'
 import { fetchInterestedCampUsers, type InterestedUser } from './api'
 
@@ -61,20 +62,25 @@ export function InterestedBadge({
 
   return (
     <>
-      <div onClick={show} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer', marginTop: 4 }}>
-        <IonNote style={emphasized ? { color: 'var(--ion-text-color)', fontSize: 'var(--type-body-size)' } : undefined}>
-          {count} interested:
-        </IonNote>
-        {shown.map((person, i) => (
-          <div
-            key={i}
-            style={{ marginInlineStart: i === 0 ? 0 : -8, border: '2px solid var(--ion-background-color)', borderRadius: '50%' }}
-          >
-            <Avatar url={person.avatar_url} name={person.name} size={24} />
-          </div>
-        ))}
-        {overflow > 0 && <IonNote style={{ marginInlineStart: 4 }}>+{overflow}</IonNote>}
-      </div>
+      {/* A real IonButton, not a hand-rolled `<div onClick>` (2026-08-22
+          audit — see InstitutionBanner.tsx's comment for the fuller story). */}
+      <IonButton
+        fill="clear"
+        onClick={show}
+        style={{ ...unstyledButtonStyle, display: 'inline-flex', marginTop: 4 }}
+      >
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+          <IonNote style={emphasized ? { color: 'var(--ion-text-color)', fontSize: 'var(--type-body-size)' } : undefined}>
+            {count} interested:
+          </IonNote>
+          {shown.map((person, i) => (
+            <span key={i} style={{ display: 'inline-flex', marginInlineStart: i === 0 ? 0 : -8, border: '2px solid var(--ion-background-color)', borderRadius: '50%' }}>
+              <Avatar url={person.avatar_url} name={person.name} size={24} />
+            </span>
+          ))}
+          {overflow > 0 && <IonNote style={{ marginInlineStart: 4 }}>+{overflow}</IonNote>}
+        </span>
+      </IonButton>
       <IonModal isOpen={open} onDidDismiss={() => setOpen(false)}>
         <IonHeader>
           <IonToolbar>

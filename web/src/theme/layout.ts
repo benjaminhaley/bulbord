@@ -56,3 +56,44 @@ export const headingContentGap = { marginTop: 'var(--space-sm)' } as const
 // gap, which marks a full section break — this is "give the button room
 // without treating it as its own section."
 export const leadingButtonGap = { marginTop: 'var(--space-md)' } as const
+
+// An IonButton stripped back to look like whatever plain, chrome-less
+// element it's replacing (a bare icon, a plain inline line of text, a
+// dashed-border avatar circle) while staying a real button element
+// underneath — keyboard operability, a focus ring, and ripple all come free,
+// unlike a hand-rolled clickable div with an onClick handler (found missing
+// across several components in a 2026-08-22 audit — see
+// InstitutionBanner.tsx's own comment for the fuller story).
+//
+// A plain external CSS class doesn't reliably do this: `min-height` and
+// `height` aren't exposed as Ionic custom properties on ion-button's host at
+// all (verified in @ionic/core's own button.md.css — the default 36px comes
+// from a literal value in the base `:host { ... }` rule, not a `var(--...)`
+// a class could override), and `color` defaults to `--ion-color-primary`
+// unless overridden per call site. An external class's `.foo { height: X }`
+// is at the mercy of load-order/specificity against that same-specificity
+// `:host` rule and measurably lost that fight in testing (min-height/height
+// stayed at 36px even with a class rule setting them to `auto`) — a real,
+// live-verified instance of this file's own "measure, don't assume"
+// convention. A plain inline `style` object always wins over any external
+// stylesheet regardless of specificity, so this is exported as one to be
+// spread into each call site's own `style` prop, not a CSS class.
+export const unstyledButtonStyle = {
+  margin: 0,
+  height: 'auto',
+  minHeight: 'auto',
+  color: 'inherit',
+  fontSize: 'inherit',
+  fontWeight: 'inherit',
+  letterSpacing: 'normal',
+  textTransform: 'none',
+  '--padding-start': '0',
+  '--padding-end': '0',
+  '--padding-top': '0',
+  '--padding-bottom': '0',
+  '--background': 'transparent',
+  '--background-hover': 'transparent',
+  '--background-focused': 'transparent',
+  '--background-activated': 'transparent',
+  '--box-shadow': 'none',
+} as const

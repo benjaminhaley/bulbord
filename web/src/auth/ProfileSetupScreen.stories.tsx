@@ -30,6 +30,17 @@ function setIonInputValue(el: Element, value: string) {
   el.dispatchEvent(new CustomEvent('ionInput', { detail: { value }, bubbles: true }))
 }
 
+// `querySelector('ion-button')` used to unambiguously mean "the Continue
+// button" — the only ion-button on this form. That stopped being true
+// 2026-08-22 when the photo picker switched from a hand-rolled `<div
+// onClick>` to a real IonButton (see JoinGate.tsx's own comment on that
+// change): it now sits earlier in the DOM and matches first. Select by
+// visible text instead of position, so this doesn't quietly break again the
+// next time a plain div becomes a real Ionic control.
+function findContinueButton(canvasElement: HTMLElement): Element {
+  return Array.from(canvasElement.querySelectorAll('ion-button')).find((el) => el.textContent?.includes('Continue'))!
+}
+
 // The role field is a custom IonModal-based picker (RolePicker in
 // JoinGate.tsx), not an IonSelect — and IonModal's React wrapper portals its
 // content straight to document.body (or ion-app if present) rather than
@@ -43,7 +54,7 @@ function setRole(value: string) {
 
 export const Empty: Story = {
   play: async ({ canvasElement }) => {
-    const continueButton = canvasElement.querySelector('ion-button')!
+    const continueButton = findContinueButton(canvasElement)
     await expect(continueButton).toHaveAttribute('disabled')
   },
 }
@@ -65,7 +76,7 @@ export const FilledForm: Story = {
     setIonInputValue(email, 'ben@example.com')
     setRole('family')
 
-    const continueButton = canvasElement.querySelector('ion-button')!
+    const continueButton = findContinueButton(canvasElement)
     await expect(continueButton).toHaveAttribute('disabled') // still missing a photo (and a kid)
   },
 }
@@ -96,7 +107,7 @@ export const PreviewMode: Story = {
     // isn't also blocked on the kids/grade fields (feedback #81), keeping
     // its actual point — every field stays genuinely usable in preview
     // mode — isolated to what it can verify without a real photo.
-    const continueButton = canvasElement.querySelector('ion-button')!
+    const continueButton = findContinueButton(canvasElement)
     await expect(continueButton).toHaveAttribute('disabled')
   },
 }

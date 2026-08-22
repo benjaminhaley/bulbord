@@ -105,12 +105,8 @@ export function NotificationsPage() {
         {items && items.length > 0 && (
           <IonList inset>
             {items.map((item) => (
-              <IonItem key={item.id} lines="full">
-                <div
-                  role="button"
-                  onClick={() => handleOpen(item)}
-                  style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1, cursor: 'pointer', padding: '10px 0' }}
-                >
+              <IonItem key={item.id} button lines="full" detail={false} onClick={() => handleOpen(item)}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1, padding: '10px 0' }}>
                   <Avatar url={item.actor_avatar_url} name={item.actor_name ?? 'Bulbord'} size={36} />
                   <div>
                     <p style={{ margin: 0, fontWeight: item.dismissed_at ? 400 : 600 }}>{item.message}</p>
@@ -122,7 +118,10 @@ export function NotificationsPage() {
                     slot="end"
                     fill="clear"
                     disabled={dismissingId === item.id}
-                    onClick={() => handleDismiss(item)}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      handleDismiss(item)
+                    }}
                     aria-label="Dismiss"
                   >
                     <IonIcon slot="icon-only" icon={closeOutline} />

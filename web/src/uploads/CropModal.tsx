@@ -42,6 +42,8 @@ async function getCroppedImageFile(
   const cropWidth = pixelCrop.width * scaleX
   const cropHeight = pixelCrop.height * scaleY
 
+  // ionic-exception: Ionic has no canvas/image-cropping component; a real
+  // <canvas> is the only way to rasterize a cropped region of an image.
   const canvas = document.createElement('canvas')
   canvas.width = cropWidth
   canvas.height = cropHeight

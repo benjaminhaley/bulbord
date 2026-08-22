@@ -18,6 +18,7 @@ import { camera, checkmark, chevronBackOutline } from 'ionicons/icons'
 import { useState, type ReactNode } from 'react'
 
 import { API_URL } from '../config'
+import { unstyledButtonStyle } from '../theme/layout'
 import { CropModal } from '../uploads/CropModal'
 import { useImageUpload } from '../uploads/useImageUpload'
 import { updateProfile } from './api'
@@ -470,6 +471,9 @@ export function ProfileSetupWizard({ preview = false, onSaved }: { preview?: boo
         error={error}
       >
         <div style={{ textAlign: 'center' }}>
+          {/* ionic-exception: Ionic has no file-picker component; a hidden
+              native file input triggered by a real button is the standard
+              pattern (see the IonButton below). */}
           <input
             ref={fileInputRef}
             type="file"
@@ -489,27 +493,35 @@ export function ProfileSetupWizard({ preview = false, onSaved }: { preview?: boo
               void attachPhoto(cropped)
             }}
           />
-          <div
+          {/* A real IonButton, not a hand-rolled `<div onClick>` (2026-08-22
+              audit — see InstitutionBanner.tsx's own comment for the fuller
+              story): `--border-radius` is Ionic's own exposed custom
+              property for the button's actual rendered shape (plain `border`
+              still has to go on the host style directly — Ionic exposes no
+              `--border` equivalent for a *dashed* border specifically). */}
+          <IonButton
+            fill="clear"
             onClick={() => fileInputRef.current?.click()}
-            style={{
-              width: '10.5rem',
-              height: '10.5rem',
-              borderRadius: '50%',
-              border: '2px dashed var(--ion-color-medium)',
-              margin: '12px auto',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              overflow: 'hidden',
-              cursor: 'pointer',
-            }}
+            style={
+              {
+                ...unstyledButtonStyle,
+                width: '10.5rem',
+                height: '10.5rem',
+                margin: '12px auto',
+                display: 'flex',
+                border: '2px dashed var(--ion-color-medium)',
+                borderRadius: '50%',
+                overflow: 'hidden',
+                '--border-radius': '50%',
+              } as React.CSSProperties
+            }
           >
             {uploading && <IonSpinner name="dots" />}
             {!uploading && avatarUrl && (
               <img src={`${API_URL}${avatarUrl}`} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
             )}
             {!uploading && !avatarUrl && <IonIcon icon={camera} style={{ fontSize: 40, color: 'var(--ion-color-medium)' }} />}
-          </div>
+          </IonButton>
           <p style={{ fontWeight: 600, fontSize: '0.8125rem' }}>{avatarUrl ? 'Tap to retake' : 'Tap to add photo'}</p>
         </div>
       </StepShell>

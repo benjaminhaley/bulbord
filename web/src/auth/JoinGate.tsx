@@ -26,6 +26,7 @@ import { Link, useLocation } from 'react-router-dom'
 
 import { API_URL } from '../config'
 import { ChooseFriendsScreen } from '../connections/ChooseFriendsScreen'
+import { unstyledButtonStyle } from '../theme/layout'
 import { Avatar } from '../uploads/Avatar'
 import { CropModal } from '../uploads/CropModal'
 import { useImageUpload } from '../uploads/useImageUpload'
@@ -102,17 +103,24 @@ function SignInLink({ busy, onSignIn }: { busy: boolean; onSignIn: () => void })
   return (
     <p className="ion-margin-top" style={{ color: 'var(--ion-color-medium)', fontSize: '0.8125rem' }}>
       Already on Nettelhorst Bulbord?{' '}
-      <a
-        onClick={busy ? undefined : onSignIn}
+      {/* A real IonButton, not a hand-rolled `<a onClick>` with no href
+          (2026-08-22 audit — see InstitutionBanner.tsx's own comment for the
+          fuller story): an anchor with no href has no implicit link
+          semantics at all, so it was never keyboard-focusable either. */}
+      <IonButton
+        fill="clear"
+        disabled={busy}
+        onClick={onSignIn}
         style={{
+          ...unstyledButtonStyle,
+          display: 'inline-flex',
           color: 'var(--ion-color-medium)',
           textDecoration: 'underline',
-          cursor: busy ? 'default' : 'pointer',
           opacity: busy ? 0.6 : 1,
         }}
       >
         Sign In
-      </a>
+      </IonButton>
     </p>
   )
 }
@@ -156,12 +164,16 @@ function ManualSignInEntry({ onSignedIn }: { onSignedIn: () => Promise<void> }) 
   if (!open) {
     return (
       <p style={{ margin: '4px 0 0' }}>
-        <a
+        {/* A real IonButton, not a hand-rolled `<a onClick>` with no href
+            (2026-08-22 audit — see InstitutionBanner.tsx's own comment for
+            the fuller story). */}
+        <IonButton
+          fill="clear"
           onClick={() => setOpen(true)}
-          style={{ color: 'var(--ion-color-medium)', textDecoration: 'underline', fontSize: '0.75rem', cursor: 'pointer' }}
+          style={{ ...unstyledButtonStyle, display: 'inline-flex', color: 'var(--ion-color-medium)', textDecoration: 'underline', fontSize: '0.75rem' }}
         >
           Have a sign-in link instead?
-        </a>
+        </IonButton>
       </p>
     )
   }
@@ -563,6 +575,9 @@ export function ProfileSetupScreen({
     <IonContent fullscreen className="ion-padding">
       <h2 className="ion-padding-top">{initialValues ? 'Edit your profile' : 'Set up your profile'}</h2>
       <div style={{ textAlign: 'center', margin: '16px 0' }}>
+        {/* ionic-exception: Ionic has no file-picker component; a hidden
+            native file input triggered by a real button is the standard
+            pattern (see the IonButton below). */}
         <input
           ref={fileInputRef}
           type="file"
@@ -593,31 +608,37 @@ export function ProfileSetupScreen({
             nothing is sent to the server until Continue's real PATCH
             /auth/me, which `submit()` above still blocks in preview — a
             test upload just sits unused in the 'profiles' folder. */}
-        <div
+        {/* A real IonButton, not a hand-rolled `<div onClick>` (2026-08-22
+            audit — see InstitutionBanner.tsx's own comment for the fuller
+            story). `--border-radius` is Ionic's own exposed custom property
+            for the button's actual rendered shape. */}
+        <IonButton
+          fill="clear"
           onClick={() => fileInputRef.current?.click()}
-          style={{
-            // rem, not px, so this grows along with OS/browser text-size
-            // settings instead of staying fixed while "Add photo" grows
-            // past it and gets clipped by overflow: hidden below.
-            width: '5.25rem',
-            height: '5.25rem',
-            borderRadius: '50%',
-            border: '1.5px dashed var(--ion-color-medium)',
-            margin: '0 auto',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            overflow: 'hidden',
-            cursor: 'pointer',
-          }}
-          >
-            {uploading && <IonSpinner name="dots" />}
-            {!uploading && avatarUrl && (
-              <img src={`${API_URL}${avatarUrl}`} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-            )}
-            {!uploading && !avatarUrl && <IonLabel color="medium">Add photo</IonLabel>}
-          </div>
-        </div>
+          style={
+            {
+              ...unstyledButtonStyle,
+              // rem, not px, so this grows along with OS/browser text-size
+              // settings instead of staying fixed while "Add photo" grows
+              // past it and gets clipped by overflow: hidden below.
+              width: '5.25rem',
+              height: '5.25rem',
+              margin: '0 auto',
+              display: 'flex',
+              border: '1.5px dashed var(--ion-color-medium)',
+              borderRadius: '50%',
+              overflow: 'hidden',
+              '--border-radius': '50%',
+            } as React.CSSProperties
+          }
+        >
+          {uploading && <IonSpinner name="dots" />}
+          {!uploading && avatarUrl && (
+            <img src={`${API_URL}${avatarUrl}`} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+          )}
+          {!uploading && !avatarUrl && <IonLabel color="medium">Add photo</IonLabel>}
+        </IonButton>
+      </div>
         <IonList inset>
           <IonItem>
             <IonLabel position="stacked">

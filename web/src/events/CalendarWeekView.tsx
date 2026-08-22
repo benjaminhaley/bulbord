@@ -2,6 +2,7 @@ import { IonButton, IonIcon, IonItem, IonLabel, IonList, IonSpinner, IonToast } 
 import { chevronBack, chevronForward, closeOutline } from 'ionicons/icons'
 import { useEffect, useMemo, useState } from 'react'
 
+import { unstyledButtonStyle } from '../theme/layout'
 import { fetchEventsForWeek, type Event, type EventFilters, type InterestStatus } from './api'
 import { closeSliding, EventRow, TOAST_MESSAGES, type SwipeToast } from './EventsPage'
 import { useEventInterest } from './useEventInterest'
@@ -143,13 +144,19 @@ export function CalendarWeekView({ filters, multiTouch }: { filters: EventFilter
           const isToday = day === today
           const isSelected = day === selectedDay
           return (
-            <div
+            // A real IonButton, not a hand-rolled `<div role="button">`
+            // (2026-08-22 audit — see InstitutionBanner.tsx's own comment
+            // for the fuller story): `expand="block"` fills this cell's
+            // `flex: 1` slot the same way the old div's own `flex: 1` did.
+            <IonButton
               key={day}
-              role="button"
+              fill="clear"
+              expand="block"
               aria-label={dayHeading(day)}
               onClick={() => selectDay(day)}
-              style={{ textAlign: 'center', flex: 1, cursor: 'pointer', padding: '2px 0' }}
+              style={{ ...unstyledButtonStyle, flex: 1, padding: '2px 0' }}
             >
+              <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
               <div style={{ fontSize: '0.6875rem', color: 'var(--ion-color-medium)' }}>{weekdayAbbrev(day)}</div>
               <div
                 style={{
@@ -176,7 +183,8 @@ export function CalendarWeekView({ filters, multiTouch }: { filters: EventFilter
                   background: hasEvents ? 'var(--ion-color-primary)' : 'transparent',
                 }}
               />
-            </div>
+              </span>
+            </IonButton>
           )
         })}
       </div>
