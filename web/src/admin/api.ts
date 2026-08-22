@@ -137,6 +137,22 @@ export async function fetchSourcesLastCheckedAt(): Promise<string | null> {
   return body.data.last_checked_at
 }
 
+// Feedback #119 — a recurring listing (e.g. the Nettelhorst French Market)
+// with an established real cadence whose last known occurrence is closer
+// than its own typical gap between occurrences: "you're about due for
+// another one of these, and there isn't one." A different signal than the
+// two timestamps above (which only measure "have we looked recently"), but
+// surfaced through the same admin nudge — see api/src/events/recurring-series-health.ts.
+interface LowRecurringSeries {
+  title: string
+  source_id: string | null
+  source_name: string | null
+  occurrence_count: number
+  last_occurrence_date: string
+  typical_gap_days: number
+  days_until_last_occurrence: number
+}
+
 // Feedback #69 — how stale events/camps data is, so the admin's own avatar
 // and Dev Tools can flag it without a manual check.
 export interface DataFreshness {
@@ -144,6 +160,7 @@ export interface DataFreshness {
   camps_last_updated_at: string | null
   oldest_at: string | null
   is_stale: boolean
+  recurring_series_running_low: LowRecurringSeries[]
 }
 
 export async function fetchDataFreshness(): Promise<DataFreshness> {

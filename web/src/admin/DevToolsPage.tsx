@@ -26,10 +26,11 @@ import {
   refreshOutline,
   ribbonOutline,
   sunnyOutline,
+  timeOutline,
 } from 'ionicons/icons'
 import { useEffect, useState } from 'react'
 
-import { formatRelativeDateTime } from '../format'
+import { formatDate, formatRelativeDateTime } from '../format'
 import { useAuth } from '../auth/AuthContext'
 import { useDataFreshness } from './DataFreshnessContext'
 import {
@@ -48,6 +49,16 @@ import {
 const STALE_AFTER_MS = 7 * 24 * 60 * 60 * 1000
 function isStale(iso: string | null): boolean {
   return iso === null || Date.now() - new Date(iso).getTime() > STALE_AFTER_MS
+}
+
+// Feedback #119: "N days overdue" once the last known occurrence has
+// already passed (the more urgent case — a member could be looking at a
+// gap right now), "due in N days" while there's still a little runway left
+// but less than the series' own typical gap between occurrences.
+function runwayLabel(daysUntilLastOccurrence: number): string {
+  if (daysUntilLastOccurrence < 0) return `${Math.abs(daysUntilLastOccurrence)} day${daysUntilLastOccurrence === -1 ? '' : 's'} overdue`
+  if (daysUntilLastOccurrence === 0) return 'last occurrence is today'
+  return `due in ${daysUntilLastOccurrence} day${daysUntilLastOccurrence === 1 ? '' : 's'}`
 }
 
 // Reachable only by tapping your own avatar a second time, on the Account
@@ -255,6 +266,38 @@ export function DevToolsPage() {
                 <IonLabel color="medium">No active sources to check</IonLabel>
               </IonItem>
             )}
+          </IonList>
+        )}
+        {/* Feedback #119: auto-surfaced (no button — freshness already loads
+            for every admin via DataFreshnessProvider), rather than something
+            Ben has to remember to click and check. Root cause was the
+            Nettelhorst French Market going silently stale with nothing to
+            notice — see api/src/events/recurring-series-health.ts. */}
+        {(freshness?.recurring_series_running_low.length ?? 0) > 0 && (
+          <IonList inset>
+            <IonItem lines="none">
+              <IonLabel className="ion-text-wrap" color="medium">
+                <h2>Recurring listings running low</h2>
+                <p>These have a real recurring history but no confirmed occurrence coming up soon — worth a re-check.</p>
+              </IonLabel>
+            </IonItem>
+            {freshness!.recurring_series_running_low.map((series) => (
+              <IonItem
+                key={series.title}
+                lines="full"
+                button={!!series.source_id}
+                routerLink={series.source_id ? `/event-sources/${series.source_id}` : undefined}
+              >
+                <IonIcon slot="start" icon={timeOutline} color="warning" />
+                <IonLabel className="ion-text-wrap">
+                  <h2>{series.title}</h2>
+                  <IonNote color="medium">
+                    Last: {formatDate(`${series.last_occurrence_date}T00:00:00`)} ({runwayLabel(series.days_until_last_occurrence)}) ·{' '}
+                    {series.occurrence_count} occurrences seen · {series.source_name ?? 'no source'}
+                  </IonNote>
+                </IonLabel>
+              </IonItem>
+            ))}
           </IonList>
         )}
       </IonContent>

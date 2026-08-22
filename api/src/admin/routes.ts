@@ -5,6 +5,9 @@ import { requireRole } from '../auth/plugin.js'
 import { listUsersForAdmin } from '../auth/service.js'
 import { getCampsLastUpdatedAt } from '../camps/staleness.js'
 import { createTestFollow, sendTestConnectionAlertEmail } from '../connections/service.js'
+import { todayInChicago } from '../dates.js'
+import { findLowRecurringSeries } from '../events/recurring-series-health.js'
+import { getApprovedEventOccurrences } from '../events/recurring-series-query.js'
 import { getSourcesLastCheckedAt, resourceActiveEventSources } from '../events/resourcing.js'
 import { sendTestNewsletterEmail } from '../newsletter/service.js'
 import { impersonateUser } from './impersonation.js'
@@ -83,15 +86,39 @@ export async function adminRoutes(app: FastifyInstance) {
   // red without loading Dev Tools first. "Oldest" is whichever of the two is
   // farther in the past — the whole point is to catch the one that's been
   // neglected longest, not to average them out.
+  //
+  // recurring_series_running_low (feedback #119) is a different axis than
+  // the two timestamps above — those measure "have we looked recently";
+  // this measures "is a specific recurring listing's real published
+  // schedule about to run dry regardless of when we last looked" (see
+  // events/recurring-series-health.ts for why the earlier check alone
+  // wasn't enough to catch the Nettelhorst French Market going stale).
+  // Bundled into this same endpoint/badge rather than a separate one, since
+  // from the admin's perspective both are the same kind of nudge: "some
+  // event-sourcing data needs your attention."
   app.get('/admin/data-freshness', { preHandler: requireRole('admin') }, async (_request, reply) => {
-    const [eventsLastCheckedAt, campsLastUpdatedAt] = await Promise.all([getSourcesLastCheckedAt(), getCampsLastUpdatedAt()])
+    const [eventsLastCheckedAt, campsLastUpdatedAt, seriesRows] = await Promise.all([
+      getSourcesLastCheckedAt(),
+      getCampsLastUpdatedAt(),
+      getApprovedEventOccurrences(),
+    ])
     const freshness = computeDataFreshness(eventsLastCheckedAt, campsLastUpdatedAt, STALE_AFTER_MS)
+    const lowSeries = findLowRecurringSeries(seriesRows, todayInChicago())
     return reply.send({
       data: {
         events_last_checked_at: freshness.eventsLastCheckedAt,
         camps_last_updated_at: freshness.campsLastUpdatedAt,
         oldest_at: freshness.oldestAt,
         is_stale: freshness.isStale,
+        recurring_series_running_low: lowSeries.map((s) => ({
+          title: s.title,
+          source_id: s.sourceId,
+          source_name: s.sourceName,
+          occurrence_count: s.occurrenceCount,
+          last_occurrence_date: s.lastOccurrenceDate,
+          typical_gap_days: s.typicalGapDays,
+          days_until_last_occurrence: s.daysUntilLastOccurrence,
+        })),
       },
     })
   })

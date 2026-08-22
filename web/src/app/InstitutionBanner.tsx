@@ -40,7 +40,11 @@ export function InstitutionBanner() {
   // color="warning" (feedback #114) is what actually marks that
   // independence visually, since both badges otherwise share the same
   // corner/size/position on the avatar.
-  const showStaleBadge = isAdmin && (freshness?.is_stale ?? false)
+  // Feedback #119: a recurring listing running low on confirmed future
+  // occurrences is the same kind of operational nudge as is_stale above —
+  // both fold into this one badge rather than adding a second corner/dot.
+  const showStaleBadge =
+    isAdmin && ((freshness?.is_stale ?? false) || (freshness?.recurring_series_running_low?.length ?? 0) > 0)
   // Feedback #100: one unified badge for every notification type (friend
   // added, feedback reply, event/camp comment) — replaces the earlier three
   // separate mechanisms (a friend-activity dot, a numbered feedback-reply
