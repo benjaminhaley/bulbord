@@ -25,6 +25,7 @@ import { updateProfile } from './api'
 import { useAuth } from './AuthContext'
 import './onboardingWizard.css'
 import {
+  capitalizeWords,
   GRADE_OPTIONS,
   isEmailValid,
   isKidsValid,
@@ -335,7 +336,7 @@ export function ProfileSetupWizard({ preview = false, onSaved }: { preview?: boo
           labelPlacement="floating"
           fill="outline"
           value={firstName}
-          onIonInput={(e) => setFirstName(e.detail.value ?? '')}
+          onIonInput={(e) => setFirstName(capitalizeWords(e.detail.value ?? ''))}
           autocomplete="given-name"
           autofocus
           style={{ marginBottom: 16 }}
@@ -345,7 +346,7 @@ export function ProfileSetupWizard({ preview = false, onSaved }: { preview?: boo
           labelPlacement="floating"
           fill="outline"
           value={lastName}
-          onIonInput={(e) => setLastName(e.detail.value ?? '')}
+          onIonInput={(e) => setLastName(capitalizeWords(e.detail.value ?? ''))}
           autocomplete="family-name"
         />
       </StepShell>

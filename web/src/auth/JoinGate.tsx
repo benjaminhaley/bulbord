@@ -35,7 +35,7 @@ import { fetchInviteInfo, updateProfile, type Grade, type InviteInfo } from './a
 import { useAuth } from './AuthContext'
 import { MosaicMotif } from './MosaicMotif'
 import {
-  capitalizeFirst,
+  capitalizeWords,
   GRADE_OPTIONS,
   isEmailValid,
   isKidsValid,
@@ -647,7 +647,7 @@ export function ProfileSetupScreen({
             </IonLabel>
             <IonInput
               value={firstName}
-              onIonInput={(e) => setFirstName(capitalizeFirst(e.detail.value ?? ''))}
+              onIonInput={(e) => setFirstName(capitalizeWords(e.detail.value ?? ''))}
               autocomplete="given-name"
               autofocus
             />
@@ -659,7 +659,7 @@ export function ProfileSetupScreen({
             </IonLabel>
             <IonInput
               value={lastName}
-              onIonInput={(e) => setLastName(capitalizeFirst(e.detail.value ?? ''))}
+              onIonInput={(e) => setLastName(capitalizeWords(e.detail.value ?? ''))}
               autocomplete="family-name"
             />
           </IonItem>

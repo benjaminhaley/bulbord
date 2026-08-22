@@ -56,8 +56,12 @@ export function RequiredMark() {
   )
 }
 
-export function capitalizeFirst(value: string) {
-  return value.length ? value[0].toUpperCase() + value.slice(1) : value
+// Auto-capitalizes a name as it's typed (feedback #118) — caps the first
+// letter of every word (not just the very first character), so a two-word
+// first name typed letter-by-letter doesn't end up with its second word
+// stuck lowercase the way a whole-string-only capitalize would.
+export function capitalizeWords(value: string) {
+  return value.replace(/(^|\s)([a-z])/g, (_match, boundary: string, letter: string) => boundary + letter.toUpperCase())
 }
 
 export function isNameValid(firstName: string, lastName: string) {
