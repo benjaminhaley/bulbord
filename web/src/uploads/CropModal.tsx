@@ -152,29 +152,45 @@ export function CropModal({
           <IonTitle>Crop photo</IonTitle>
         </IonToolbar>
       </IonHeader>
-      <IonContent>
-        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '70vh', background: '#000' }}>
-          {imageSrc && (
-            <ReactCrop
-              crop={crop}
-              onChange={(_, percentCrop) => setCrop(percentCrop)}
-              onComplete={(pixelCrop) => setCompletedCrop(pixelCrop)}
-              aspect={1}
-              circularCrop
-              keepSelection
-            >
-              {/* eslint-disable-next-line jsx-a11y/alt-text -- decorative, cropped into a profile photo the user just picked */}
-              <img ref={imgRef} src={imageSrc} onLoad={onImageLoad} style={{ maxHeight: '68vh', maxWidth: '100%' }} />
-            </ReactCrop>
-          )}
-        </div>
-        <div className="ion-padding">
-          <IonButton expand="block" disabled={saving || !completedCrop?.width} onClick={save}>
-            Use Photo
-          </IonButton>
-          <IonButton expand="block" fill="clear" disabled={saving} onClick={onCancel}>
-            Cancel
-          </IonButton>
+      {/* scrollY={false} + a real flex column filling IonContent's own
+          height, not `vh` units on the image box (found live, 2026-08-22:
+          a real iPhone's on-screen browser chrome — address bar, tab bar —
+          shrinks the *actual* visible viewport well below `100vh`, which
+          measures the largest/chrome-collapsed viewport instead; a fixed
+          `70vh` image box plus the header and button block below it could
+          add up to taller than what's actually visible, pushing "Use
+          Photo" below the fold and forcing a scroll that shouldn't be
+          needed). The button row is `flex: 0 0 auto` (always fully
+          visible, fixed size) and the image area is `flex: 1 1 auto` with
+          `minHeight: 0` (fills whatever real space is left and can shrink
+          below its content's natural size) — this adapts to the real
+          visible height on any device/browser-chrome combination instead
+          of guessing at a viewport-unit percentage. */}
+      <IonContent scrollY={false}>
+        <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+          <div style={{ flex: '1 1 auto', minHeight: 0, display: 'flex', justifyContent: 'center', alignItems: 'center', background: '#000', overflow: 'hidden' }}>
+            {imageSrc && (
+              <ReactCrop
+                crop={crop}
+                onChange={(_, percentCrop) => setCrop(percentCrop)}
+                onComplete={(pixelCrop) => setCompletedCrop(pixelCrop)}
+                aspect={1}
+                circularCrop
+                keepSelection
+              >
+                {/* eslint-disable-next-line jsx-a11y/alt-text -- decorative, cropped into a profile photo the user just picked */}
+                <img ref={imgRef} src={imageSrc} onLoad={onImageLoad} style={{ maxHeight: '100%', maxWidth: '100%' }} />
+              </ReactCrop>
+            )}
+          </div>
+          <div className="ion-padding" style={{ flex: '0 0 auto' }}>
+            <IonButton expand="block" disabled={saving || !completedCrop?.width} onClick={save}>
+              Use Photo
+            </IonButton>
+            <IonButton expand="block" fill="clear" disabled={saving} onClick={onCancel}>
+              Cancel
+            </IonButton>
+          </div>
         </div>
       </IonContent>
     </IonModal>
