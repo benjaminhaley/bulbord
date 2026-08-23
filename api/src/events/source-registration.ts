@@ -15,13 +15,22 @@ import { eventSources, eventsLog } from '../db/schema.js'
 // wrapped there in a try/catch — a failure here must never undo or block
 // the actual event creation. Dedups on exact URL: a source already known
 // under this URL is left alone rather than duplicated.
-export async function registerDiscoveredEventSource(url: string, sourceName: string, actorUserId: string): Promise<void> {
+//
+// Returns the source's id either way (existing or newly created) — the
+// caller sets the event's own source_id to it (feedback, 2026-08-23: "I
+// don't see the root source... being added to event sources" — the source
+// row itself *was* being created correctly, but the event was never linked
+// to it via the real source_id FK, only via the free-text source_url
+// field, so a join on source_id — like the admin sources list's own
+// event_count, or resourcing.ts's own future use of the link — silently
+// couldn't see the connection).
+export async function registerDiscoveredEventSource(url: string, sourceName: string, actorUserId: string): Promise<string> {
   const [existing] = await db
     .select({ id: eventSources.id })
     .from(eventSources)
     .where(and(eq(eventSources.url, url), isNull(eventSources.deletedAt)))
     .limit(1)
-  if (existing) return
+  if (existing) return existing.id
 
   const [created] = await db
     .insert(eventSources)
@@ -44,4 +53,6 @@ export async function registerDiscoveredEventSource(url: string, sourceName: str
     action: 'event_source_created',
     metadata: { sourceId: created.id, discoveredVia: 'photo_extraction' },
   })
+
+  return created.id
 }

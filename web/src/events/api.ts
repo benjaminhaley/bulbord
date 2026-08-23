@@ -45,6 +45,7 @@ export interface EventInput {
   start_time: string
   end_time: string
   all_day: boolean
+  location_name: string
   address: string
   source_url: string
   image_url: string | null
@@ -273,6 +274,13 @@ export async function extractEventFieldsFromPhoto(imageUrl: string): Promise<Ext
 export interface DiscoveredEventSource {
   source_url: string
   source_name: string
+  // A real, confirmed street address for the venue, only when the search
+  // found one it's genuinely confident in (feedback, 2026-08-23: "the
+  // address is a specific thing that Google Maps would always get right")
+  // — many posters name a well-known venue with no printed street address
+  // at all, so this is a second thing worth finding in the same search
+  // that already looks up the hosting organization's own page.
+  address?: string
 }
 
 interface FindEventSourceResponse {

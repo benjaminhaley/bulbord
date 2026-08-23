@@ -44,6 +44,7 @@ export type EventFormInitialValues = Pick<
   | 'all_day'
   | 'start_time'
   | 'end_time'
+  | 'location_name'
   | 'address'
   | 'source_url'
   | 'topic'
@@ -62,6 +63,7 @@ export function EventForm({
   onSubmit,
   onCancel,
   sourceUrlSuggestion,
+  addressSuggestion,
   hidePhotoAttach,
 }: {
   initial?: EventFormInitialValues
@@ -74,11 +76,16 @@ export function EventForm({
   // process") — arrives well after mount, once a live web search for the
   // event's source finds something, so it's threaded through as a prop
   // rather than baked into `initial` (which only ever applies once, at
-  // mount). Only ever applied if the Source URL field is still empty when
+  // mount). Only ever applied if the field it targets is still empty when
   // it arrives — a member's own edit (typed or accepted-then-changed)
   // always wins over a late suggestion. Stage-running/complete status is
-  // now shown by AddEventModal.tsx's own pipeline indicator, not here.
+  // shown by AddEventModal.tsx's own pipeline indicator, not here.
   sourceUrlSuggestion?: string | null
+  // Same live-suggestion mechanism, for a real street address the stage-2
+  // search confirmed (feedback, 2026-08-23: "the address is a specific
+  // thing that Google Maps would always get right" — a poster naming a
+  // well-known venue often has no printed street address at all).
+  addressSuggestion?: string | null
   // True when the caller (AddEventModal.tsx) already shows the attached
   // photo prominently pinned at the top of the screen — avoids showing the
   // same photo a second time via this form's own attach/thumbnail section.
@@ -90,6 +97,7 @@ export function EventForm({
   const [allDay, setAllDay] = useState(initial?.all_day ?? false)
   const [startTime, setStartTime] = useState(initial?.start_time?.slice(0, 5) ?? '')
   const [endTime, setEndTime] = useState(initial?.end_time?.slice(0, 5) ?? '')
+  const [locationName, setLocationName] = useState(initial?.location_name ?? '')
   const [address, setAddress] = useState(initial?.address ?? '')
   const [sourceUrl, setSourceUrl] = useState(initial?.source_url ?? '')
   const [topic, setTopic] = useState(initial?.topic ?? '')
@@ -102,6 +110,10 @@ export function EventForm({
   useEffect(() => {
     setSourceUrl((current) => (sourceUrlSuggestion && !current.trim() ? sourceUrlSuggestion : current))
   }, [sourceUrlSuggestion])
+
+  useEffect(() => {
+    setAddress((current) => (addressSuggestion && !current.trim() ? addressSuggestion : current))
+  }, [addressSuggestion])
 
   const canSubmit = title.trim() && address.trim() && startDate
 
@@ -118,6 +130,7 @@ export function EventForm({
           start_time: allDay ? '' : startTime,
           end_time: allDay ? '' : endTime,
           all_day: allDay,
+          location_name: locationName.trim(),
           address: address.trim(),
           source_url: sourceUrl.trim(),
           topic,
@@ -161,9 +174,29 @@ export function EventForm({
           <input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} style={dateTimeInputStyle} />
         </IonItem>
       )}
+      {/* Split into two fields (feedback, 2026-08-23: "make sure the
+          location has both a location name and a location address... the
+          name is the quick interpretable name that anyone can understand,
+          and the address is a specific thing that Google Maps would
+          always get right") — the underlying data model already had both
+          (system-sourced events have always carried location_name
+          separately from address, see CLAUDE.md's Events data model), this
+          form just never exposed the split to a member posting their own
+          event. Location Name stays optional (a plain street address is a
+          complete, postable location on its own); Address remains the one
+          required location field, matching the existing schema/API
+          contract. */}
       <IonItem>
-        <IonLabel position="stacked">Location</IonLabel>
-        <IonInput value={address} onIonInput={(e) => setAddress(e.detail.value ?? '')} placeholder="Address or place name" />
+        <IonLabel position="stacked">Location Name</IonLabel>
+        <IonInput
+          value={locationName}
+          onIonInput={(e) => setLocationName(e.detail.value ?? '')}
+          placeholder="Short, recognizable name, e.g. Hawthorne School"
+        />
+      </IonItem>
+      <IonItem>
+        <IonLabel position="stacked">Address</IonLabel>
+        <IonInput value={address} onIonInput={(e) => setAddress(e.detail.value ?? '')} placeholder="Street address" />
       </IonItem>
       <IonItem>
         <IonLabel position="stacked">Source URL</IonLabel>

@@ -17,17 +17,6 @@ import {
 } from './api'
 import { EventForm, type EventFormInitialValues } from './EventForm'
 
-function combinedAddress(extracted: ExtractedEventFields | null): string | null {
-  if (!extracted) return null
-  // Ben, 2026-08-23: "make sure the location includes both the location
-  // name... and the address" — the member self-service form has one
-  // Location field (not the separate location_name/address split sourced
-  // events carry), so both real pieces of information belong in that one
-  // string when both are known, rather than one silently winning.
-  if (extracted.location_name && extracted.address) return `${extracted.location_name}, ${extracted.address}`
-  return extracted.address ?? extracted.location_name ?? null
-}
-
 function toInitialValues(extracted: ExtractedEventFields | null, image: UploadedImage): EventFormInitialValues {
   return {
     title: extracted?.title ?? '',
@@ -36,7 +25,17 @@ function toInitialValues(extracted: ExtractedEventFields | null, image: Uploaded
     all_day: extracted?.all_day ?? false,
     start_time: extracted?.start_time ?? null,
     end_time: extracted?.end_time ?? null,
-    address: combinedAddress(extracted),
+    // Kept as two real, separate fields (feedback, 2026-08-23: "make sure
+    // the location has both a location name and a location address... the
+    // name is the quick interpretable name... the address is a specific
+    // thing that Google Maps would always get right") — the member
+    // self-service form has always had both fields available server-side
+    // (system-sourced events already carry location_name separately from
+    // address), it just never exposed the split to a member posting their
+    // own event until now. A real address the poster didn't print may
+    // still arrive shortly after, via stage 2 — see addressSuggestion.
+    location_name: extracted?.location_name ?? null,
+    address: extracted?.address ?? null,
     // Found either printed on the poster itself (stage 1, free) or via the
     // background stage-2 live search — see the sourceUrlSuggestion prop on
     // EventForm for how a stage-2 result reaches an already-open form.
@@ -69,7 +68,11 @@ async function patchDiscoveredSource(event: Event, found: DiscoveredEventSource)
       start_time: event.start_time?.slice(0, 5) ?? '',
       end_time: event.end_time?.slice(0, 5) ?? '',
       all_day: event.all_day,
-      address: event.address ?? '',
+      location_name: event.location_name ?? '',
+      // Same "don't clobber what's already there" rule as the live-form
+      // suggestion (EventForm's addressSuggestion effect) — only apply a
+      // found address if the posted event doesn't already have its own.
+      address: event.address || (found.address ?? ''),
       source_url: found.source_url,
       image_url: event.image_url,
       thumbnail_url: event.thumbnail_url,
@@ -125,8 +128,8 @@ function PipelineStatus({ pipeline }: { pipeline: Pipeline }) {
         <PipelineRow
           running={pipeline.stage2 === 'running'}
           ok={pipeline.stage2 === 'found'}
-          runningLabel="Searching for a source online…"
-          doneLabel={pipeline.stage2 === 'found' ? 'Found a source online' : 'No source found online'}
+          runningLabel="Searching online…"
+          doneLabel={pipeline.stage2 === 'found' ? 'Found more details online' : 'No additional details found online'}
         />
       )}
     </div>
@@ -162,6 +165,7 @@ export function AddEventModal({
   const [initialValues, setInitialValues] = useState<EventFormInitialValues | null>(null)
   const [formNote, setFormNote] = useState<string | null>(null)
   const [sourceUrlSuggestion, setSourceUrlSuggestion] = useState<string | null>(null)
+  const [addressSuggestion, setAddressSuggestion] = useState<string | null>(null)
   const [pipeline, setPipeline] = useState<Pipeline>({ active: false, stage1: 'running', stage2: 'skipped' })
 
   // Points at the most recent handleFile() attempt's session for as long as
@@ -180,6 +184,7 @@ export function AddEventModal({
     setInitialValues(null)
     setFormNote(null)
     setSourceUrlSuggestion(null)
+    setAddressSuggestion(null)
     setPipeline({ active: false, stage1: 'running', stage2: 'skipped' })
   }
 
@@ -204,18 +209,23 @@ export function AddEventModal({
         session.sourceName = found.source_name
 
         if (session.createdEvent) {
-          // Already posted by the time this resolved — only patch it in if
-          // the created event doesn't already have its own source_url
-          // (the member's own, or one already applied to the still-open
-          // form before they submitted).
-          if (!session.createdEvent.source_url) void patchDiscoveredSource(session.createdEvent, found)
+          // Already posted by the time this resolved — only patch in
+          // whichever fields the created event doesn't already have its
+          // own value for (the member's own, or one already applied to
+          // the still-open form before they submitted).
+          const needsSourceUrl = !session.createdEvent.source_url
+          const needsAddress = !session.createdEvent.address && !!found.address
+          if (needsSourceUrl || needsAddress) void patchDiscoveredSource(session.createdEvent, found)
           return
         }
         if (session.cancelled) return
         // Still on the form for this exact attempt — reflect it live.
-        // EventForm itself only applies the suggestion if its own Source
-        // URL field is still empty (see that component's own comment).
-        if (activeSessionRef.current === session) setSourceUrlSuggestion(found.source_url)
+        // EventForm itself only applies each suggestion if its own target
+        // field is still empty (see that component's own comment).
+        if (activeSessionRef.current === session) {
+          setSourceUrlSuggestion(found.source_url)
+          if (found.address) setAddressSuggestion(found.address)
+        }
       })
       .catch(() => {
         if (activeSessionRef.current === session) setPipeline((prev) => ({ ...prev, stage2: 'not_found' }))
@@ -239,6 +249,7 @@ export function AddEventModal({
     setInitialValues(null)
     setFormNote(null)
     setSourceUrlSuggestion(null)
+    setAddressSuggestion(null)
     setPipeline({ active: true, stage1: 'running', stage2: 'skipped' })
     setStage('form')
 
@@ -270,8 +281,10 @@ export function AddEventModal({
     setPipeline((prev) => ({ ...prev, stage1: fields ? 'ok' : 'failed' }))
 
     // Stage 2, in the background — only worth it if stage 1 succeeded and
-    // didn't already find a URL printed on the poster itself.
-    if (fields && !fields.source_url) {
+    // didn't already find everything it's responsible for: a URL printed
+    // on the poster, and a real street address (a poster naming a
+    // well-known venue often has no address printed at all).
+    if (fields && (!fields.source_url || !fields.address)) {
       runSourceSearch(session, fields)
     }
   }
@@ -343,20 +356,23 @@ export function AddEventModal({
                 <p style={{ fontSize: '0.8125rem', margin: '12px 0 0', maxWidth: 280 }}>{choiceError}</p>
               </IonText>
             )}
-            {/* A flex row, not text flowing through a <p> (feedback,
-                2026-08-23: "or enter manually" rendered as two stacked
-                lines instead of one) — a real row sidesteps whatever inline-
-                flow quirk caused that, rather than guessing at another fix. */}
-            <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'center', gap: 4, marginTop: 16 }}>
-              <span style={{ color: 'var(--ion-color-medium)', fontSize: '0.8125rem' }}>or</span>
-              <IonButton
-                fill="clear"
-                onClick={() => setStage('form')}
-                style={{ ...unstyledButtonStyle, color: 'var(--ion-color-medium)', textDecoration: 'underline', fontSize: '0.8125rem' }}
-              >
-                enter manually
-              </IonButton>
-            </div>
+            {/* One single button for the whole phrase (feedback, 2026-08-23,
+                two rounds: first "or enter manually" wrapped onto two
+                lines, then — once that was fixed by making it a flex row —
+                "or" and "enter manually" still didn't share a baseline,
+                since a plain <span> and a separate IonButton next to each
+                other don't reliably line-up their text vertically even in
+                a flex row). Putting the whole phrase inside one element
+                guarantees one consistent baseline, since it's all the same
+                text run — "or" just isn't underlined, so it still reads as
+                plain lead-in text to "enter manually". */}
+            <IonButton
+              fill="clear"
+              onClick={() => setStage('form')}
+              style={{ ...unstyledButtonStyle, color: 'var(--ion-color-medium)', fontSize: '0.8125rem', marginTop: 16 }}
+            >
+              or <span style={{ textDecoration: 'underline', marginLeft: 4 }}>enter manually</span>
+            </IonButton>
           </div>
         )}
         {stage === 'form' && (
@@ -398,6 +414,7 @@ export function AddEventModal({
               submitLabel="Post"
               errorMessage="Could not post this event"
               sourceUrlSuggestion={sourceUrlSuggestion}
+              addressSuggestion={addressSuggestion}
               hidePhotoAttach={pipeline.active}
               onSubmit={handleSubmit}
               onCancel={handleDismiss}

@@ -27,12 +27,13 @@ describe('registerDiscoveredEventSource', () => {
     vi.resetModules()
   })
 
-  it('inserts a new event_sources row and an events_log entry when the URL is not already known', async () => {
+  it('inserts a new event_sources row and an events_log entry when the URL is not already known, and returns its id', async () => {
     selectResults.push([]) // no existing source at this URL
     const { registerDiscoveredEventSource } = await import('./source-registration.js')
 
-    await registerDiscoveredEventSource('https://hawthorne.example/events', 'Hawthorne Scholastic Academy', 'user-1')
+    const id = await registerDiscoveredEventSource('https://hawthorne.example/events', 'Hawthorne Scholastic Academy', 'user-1')
 
+    expect(id).toBe('generated-1')
     expect(insertCalls).toHaveLength(2)
     expect(insertCalls[0]).toEqual(
       expect.objectContaining({
@@ -51,12 +52,13 @@ describe('registerDiscoveredEventSource', () => {
     )
   })
 
-  it('does not duplicate a source already registered under the same URL', async () => {
+  it('does not duplicate a source already registered under the same URL, and returns the existing id', async () => {
     selectResults.push([{ id: 'existing-source' }])
     const { registerDiscoveredEventSource } = await import('./source-registration.js')
 
-    await registerDiscoveredEventSource('https://hawthorne.example/events', 'Hawthorne Scholastic Academy', 'user-1')
+    const id = await registerDiscoveredEventSource('https://hawthorne.example/events', 'Hawthorne Scholastic Academy', 'user-1')
 
+    expect(id).toBe('existing-source')
     expect(insertCalls).toHaveLength(0)
   })
 })

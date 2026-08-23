@@ -165,7 +165,7 @@ export async function eventsRoutes(app: FastifyInstance) {
       return reply.code(400).send({ error: { message: 'title is required' } })
     }
     const found = await findEventSource({ title, location_name: body.location_name, address: body.address })
-    return reply.send({ data: found ? { source_url: found.url, source_name: found.sourceName } : null })
+    return reply.send({ data: found ? { source_url: found.url, source_name: found.sourceName, address: found.address } : null })
   })
 
   // Member self-service event posting (feedback #46) — goes live immediately,
@@ -241,7 +241,13 @@ export async function eventsRoutes(app: FastifyInstance) {
     const sourceName = body.source_name?.trim()
     if (sourceUrl && sourceName) {
       try {
-        await registerDiscoveredEventSource(sourceUrl, sourceName, currentUser.id)
+        const sourceId = await registerDiscoveredEventSource(sourceUrl, sourceName, currentUser.id)
+        // Links the event to the source via the real FK, not just the
+        // free-text source_url field — without this, the source row exists
+        // but nothing (the admin sources list's own event_count, a future
+        // resourcing.ts join) can see the connection (feedback, 2026-08-23:
+        // "I don't see the root source... being added to event sources").
+        await db.update(events).set({ sourceId }).where(eq(events.id, created.id))
       } catch {
         // ignore — see comment above
       }
@@ -340,7 +346,8 @@ export async function eventsRoutes(app: FastifyInstance) {
     const sourceName = body.source_name?.trim()
     if (sourceUrl && sourceName) {
       try {
-        await registerDiscoveredEventSource(sourceUrl, sourceName, currentUser.id)
+        const sourceId = await registerDiscoveredEventSource(sourceUrl, sourceName, currentUser.id)
+        await db.update(events).set({ sourceId }).where(eq(events.id, id))
       } catch {
         // ignore — see comment above
       }

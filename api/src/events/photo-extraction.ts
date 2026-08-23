@@ -46,7 +46,7 @@ Rules:
 - If a specific start time is printed, set start_time to 24-hour HH:MM and all_day to false. If nothing gives a specific time (or it explicitly runs all day), omit start_time and set all_day to true.
 - If the poster gives a time *range* (e.g. "11am-3pm", "doors at 6, show ends 9"), set end_time to the range's own end, also 24-hour HH:MM. Omit end_time when only a single start time is given — never guess an end time that isn't actually printed.
 - description: a short one-to-two sentence plain-language summary of what the event actually is — don't just copy the poster's own headline text back verbatim. Mention notable pricing/ticket details here if the poster has them.
-- location_name is an optional human-friendly venue/place name (e.g. a school or park name); address is an optional street address, only if one is actually printed on the poster — don't guess a street address from a venue name you merely recognize.
+- location_name is an optional human-friendly venue/place name — keep it short and quickly recognizable (e.g. "Hawthorne School", not the full formal name printed on the poster like "Hawthorne Scholastic Academy Turf"); drop sub-venue specifics (a field name, a room number) that don't help someone recognize the place at a glance. address is an optional street address, only if one is actually printed on the poster — don't guess a street address from a venue name you merely recognize, even a well-known one (that's what the source-search stage is for).
 - source_url: only if a website/URL is legibly printed on the poster itself (e.g. "more info at hsapta.org") — the poster's own stated URL, never a guess. Omit if none is printed; a QR code with no visible URL text doesn't count, since it can't be read from a photo.
 - topic: pick the single best match from this fixed list if one clearly applies, otherwise omit the field entirely: ${JSON.stringify(TOPIC_OPTIONS)}
 - If you can't confidently read a real, dated, upcoming event from this image at all (a blurry photo, no event-like content), respond with exactly {"found": false} and nothing else — never invent one.
@@ -64,15 +64,16 @@ Respond with ONLY a JSON object, no markdown fences, no explanation, one of:
 // other sourcing passes already apply (CLAUDE.md's Camps checklist item 4,
 // Events' "find the stable host" item 9) — just applied live instead of by
 // hand.
-const SOURCE_SEARCH_SYSTEM_PROMPT = `You are finding the real, official web page for a specific real-world event, to use as a "source URL" for a family events app.
+const SOURCE_SEARCH_SYSTEM_PROMPT = `You are finding the real, official web page — and, if the venue's own street address wasn't already given, that address — for a specific real-world event, for a family events app.
 
 Rules:
 - Search for the event's own hosting organization (a school, park district, library, church, chamber of commerce, business — whatever actually runs it), not a generic listing/ticketing/aggregator site.
 - Only return a URL you are genuinely confident is that organization's own real page for this event (or, failing that, that organization's own real events/calendar page in general) — if a web search turns up nothing you're confident in, say so.
 - source_name should be the organization's own real name (e.g. "Hawthorne Scholastic Academy"), not the page title or domain.
+- address: only if you find the venue's real, confirmed street address (e.g. from its own official page) and no address was already given to you — a specific, correct address the way Google Maps would resolve it, never a guess or an approximation. Omit entirely if not confidently found.
 
 Respond with ONLY a JSON object, no markdown fences, no explanation, one of:
-{"found": true, "url": string, "source_name": string}
+{"found": true, "url": string, "source_name": string, "address"?: string}
 {"found": false}`
 
 export interface ExtractedEventFields {
@@ -91,6 +92,7 @@ export interface ExtractedEventFields {
 export interface DiscoveredEventSource {
   url: string
   sourceName: string
+  address?: string
 }
 
 type SupportedMediaType = 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp'
@@ -216,6 +218,7 @@ interface RawSourceSearch {
   found?: unknown
   url?: unknown
   source_name?: unknown
+  address?: unknown
 }
 
 // Stage 2: a live web search for the event's real hosting organization —
@@ -274,7 +277,11 @@ async function findEventSourceInner(
     if (!isHttpUrl(parsed.url)) return null
     if (typeof parsed.source_name !== 'string' || !parsed.source_name.trim()) return null
 
-    return { url: parsed.url.trim(), sourceName: parsed.source_name.trim() }
+    return {
+      url: parsed.url.trim(),
+      sourceName: parsed.source_name.trim(),
+      address: typeof parsed.address === 'string' && parsed.address.trim() ? parsed.address.trim() : undefined,
+    }
   } catch {
     return null
   }

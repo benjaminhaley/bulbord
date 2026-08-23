@@ -281,6 +281,35 @@ describe('findEventSource', () => {
     )
   })
 
+  it('includes a confirmed address when the search finds one', async () => {
+    createMock.mockResolvedValue(
+      textResponse(
+        JSON.stringify({
+          found: true,
+          url: 'https://hawthorneacadpta.org/',
+          source_name: 'Hawthorne Scholastic Academy PTA',
+          address: '3444 N Racine Ave, Chicago, IL 60657',
+        }),
+      ),
+    )
+    const { findEventSource } = await import('./photo-extraction.js')
+
+    const result = await findEventSource({ title: 'Family Fun Fest', location_name: 'Hawthorne School', address: undefined })
+
+    expect(result?.address).toBe('3444 N Racine Ave, Chicago, IL 60657')
+  })
+
+  it('omits address when the search does not return one', async () => {
+    createMock.mockResolvedValue(
+      textResponse(JSON.stringify({ found: true, url: 'https://hawthorneacadpta.org/', source_name: 'Hawthorne Scholastic Academy PTA' })),
+    )
+    const { findEventSource } = await import('./photo-extraction.js')
+
+    const result = await findEventSource({ title: 'Family Fun Fest', location_name: 'Hawthorne School', address: undefined })
+
+    expect(result?.address).toBeUndefined()
+  })
+
   it('returns null when the search finds nothing confident', async () => {
     createMock.mockResolvedValue(textResponse(JSON.stringify({ found: false })))
     const { findEventSource } = await import('./photo-extraction.js')
