@@ -25,6 +25,25 @@ function toEventInput(image: UploadedImage | null, fields: Omit<EventInput, 'ima
   return { ...fields, image_url: image?.image_url ?? null, thumbnail_url: image?.thumbnail_url ?? null }
 }
 
+// Exported (not just a local closure) so it's directly unit-testable —
+// feedback, 2026-08-23: "it should definitely tell me why [Post is
+// disabled]... there should be a path to remediate."
+export function describeMissingFields(fields: string[]): string {
+  if (fields.length === 1) return `${fields[0]} is required to post.`
+  return `${fields.slice(0, -1).join(', ')} and ${fields[fields.length - 1]} are required to post.`
+}
+
+// Local to this form rather than reusing auth/profileForm.tsx's identical
+// component — a tiny UI atom, not worth a cross-feature import for.
+function RequiredMark() {
+  return (
+    <span aria-hidden="true" style={{ color: 'var(--ion-color-danger)' }}>
+      {' '}
+      *
+    </span>
+  )
+}
+
 // Native date/time inputs' own intrinsic width, not stretched — a plain
 // `width: '100%'` (the original style here) let iOS Safari center the
 // displayed value inside a wide box, reading as a big, oddly-empty row next
@@ -115,7 +134,21 @@ export function EventForm({
     setAddress((current) => (addressSuggestion && !current.trim() ? addressSuggestion : current))
   }, [addressSuggestion])
 
-  const canSubmit = title.trim() && address.trim() && startDate
+  // Named, not just enforced silently — a disabled Post with no explanation
+  // left a member stuck with no path to remediate (feedback, 2026-08-23:
+  // "I can't post here, but it's not giving me feedback why not... there
+  // should be a path to remediate"). This came up specifically via the photo
+  // pipeline: a poster can name a well-known venue with no printed street
+  // address, and if the stage-2 source search also doesn't find one (it can
+  // fail, same as stage 1), Address is left blank with nothing telling the
+  // member that's the one thing stopping them from posting.
+  const missingFields = [
+    !title.trim() && 'Title',
+    !address.trim() && 'Address',
+    !startDate && 'Date',
+  ].filter((v): v is string => !!v)
+  const canSubmit = missingFields.length === 0
+
 
   async function submit() {
     if (!canSubmit) return
@@ -146,7 +179,10 @@ export function EventForm({
   return (
     <IonList inset>
       <IonItem>
-        <IonLabel position="stacked">Title</IonLabel>
+        <IonLabel position="stacked">
+          Title
+          <RequiredMark />
+        </IonLabel>
         <IonInput value={title} onIonInput={(e) => setTitle(e.detail.value ?? '')} autofocus />
       </IonItem>
       <IonItem>
@@ -154,7 +190,10 @@ export function EventForm({
         <IonTextarea value={description} onIonInput={(e) => setDescription(e.detail.value ?? '')} autoGrow />
       </IonItem>
       <IonItem>
-        <IonLabel position="stacked">Date</IonLabel>
+        <IonLabel position="stacked">
+          Date
+          <RequiredMark />
+        </IonLabel>
         <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} style={dateTimeInputStyle} />
       </IonItem>
       <IonItem>
@@ -195,7 +234,10 @@ export function EventForm({
         />
       </IonItem>
       <IonItem>
-        <IonLabel position="stacked">Address</IonLabel>
+        <IonLabel position="stacked">
+          Address
+          <RequiredMark />
+        </IonLabel>
         <IonInput value={address} onIonInput={(e) => setAddress(e.detail.value ?? '')} placeholder="Street address" />
       </IonItem>
       <IonItem>
@@ -273,6 +315,13 @@ export function EventForm({
           Cancel
         </IonButton>
       </IonItem>
+      {!canSubmit && (
+        <IonText color="medium">
+          <p className="ion-padding-start" style={{ fontSize: '0.8125rem', marginTop: -4 }}>
+            {describeMissingFields(missingFields)}
+          </p>
+        </IonText>
+      )}
     </IonList>
   )
 }
