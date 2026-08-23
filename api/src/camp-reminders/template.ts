@@ -6,6 +6,7 @@ import {
   distanceLabel,
   formatDateRange,
   locationLabel,
+  sortCamps,
   timeLabel,
 } from '../camps/format.js'
 import type { ReminderCamp } from './query.js'
@@ -25,6 +26,10 @@ interface FormattedCamp {
   title: string
   dateRange: string
   time: string
+  // Raw status, kept alongside the two rendered forms below (bookingLabel/
+  // bookingChip) — sortCamps (see renderCampReminderHtml) needs the real
+  // value to check for 'open', not the already-humanized label/color pair.
+  bookingStatus: string | null
   bookingLabel: string
   bookingChip: { background: string; color: string }
   location: string | null
@@ -40,6 +45,7 @@ export function formatReminderCamps(camps: ReminderCamp[]): FormattedCamp[] {
     title: camp.title,
     dateRange: formatDateRange(camp.startDate, camp.endDate),
     time: timeLabel(camp.startTime, camp.endTime),
+    bookingStatus: camp.bookingStatus,
     bookingLabel: bookingStatusLabel(camp.bookingStatus),
     bookingChip: bookingStatusChipStyle(camp.bookingStatus),
     location: (() => {
@@ -64,13 +70,38 @@ function escapeHtml(value: string): string {
   return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 }
 
+// Small stacked circular avatars ahead of the "N interested: ..." text —
+// same shape as the in-app InterestedBadge's stacked icons and
+// connections/template.ts's own circular avatar embed (both border-
+// radius:50%, an absolute apiUrl-prefixed src since a relative upload path
+// means nothing in an email client). Skips anyone with no avatar (required
+// at onboarding — see CLAUDE.md's Login section — so this is only ever a
+// pre-required-photo account), same "omit, don't show a broken image"
+// posture connections/template.ts already established, and caps at 5 for
+// the same reason InterestedBadge's own MAX_STACKED_ICONS does.
+const MAX_INTERESTED_AVATARS = 5
+
+function interestedAvatarsHtml(people: FormattedCamp['interestedNames'], apiUrl: string): string {
+  const withAvatars = people.filter((p): p is (typeof people)[number] & { avatarUrl: string } => p.avatarUrl !== null)
+  if (withAvatars.length === 0) return ''
+  const imgs = withAvatars
+    .slice(0, MAX_INTERESTED_AVATARS)
+    .map(
+      (p, i) =>
+        `<img src="${apiUrl}${p.avatarUrl}" width="20" height="20" style="display:inline-block;width:20px;height:20px;object-fit:cover;border-radius:50%;border:2px solid #ffffff;vertical-align:middle;${i > 0 ? 'margin-left:-8px;' : ''}" alt="" />`,
+    )
+    .join('')
+  return `<span style="display:inline-block;vertical-align:middle;margin-right:6px;">${imgs}</span>`
+}
+
 // Field order mirrors the in-app compact camp row (web/src/camps/
 // CampsPage.tsx's CampRow — feedback #120: "render them very closely to how
 // they rendered on the site"): thumbnail, title, date, time, booking-status
-// badge, location/distance, price/age/spots line, interested-count line.
-// Table-based layout with inline styles, same email-client-compatibility
-// posture as newsletter/template.ts's eventRowHtml, which this otherwise
-// mirrors closely.
+// badge, location/distance, price/age/spots line, interested-count line
+// (now with stacked avatars, feedback following #120: "I don't see the
+// images for who's interested"). Table-based layout with inline styles,
+// same email-client-compatibility posture as newsletter/template.ts's
+// eventRowHtml, which this otherwise mirrors closely.
 function campRowHtml(camp: FormattedCamp, recipient: ReminderRecipient, apiUrl: string, webUrl: string): string {
   const names = camp.interestedNames.map((person) => (person.id === recipient.id ? 'You' : person.name))
   const interestedLine = camp.interestedCount > 0 ? buildInterestedTeaser(names, camp.interestedCount) : null
@@ -94,7 +125,7 @@ function campRowHtml(camp: FormattedCamp, recipient: ReminderRecipient, apiUrl: 
                 </div>
                 ${camp.location ? `<div style="color:${SECONDARY_TEXT_COLOR};font-size:13px;margin-top:4px;">${escapeHtml(camp.location)}</div>` : ''}
                 <div style="color:${SECONDARY_TEXT_COLOR};font-size:13px;margin-top:2px;">${escapeHtml(camp.details)}</div>
-                ${interestedLine ? `<div style="color:${SECONDARY_TEXT_COLOR};font-size:13px;margin-top:6px;">${escapeHtml(interestedLine)}</div>` : ''}
+                ${interestedLine ? `<div style="margin-top:6px;">${interestedAvatarsHtml(camp.interestedNames, apiUrl)}<span style="color:${SECONDARY_TEXT_COLOR};font-size:13px;vertical-align:middle;">${escapeHtml(interestedLine)}</span></div>` : ''}
               </td>
             </tr>
           </table>
@@ -144,7 +175,18 @@ export function renderCampReminderHtml(options: {
   const { camps, breakName, startDate, endDate, recipient, apiUrl, webUrl, unsubscribeUrl } = options
   const dateRange = subjectDateLabel(startDate, endDate, new Date())
   const question = dayOffCampQuestion(startDate, endDate)
-  const rows = camps.map((camp) => campRowHtml(camp, recipient, apiUrl, webUrl)).join('')
+  // Same priority order as the in-app Camps tab (camps/format.ts's
+  // sortCamps, also used by camps/routes.ts's loadUpcomingCamps): the
+  // recipient's own starred camp first, then most-broadly-interested, then
+  // booking-open, then alphabetical (feedback following #120: "should apply
+  // both in the email and in the app"). "Starred by the recipient" is
+  // recipient-specific — camps was fetched once and is reused across every
+  // recipient's send, so this reorder has to happen per recipient, right
+  // here, rather than once up front in formatReminderCamps.
+  const sortedCamps = sortCamps(
+    camps.map((camp) => ({ ...camp, viewerInterested: camp.interestedNames.some((p) => p.id === recipient.id) })),
+  )
+  const rows = sortedCamps.map((camp) => campRowHtml(camp, recipient, apiUrl, webUrl)).join('')
 
   return `<!doctype html>
 <html>
@@ -165,8 +207,7 @@ export function renderCampReminderHtml(options: {
             </tr>
             <tr>
               <td style="padding:24px 24px 8px;">
-                <h1 style="font-size:20px;margin:0 0 4px;color:#111111;">Nettelhorst is closed: ${escapeHtml(breakName)}</h1>
-                <p style="color:#666666;font-size:14px;margin:0;">Hi ${escapeHtml(recipient.name)}, school's out ${escapeHtml(dateRange)} — ${question}</p>
+                <p style="color:#111111;font-size:16px;margin:0;">Hi ${escapeHtml(recipient.name)}, Nettelhorst is off ${escapeHtml(dateRange)} for ${escapeHtml(breakName)} — ${question}</p>
               </td>
             </tr>
             <tr>

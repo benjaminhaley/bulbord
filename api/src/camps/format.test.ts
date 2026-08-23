@@ -13,6 +13,7 @@ import {
   optionPriceCell,
   optionTimeCell,
   priceLabel,
+  sortCamps,
   sortOptionsByPrice,
   spotsLabel,
   timeLabel,
@@ -268,6 +269,51 @@ describe('sortOptionsByPrice', () => {
     const options = [{ price: '10.00' }, { price: '20.00' }]
     sortOptionsByPrice(options)
     expect(options.map((o) => o.price)).toEqual(['10.00', '20.00'])
+  })
+})
+
+describe('sortCamps', () => {
+  it('puts the viewer\'s own starred camp first, ahead of a more broadly popular one', () => {
+    const camps = [
+      { title: 'Popular Camp', interestedCount: 10, bookingStatus: 'open', viewerInterested: false },
+      { title: 'My Camp', interestedCount: 1, bookingStatus: 'open', viewerInterested: true },
+    ]
+    expect(sortCamps(camps).map((c) => c.title)).toEqual(['My Camp', 'Popular Camp'])
+  })
+
+  it('orders by total interested count once viewer-interest is tied', () => {
+    const camps = [
+      { title: 'A', interestedCount: 2, bookingStatus: 'open', viewerInterested: false },
+      { title: 'B', interestedCount: 5, bookingStatus: 'open', viewerInterested: false },
+      { title: 'C', interestedCount: 0, bookingStatus: 'open', viewerInterested: false },
+    ]
+    expect(sortCamps(camps).map((c) => c.title)).toEqual(['B', 'A', 'C'])
+  })
+
+  it('prefers open booking once viewer-interest and interested-count are tied', () => {
+    const camps = [
+      { title: 'Not Open', interestedCount: 0, bookingStatus: 'not_opened', viewerInterested: false },
+      { title: 'Open', interestedCount: 0, bookingStatus: 'open', viewerInterested: false },
+      { title: 'Unknown', interestedCount: 0, bookingStatus: null, viewerInterested: false },
+    ]
+    expect(sortCamps(camps).map((c) => c.title)).toEqual(['Open', 'Not Open', 'Unknown'])
+  })
+
+  it('falls back to alphabetical once every other criterion is tied', () => {
+    const camps = [
+      { title: 'Zebra Camp', interestedCount: 0, bookingStatus: null, viewerInterested: false },
+      { title: 'Apple Camp', interestedCount: 0, bookingStatus: null, viewerInterested: false },
+    ]
+    expect(sortCamps(camps).map((c) => c.title)).toEqual(['Apple Camp', 'Zebra Camp'])
+  })
+
+  it('does not mutate the input array', () => {
+    const camps = [
+      { title: 'B', interestedCount: 0, bookingStatus: null, viewerInterested: false },
+      { title: 'A', interestedCount: 0, bookingStatus: null, viewerInterested: false },
+    ]
+    sortCamps(camps)
+    expect(camps.map((c) => c.title)).toEqual(['B', 'A'])
   })
 })
 

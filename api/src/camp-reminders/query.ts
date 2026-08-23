@@ -6,6 +6,7 @@ import { campInterests, camps, schoolBreaks, users } from '../db/schema.js'
 interface InterestedPerson {
   id: string
   name: string
+  avatarUrl: string | null
 }
 
 export interface ReminderCamp {
@@ -46,7 +47,7 @@ export async function getCampsForDateRange(fromDate: string, toDate: string): Pr
         interestedCount: sql<number>`count(*) filter (where ${campInterests.status} = 'interested')::int`.as(
           'interested_count',
         ),
-        interestedNames: sql<InterestedPerson[]>`coalesce(json_agg(json_build_object('id', ${campInterests.userId}, 'name', ${users.name}) order by ${campInterests.createdAt}) filter (where ${campInterests.status} = 'interested'), '[]'::json)`.as(
+        interestedNames: sql<InterestedPerson[]>`coalesce(json_agg(json_build_object('id', ${campInterests.userId}, 'name', ${users.name}, 'avatarUrl', ${users.avatarUrl}) order by ${campInterests.createdAt}) filter (where ${campInterests.status} = 'interested'), '[]'::json)`.as(
           'interested_names',
         ),
       })

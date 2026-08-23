@@ -6,6 +6,7 @@ import { db } from '../db/client.js'
 import { campComments, campInterests, campSources, camps, eventsLog, schoolBreaks, users } from '../db/schema.js'
 import { todayInChicago } from '../dates.js'
 import { uploadPlaceholderImage } from '../uploads/placeholder.js'
+import { sortCamps } from './format.js'
 import { groupCampsByBreak, type SchoolBreakRow } from './grouping.js'
 import { canEditCamp } from './permissions.js'
 import { formatCampWhen, locationLabel } from './preview-when.js'
@@ -172,7 +173,7 @@ async function loadCampDetail(id: string, userId: string | null) {
 // page's cross-listing notes section does), so running it here would be a
 // wasted per-row query on every Camps tab load.
 async function loadUpcomingCamps(userId: string | null) {
-  return db
+  const rows = await db
     .select({
       ...getTableColumns(camps),
       interestStatus: campInterests.status,
@@ -188,13 +189,19 @@ async function loadUpcomingCamps(userId: string | null) {
         : sql`false`,
     )
     .where(and(eq(camps.status, 'approved'), isNull(camps.deletedAt), gte(camps.endDate, todayInChicago())))
-    // Alphabetical by title (feedback, 2026-08-05: "give camps a clear
-    // ordering... alphabetical is appropriate") — groupCampsByBreak's own
-    // bucket ordering is chronological and independent of this, but the
-    // camps *within* each bucket keep whatever relative order they arrive
-    // in here (Array.filter preserves order), so this is what actually
-    // determines display order within a break/week section.
-    .orderBy(asc(camps.title))
+
+  // Starred-by-you first, then most-broadly-interested, then booking-open,
+  // then alphabetical (see format.ts's sortCamps for the full rule) —
+  // replaced the earlier plain-alphabetical order per feedback following
+  // #120's reminder email, which applies the identical priority order.
+  // groupCampsByBreak's own bucket ordering is chronological and
+  // independent of this, but the camps *within* each bucket keep whatever
+  // relative order they arrive in here (Array.filter preserves order), so
+  // this is what actually determines display order within a break/week
+  // section — sorting once here, before bucketing, is equivalent to
+  // sorting within each bucket separately, since the sort key doesn't
+  // depend on which bucket a camp falls into.
+  return sortCamps(rows.map((row) => ({ ...row, viewerInterested: row.interestStatus === 'interested' })))
 }
 
 export async function campsRoutes(app: FastifyInstance) {

@@ -252,6 +252,38 @@ export function sortOptionsByPrice<T extends { price: string | null }>(options: 
   return [...options].sort((a, b) => priceValue(b.price) - priceValue(a.price))
 }
 
+export interface SortableCamp {
+  title: string
+  interestedCount: number
+  bookingStatus: string | null
+  // Precomputed by the caller rather than a raw interest_status string: the
+  // app's own viewer-specific join (campInterests.status === 'interested')
+  // and the reminder email's per-recipient "is this recipient's id in the
+  // interestedNames list" check are two different ways of arriving at the
+  // same yes/no answer, and this function shouldn't need to know either
+  // shape — just the answer.
+  viewerInterested: boolean
+}
+
+// Camp browse order (feedback, following #120's reminder email): the camp
+// you've personally starred first, then whichever camp the most people
+// overall are interested in, then whichever has booking actually open right
+// now, then alphabetically as the final tiebreaker — same priority order
+// applied everywhere a camp list is shown, in-app and in the reminder
+// email, so a member never sees two different orderings of the same list.
+// A stable sort (Array#sort is stable per spec) so camps tied on every
+// criterion keep whatever relative order the caller already had them in.
+export function sortCamps<T extends SortableCamp>(camps: T[]): T[] {
+  return [...camps].sort((a, b) => {
+    if (a.viewerInterested !== b.viewerInterested) return a.viewerInterested ? -1 : 1
+    if (a.interestedCount !== b.interestedCount) return b.interestedCount - a.interestedCount
+    const aOpen = a.bookingStatus === 'open'
+    const bOpen = b.bookingStatus === 'open'
+    if (aOpen !== bOpen) return aOpen ? -1 : 1
+    return a.title.localeCompare(b.title)
+  })
+}
+
 // Addresses are typically stored as "Street, Chicago, IL 60613" — everything
 // in this app is Chicago-area, so the city/state/zip is redundant noise in
 // the abbreviated list view.
