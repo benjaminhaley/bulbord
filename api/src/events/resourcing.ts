@@ -1,7 +1,7 @@
-import Anthropic from '@anthropic-ai/sdk'
 import * as cheerio from 'cheerio'
 import { and, eq, isNull, sql } from 'drizzle-orm'
 
+import { getAnthropicClient, stripJsonCodeFence } from '../claude.js'
 import { db } from '../db/client.js'
 import { todayInChicago } from '../dates.js'
 import { eventSources } from '../db/schema.js'
@@ -14,17 +14,6 @@ const FETCH_TIMEOUT_MS = 10_000
 // scripts already stripped below) through the model.
 const MAX_PAGE_TEXT_CHARS = 15_000
 const RESOURCE_CONCURRENCY = 3
-
-// Lazily constructed, same as title-normalization.ts — a missing key must
-// degrade to "found nothing", never crash the admin tool that calls this.
-let client: Anthropic | null | undefined
-function getClient(): Anthropic | null {
-  if (client === undefined) {
-    const apiKey = process.env.ANTHROPIC_API_KEY
-    client = apiKey ? new Anthropic({ apiKey }) : null
-  }
-  return client
-}
 
 const SYSTEM_PROMPT = `You extract upcoming events from a scraped webpage's visible text, for a family/community events app in the Chicago area.
 
@@ -39,11 +28,6 @@ Rules:
 
 Respond with ONLY a JSON array, no markdown fences, no explanation. Each element:
 {"title": string, "description"?: string, "start_date": string, "start_time"?: string, "all_day": boolean, "address"?: string, "location_name"?: string}`
-
-function stripCodeFence(text: string): string {
-  const match = text.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/)
-  return match ? match[1] : text
-}
 
 interface ExtractedEvent {
   title?: unknown
@@ -85,7 +69,7 @@ export async function extractCandidateEventsFromSource(
   sourceUrl: string,
   notes: string | null,
 ): Promise<CandidateEvent[]> {
-  const anthropic = getClient()
+  const anthropic = getAnthropicClient()
   if (!anthropic) return []
 
   const response = await fetchWithTimeout(sourceUrl, FETCH_TIMEOUT_MS)
@@ -118,7 +102,7 @@ export async function extractCandidateEventsFromSource(
     const raw = block?.type === 'text' ? block.text.trim() : ''
     if (!raw) return []
 
-    const parsed = JSON.parse(stripCodeFence(raw))
+    const parsed = JSON.parse(stripJsonCodeFence(raw))
     if (!Array.isArray(parsed)) return []
 
     return parsed

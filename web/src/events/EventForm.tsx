@@ -25,6 +25,15 @@ function toEventInput(image: UploadedImage | null, fields: Omit<EventInput, 'ima
   return { ...fields, image_url: image?.image_url ?? null, thumbnail_url: image?.thumbnail_url ?? null }
 }
 
+// Just the subset of Event this form actually reads to prefill itself — an
+// Event satisfies this structurally (editing reuses it directly), but so
+// does a plain candidate object with no id/interest/etc., which is what
+// AddFromPhotoButton.tsx hands in after extraction (feedback #93).
+export type EventFormInitialValues = Pick<
+  Event,
+  'title' | 'description' | 'start_date' | 'all_day' | 'start_time' | 'address' | 'source_url' | 'topic' | 'image_url' | 'thumbnail_url'
+>
+
 // Shared by the "new event" and "edit event" flows (feedback #46) — same
 // shape as feedback/FeedbackForm's shared new/edit component. Only
 // title, location (address), and start_date are required; everything else
@@ -36,7 +45,7 @@ export function EventForm({
   onSubmit,
   onCancel,
 }: {
-  initial?: Event
+  initial?: EventFormInitialValues
   submitLabel: string
   errorMessage: string
   onSubmit: (input: EventInput) => Promise<void>

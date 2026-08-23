@@ -1,17 +1,4 @@
-import Anthropic from '@anthropic-ai/sdk'
-
-// Lazily constructed (not at module load, unlike newsletter/mailer.ts's
-// requireEnv pattern) — ingestEvents() is on the critical path for every
-// seed/backfill script and the future daily job, so a missing key must
-// degrade to "skip simplification" rather than crash ingestion entirely.
-let client: Anthropic | null | undefined
-function getClient(): Anthropic | null {
-  if (client === undefined) {
-    const apiKey = process.env.ANTHROPIC_API_KEY
-    client = apiKey ? new Anthropic({ apiKey }) : null
-  }
-  return client
-}
+import { getAnthropicClient } from '../claude.js'
 
 const SYSTEM_PROMPT = `You rewrite scraped event titles for a family events app so they read as short, plain listings instead of verbose scraped text.
 
@@ -30,7 +17,7 @@ export async function simplifyTitle(input: {
   description?: string | null
   locationName?: string | null
 }): Promise<string> {
-  const anthropic = getClient()
+  const anthropic = getAnthropicClient()
   if (!anthropic) return input.title
 
   try {

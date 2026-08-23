@@ -15,6 +15,7 @@ import { uploadPlaceholderImage } from '../uploads/placeholder.js'
 import { buildEventFilterConditions, parseAfterTimeParam, parseBeforeTimeParam, parseTopicsParam } from './filters.js'
 import { getEventsForWeek } from './week-query.js'
 import { canEditEvent } from './permissions.js'
+import { extractEventFromPhoto } from './photo-extraction.js'
 import {
   interestedCountExpr,
   interestedPeopleExpr,
@@ -123,6 +124,23 @@ export async function eventsRoutes(app: FastifyInstance) {
         row.submittedBy,
       ),
     })
+  })
+
+  // Photo-to-listing extraction (feedback #93) — a member uploads a photo of
+  // a poster/flyer (already run through the normal POST /uploads flow) and
+  // this reads a candidate event out of it. Deliberately just extraction,
+  // not creation: the frontend pre-fills the same EventForm a manual post
+  // uses (image_url/thumbnail_url included, so the flyer photo itself
+  // becomes the event's real photo) and the member reviews/edits before
+  // ever tapping Post — nothing here writes to the database.
+  app.post('/events/extract-from-photo', { preHandler: requireAuth }, async (request, reply) => {
+    const body = request.body as { image_url?: string }
+    const imageUrl = body.image_url?.trim()
+    if (!imageUrl) {
+      return reply.code(400).send({ error: { message: 'image_url is required' } })
+    }
+    const extracted = await extractEventFromPhoto(imageUrl)
+    return reply.send({ data: extracted })
   })
 
   // Member self-service event posting (feedback #46) — goes live immediately,

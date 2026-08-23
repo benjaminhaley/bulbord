@@ -227,6 +227,38 @@ export async function createEvent(input: EventInput): Promise<Event> {
   return body.data
 }
 
+// Mirrors api/src/events/photo-extraction.ts's ExtractedEventFields — a
+// candidate, not a created Event, so AddFromPhotoButton.tsx can hand it
+// straight into EventForm's `initial` prop for review before anything is
+// ever posted (feedback #93).
+export interface ExtractedEventFields {
+  title: string
+  description?: string
+  start_date: string
+  start_time?: string
+  all_day: boolean
+  address?: string
+  location_name?: string
+  topic?: string
+}
+
+interface ExtractFromPhotoResponse {
+  data: ExtractedEventFields | null
+}
+
+export async function extractEventFromPhoto(imageUrl: string): Promise<ExtractedEventFields | null> {
+  const response = await fetch(`${API_URL}/events/extract-from-photo`, {
+    method: 'POST',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ image_url: imageUrl }),
+  })
+  if (!response.ok) {
+    throw new Error(`Failed to extract event from photo: ${response.status}`)
+  }
+  const body = (await response.json()) as ExtractFromPhotoResponse
+  return body.data
+}
+
 export async function updateEvent(id: string, input: EventInput): Promise<Event> {
   const response = await fetch(`${API_URL}/events/${id}`, {
     method: 'PATCH',

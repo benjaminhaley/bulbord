@@ -28,8 +28,9 @@ import { API_URL } from '../config'
 import { Avatar } from '../uploads/Avatar'
 import { CalendarWeekView } from './CalendarWeekView'
 import { DEFAULT_INTEREST_FILTER, EventFilterChips } from './EventFilterChips'
+import { AddFromPhotoButton } from './AddFromPhotoButton'
 import { createEvent, fetchEvents, type Event, type EventFilters, type InterestStatus } from './api'
-import { EventForm } from './EventForm'
+import { EventForm, type EventFormInitialValues } from './EventForm'
 import { formatWhen, locationLabel, teaser } from './format'
 import { InterestedBadge } from './InterestedBadge'
 import { useEventInterest } from './useEventInterest'
@@ -118,6 +119,10 @@ export function EventsPage() {
   const [swipeToast, setSwipeToast] = useState<SwipeToast | null>(null)
   const [multiTouch, setMultiTouch] = useState(false)
   const [showForm, setShowForm] = useState(false)
+  // Set once AddFromPhotoButton finishes extracting (feedback #93) — forces
+  // EventForm to remount (see the `key` below) with the extracted fields as
+  // its initial state, since useState only reads its initializer once.
+  const [photoPrefill, setPhotoPrefill] = useState<EventFormInitialValues | null>(null)
   // Occurrences the next-occurrence collapse is currently suppressing
   // (feedback #48) — 0 once revealHidden() below has fetched everything.
   const [hiddenCount, setHiddenCount] = useState(0)
@@ -248,7 +253,12 @@ export function EventsPage() {
               {hasActiveFilters && <IonBadge color="primary">{activeFilterCount}</IonBadge>}
             </IonButton>
             {user && (
-              <IonButton onClick={() => setShowForm((v) => !v)}>
+              <IonButton
+                onClick={() => {
+                  setShowForm((v) => !v)
+                  setPhotoPrefill(null)
+                }}
+              >
                 <IonIcon slot="icon-only" icon={showForm ? closeOutline : addOutline} />
               </IonButton>
             )}
@@ -272,16 +282,28 @@ export function EventsPage() {
       </IonHeader>
       <IonContent fullscreen onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd} onTouchCancel={handleTouchEnd}>
         {showForm && (
-          <EventForm
-            submitLabel="Post"
-            errorMessage="Could not post this event"
-            onSubmit={async (input) => {
-              const created = await createEvent(input)
-              setEvents((prev) => [created, ...(prev ?? [])])
-              setShowForm(false)
-            }}
-            onCancel={() => setShowForm(false)}
-          />
+          <>
+            <AddFromPhotoButton onExtracted={setPhotoPrefill} />
+            <EventForm
+              // Remount when extraction finishes so the prefilled fields
+              // actually take effect (EventForm's useState only reads
+              // `initial` once, on mount) — see photoPrefill's own comment.
+              key={photoPrefill ? 'photo-prefill' : 'blank'}
+              initial={photoPrefill ?? undefined}
+              submitLabel="Post"
+              errorMessage="Could not post this event"
+              onSubmit={async (input) => {
+                const created = await createEvent(input)
+                setEvents((prev) => [created, ...(prev ?? [])])
+                setShowForm(false)
+                setPhotoPrefill(null)
+              }}
+              onCancel={() => {
+                setShowForm(false)
+                setPhotoPrefill(null)
+              }}
+            />
+          </>
         )}
         {viewMode === 'calendar' && <CalendarWeekView filters={filters} multiTouch={multiTouch} />}
         {viewMode === 'list' && events === null && !error && (
