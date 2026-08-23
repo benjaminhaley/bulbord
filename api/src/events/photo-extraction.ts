@@ -18,13 +18,33 @@ const TOPIC_OPTIONS = ['Movie Night', 'Sports & Fitness', 'Arts & Crafts', 'Comm
 // wildly too long for a member sitting on a spinner waiting for their photo
 // to process. A short timeout + a single retry means a bad call fails fast
 // (within ~1 minute) and the caller gets an honest "couldn't do this"
-// result instead of an unbounded hang. See CALL_TIMEOUT_MS's two call sites
-// below and STAGE_DEADLINE_MS's outer race, which is a hard backstop
-// against a hang anywhere else in the function (e.g. the S3 stream read),
-// not just inside the Anthropic call itself.
+// result instead of an unbounded hang. See CALL_TIMEOUT_MS's call site below
+// (stage 1 only, as of 2026-08-23 — see the SOURCE_SEARCH_* constants below
+// for stage 2's own, larger budget) and STAGE_DEADLINE_MS's outer race,
+// which is a hard backstop against a hang anywhere else in the function
+// (e.g. the S3 stream read), not just inside the Anthropic call itself.
 const CALL_TIMEOUT_MS = 20_000
 const CALL_MAX_RETRIES = 1
 const STAGE_DEADLINE_MS = 45_000
+
+// Stage 2 (findEventSource, below) needs its own, much larger budget — its
+// web_search tool loop (server-side, up to 3 rounds) genuinely takes longer
+// than a vision-only stage 1 call. Found by direct measurement (2026-08-23,
+// feedback: "why weren't additional details found online? They should be...
+// can you debug and make this pipeline more reliable"): a real, correct
+// answer routinely took 17-30s (up to 3 web_search_requests per call, per
+// the response's own usage.server_tool_use), well past CALL_TIMEOUT_MS —
+// the *shared* 20s timeout above (sized for stage 1's fast vision-only
+// calls) was aborting a legitimately-still-working stage 2 request mid-
+// search, retrying once (also often too slow to finish inside 20s), then
+// silently degrading to "No additional details found online" even though
+// the model would have found the real source given a few more seconds.
+// Safe to size generously since stage 2 already runs in the background
+// while the member reviews stage 1's result (see AddEventModal.tsx) — it
+// never blocks Post, so a longer worst case here costs nothing in the UI.
+const SOURCE_SEARCH_CALL_TIMEOUT_MS = 60_000
+const SOURCE_SEARCH_CALL_MAX_RETRIES = 1
+const SOURCE_SEARCH_STAGE_DEADLINE_MS = 130_000
 
 async function withDeadline<T>(work: Promise<T>, fallback: T, ms: number): Promise<T> {
   let timer: ReturnType<typeof setTimeout>
@@ -236,7 +256,7 @@ interface RawSourceSearch {
 export async function findEventSource(
   fields: Pick<ExtractedEventFields, 'title' | 'location_name' | 'address'>,
 ): Promise<DiscoveredEventSource | null> {
-  return withDeadline(findEventSourceInner(fields), null, STAGE_DEADLINE_MS)
+  return withDeadline(findEventSourceInner(fields), null, SOURCE_SEARCH_STAGE_DEADLINE_MS)
 }
 
 async function findEventSourceInner(
@@ -264,7 +284,7 @@ async function findEventSourceInner(
           },
         ],
       },
-      { timeout: CALL_TIMEOUT_MS, maxRetries: CALL_MAX_RETRIES },
+      { timeout: SOURCE_SEARCH_CALL_TIMEOUT_MS, maxRetries: SOURCE_SEARCH_CALL_MAX_RETRIES },
     )
 
     if (message.stop_reason === 'refusal') return null

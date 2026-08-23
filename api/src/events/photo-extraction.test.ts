@@ -336,7 +336,7 @@ describe('findEventSource', () => {
       const { findEventSource } = await import('./photo-extraction.js')
 
       const resultPromise = findEventSource({ title: 'Bake Sale', location_name: undefined, address: undefined })
-      await vi.advanceTimersByTimeAsync(60_000)
+      await vi.advanceTimersByTimeAsync(130_000)
       const result = await resultPromise
 
       expect(result).toBeNull()
