@@ -103,25 +103,32 @@ function campRowHtml(camp: FormattedCamp, recipient: ReminderRecipient, apiUrl: 
     </tr>`
 }
 
-function longDate(dateStr: string): string {
-  return new Date(`${dateStr}T00:00:00`).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })
+// "camp"/"camps" — used by both the subject and the body's own preamble
+// line, so the two can never drift into disagreeing on singular vs. plural.
+function dayOffCampQuestion(startDate: string, endDate: string): string {
+  return startDate === endDate ? 'need a day off camp?' : 'need day off camps?'
 }
 
-function monthDay(dateStr: string): string {
-  return new Date(`${dateStr}T00:00:00`).toLocaleDateString('en-US', { month: 'long', day: 'numeric' })
+// Reused by both the subject line and the body's own heading — camps/
+// format.ts's own formatDateRange, the exact abbreviated date format an
+// in-app camp row already shows ("Fri, Sep 25" for a single day, "Dec 21 –
+// Jan 1" for a range), rather than a bespoke long-form date (feedback,
+// after #120 shipped: "use the abbreviated date format... just like we
+// would in the app... saves space and makes a more concise subject line").
+// 'detailed' mode (not the per-camp rows' default 'summary') so a same-week
+// break still shows its actual date, not just "This Friday" — a reminder
+// email has no surrounding list/section context to lean on the way an
+// in-app row does, the same reasoning camps/format.ts's own header comment
+// gives for using 'detailed' on a page reached directly, with no context.
+function subjectDateLabel(startDate: string, endDate: string, now: Date): string {
+  return formatDateRange(startDate, endDate, now, 'detailed')
 }
 
 // Shared by the real cron send (send-due.ts) and the admin test-send dev
 // tool (service.ts) — one place for the subject line, same reason
-// newsletter/template.ts's newsletterSubject exists. A single-day break
-// (feedback #120's own example, "Monday, September 25") reads with a full
-// weekday name; a multi-day block (Winter Break, say) reads as a plain date
-// range instead, since a block has no single weekday to name.
-export function campReminderSubject(startDate: string, endDate: string, prefix = ''): string {
-  if (startDate === endDate) {
-    return `${prefix}Nettelhorst closed on ${longDate(startDate)} – do you need a day off camp?`
-  }
-  return `${prefix}Nettelhorst closed ${monthDay(startDate)} – ${monthDay(endDate)} – do you need day off camps?`
+// newsletter/template.ts's newsletterSubject exists.
+export function campReminderSubject(startDate: string, endDate: string, prefix = '', now = new Date()): string {
+  return `${prefix}Nettelhorst closed ${subjectDateLabel(startDate, endDate, now)} – ${dayOffCampQuestion(startDate, endDate)}`
 }
 
 export function renderCampReminderHtml(options: {
@@ -135,7 +142,8 @@ export function renderCampReminderHtml(options: {
   unsubscribeUrl: string
 }): string {
   const { camps, breakName, startDate, endDate, recipient, apiUrl, webUrl, unsubscribeUrl } = options
-  const dateRange = startDate === endDate ? longDate(startDate) : `${monthDay(startDate)} – ${monthDay(endDate)}`
+  const dateRange = subjectDateLabel(startDate, endDate, new Date())
+  const question = dayOffCampQuestion(startDate, endDate)
   const rows = camps.map((camp) => campRowHtml(camp, recipient, apiUrl, webUrl)).join('')
 
   return `<!doctype html>
@@ -158,7 +166,7 @@ export function renderCampReminderHtml(options: {
             <tr>
               <td style="padding:24px 24px 8px;">
                 <h1 style="font-size:20px;margin:0 0 4px;color:#111111;">Nettelhorst is closed: ${escapeHtml(breakName)}</h1>
-                <p style="color:#666666;font-size:14px;margin:0;">Hi ${escapeHtml(recipient.name)}, school's out ${escapeHtml(dateRange)} — need a day off camp?</p>
+                <p style="color:#666666;font-size:14px;margin:0;">Hi ${escapeHtml(recipient.name)}, school's out ${escapeHtml(dateRange)} — ${question}</p>
               </td>
             </tr>
             <tr>
