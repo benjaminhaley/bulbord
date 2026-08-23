@@ -100,13 +100,13 @@ interface Pipeline {
 
 function PipelineRow({ running, ok, runningLabel, doneLabel }: { running: boolean; ok: boolean; runningLabel: string; doneLabel: string }) {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.8125rem', color: 'var(--ion-color-medium)' }}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: '1rem', fontWeight: 500, color: 'var(--ion-text-color)' }}>
       {running ? (
-        <IonSpinner name="dots" style={{ width: 16, height: 16, flexShrink: 0 }} />
+        <IonSpinner name="dots" style={{ width: 20, height: 20, flexShrink: 0 }} />
       ) : (
         <IonIcon
           icon={ok ? checkmarkCircle : closeCircleOutline}
-          style={{ fontSize: 16, flexShrink: 0, color: ok ? 'var(--ion-color-success)' : 'var(--ion-color-medium)' }}
+          style={{ fontSize: 20, flexShrink: 0, color: ok ? 'var(--ion-color-success)' : 'var(--ion-color-medium)' }}
         />
       )}
       <span>{running ? runningLabel : doneLabel}</span>
@@ -114,10 +114,18 @@ function PipelineRow({ running, ok, runningLabel, doneLabel }: { running: boolea
   )
 }
 
+// Sized and indented to read as part of the same content column as the
+// fields below it, not a small aside easy to skim past — feedback,
+// 2026-08-23: "make the pipeline details a bit bigger and put them in line
+// with the rest of the text... fairly prominent so people don't
+// accidentally start filling it out themselves [while it's still running]".
+// 32px left padding matches an inset IonList's own item text start (16px
+// list margin + 16px item padding-start), confirmed by direct measurement
+// against a real rendered ion-item rather than assumed.
 function PipelineStatus({ pipeline }: { pipeline: Pipeline }) {
   if (!pipeline.active) return null
   return (
-    <div style={{ padding: '12px 16px 4px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+    <div style={{ padding: '16px 32px 8px', display: 'flex', flexDirection: 'column', gap: 10 }}>
       <PipelineRow
         running={pipeline.stage1 === 'running'}
         ok={pipeline.stage1 === 'ok'}
