@@ -13,7 +13,7 @@ import {
   IonTextarea,
 } from '@ionic/react'
 import { closeOutline, imageOutline } from 'ionicons/icons'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
 import { API_URL } from '../config'
 import type { UploadedImage } from '../uploads/api'
@@ -44,12 +44,26 @@ export function EventForm({
   errorMessage,
   onSubmit,
   onCancel,
+  sourceUrlSuggestion,
+  sourceSearching,
 }: {
   initial?: EventFormInitialValues
   submitLabel: string
   errorMessage: string
   onSubmit: (input: EventInput) => Promise<void>
   onCancel: () => void
+  // Photo-extraction's background stage-2 (feedback, 2026-08-23: "as a user
+  // I should be able to edit or accept the results during this entire
+  // process") — arrives well after mount, once a live web search for the
+  // event's source finds something, so it's threaded through as a prop
+  // rather than baked into `initial` (which only ever applies once, at
+  // mount). Only ever applied if the Source URL field is still empty when
+  // it arrives — a member's own edit (typed or accepted-then-changed)
+  // always wins over a late suggestion. See AddEventModal.tsx.
+  sourceUrlSuggestion?: string | null
+  // Shows a small "Looking for a source…" hint next to the field while
+  // stage 2 is still in flight, so the member knows more may still arrive.
+  sourceSearching?: boolean
 }) {
   const [title, setTitle] = useState(initial?.title ?? '')
   const [description, setDescription] = useState(initial?.description ?? '')
@@ -64,6 +78,10 @@ export function EventForm({
   const { image, fileInputRef, uploading, attach, remove } = useEventImageUpload(
     initial?.image_url && initial?.thumbnail_url ? { image_url: initial.image_url, thumbnail_url: initial.thumbnail_url } : null,
   )
+
+  useEffect(() => {
+    setSourceUrl((current) => (sourceUrlSuggestion && !current.trim() ? sourceUrlSuggestion : current))
+  }, [sourceUrlSuggestion])
 
   const canSubmit = title.trim() && address.trim() && startDate
 
@@ -138,7 +156,13 @@ export function EventForm({
           onIonInput={(e) => setSourceUrl(e.detail.value ?? '')}
           placeholder="Optional link with more details"
         />
+        {sourceSearching && <IonSpinner slot="end" name="dots" />}
       </IonItem>
+      {sourceSearching && (
+        <IonText color="medium">
+          <p style={{ fontSize: '0.75rem', margin: '-4px 16px 8px' }}>Looking for a source online…</p>
+        </IonText>
+      )}
       {/* Optional (feedback #97) — powers the Events tab's topic filter. */}
       <IonItem>
         <IonLabel position="stacked">Topic</IonLabel>

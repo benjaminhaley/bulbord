@@ -232,9 +232,10 @@ export async function createEvent(input: EventInput): Promise<Event> {
 }
 
 // Mirrors api/src/events/photo-extraction.ts's ExtractedEventFields — a
-// candidate, not a created Event, so AddFromPhotoButton.tsx can hand it
-// straight into EventForm's `initial` prop for review before anything is
-// ever posted (feedback #93).
+// candidate, not a created Event, so AddEventModal.tsx can hand it straight
+// into EventForm's `initial` prop for review before anything is ever posted
+// (feedback #93). Stage 1 only (vision, fast) — no source_name, since that
+// only ever comes from stage 2's live search (findEventSource, below).
 export interface ExtractedEventFields {
   title: string
   description?: string
@@ -244,7 +245,6 @@ export interface ExtractedEventFields {
   address?: string
   location_name?: string
   source_url?: string
-  source_name?: string
   topic?: string
 }
 
@@ -252,7 +252,9 @@ interface ExtractFromPhotoResponse {
   data: ExtractedEventFields | null
 }
 
-export async function extractEventFromPhoto(imageUrl: string): Promise<ExtractedEventFields | null> {
+// Stage 1 of 2 (feedback, 2026-08-23) — vision only, fast. AddEventModal.tsx
+// calls this first and shows the review form the instant it resolves.
+export async function extractEventFieldsFromPhoto(imageUrl: string): Promise<ExtractedEventFields | null> {
   const response = await fetch(`${API_URL}/events/extract-from-photo`, {
     method: 'POST',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
@@ -262,6 +264,37 @@ export async function extractEventFromPhoto(imageUrl: string): Promise<Extracted
     throw new Error(`Failed to extract event from photo: ${response.status}`)
   }
   const body = (await response.json()) as ExtractFromPhotoResponse
+  return body.data
+}
+
+export interface DiscoveredEventSource {
+  source_url: string
+  source_name: string
+}
+
+interface FindEventSourceResponse {
+  data: DiscoveredEventSource | null
+}
+
+// Stage 2 of 2 — a slower live web search for the event's real hosting
+// organization, called only when stage 1 didn't already find a URL printed
+// on the poster. AddEventModal.tsx runs this in the background, in
+// parallel with the member already reviewing/editing stage 1's result, and
+// applies whatever it finds (or doesn't) without blocking anything.
+export async function findEventSource(fields: {
+  title: string
+  location_name?: string
+  address?: string
+}): Promise<DiscoveredEventSource | null> {
+  const response = await fetch(`${API_URL}/events/find-event-source`, {
+    method: 'POST',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify(fields),
+  })
+  if (!response.ok) {
+    throw new Error(`Failed to find event source: ${response.status}`)
+  }
+  const body = (await response.json()) as FindEventSourceResponse
   return body.data
 }
 

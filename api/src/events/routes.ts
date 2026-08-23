@@ -15,7 +15,7 @@ import { uploadPlaceholderImage } from '../uploads/placeholder.js'
 import { buildEventFilterConditions, parseAfterTimeParam, parseBeforeTimeParam, parseTopicsParam } from './filters.js'
 import { getEventsForWeek } from './week-query.js'
 import { canEditEvent } from './permissions.js'
-import { extractEventFromPhoto } from './photo-extraction.js'
+import { extractEventFieldsFromPhoto, findEventSource } from './photo-extraction.js'
 import { registerDiscoveredEventSource } from './source-registration.js'
 import {
   interestedCountExpr,
@@ -127,21 +127,44 @@ export async function eventsRoutes(app: FastifyInstance) {
     })
   })
 
-  // Photo-to-listing extraction (feedback #93) — a member uploads a photo of
-  // a poster/flyer (already run through the normal POST /uploads flow) and
-  // this reads a candidate event out of it. Deliberately just extraction,
-  // not creation: the frontend pre-fills the same EventForm a manual post
-  // uses (image_url/thumbnail_url included, so the flyer photo itself
-  // becomes the event's real photo) and the member reviews/edits before
-  // ever tapping Post — nothing here writes to the database.
+  // Photo-to-listing extraction (feedback #93), stage 1 of 2 (feedback,
+  // 2026-08-23: "a very fast stage where you just get as much information
+  // from the image as possible") — a member uploads a photo of a poster/
+  // flyer (already run through the normal POST /uploads flow) and this
+  // reads a candidate event out of it, vision only, no web search. The
+  // frontend pre-fills and shows the same EventForm a manual post uses
+  // (image_url/thumbnail_url included, so the flyer photo itself becomes
+  // the event's real photo) the instant this resolves — deliberately just
+  // extraction, not creation, so the member reviews/edits before ever
+  // tapping Post. Stage 2 (POST /events/find-event-source, below) is a
+  // separate, slower call the frontend makes afterward, in parallel with
+  // the member already looking at this stage's result.
   app.post('/events/extract-from-photo', { preHandler: requireAuth }, async (request, reply) => {
     const body = request.body as { image_url?: string }
     const imageUrl = body.image_url?.trim()
     if (!imageUrl) {
       return reply.code(400).send({ error: { message: 'image_url is required' } })
     }
-    const extracted = await extractEventFromPhoto(imageUrl)
+    const extracted = await extractEventFieldsFromPhoto(imageUrl)
     return reply.send({ data: extracted })
+  })
+
+  // Photo-to-listing extraction, stage 2 of 2 — the slower live web search
+  // for the event's real hosting organization, only worth calling when
+  // stage 1 didn't already find a URL printed on the poster. Takes the
+  // subset of stage 1's fields the search actually needs, not an event id —
+  // this can resolve either before or after the member has already tapped
+  // Post (see AddEventModal.tsx), so it's deliberately stateless here; the
+  // frontend decides whether to apply the result to the still-open form or
+  // to PATCH an already-created event.
+  app.post('/events/find-event-source', { preHandler: requireAuth }, async (request, reply) => {
+    const body = request.body as { title?: string; location_name?: string; address?: string }
+    const title = body.title?.trim()
+    if (!title) {
+      return reply.code(400).send({ error: { message: 'title is required' } })
+    }
+    const found = await findEventSource({ title, location_name: body.location_name, address: body.address })
+    return reply.send({ data: found ? { source_url: found.url, source_name: found.sourceName } : null })
   })
 
   // Member self-service event posting (feedback #46) — goes live immediately,
@@ -245,6 +268,11 @@ export async function eventsRoutes(app: FastifyInstance) {
       address?: string
       location_name?: string
       source_url?: string
+      // Only ever sent by the photo-extraction flow's background stage-2
+      // continuation (AddEventModal.tsx) when it resolves after the member
+      // has already posted — see source-registration.ts and this route's
+      // own call to it below.
+      source_name?: string
       image_url?: string
       thumbnail_url?: string
       topic?: string
@@ -301,6 +329,17 @@ export async function eventsRoutes(app: FastifyInstance) {
         metadata: { eventId: id },
       }),
     ])
+
+    // Best-effort, non-blocking — same as POST /events above.
+    const sourceUrl = body.source_url?.trim()
+    const sourceName = body.source_name?.trim()
+    if (sourceUrl && sourceName) {
+      try {
+        await registerDiscoveredEventSource(sourceUrl, sourceName, currentUser.id)
+      } catch {
+        // ignore — see comment above
+      }
+    }
 
     const row = (await loadEventDetail(id, currentUser.id))!
     return reply.send({

@@ -14,24 +14,22 @@ import {
   IonNote,
   IonPage,
   IonSpinner,
-  IonText,
   IonTitle,
   IonToast,
   IonToolbar,
   useIonViewWillEnter,
 } from '@ionic/react'
-import { addOutline, closeOutline, eyeOffOutline, filterOutline, star } from 'ionicons/icons'
+import { addOutline, eyeOffOutline, filterOutline, star } from 'ionicons/icons'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { useAuth } from '../auth/AuthContext'
 import { InstitutionBanner } from '../app/InstitutionBanner'
 import { API_URL } from '../config'
 import { Avatar } from '../uploads/Avatar'
-import { AddEventChoice } from './AddEventChoice'
+import { AddEventModal } from './AddEventModal'
 import { CalendarWeekView } from './CalendarWeekView'
 import { DEFAULT_INTEREST_FILTER, EventFilterChips } from './EventFilterChips'
-import { createEvent, fetchEvents, type Event, type EventFilters, type InterestStatus } from './api'
-import { EventForm, type EventFormInitialValues } from './EventForm'
+import { fetchEvents, type Event, type EventFilters, type InterestStatus } from './api'
 import { formatWhen, locationLabel, teaser } from './format'
 import { InterestedBadge } from './InterestedBadge'
 import { useEventInterest } from './useEventInterest'
@@ -119,24 +117,12 @@ export function EventsPage() {
   const [error, setError] = useState(false)
   const [swipeToast, setSwipeToast] = useState<SwipeToast | null>(null)
   const [multiTouch, setMultiTouch] = useState(false)
+  // Whether the full-screen add-event flow (AddEventModal.tsx) is open —
+  // feedback, 2026-08-23: "you don't need to see existing events when
+  // you're adding a new event," so this is a real modal now, not inline
+  // content pushed above the list. The modal owns its own choice/
+  // processing/form staging internally.
   const [showForm, setShowForm] = useState(false)
-  // Which half of the add flow is showing (feedback #93, restyled
-  // 2026-08-23 to lead with the photo option — see AddEventChoice.tsx):
-  // 'choice' is the Add from Photo / enter-manually chooser, 'form' is the
-  // real EventForm, prefilled or blank depending on which was picked.
-  const [addStep, setAddStep] = useState<'choice' | 'form'>('choice')
-  // Set once AddEventChoice finishes extracting — forces EventForm to
-  // remount (see the `key` below) with the extracted fields as its initial
-  // state, since useState only reads its initializer once.
-  const [photoPrefill, setPhotoPrefill] = useState<EventFormInitialValues | null>(null)
-  // A note surfaced above the form when extraction ran but found nothing
-  // (the photo is still attached — see AddEventChoice.tsx's onExtracted).
-  const [photoNote, setPhotoNote] = useState<string | null>(null)
-  // The discovered source's org name, if any (photo-extraction.ts) — not a
-  // form field, just carried through to createEvent() at submit time so
-  // the backend can also register it as a crawlable source (see
-  // api/src/events/source-registration.ts).
-  const [sourceName, setSourceName] = useState<string | undefined>(undefined)
   // Occurrences the next-occurrence collapse is currently suppressing
   // (feedback #48) — 0 once revealHidden() below has fetched everything.
   const [hiddenCount, setHiddenCount] = useState(0)
@@ -266,17 +252,13 @@ export function EventsPage() {
               <IonIcon slot="icon-only" icon={filterOutline} color={hasActiveFilters || filtersOpen ? 'primary' : undefined} />
               {hasActiveFilters && <IonBadge color="primary">{activeFilterCount}</IonBadge>}
             </IonButton>
+            {/* Opens the full-screen AddEventModal below — its own header
+                close button is how it closes now, not this icon (feedback,
+                2026-08-23: the add flow is a real modal, not inline content
+                on this page). */}
             {user && (
-              <IonButton
-                onClick={() => {
-                  setShowForm((v) => !v)
-                  setAddStep('choice')
-                  setPhotoPrefill(null)
-                  setPhotoNote(null)
-                  setSourceName(undefined)
-                }}
-              >
-                <IonIcon slot="icon-only" icon={showForm ? closeOutline : addOutline} />
+              <IonButton onClick={() => setShowForm(true)}>
+                <IonIcon slot="icon-only" icon={addOutline} />
               </IonButton>
             )}
           </IonButtons>
@@ -298,54 +280,11 @@ export function EventsPage() {
         )}
       </IonHeader>
       <IonContent fullscreen onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd} onTouchCancel={handleTouchEnd}>
-        {showForm && addStep === 'choice' && (
-          <AddEventChoice
-            onExtracted={(initial, meta) => {
-              setPhotoPrefill(initial)
-              setPhotoNote(meta.note ?? null)
-              setSourceName(meta.sourceName)
-              setAddStep('form')
-            }}
-            onManual={() => {
-              setPhotoPrefill(null)
-              setPhotoNote(null)
-              setSourceName(undefined)
-              setAddStep('form')
-            }}
-          />
-        )}
-        {showForm && addStep === 'form' && (
-          <>
-            {photoNote && (
-              <IonText color="medium">
-                <p style={{ fontSize: '0.8125rem', margin: '0 16px 8px' }}>{photoNote}</p>
-              </IonText>
-            )}
-            <EventForm
-              // Remount when extraction finishes so the prefilled fields
-              // actually take effect (EventForm's useState only reads
-              // `initial` once, on mount) — see photoPrefill's own comment.
-              key={photoPrefill ? 'photo-prefill' : 'blank'}
-              initial={photoPrefill ?? undefined}
-              submitLabel="Post"
-              errorMessage="Could not post this event"
-              onSubmit={async (input) => {
-                const created = await createEvent(sourceName ? { ...input, source_name: sourceName } : input)
-                setEvents((prev) => [created, ...(prev ?? [])])
-                setShowForm(false)
-                setPhotoPrefill(null)
-                setPhotoNote(null)
-                setSourceName(undefined)
-              }}
-              onCancel={() => {
-                setShowForm(false)
-                setPhotoPrefill(null)
-                setPhotoNote(null)
-                setSourceName(undefined)
-              }}
-            />
-          </>
-        )}
+        <AddEventModal
+          isOpen={showForm}
+          onClose={() => setShowForm(false)}
+          onCreated={(created) => setEvents((prev) => [created, ...(prev ?? [])])}
+        />
         {viewMode === 'calendar' && <CalendarWeekView filters={filters} multiTouch={multiTouch} />}
         {viewMode === 'list' && events === null && !error && (
           <div className="coming-soon">

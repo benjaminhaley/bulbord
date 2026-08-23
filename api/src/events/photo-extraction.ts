@@ -10,7 +10,35 @@ import { getImageObject } from '../uploads/storage.js'
 // with.
 const TOPIC_OPTIONS = ['Movie Night', 'Sports & Fitness', 'Arts & Crafts', 'Community & Social']
 
-const SYSTEM_PROMPT = `You extract event details from a photo of a poster, flyer, or a screenshot of an online listing, for a family/community events app in the Chicago area (feedback #93 — "take a picture of a poster around town and have everything auto populate").
+// Real, per-request bounds on every Claude call this file makes — added
+// 2026-08-23 after a real production request hung for 25+ minutes with no
+// response and no error logged. Root cause: neither call set an explicit
+// timeout, so a slow/degraded upstream response fell back to the SDK's own
+// default (10 min, retried up to 3 times — ~30 min worst case), which is
+// wildly too long for a member sitting on a spinner waiting for their photo
+// to process. A short timeout + a single retry means a bad call fails fast
+// (within ~1 minute) and the caller gets an honest "couldn't do this"
+// result instead of an unbounded hang. See CALL_TIMEOUT_MS's two call sites
+// below and STAGE_DEADLINE_MS's outer race, which is a hard backstop
+// against a hang anywhere else in the function (e.g. the S3 stream read),
+// not just inside the Anthropic call itself.
+const CALL_TIMEOUT_MS = 20_000
+const CALL_MAX_RETRIES = 1
+const STAGE_DEADLINE_MS = 45_000
+
+async function withDeadline<T>(work: Promise<T>, fallback: T, ms: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout>
+  const deadline = new Promise<T>((resolve) => {
+    timer = setTimeout(() => resolve(fallback), ms)
+  })
+  try {
+    return await Promise.race([work, deadline])
+  } finally {
+    clearTimeout(timer!)
+  }
+}
+
+const EXTRACT_SYSTEM_PROMPT = `You extract event details from a photo of a poster, flyer, or a screenshot of an online listing, for a family/community events app in the Chicago area (feedback #93 — "take a picture of a poster around town and have everything auto populate").
 
 Rules:
 - Read every visible line of text in the image carefully, including small print (exact date, time, address, pricing/ticket info).
@@ -26,13 +54,15 @@ Respond with ONLY a JSON object, no markdown fences, no explanation, one of:
 {"found": true, "title": string, "description"?: string, "start_date": string, "start_time"?: string, "all_day": boolean, "address"?: string, "location_name"?: string, "source_url"?: string, "topic"?: string}
 {"found": false}`
 
-// Follow-up call, only made when the poster itself printed no URL — tries to
-// find the real hosting organization's own page via a live web search
-// (Ben, 2026-08-23: "have the backend job try to find a source URL"), same
-// "the URL is the actual page you'd book from, never a generic vendor/
-// ticketing platform" rigor this codebase's other sourcing passes already
-// apply (see CLAUDE.md's Camps data-sourcing checklist item 4 and Events'
-// "find the stable host" item 9) — just applied live instead of by hand.
+// Stage 2 only — a slower, separate call the frontend makes in parallel
+// with the member already reviewing stage 1's fast result (feedback,
+// 2026-08-23: "first a very fast stage where you just get as much
+// information from the image... then a second, slower stage where you look
+// up the source URL online"). Same "the URL is the actual page you'd book
+// from, never a generic vendor/ticketing platform" rigor this codebase's
+// other sourcing passes already apply (CLAUDE.md's Camps checklist item 4,
+// Events' "find the stable host" item 9) — just applied live instead of by
+// hand.
 const SOURCE_SEARCH_SYSTEM_PROMPT = `You are finding the real, official web page for a specific real-world event, to use as a "source URL" for a family events app.
 
 Rules:
@@ -53,8 +83,12 @@ export interface ExtractedEventFields {
   address?: string
   location_name?: string
   source_url?: string
-  source_name?: string
   topic?: string
+}
+
+export interface DiscoveredEventSource {
+  url: string
+  sourceName: string
 }
 
 type SupportedMediaType = 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp'
@@ -112,66 +146,25 @@ function toExtractedFields(raw: RawExtraction): ExtractedEventFields | null {
   }
 }
 
-interface RawSourceSearch {
-  found?: unknown
-  url?: unknown
-  source_name?: unknown
-}
-
-// Best-effort, same posture as everything else here — a missing key, a
-// search-tool error, an unparseable response, or genuine "couldn't find
-// anything I'm confident in" all degrade to null rather than guessing.
-async function findSourceUrl(fields: Pick<ExtractedEventFields, 'title' | 'location_name' | 'address'>): Promise<{ url: string; sourceName: string } | null> {
-  const anthropic = getAnthropicClient()
-  if (!anthropic) return null
-
-  try {
-    const message = await anthropic.messages.create({
-      model: 'claude-opus-5',
-      max_tokens: 2000,
-      output_config: { effort: 'low' },
-      system: SOURCE_SEARCH_SYSTEM_PROMPT,
-      tools: [{ type: 'web_search_20260209', name: 'web_search', max_uses: 3 }],
-      messages: [
-        {
-          role: 'user',
-          content: JSON.stringify({
-            title: fields.title,
-            location_name: fields.location_name ?? null,
-            address: fields.address ?? null,
-          }),
-        },
-      ],
-    })
-
-    if (message.stop_reason === 'refusal') return null
-    const block = [...message.content].reverse().find((b) => b.type === 'text')
-    const raw = block?.type === 'text' ? block.text.trim() : ''
-    if (!raw) return null
-
-    const parsed = JSON.parse(stripJsonCodeFence(raw)) as RawSourceSearch
-    if (parsed.found !== true) return null
-    if (!isHttpUrl(parsed.url)) return null
-    if (typeof parsed.source_name !== 'string' || !parsed.source_name.trim()) return null
-
-    return { url: parsed.url.trim(), sourceName: parsed.source_name.trim() }
-  } catch {
-    return null
-  }
-}
-
-// Reads an already-uploaded image straight out of the bucket (the caller has
-// already run it through the normal POST /uploads flow, same as any other
-// member-attached photo) and asks Claude to read a real event out of it.
+// Stage 1: reads an already-uploaded image straight out of the bucket (the
+// caller has already run it through the normal POST /uploads flow, same as
+// any other member-attached photo) and asks Claude to read a real event out
+// of it — vision only, no web search, so this is the fast path (feedback,
+// 2026-08-23: "a very fast stage where you just get as much information
+// from the image as possible"). The frontend prefills and shows the review
+// form the instant this resolves; stage 2 (findEventSource, below) runs
+// afterward, in parallel with the member already looking at the form.
 //
 // Best-effort like every other Claude-backed feature here — a missing key,
-// an unreadable image, a malformed model response, or the model finding
-// nothing all degrade to null — but unlike title-normalization.ts/
-// resourcing.ts's fire-and-forget callers, this runs synchronously inside a
-// member's own "add event" flow (feedback #93's "processing" step), so the
-// caller surfaces an honest "couldn't read that, fill it in yourself" state
-// on a null result rather than silently skipping.
-export async function extractEventFromPhoto(imageUrl: string): Promise<ExtractedEventFields | null> {
+// an unreadable image, a malformed model response, a timeout, or the model
+// finding nothing all degrade to null, never throw — the caller surfaces an
+// honest "couldn't read that, fill it in yourself" result on null rather
+// than the member ever seeing a raw error or an indefinite hang.
+export async function extractEventFieldsFromPhoto(imageUrl: string): Promise<ExtractedEventFields | null> {
+  return withDeadline(extractEventFieldsFromPhotoInner(imageUrl), null, STAGE_DEADLINE_MS)
+}
+
+async function extractEventFieldsFromPhotoInner(imageUrl: string): Promise<ExtractedEventFields | null> {
   const anthropic = getAnthropicClient()
   if (!anthropic) return null
 
@@ -185,43 +178,99 @@ export async function extractEventFromPhoto(imageUrl: string): Promise<Extracted
   try {
     const buffer = await bufferFromStream(object.body)
 
-    const message = await anthropic.messages.create({
-      model: 'claude-opus-5',
-      max_tokens: 1000,
-      output_config: { effort: 'medium' },
-      system: SYSTEM_PROMPT,
-      messages: [
-        {
-          role: 'user',
-          content: [
-            { type: 'image', source: { type: 'base64', media_type: mediaType, data: buffer.toString('base64') } },
-            { type: 'text', text: JSON.stringify({ today: todayInChicago() }) },
-          ],
-        },
-      ],
-    })
+    const message = await anthropic.messages.create(
+      {
+        model: 'claude-opus-5',
+        max_tokens: 1000,
+        output_config: { effort: 'medium' },
+        system: EXTRACT_SYSTEM_PROMPT,
+        messages: [
+          {
+            role: 'user',
+            content: [
+              { type: 'image', source: { type: 'base64', media_type: mediaType, data: buffer.toString('base64') } },
+              { type: 'text', text: JSON.stringify({ today: todayInChicago() }) },
+            ],
+          },
+        ],
+      },
+      { timeout: CALL_TIMEOUT_MS, maxRetries: CALL_MAX_RETRIES },
+    )
 
     if (message.stop_reason === 'refusal') return null
     const block = message.content.find((b) => b.type === 'text')
     const raw = block?.type === 'text' ? block.text.trim() : ''
     if (!raw) return null
 
-    const fields = toExtractedFields(JSON.parse(stripJsonCodeFence(raw)) as RawExtraction)
-    if (!fields) return null
+    return toExtractedFields(JSON.parse(stripJsonCodeFence(raw)) as RawExtraction)
+  } catch {
+    return null
+  }
+}
 
-    // The poster printed no URL itself — try to find the real hosting
-    // organization's own page via a live search before giving up (Ben,
-    // 2026-08-23). A failed/uncertain search just leaves source_url unset,
-    // same as every other best-effort step in this function.
-    if (!fields.source_url) {
-      const found = await findSourceUrl(fields)
-      if (found) {
-        fields.source_url = found.url
-        fields.source_name = found.sourceName
-      }
-    }
+interface RawSourceSearch {
+  found?: unknown
+  url?: unknown
+  source_name?: unknown
+}
 
-    return fields
+// Stage 2: a live web search for the event's real hosting organization —
+// only worth calling when stage 1 didn't already find a URL printed on the
+// poster itself. Deliberately a separate exported function (not chained
+// automatically inside stage 1 anymore) so the frontend can run it in the
+// background while the member is already reviewing/editing stage 1's
+// result, and can still apply — or discard — whatever it finds regardless
+// of whether the member has already posted by the time it resolves (see
+// AddEventModal.tsx and PATCH /events/:id's source_name handling).
+//
+// Best-effort, same posture as stage 1 — a missing key, a search-tool
+// error, a timeout, an unparseable response, or genuine "couldn't find
+// anything I'm confident in" all degrade to null rather than guessing.
+export async function findEventSource(
+  fields: Pick<ExtractedEventFields, 'title' | 'location_name' | 'address'>,
+): Promise<DiscoveredEventSource | null> {
+  return withDeadline(findEventSourceInner(fields), null, STAGE_DEADLINE_MS)
+}
+
+async function findEventSourceInner(
+  fields: Pick<ExtractedEventFields, 'title' | 'location_name' | 'address'>,
+): Promise<DiscoveredEventSource | null> {
+  const anthropic = getAnthropicClient()
+  if (!anthropic) return null
+
+  try {
+    const message = await anthropic.messages.create(
+      {
+        model: 'claude-opus-5',
+        max_tokens: 2000,
+        output_config: { effort: 'low' },
+        system: SOURCE_SEARCH_SYSTEM_PROMPT,
+        tools: [{ type: 'web_search_20260209', name: 'web_search', max_uses: 3 }],
+        messages: [
+          {
+            role: 'user',
+            content: JSON.stringify({
+              title: fields.title,
+              location_name: fields.location_name ?? null,
+              address: fields.address ?? null,
+            }),
+          },
+        ],
+      },
+      { timeout: CALL_TIMEOUT_MS, maxRetries: CALL_MAX_RETRIES },
+    )
+
+    if (message.stop_reason === 'refusal') return null
+    const block = [...message.content].reverse().find((b) => b.type === 'text')
+    const raw = block?.type === 'text' ? block.text.trim() : ''
+    if (!raw) return null
+
+    const parsed = JSON.parse(stripJsonCodeFence(raw)) as RawSourceSearch
+    if (parsed.found !== true) return null
+    if (!isHttpUrl(parsed.url)) return null
+    if (typeof parsed.source_name !== 'string' || !parsed.source_name.trim()) return null
+
+    return { url: parsed.url.trim(), sourceName: parsed.source_name.trim() }
   } catch {
     return null
   }
