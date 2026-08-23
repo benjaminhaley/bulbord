@@ -48,6 +48,10 @@ export interface EventInput {
   image_url: string | null
   thumbnail_url: string | null
   topic: string
+  // Only ever set by the photo-extraction flow (AddEventChoice.tsx) — its
+  // presence tells POST /events to also register source_url as a crawlable
+  // event_sources row (feedback, 2026-08-23). Never shown/edited in the UI.
+  source_name?: string
 }
 
 export interface InterestedUser {
@@ -239,6 +243,8 @@ export interface ExtractedEventFields {
   all_day: boolean
   address?: string
   location_name?: string
+  source_url?: string
+  source_name?: string
   topic?: string
 }
 

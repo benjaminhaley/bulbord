@@ -14,6 +14,7 @@ import {
   IonNote,
   IonPage,
   IonSpinner,
+  IonText,
   IonTitle,
   IonToast,
   IonToolbar,
@@ -26,9 +27,9 @@ import { useAuth } from '../auth/AuthContext'
 import { InstitutionBanner } from '../app/InstitutionBanner'
 import { API_URL } from '../config'
 import { Avatar } from '../uploads/Avatar'
+import { AddEventChoice } from './AddEventChoice'
 import { CalendarWeekView } from './CalendarWeekView'
 import { DEFAULT_INTEREST_FILTER, EventFilterChips } from './EventFilterChips'
-import { AddFromPhotoButton } from './AddFromPhotoButton'
 import { createEvent, fetchEvents, type Event, type EventFilters, type InterestStatus } from './api'
 import { EventForm, type EventFormInitialValues } from './EventForm'
 import { formatWhen, locationLabel, teaser } from './format'
@@ -119,10 +120,23 @@ export function EventsPage() {
   const [swipeToast, setSwipeToast] = useState<SwipeToast | null>(null)
   const [multiTouch, setMultiTouch] = useState(false)
   const [showForm, setShowForm] = useState(false)
-  // Set once AddFromPhotoButton finishes extracting (feedback #93) — forces
-  // EventForm to remount (see the `key` below) with the extracted fields as
-  // its initial state, since useState only reads its initializer once.
+  // Which half of the add flow is showing (feedback #93, restyled
+  // 2026-08-23 to lead with the photo option — see AddEventChoice.tsx):
+  // 'choice' is the Add from Photo / enter-manually chooser, 'form' is the
+  // real EventForm, prefilled or blank depending on which was picked.
+  const [addStep, setAddStep] = useState<'choice' | 'form'>('choice')
+  // Set once AddEventChoice finishes extracting — forces EventForm to
+  // remount (see the `key` below) with the extracted fields as its initial
+  // state, since useState only reads its initializer once.
   const [photoPrefill, setPhotoPrefill] = useState<EventFormInitialValues | null>(null)
+  // A note surfaced above the form when extraction ran but found nothing
+  // (the photo is still attached — see AddEventChoice.tsx's onExtracted).
+  const [photoNote, setPhotoNote] = useState<string | null>(null)
+  // The discovered source's org name, if any (photo-extraction.ts) — not a
+  // form field, just carried through to createEvent() at submit time so
+  // the backend can also register it as a crawlable source (see
+  // api/src/events/source-registration.ts).
+  const [sourceName, setSourceName] = useState<string | undefined>(undefined)
   // Occurrences the next-occurrence collapse is currently suppressing
   // (feedback #48) — 0 once revealHidden() below has fetched everything.
   const [hiddenCount, setHiddenCount] = useState(0)
@@ -256,7 +270,10 @@ export function EventsPage() {
               <IonButton
                 onClick={() => {
                   setShowForm((v) => !v)
+                  setAddStep('choice')
                   setPhotoPrefill(null)
+                  setPhotoNote(null)
+                  setSourceName(undefined)
                 }}
               >
                 <IonIcon slot="icon-only" icon={showForm ? closeOutline : addOutline} />
@@ -281,9 +298,29 @@ export function EventsPage() {
         )}
       </IonHeader>
       <IonContent fullscreen onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd} onTouchCancel={handleTouchEnd}>
-        {showForm && (
+        {showForm && addStep === 'choice' && (
+          <AddEventChoice
+            onExtracted={(initial, meta) => {
+              setPhotoPrefill(initial)
+              setPhotoNote(meta.note ?? null)
+              setSourceName(meta.sourceName)
+              setAddStep('form')
+            }}
+            onManual={() => {
+              setPhotoPrefill(null)
+              setPhotoNote(null)
+              setSourceName(undefined)
+              setAddStep('form')
+            }}
+          />
+        )}
+        {showForm && addStep === 'form' && (
           <>
-            <AddFromPhotoButton onExtracted={setPhotoPrefill} />
+            {photoNote && (
+              <IonText color="medium">
+                <p style={{ fontSize: '0.8125rem', margin: '0 16px 8px' }}>{photoNote}</p>
+              </IonText>
+            )}
             <EventForm
               // Remount when extraction finishes so the prefilled fields
               // actually take effect (EventForm's useState only reads
@@ -293,14 +330,18 @@ export function EventsPage() {
               submitLabel="Post"
               errorMessage="Could not post this event"
               onSubmit={async (input) => {
-                const created = await createEvent(input)
+                const created = await createEvent(sourceName ? { ...input, source_name: sourceName } : input)
                 setEvents((prev) => [created, ...(prev ?? [])])
                 setShowForm(false)
                 setPhotoPrefill(null)
+                setPhotoNote(null)
+                setSourceName(undefined)
               }}
               onCancel={() => {
                 setShowForm(false)
                 setPhotoPrefill(null)
+                setPhotoNote(null)
+                setSourceName(undefined)
               }}
             />
           </>

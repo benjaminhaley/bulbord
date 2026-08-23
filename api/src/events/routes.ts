@@ -16,6 +16,7 @@ import { buildEventFilterConditions, parseAfterTimeParam, parseBeforeTimeParam, 
 import { getEventsForWeek } from './week-query.js'
 import { canEditEvent } from './permissions.js'
 import { extractEventFromPhoto } from './photo-extraction.js'
+import { registerDiscoveredEventSource } from './source-registration.js'
 import {
   interestedCountExpr,
   interestedPeopleExpr,
@@ -158,6 +159,11 @@ export async function eventsRoutes(app: FastifyInstance) {
       address?: string
       location_name?: string
       source_url?: string
+      // Only ever sent by the photo-extraction flow (AddFromPhotoButton.tsx)
+      // — its presence is what signals "also register source_url as a
+      // crawlable source", not a general-purpose field a member fills in
+      // themselves. See source-registration.ts.
+      source_name?: string
       image_url?: string
       thumbnail_url?: string
       topic?: string
@@ -202,6 +208,18 @@ export async function eventsRoutes(app: FastifyInstance) {
       action: 'event_created',
       metadata: { eventId: created.id },
     })
+
+    // Best-effort, non-blocking: a failure here must never undo or fail the
+    // event creation that already succeeded above.
+    const sourceUrl = body.source_url?.trim()
+    const sourceName = body.source_name?.trim()
+    if (sourceUrl && sourceName) {
+      try {
+        await registerDiscoveredEventSource(sourceUrl, sourceName, currentUser.id)
+      } catch {
+        // ignore — see comment above
+      }
+    }
 
     const row = (await loadEventDetail(created.id, currentUser.id))!
     return reply.code(201).send({

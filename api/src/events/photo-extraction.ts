@@ -18,11 +18,30 @@ Rules:
 - If a specific start time is printed, set start_time to 24-hour HH:MM and all_day to false. If nothing gives a specific time (or it explicitly runs all day), omit start_time and set all_day to true.
 - description: a short one-to-two sentence plain-language summary of what the event actually is — don't just copy the poster's own headline text back verbatim. Mention notable pricing/ticket details here if the poster has them.
 - location_name is an optional human-friendly venue/place name (e.g. a school or park name); address is an optional street address, only if one is actually printed on the poster — don't guess a street address from a venue name you merely recognize.
+- source_url: only if a website/URL is legibly printed on the poster itself (e.g. "more info at hsapta.org") — the poster's own stated URL, never a guess. Omit if none is printed; a QR code with no visible URL text doesn't count, since it can't be read from a photo.
 - topic: pick the single best match from this fixed list if one clearly applies, otherwise omit the field entirely: ${JSON.stringify(TOPIC_OPTIONS)}
 - If you can't confidently read a real, dated, upcoming event from this image at all (a blurry photo, no event-like content), respond with exactly {"found": false} and nothing else — never invent one.
 
 Respond with ONLY a JSON object, no markdown fences, no explanation, one of:
-{"found": true, "title": string, "description"?: string, "start_date": string, "start_time"?: string, "all_day": boolean, "address"?: string, "location_name"?: string, "topic"?: string}
+{"found": true, "title": string, "description"?: string, "start_date": string, "start_time"?: string, "all_day": boolean, "address"?: string, "location_name"?: string, "source_url"?: string, "topic"?: string}
+{"found": false}`
+
+// Follow-up call, only made when the poster itself printed no URL — tries to
+// find the real hosting organization's own page via a live web search
+// (Ben, 2026-08-23: "have the backend job try to find a source URL"), same
+// "the URL is the actual page you'd book from, never a generic vendor/
+// ticketing platform" rigor this codebase's other sourcing passes already
+// apply (see CLAUDE.md's Camps data-sourcing checklist item 4 and Events'
+// "find the stable host" item 9) — just applied live instead of by hand.
+const SOURCE_SEARCH_SYSTEM_PROMPT = `You are finding the real, official web page for a specific real-world event, to use as a "source URL" for a family events app.
+
+Rules:
+- Search for the event's own hosting organization (a school, park district, library, church, chamber of commerce, business — whatever actually runs it), not a generic listing/ticketing/aggregator site.
+- Only return a URL you are genuinely confident is that organization's own real page for this event (or, failing that, that organization's own real events/calendar page in general) — if a web search turns up nothing you're confident in, say so.
+- source_name should be the organization's own real name (e.g. "Hawthorne Scholastic Academy"), not the page title or domain.
+
+Respond with ONLY a JSON object, no markdown fences, no explanation, one of:
+{"found": true, "url": string, "source_name": string}
 {"found": false}`
 
 export interface ExtractedEventFields {
@@ -33,6 +52,8 @@ export interface ExtractedEventFields {
   all_day: boolean
   address?: string
   location_name?: string
+  source_url?: string
+  source_name?: string
   topic?: string
 }
 
@@ -60,7 +81,17 @@ interface RawExtraction {
   all_day?: unknown
   address?: unknown
   location_name?: unknown
+  source_url?: unknown
   topic?: unknown
+}
+
+function isHttpUrl(value: unknown): value is string {
+  if (typeof value !== 'string' || !value.trim()) return false
+  try {
+    return ['http:', 'https:'].includes(new URL(value.trim()).protocol)
+  } catch {
+    return false
+  }
 }
 
 function toExtractedFields(raw: RawExtraction): ExtractedEventFields | null {
@@ -76,7 +107,56 @@ function toExtractedFields(raw: RawExtraction): ExtractedEventFields | null {
     all_day: raw.all_day === true,
     address: typeof raw.address === 'string' && raw.address.trim() ? raw.address.trim() : undefined,
     location_name: typeof raw.location_name === 'string' && raw.location_name.trim() ? raw.location_name.trim() : undefined,
+    source_url: isHttpUrl(raw.source_url) ? raw.source_url.trim() : undefined,
     topic: typeof raw.topic === 'string' && TOPIC_OPTIONS.includes(raw.topic) ? raw.topic : undefined,
+  }
+}
+
+interface RawSourceSearch {
+  found?: unknown
+  url?: unknown
+  source_name?: unknown
+}
+
+// Best-effort, same posture as everything else here — a missing key, a
+// search-tool error, an unparseable response, or genuine "couldn't find
+// anything I'm confident in" all degrade to null rather than guessing.
+async function findSourceUrl(fields: Pick<ExtractedEventFields, 'title' | 'location_name' | 'address'>): Promise<{ url: string; sourceName: string } | null> {
+  const anthropic = getAnthropicClient()
+  if (!anthropic) return null
+
+  try {
+    const message = await anthropic.messages.create({
+      model: 'claude-opus-5',
+      max_tokens: 2000,
+      output_config: { effort: 'low' },
+      system: SOURCE_SEARCH_SYSTEM_PROMPT,
+      tools: [{ type: 'web_search_20260209', name: 'web_search', max_uses: 3 }],
+      messages: [
+        {
+          role: 'user',
+          content: JSON.stringify({
+            title: fields.title,
+            location_name: fields.location_name ?? null,
+            address: fields.address ?? null,
+          }),
+        },
+      ],
+    })
+
+    if (message.stop_reason === 'refusal') return null
+    const block = [...message.content].reverse().find((b) => b.type === 'text')
+    const raw = block?.type === 'text' ? block.text.trim() : ''
+    if (!raw) return null
+
+    const parsed = JSON.parse(stripJsonCodeFence(raw)) as RawSourceSearch
+    if (parsed.found !== true) return null
+    if (!isHttpUrl(parsed.url)) return null
+    if (typeof parsed.source_name !== 'string' || !parsed.source_name.trim()) return null
+
+    return { url: parsed.url.trim(), sourceName: parsed.source_name.trim() }
+  } catch {
+    return null
   }
 }
 
@@ -126,7 +206,22 @@ export async function extractEventFromPhoto(imageUrl: string): Promise<Extracted
     const raw = block?.type === 'text' ? block.text.trim() : ''
     if (!raw) return null
 
-    return toExtractedFields(JSON.parse(stripJsonCodeFence(raw)) as RawExtraction)
+    const fields = toExtractedFields(JSON.parse(stripJsonCodeFence(raw)) as RawExtraction)
+    if (!fields) return null
+
+    // The poster printed no URL itself — try to find the real hosting
+    // organization's own page via a live search before giving up (Ben,
+    // 2026-08-23). A failed/uncertain search just leaves source_url unset,
+    // same as every other best-effort step in this function.
+    if (!fields.source_url) {
+      const found = await findSourceUrl(fields)
+      if (found) {
+        fields.source_url = found.url
+        fields.source_name = found.sourceName
+      }
+    }
+
+    return fields
   } catch {
     return null
   }

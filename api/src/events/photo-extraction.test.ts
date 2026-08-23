@@ -157,6 +157,83 @@ describe('extractEventFromPhoto', () => {
     expect(result).toBeNull()
   })
 
+  it('uses a source_url printed on the poster and never falls back to a search', async () => {
+    getImageObjectMock.mockResolvedValue(imageObject())
+    createMock.mockResolvedValue(
+      textResponse(
+        JSON.stringify({
+          found: true,
+          title: 'Family Fun Fest',
+          start_date: '2026-09-20',
+          all_day: true,
+          source_url: 'https://hsapta.org/family-fun-fest',
+        }),
+      ),
+    )
+    const { extractEventFromPhoto } = await import('./photo-extraction.js')
+
+    const result = await extractEventFromPhoto('/uploads/events/flyer.jpeg')
+
+    expect(result?.source_url).toBe('https://hsapta.org/family-fun-fest')
+    expect(createMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('falls back to a live web search for a source URL when the poster has none', async () => {
+    getImageObjectMock.mockResolvedValue(imageObject())
+    createMock
+      .mockResolvedValueOnce(
+        textResponse(
+          JSON.stringify({ found: true, title: 'Family Fun Fest', start_date: '2026-09-20', all_day: true, location_name: 'Hawthorne' }),
+        ),
+      )
+      .mockResolvedValueOnce(
+        textResponse(JSON.stringify({ found: true, url: 'https://hawthorne.example/events', source_name: 'Hawthorne Scholastic Academy' })),
+      )
+    const { extractEventFromPhoto } = await import('./photo-extraction.js')
+
+    const result = await extractEventFromPhoto('/uploads/events/flyer.jpeg')
+
+    expect(result?.source_url).toBe('https://hawthorne.example/events')
+    expect(result?.source_name).toBe('Hawthorne Scholastic Academy')
+    expect(createMock).toHaveBeenCalledTimes(2)
+    expect(createMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        tools: [expect.objectContaining({ type: 'web_search_20260209', name: 'web_search' })],
+      }),
+    )
+  })
+
+  it('leaves source_url unset when the fallback search finds nothing confident', async () => {
+    getImageObjectMock.mockResolvedValue(imageObject())
+    createMock
+      .mockResolvedValueOnce(textResponse(JSON.stringify({ found: true, title: 'Bake Sale', start_date: '2026-09-20', all_day: true })))
+      .mockResolvedValueOnce(textResponse(JSON.stringify({ found: false })))
+    const { extractEventFromPhoto } = await import('./photo-extraction.js')
+
+    const result = await extractEventFromPhoto('/uploads/events/flyer.jpeg')
+
+    expect(result?.source_url).toBeUndefined()
+    expect(result?.source_name).toBeUndefined()
+  })
+
+  it('ignores a non-http source_url the model invents', async () => {
+    getImageObjectMock.mockResolvedValue(imageObject())
+    createMock.mockResolvedValue(
+      textResponse(
+        JSON.stringify({ found: true, title: 'Bake Sale', start_date: '2026-09-20', all_day: true, source_url: 'not a real url' }),
+      ),
+    )
+    const { extractEventFromPhoto } = await import('./photo-extraction.js')
+
+    const result = await extractEventFromPhoto('/uploads/events/flyer.jpeg')
+
+    // Falls through to the search fallback since the poster's own source_url
+    // didn't survive validation — the mocked response has no real search
+    // answer shape either, so it stays unset either way.
+    expect(result?.source_url).toBeUndefined()
+    expect(createMock).toHaveBeenCalledTimes(2)
+  })
+
   it('falls back to image/jpeg for an unsupported content type', async () => {
     getImageObjectMock.mockResolvedValue(imageObject('application/octet-stream'))
     createMock.mockResolvedValue(textResponse(JSON.stringify({ found: true, title: 'Event', start_date: '2026-09-20', all_day: true })))
