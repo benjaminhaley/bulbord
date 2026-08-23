@@ -94,7 +94,9 @@ export function EventRow({
             {event.title}
             {dimmed && <IonNote style={{ marginLeft: 6, fontSize: '0.75em', textTransform: 'uppercase' }}>Dismissed</IonNote>}
           </h2>
-          <p>{formatWhen({ startDate: event.start_date, startTime: event.start_time, allDay: event.all_day })}</p>
+          <p>
+            {formatWhen({ startDate: event.start_date, startTime: event.start_time, endTime: event.end_time, allDay: event.all_day })}
+          </p>
           {location && <IonNote>{location}</IonNote>}
           {description && <p className="teaser">{description}</p>}
           {event.interested_count > 0 && (

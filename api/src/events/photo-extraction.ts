@@ -44,6 +44,7 @@ Rules:
 - Read every visible line of text in the image carefully, including small print (exact date, time, address, pricing/ticket info).
 - start_date must be YYYY-MM-DD. If a date is printed with no year (e.g. "Sunday, September 20th"), infer the year using "today" as context — pick the soonest real occurrence of that calendar date on or after today, not a past one.
 - If a specific start time is printed, set start_time to 24-hour HH:MM and all_day to false. If nothing gives a specific time (or it explicitly runs all day), omit start_time and set all_day to true.
+- If the poster gives a time *range* (e.g. "11am-3pm", "doors at 6, show ends 9"), set end_time to the range's own end, also 24-hour HH:MM. Omit end_time when only a single start time is given — never guess an end time that isn't actually printed.
 - description: a short one-to-two sentence plain-language summary of what the event actually is — don't just copy the poster's own headline text back verbatim. Mention notable pricing/ticket details here if the poster has them.
 - location_name is an optional human-friendly venue/place name (e.g. a school or park name); address is an optional street address, only if one is actually printed on the poster — don't guess a street address from a venue name you merely recognize.
 - source_url: only if a website/URL is legibly printed on the poster itself (e.g. "more info at hsapta.org") — the poster's own stated URL, never a guess. Omit if none is printed; a QR code with no visible URL text doesn't count, since it can't be read from a photo.
@@ -51,7 +52,7 @@ Rules:
 - If you can't confidently read a real, dated, upcoming event from this image at all (a blurry photo, no event-like content), respond with exactly {"found": false} and nothing else — never invent one.
 
 Respond with ONLY a JSON object, no markdown fences, no explanation, one of:
-{"found": true, "title": string, "description"?: string, "start_date": string, "start_time"?: string, "all_day": boolean, "address"?: string, "location_name"?: string, "source_url"?: string, "topic"?: string}
+{"found": true, "title": string, "description"?: string, "start_date": string, "start_time"?: string, "end_time"?: string, "all_day": boolean, "address"?: string, "location_name"?: string, "source_url"?: string, "topic"?: string}
 {"found": false}`
 
 // Stage 2 only — a slower, separate call the frontend makes in parallel
@@ -79,6 +80,7 @@ export interface ExtractedEventFields {
   description?: string
   start_date: string
   start_time?: string
+  end_time?: string
   all_day: boolean
   address?: string
   location_name?: string
@@ -112,6 +114,7 @@ interface RawExtraction {
   description?: unknown
   start_date?: unknown
   start_time?: unknown
+  end_time?: unknown
   all_day?: unknown
   address?: unknown
   location_name?: unknown
@@ -138,6 +141,7 @@ function toExtractedFields(raw: RawExtraction): ExtractedEventFields | null {
     description: typeof raw.description === 'string' && raw.description.trim() ? raw.description.trim() : undefined,
     start_date: raw.start_date.trim(),
     start_time: typeof raw.start_time === 'string' && raw.start_time.trim() ? raw.start_time.trim() : undefined,
+    end_time: typeof raw.end_time === 'string' && raw.end_time.trim() ? raw.end_time.trim() : undefined,
     all_day: raw.all_day === true,
     address: typeof raw.address === 'string' && raw.address.trim() ? raw.address.trim() : undefined,
     location_name: typeof raw.location_name === 'string' && raw.location_name.trim() ? raw.location_name.trim() : undefined,

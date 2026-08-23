@@ -10,6 +10,7 @@ function weeklyEvent(overrides: Partial<WeeklyEvent> = {}): WeeklyEvent {
     description: 'A cozy weekly story time for toddlers.',
     startDate: '2026-08-03',
     startTime: '10:00:00',
+    endTime: null,
     allDay: false,
     address: '123 Main St, Chicago, IL 60613',
     locationName: 'Merlo Library',

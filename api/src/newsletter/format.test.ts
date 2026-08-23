@@ -6,20 +6,20 @@ describe('formatWhen', () => {
   const now = new Date('2026-08-02T09:00:00-05:00')
 
   it('labels an event happening today as "Today"', () => {
-    expect(formatWhen({ startDate: '2026-08-02', startTime: null, allDay: true }, now)).toBe('Today')
+    expect(formatWhen({ startDate: '2026-08-02', startTime: null, endTime: null, allDay: true }, now)).toBe('Today')
   })
 
   it('labels tomorrow explicitly', () => {
-    expect(formatWhen({ startDate: '2026-08-03', startTime: null, allDay: true }, now)).toBe('Tomorrow')
+    expect(formatWhen({ startDate: '2026-08-03', startTime: null, endTime: null, allDay: true }, now)).toBe('Tomorrow')
   })
 
   it('labels a day within the current week as "This <Weekday>"', () => {
-    expect(formatWhen({ startDate: '2026-08-04', startTime: null, allDay: true }, now)).toBe('This Tuesday')
-    expect(formatWhen({ startDate: '2026-08-08', startTime: null, allDay: true }, now)).toBe('This Saturday')
+    expect(formatWhen({ startDate: '2026-08-04', startTime: null, endTime: null, allDay: true }, now)).toBe('This Tuesday')
+    expect(formatWhen({ startDate: '2026-08-08', startTime: null, endTime: null, allDay: true }, now)).toBe('This Saturday')
   })
 
   it('falls back to a weekday/month/day label a week or more out', () => {
-    expect(formatWhen({ startDate: '2026-08-09', startTime: null, allDay: true }, now)).toBe('Sun, Aug 9')
+    expect(formatWhen({ startDate: '2026-08-09', startTime: null, endTime: null, allDay: true }, now)).toBe('Sun, Aug 9')
   })
 
   // Feedback #78: "This <Weekday>" is bounded to the current Sunday-Saturday
@@ -27,33 +27,64 @@ describe('formatWhen', () => {
   // out is already next Sunday.
   it('does not say "This <Weekday>" for a day in next calendar week even if only a few days out', () => {
     const friday = new Date('2026-08-07T09:00:00-05:00')
-    expect(formatWhen({ startDate: '2026-08-09', startTime: null, allDay: true }, friday)).toBe('Sun, Aug 9')
+    expect(formatWhen({ startDate: '2026-08-09', startTime: null, endTime: null, allDay: true }, friday)).toBe('Sun, Aug 9')
   })
 
   it('shows the actual date alongside the relative word in detailed mode', () => {
-    expect(formatWhen({ startDate: '2026-08-08', startTime: null, allDay: true }, now, 'detailed')).toBe(
+    expect(formatWhen({ startDate: '2026-08-08', startTime: null, endTime: null, allDay: true }, now, 'detailed')).toBe(
       'This Saturday, Aug 8',
     )
   })
 
   it('appends a time for a timed, non-all-day event', () => {
-    expect(formatWhen({ startDate: '2026-08-03', startTime: '18:30:00', allDay: false }, now)).toBe('Tomorrow · 6:30 pm')
+    expect(formatWhen({ startDate: '2026-08-03', startTime: '18:30:00', endTime: null, allDay: false }, now)).toBe(
+      'Tomorrow · 6:30 pm',
+    )
   })
 
   it('omits the time for an all-day event even if start_time is set', () => {
-    expect(formatWhen({ startDate: '2026-08-03', startTime: '18:30:00', allDay: true }, now)).toBe('Tomorrow')
+    expect(formatWhen({ startDate: '2026-08-03', startTime: '18:30:00', endTime: null, allDay: true }, now)).toBe('Tomorrow')
   })
 
   it('omits minutes on the hour', () => {
-    expect(formatWhen({ startDate: '2026-08-03', startTime: '09:00:00', allDay: false }, now)).toBe('Tomorrow · 9 am')
+    expect(formatWhen({ startDate: '2026-08-03', startTime: '09:00:00', endTime: null, allDay: false }, now)).toBe(
+      'Tomorrow · 9 am',
+    )
   })
 
   it('uses "noon" instead of "12 pm"', () => {
-    expect(formatWhen({ startDate: '2026-08-03', startTime: '12:00:00', allDay: false }, now)).toBe('Tomorrow · noon')
+    expect(formatWhen({ startDate: '2026-08-03', startTime: '12:00:00', endTime: null, allDay: false }, now)).toBe(
+      'Tomorrow · noon',
+    )
   })
 
   it('uses "midnight" instead of "12 am"', () => {
-    expect(formatWhen({ startDate: '2026-08-03', startTime: '00:00:00', allDay: false }, now)).toBe('Tomorrow · midnight')
+    expect(formatWhen({ startDate: '2026-08-03', startTime: '00:00:00', endTime: null, allDay: false }, now)).toBe(
+      'Tomorrow · midnight',
+    )
+  })
+
+  // Feedback, 2026-08-23: a poster with a real "11am-3pm" range had nowhere
+  // to put the end time — events gained a real end_time column, formatted
+  // with the exact same house-style range rules Camps' formatTimeRange
+  // already established (shared meridiem shown once, noon/midnight, no :00
+  // minutes).
+  it('shows a range when both start and end time are set', () => {
+    expect(formatWhen({ startDate: '2026-08-03', startTime: '11:00:00', endTime: '15:00:00', allDay: false }, now)).toBe(
+      'Tomorrow · 11 am – 3 pm',
+    )
+  })
+
+  it('shows the meridiem once when both ends of a range share the same one', () => {
+    expect(formatWhen({ startDate: '2026-08-03', startTime: '09:30:00', endTime: '11:00:00', allDay: false }, now)).toBe(
+      'Tomorrow · 9:30 – 11 am',
+    )
+  })
+
+  it('shows the meridiem on both ends when they differ', () => {
+    expect(formatWhen({ startDate: '2026-08-03', startTime: '12:00:00', endTime: '15:30:00', allDay: false }, now)).toBe(
+      'Tomorrow · noon – 3:30 pm',
+    )
   })
 })
 

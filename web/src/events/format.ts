@@ -27,24 +27,42 @@ import { dayLabel, type DayLabelMode } from '../dayLabel'
 // for Camps — camps/format.ts's identical parseTime/formatSingleTime —
 // ported here 2026-08-13 per the style-audit pass, feedback #70): omit
 // minutes entirely when they're :00 ("9 am", not "9:00 am"); lowercase
-// am/pm with no periods; "noon"/"midnight" instead of "12 pm"/"12 am".
-// Events only ever show a single start time (no end time in this data
-// model — see FormattableEvent below), so the range-specific "shared
-// meridiem shown once" rule from Camps' formatTimeRange doesn't apply here.
-function formatTime(time: string): string {
+// am/pm with no periods; "noon"/"midnight" instead of "12 pm"/"12 am"; am/pm
+// shown on both ends of a range only when they actually differ (feedback,
+// 2026-08-23, adding a real end_time to events — same "shared meridiem
+// shown once" rule Camps' formatTimeRange already established, ported
+// here now that events have a range to format too).
+interface TimeParts {
+  hour12: number
+  minute: number
+  isPM: boolean
+}
+
+function parseTime(time: string): TimeParts {
   const [hourStr, minuteStr] = time.split(':')
   const hour = Number(hourStr)
-  const minute = Number(minuteStr)
   const hour12 = hour % 12 === 0 ? 12 : hour % 12
-  const isPM = hour >= 12
+  return { hour12, minute: Number(minuteStr), isPM: hour >= 12 }
+}
+
+function formatSingleTime(time: string, showMeridiem: boolean): string {
+  const { hour12, minute, isPM } = parseTime(time)
   if (hour12 === 12 && minute === 0) return isPM ? 'noon' : 'midnight'
   const minutePart = minute === 0 ? '' : `:${String(minute).padStart(2, '0')}`
-  return `${hour12}${minutePart}${isPM ? ' pm' : ' am'}`
+  const meridiemPart = showMeridiem ? (isPM ? ' pm' : ' am') : ''
+  return `${hour12}${minutePart}${meridiemPart}`
+}
+
+function formatTimeRange(startTime: string, endTime: string | null): string {
+  if (!endTime) return formatSingleTime(startTime, true)
+  const sameMeridiem = parseTime(startTime).isPM === parseTime(endTime).isPM
+  return `${formatSingleTime(startTime, !sameMeridiem)} – ${formatSingleTime(endTime, true)}`
 }
 
 export interface FormattableEvent {
   startDate: string
   startTime: string | null
+  endTime: string | null
   allDay: boolean
 }
 
@@ -55,7 +73,7 @@ export interface FormattableEvent {
 export function formatWhen(event: FormattableEvent, now = new Date(), mode: DayLabelMode = 'summary'): string {
   const label = dayLabel(event.startDate, now, mode)
   if (event.allDay || !event.startTime) return label
-  return `${label} · ${formatTime(event.startTime)}`
+  return `${label} · ${formatTimeRange(event.startTime, event.endTime)}`
 }
 
 // Addresses are typically stored as "Street, Chicago, IL 60613" — everything

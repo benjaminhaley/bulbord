@@ -1,5 +1,5 @@
 import { IonButton, IonContent, IonHeader, IonIcon, IonModal, IonSpinner, IonText, IonTitle, IonToolbar } from '@ionic/react'
-import { cameraOutline, closeOutline } from 'ionicons/icons'
+import { cameraOutline, checkmarkCircle, closeCircleOutline, closeOutline } from 'ionicons/icons'
 import { useRef, useState } from 'react'
 
 import { unstyledButtonStyle } from '../theme/layout'
@@ -35,6 +35,7 @@ function toInitialValues(extracted: ExtractedEventFields | null, image: Uploaded
     start_date: extracted?.start_date ?? '',
     all_day: extracted?.all_day ?? false,
     start_time: extracted?.start_time ?? null,
+    end_time: extracted?.end_time ?? null,
     address: combinedAddress(extracted),
     // Found either printed on the poster itself (stage 1, free) or via the
     // background stage-2 live search — see the sourceUrlSuggestion prop on
@@ -66,6 +67,7 @@ async function patchDiscoveredSource(event: Event, found: DiscoveredEventSource)
       description: event.description ?? '',
       start_date: event.start_date,
       start_time: event.start_time?.slice(0, 5) ?? '',
+      end_time: event.end_time?.slice(0, 5) ?? '',
       all_day: event.all_day,
       address: event.address ?? '',
       source_url: found.source_url,
@@ -81,6 +83,56 @@ async function patchDiscoveredSource(event: Event, found: DiscoveredEventSource)
   }
 }
 
+// Which half of the pipeline is showing, and how far each stage has gotten
+// (feedback, 2026-08-23: "it should be pretty clear in the UI that there
+// are two funnel stages... we should know when they're running and when
+// they complete"). Rendered by PipelineStatus below, right under the pinned
+// photo — 'skipped' means stage 2 was never applicable (stage 1 failed, or
+// the poster already had a printed URL so no search was ever needed).
+interface Pipeline {
+  active: boolean
+  stage1: 'running' | 'ok' | 'failed'
+  stage2: 'skipped' | 'running' | 'found' | 'not_found'
+}
+
+function PipelineRow({ running, ok, runningLabel, doneLabel }: { running: boolean; ok: boolean; runningLabel: string; doneLabel: string }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.8125rem', color: 'var(--ion-color-medium)' }}>
+      {running ? (
+        <IonSpinner name="dots" style={{ width: 16, height: 16, flexShrink: 0 }} />
+      ) : (
+        <IonIcon
+          icon={ok ? checkmarkCircle : closeCircleOutline}
+          style={{ fontSize: 16, flexShrink: 0, color: ok ? 'var(--ion-color-success)' : 'var(--ion-color-medium)' }}
+        />
+      )}
+      <span>{running ? runningLabel : doneLabel}</span>
+    </div>
+  )
+}
+
+function PipelineStatus({ pipeline }: { pipeline: Pipeline }) {
+  if (!pipeline.active) return null
+  return (
+    <div style={{ padding: '12px 16px 4px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <PipelineRow
+        running={pipeline.stage1 === 'running'}
+        ok={pipeline.stage1 === 'ok'}
+        runningLabel="Reading photo…"
+        doneLabel={pipeline.stage1 === 'ok' ? 'Read details from photo' : "Couldn't read the photo"}
+      />
+      {pipeline.stage2 !== 'skipped' && (
+        <PipelineRow
+          running={pipeline.stage2 === 'running'}
+          ok={pipeline.stage2 === 'found'}
+          runningLabel="Searching for a source online…"
+          doneLabel={pipeline.stage2 === 'found' ? 'Found a source online' : 'No source found online'}
+        />
+      )}
+    </div>
+  )
+}
+
 // Feedback #93 ("take a picture of a poster... have everything auto
 // populate"), restyled and re-architected 2026-08-23 per direct feedback:
 // (1) a full-screen modal, not inline content pushed above the events list
@@ -90,7 +142,10 @@ async function patchDiscoveredSource(event: Event, found: DiscoveredEventSource)
 // pass fills the form immediately, then a slower live web search for the
 // event's source runs in the background while the member is already
 // reviewing/editing, and keeps going even after Post is tapped, patching
-// the source in afterward rather than blocking submission on it.
+// the source in afterward rather than blocking submission on it; (4) the
+// form itself (not a separate blank "processing" screen) shows the instant
+// a photo is picked, so the fields are visibly what's being populated, with
+// the photo pinned at the top of the screen throughout.
 export function AddEventModal({
   isOpen,
   onClose,
@@ -101,13 +156,13 @@ export function AddEventModal({
   onCreated: (event: Event) => void
 }) {
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const [stage, setStage] = useState<'choice' | 'processing' | 'form'>('choice')
+  const [stage, setStage] = useState<'choice' | 'form'>('choice')
   const [photoPreviewUrl, setPhotoPreviewUrl] = useState<string | null>(null)
   const [choiceError, setChoiceError] = useState<string | null>(null)
   const [initialValues, setInitialValues] = useState<EventFormInitialValues | null>(null)
   const [formNote, setFormNote] = useState<string | null>(null)
   const [sourceUrlSuggestion, setSourceUrlSuggestion] = useState<string | null>(null)
-  const [sourceSearching, setSourceSearching] = useState(false)
+  const [pipeline, setPipeline] = useState<Pipeline>({ active: false, stage1: 'running', stage2: 'skipped' })
 
   // Points at the most recent handleFile() attempt's session for as long as
   // it's the one on screen — used only to guard live UI updates (setState
@@ -125,7 +180,7 @@ export function AddEventModal({
     setInitialValues(null)
     setFormNote(null)
     setSourceUrlSuggestion(null)
-    setSourceSearching(false)
+    setPipeline({ active: false, stage1: 'running', stage2: 'skipped' })
   }
 
   function handleDismiss() {
@@ -139,10 +194,10 @@ export function AddEventModal({
   }
 
   function runSourceSearch(session: PhotoSession, fields: Pick<ExtractedEventFields, 'title' | 'location_name' | 'address'>) {
-    setSourceSearching(true)
+    setPipeline((prev) => ({ ...prev, stage2: 'running' }))
     findEventSource({ title: fields.title, location_name: fields.location_name, address: fields.address })
       .then((found) => {
-        if (activeSessionRef.current === session) setSourceSearching(false)
+        if (activeSessionRef.current === session) setPipeline((prev) => ({ ...prev, stage2: found ? 'found' : 'not_found' }))
         if (!found) return
 
         session.sourceUrlSuggestion = found.source_url
@@ -163,7 +218,7 @@ export function AddEventModal({
         if (activeSessionRef.current === session) setSourceUrlSuggestion(found.source_url)
       })
       .catch(() => {
-        if (activeSessionRef.current === session) setSourceSearching(false)
+        if (activeSessionRef.current === session) setPipeline((prev) => ({ ...prev, stage2: 'not_found' }))
       })
   }
 
@@ -173,16 +228,26 @@ export function AddEventModal({
     const session: PhotoSession = { cancelled: false, createdEvent: null, sourceUrlSuggestion: null, sourceName: null }
     activeSessionRef.current = session
 
+    // Show the real form immediately — even before the photo finishes
+    // uploading or stage 1 resolves — so the field labels are visible right
+    // away (feedback, 2026-08-23: "even at this stage, I should see the
+    // fields... it should be obvious what the thing is trying to
+    // populate"). The photo itself is pinned at the top the whole time.
     const previewUrl = URL.createObjectURL(file)
     setPhotoPreviewUrl(previewUrl)
     setChoiceError(null)
-    setStage('processing')
+    setInitialValues(null)
+    setFormNote(null)
+    setSourceUrlSuggestion(null)
+    setPipeline({ active: true, stage1: 'running', stage2: 'skipped' })
+    setStage('form')
 
     let image: UploadedImage
     try {
       image = await uploadImage(file, 'events')
     } catch {
       if (session.cancelled) return
+      setPipeline({ active: false, stage1: 'running', stage2: 'skipped' })
       setPhotoPreviewUrl((prev) => {
         if (prev) URL.revokeObjectURL(prev)
         return null
@@ -200,13 +265,9 @@ export function AddEventModal({
     }
     if (session.cancelled) return
 
-    setPhotoPreviewUrl((prev) => {
-      if (prev) URL.revokeObjectURL(prev)
-      return null
-    })
     setInitialValues(toInitialValues(fields, image))
     setFormNote(fields ? null : "Couldn't read the details from that photo — it's attached below, fill in the rest yourself.")
-    setStage('form')
+    setPipeline((prev) => ({ ...prev, stage1: fields ? 'ok' : 'failed' }))
 
     // Stage 2, in the background — only worth it if stage 1 succeeded and
     // didn't already find a URL printed on the poster itself.
@@ -242,7 +303,17 @@ export function AddEventModal({
       </IonHeader>
       <IonContent>
         {stage === 'choice' && (
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '70vh', padding: '32px 24px', textAlign: 'center' }}>
+          <div
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              minHeight: '70vh',
+              padding: '32px 24px',
+              textAlign: 'center',
+            }}
+          >
             <IonIcon icon={cameraOutline} style={{ fontSize: 56, color: 'var(--ion-color-primary)', marginBottom: 16 }} />
             <h2 style={{ margin: '0 0 8px', fontSize: '1.25rem' }}>Add an Event</h2>
             <p style={{ color: 'var(--ion-color-medium)', margin: '0 0 32px', maxWidth: 280 }}>
@@ -263,7 +334,7 @@ export function AddEventModal({
                 e.target.value = ''
               }}
             />
-            <IonButton expand="block" size="large" style={{ width: '100%', maxWidth: 320 }} onClick={() => fileInputRef.current?.click()}>
+            <IonButton expand="block" style={{ width: '100%', maxWidth: 320 }} onClick={() => fileInputRef.current?.click()}>
               <IonIcon slot="start" icon={cameraOutline} />
               Add from Photo
             </IonButton>
@@ -272,33 +343,50 @@ export function AddEventModal({
                 <p style={{ fontSize: '0.8125rem', margin: '12px 0 0', maxWidth: 280 }}>{choiceError}</p>
               </IonText>
             )}
-            <p className="ion-margin-top" style={{ color: 'var(--ion-color-medium)', fontSize: '0.8125rem' }}>
-              or{' '}
+            {/* A flex row, not text flowing through a <p> (feedback,
+                2026-08-23: "or enter manually" rendered as two stacked
+                lines instead of one) — a real row sidesteps whatever inline-
+                flow quirk caused that, rather than guessing at another fix. */}
+            <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'center', gap: 4, marginTop: 16 }}>
+              <span style={{ color: 'var(--ion-color-medium)', fontSize: '0.8125rem' }}>or</span>
               <IonButton
                 fill="clear"
                 onClick={() => setStage('form')}
-                style={{ ...unstyledButtonStyle, display: 'inline-flex', color: 'var(--ion-color-medium)', textDecoration: 'underline' }}
+                style={{ ...unstyledButtonStyle, color: 'var(--ion-color-medium)', textDecoration: 'underline', fontSize: '0.8125rem' }}
               >
                 enter manually
               </IonButton>
-            </p>
-          </div>
-        )}
-        {stage === 'processing' && (
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '70vh', padding: '32px 24px', textAlign: 'center' }}>
-            {photoPreviewUrl && (
-              <img
-                src={photoPreviewUrl}
-                alt="Your photo"
-                style={{ maxWidth: '100%', maxHeight: '45vh', borderRadius: 12, boxShadow: '0 2px 12px rgba(0,0,0,0.2)', marginBottom: 24 }}
-              />
-            )}
-            <IonSpinner name="dots" />
-            <p style={{ color: 'var(--ion-color-medium)', margin: '12px 0 0' }}>Reading your photo…</p>
+            </div>
           </div>
         )}
         {stage === 'form' && (
           <>
+            {photoPreviewUrl && (
+              // Pinned at the top of the screen for the whole time the
+              // member is reviewing/editing (feedback, 2026-08-23: "keep
+              // the picture and view at the top of the screen") — sticky,
+              // not just first-in-DOM, so it stays visible while scrolling
+              // through the fields below. A solid background is required
+              // for sticky content or text scrolling underneath would show
+              // through.
+              <div
+                style={{
+                  position: 'sticky',
+                  top: 0,
+                  zIndex: 1,
+                  background: 'var(--ion-background-color, #fff)',
+                  padding: '12px 16px 0',
+                  textAlign: 'center',
+                }}
+              >
+                <img
+                  src={photoPreviewUrl}
+                  alt="Your photo"
+                  style={{ maxWidth: '100%', maxHeight: 160, borderRadius: 10, boxShadow: '0 1px 6px rgba(0,0,0,0.15)' }}
+                />
+              </div>
+            )}
+            <PipelineStatus pipeline={pipeline} />
             {formNote && (
               <IonText color="medium">
                 <p style={{ fontSize: '0.8125rem', margin: '12px 16px 8px' }}>{formNote}</p>
@@ -310,7 +398,7 @@ export function AddEventModal({
               submitLabel="Post"
               errorMessage="Could not post this event"
               sourceUrlSuggestion={sourceUrlSuggestion}
-              sourceSearching={sourceSearching}
+              hidePhotoAttach={pipeline.active}
               onSubmit={handleSubmit}
               onCancel={handleDismiss}
             />

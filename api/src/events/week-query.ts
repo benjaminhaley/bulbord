@@ -53,6 +53,7 @@ export async function getEventsForWeek(
       description: events.description,
       startDate: events.startDate,
       startTime: events.startTime,
+      endTime: events.endTime,
       allDay: events.allDay,
       address: events.address,
       locationName: events.locationName,

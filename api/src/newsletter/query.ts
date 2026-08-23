@@ -14,6 +14,7 @@ export interface WeeklyEvent {
   description: string | null
   startDate: string
   startTime: string | null
+  endTime: string | null
   allDay: boolean
   address: string | null
   locationName: string | null
@@ -86,6 +87,7 @@ export async function getWeeklyEvents(fromDate: string, toDate: string): Promise
       description: nextOccurrence.description,
       startDate: nextOccurrence.startDate,
       startTime: nextOccurrence.startTime,
+      endTime: nextOccurrence.endTime,
       allDay: nextOccurrence.allDay,
       address: nextOccurrence.address,
       locationName: nextOccurrence.locationName,

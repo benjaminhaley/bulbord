@@ -25,13 +25,30 @@ function toEventInput(image: UploadedImage | null, fields: Omit<EventInput, 'ima
   return { ...fields, image_url: image?.image_url ?? null, thumbnail_url: image?.thumbnail_url ?? null }
 }
 
+// Native date/time inputs' own intrinsic width, not stretched — a plain
+// `width: '100%'` (the original style here) let iOS Safari center the
+// displayed value inside a wide box, reading as a big, oddly-empty row next
+// to every other field's compact, left-started text (feedback, 2026-08-23:
+// "the date and time layout here is kind of ugly... still full width").
+const dateTimeInputStyle = { border: 'none', font: 'inherit', padding: '8px 0', background: 'transparent', textAlign: 'left' as const }
+
 // Just the subset of Event this form actually reads to prefill itself — an
 // Event satisfies this structurally (editing reuses it directly), but so
 // does a plain candidate object with no id/interest/etc., which is what
-// AddFromPhotoButton.tsx hands in after extraction (feedback #93).
+// AddEventModal.tsx hands in after extraction (feedback #93).
 export type EventFormInitialValues = Pick<
   Event,
-  'title' | 'description' | 'start_date' | 'all_day' | 'start_time' | 'address' | 'source_url' | 'topic' | 'image_url' | 'thumbnail_url'
+  | 'title'
+  | 'description'
+  | 'start_date'
+  | 'all_day'
+  | 'start_time'
+  | 'end_time'
+  | 'address'
+  | 'source_url'
+  | 'topic'
+  | 'image_url'
+  | 'thumbnail_url'
 >
 
 // Shared by the "new event" and "edit event" flows (feedback #46) — same
@@ -45,7 +62,7 @@ export function EventForm({
   onSubmit,
   onCancel,
   sourceUrlSuggestion,
-  sourceSearching,
+  hidePhotoAttach,
 }: {
   initial?: EventFormInitialValues
   submitLabel: string
@@ -59,17 +76,20 @@ export function EventForm({
   // rather than baked into `initial` (which only ever applies once, at
   // mount). Only ever applied if the Source URL field is still empty when
   // it arrives — a member's own edit (typed or accepted-then-changed)
-  // always wins over a late suggestion. See AddEventModal.tsx.
+  // always wins over a late suggestion. Stage-running/complete status is
+  // now shown by AddEventModal.tsx's own pipeline indicator, not here.
   sourceUrlSuggestion?: string | null
-  // Shows a small "Looking for a source…" hint next to the field while
-  // stage 2 is still in flight, so the member knows more may still arrive.
-  sourceSearching?: boolean
+  // True when the caller (AddEventModal.tsx) already shows the attached
+  // photo prominently pinned at the top of the screen — avoids showing the
+  // same photo a second time via this form's own attach/thumbnail section.
+  hidePhotoAttach?: boolean
 }) {
   const [title, setTitle] = useState(initial?.title ?? '')
   const [description, setDescription] = useState(initial?.description ?? '')
   const [startDate, setStartDate] = useState(initial?.start_date ?? '')
   const [allDay, setAllDay] = useState(initial?.all_day ?? false)
   const [startTime, setStartTime] = useState(initial?.start_time?.slice(0, 5) ?? '')
+  const [endTime, setEndTime] = useState(initial?.end_time?.slice(0, 5) ?? '')
   const [address, setAddress] = useState(initial?.address ?? '')
   const [sourceUrl, setSourceUrl] = useState(initial?.source_url ?? '')
   const [topic, setTopic] = useState(initial?.topic ?? '')
@@ -96,6 +116,7 @@ export function EventForm({
           description: description.trim(),
           start_date: startDate,
           start_time: allDay ? '' : startTime,
+          end_time: allDay ? '' : endTime,
           all_day: allDay,
           address: address.trim(),
           source_url: sourceUrl.trim(),
@@ -121,12 +142,7 @@ export function EventForm({
       </IonItem>
       <IonItem>
         <IonLabel position="stacked">Date</IonLabel>
-        <input
-          type="date"
-          value={startDate}
-          onChange={(e) => setStartDate(e.target.value)}
-          style={{ border: 'none', font: 'inherit', width: '100%', padding: '8px 0', background: 'transparent' }}
-        />
+        <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} style={dateTimeInputStyle} />
       </IonItem>
       <IonItem>
         <IonCheckbox checked={allDay} onIonChange={(e) => setAllDay(e.detail.checked)}>
@@ -135,13 +151,14 @@ export function EventForm({
       </IonItem>
       {!allDay && (
         <IonItem>
-          <IonLabel position="stacked">Time</IonLabel>
-          <input
-            type="time"
-            value={startTime}
-            onChange={(e) => setStartTime(e.target.value)}
-            style={{ border: 'none', font: 'inherit', width: '100%', padding: '8px 0', background: 'transparent' }}
-          />
+          <IonLabel position="stacked">Start Time</IonLabel>
+          <input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} style={dateTimeInputStyle} />
+        </IonItem>
+      )}
+      {!allDay && (
+        <IonItem>
+          <IonLabel position="stacked">End Time</IonLabel>
+          <input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} style={dateTimeInputStyle} />
         </IonItem>
       )}
       <IonItem>
@@ -156,13 +173,7 @@ export function EventForm({
           onIonInput={(e) => setSourceUrl(e.detail.value ?? '')}
           placeholder="Optional link with more details"
         />
-        {sourceSearching && <IonSpinner slot="end" name="dots" />}
       </IonItem>
-      {sourceSearching && (
-        <IonText color="medium">
-          <p style={{ fontSize: '0.75rem', margin: '-4px 16px 8px' }}>Looking for a source online…</p>
-        </IonText>
-      )}
       {/* Optional (feedback #97) — powers the Events tab's topic filter. */}
       <IonItem>
         <IonLabel position="stacked">Topic</IonLabel>
@@ -175,27 +186,29 @@ export function EventForm({
           ))}
         </IonSelect>
       </IonItem>
-      <IonItem lines="none">
-        {/* ionic-exception: Ionic has no file-picker component; a hidden
-            native file input triggered by a real button is the standard
-            pattern (see the IonButton below). */}
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="image/*"
-          hidden
-          onChange={(e) => {
-            const file = e.target.files?.[0]
-            if (file) void attach(file)
-            e.target.value = ''
-          }}
-        />
-        <IonButton fill="clear" onClick={() => fileInputRef.current?.click()}>
-          <IonIcon slot="icon-only" icon={imageOutline} />
-        </IonButton>
-        {uploading && <IonSpinner name="dots" />}
-      </IonItem>
-      {image && (
+      {!hidePhotoAttach && (
+        <IonItem lines="none">
+          {/* ionic-exception: Ionic has no file-picker component; a hidden
+              native file input triggered by a real button is the standard
+              pattern (see the IonButton below). */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            hidden
+            onChange={(e) => {
+              const file = e.target.files?.[0]
+              if (file) void attach(file)
+              e.target.value = ''
+            }}
+          />
+          <IonButton fill="clear" onClick={() => fileInputRef.current?.click()}>
+            <IonIcon slot="icon-only" icon={imageOutline} />
+          </IonButton>
+          {uploading && <IonSpinner name="dots" />}
+        </IonItem>
+      )}
+      {!hidePhotoAttach && image && (
         <div style={{ padding: '0 16px 8px' }}>
           <div style={{ position: 'relative', width: 60 }}>
             <img

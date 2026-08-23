@@ -143,7 +143,7 @@ export function EventDetailPage() {
                   a relative word alone ("This Saturday") is shown alongside
                   the actual date for clarity, unlike the list row above. */}
               {formatWhen(
-                { startDate: event.start_date, startTime: event.start_time, allDay: event.all_day },
+                { startDate: event.start_date, startTime: event.start_time, endTime: event.end_time, allDay: event.all_day },
                 undefined,
                 'detailed',
               )}

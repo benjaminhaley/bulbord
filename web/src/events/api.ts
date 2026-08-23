@@ -9,6 +9,7 @@ export interface Event {
   description: string | null
   start_date: string
   start_time: string | null
+  end_time: string | null
   all_day: boolean
   address: string | null
   location_name: string | null
@@ -42,6 +43,7 @@ export interface EventInput {
   description: string
   start_date: string
   start_time: string
+  end_time: string
   all_day: boolean
   address: string
   source_url: string
@@ -241,6 +243,7 @@ export interface ExtractedEventFields {
   description?: string
   start_date: string
   start_time?: string
+  end_time?: string
   all_day: boolean
   address?: string
   location_name?: string

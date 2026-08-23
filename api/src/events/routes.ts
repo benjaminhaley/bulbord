@@ -85,6 +85,7 @@ export async function eventsRoutes(app: FastifyInstance) {
         thumbnailUrl: events.thumbnailUrl,
         startDate: events.startDate,
         startTime: events.startTime,
+        endTime: events.endTime,
         allDay: events.allDay,
         address: events.address,
         locationName: events.locationName,
@@ -100,7 +101,7 @@ export async function eventsRoutes(app: FastifyInstance) {
         title: row.title,
         description: row.description,
         image_url: row.imageUrl ?? row.thumbnailUrl,
-        when: formatWhen({ startDate: row.startDate, startTime: row.startTime, allDay: row.allDay }),
+        when: formatWhen({ startDate: row.startDate, startTime: row.startTime, endTime: row.endTime, allDay: row.allDay }),
         location: locationLabel({ address: row.address, locationName: row.locationName }),
       },
     })
@@ -178,6 +179,7 @@ export async function eventsRoutes(app: FastifyInstance) {
       description?: string
       start_date?: string
       start_time?: string
+      end_time?: string
       all_day?: boolean
       address?: string
       location_name?: string
@@ -214,6 +216,7 @@ export async function eventsRoutes(app: FastifyInstance) {
         description: body.description?.trim() || null,
         startDate,
         startTime: allDay ? null : body.start_time?.trim() || null,
+        endTime: allDay ? null : body.end_time?.trim() || null,
         allDay,
         address,
         locationName: body.location_name?.trim() || null,
@@ -264,6 +267,7 @@ export async function eventsRoutes(app: FastifyInstance) {
       description?: string
       start_date?: string
       start_time?: string
+      end_time?: string
       all_day?: boolean
       address?: string
       location_name?: string
@@ -313,6 +317,7 @@ export async function eventsRoutes(app: FastifyInstance) {
           description: body.description?.trim() || null,
           startDate,
           startTime: allDay ? null : body.start_time?.trim() || null,
+          endTime: allDay ? null : body.end_time?.trim() || null,
           allDay,
           address,
           locationName: body.location_name?.trim() || null,
@@ -659,6 +664,7 @@ export async function eventsRoutes(app: FastifyInstance) {
           description: nextOccurrence.description,
           startDate: nextOccurrence.startDate,
           startTime: nextOccurrence.startTime,
+          endTime: nextOccurrence.endTime,
           allDay: nextOccurrence.allDay,
           address: nextOccurrence.address,
           locationName: nextOccurrence.locationName,

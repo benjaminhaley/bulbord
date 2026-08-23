@@ -24,6 +24,13 @@ export const events = pgTable('events', {
   description: text('description'),
   startDate: date('start_date').notNull(),
   startTime: time('start_time'), // null = no specific time
+  // Added 2026-08-23 (feedback: a poster gave a clear "11am-3pm" range,
+  // and the app had nowhere to put the end) — mirrors camps.endTime/
+  // sports_clubs.endTime's existing shape exactly. Null means either no
+  // specific end was given, or the event only ever had a single start time
+  // to begin with — same "null = unknown/not applicable" posture as
+  // startTime itself.
+  endTime: time('end_time'),
   allDay: boolean('all_day').notNull().default(false),
   address: text('address'),
   // A human-friendly place name ("Merlo Library") shown in place of the raw

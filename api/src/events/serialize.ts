@@ -12,6 +12,7 @@ export type SerializableEvent = Pick<
   | 'description'
   | 'startDate'
   | 'startTime'
+  | 'endTime'
   | 'allDay'
   | 'address'
   | 'locationName'
@@ -51,6 +52,7 @@ export function serializeEvent(
     description: e.description,
     start_date: e.startDate,
     start_time: e.startTime,
+    end_time: e.endTime,
     all_day: e.allDay,
     address: e.address,
     location_name: e.locationName,

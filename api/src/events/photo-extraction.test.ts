@@ -86,6 +86,28 @@ describe('extractEventFieldsFromPhoto', () => {
     )
   })
 
+  it('extracts an end_time when the poster gives a time range', async () => {
+    getImageObjectMock.mockResolvedValue(imageObject())
+    createMock.mockResolvedValue(
+      textResponse(
+        JSON.stringify({
+          found: true,
+          title: 'Family Fun Fest',
+          start_date: '2026-09-20',
+          start_time: '11:00',
+          end_time: '15:00',
+          all_day: false,
+        }),
+      ),
+    )
+    const { extractEventFieldsFromPhoto } = await import('./photo-extraction.js')
+
+    const result = await extractEventFieldsFromPhoto('/uploads/events/flyer.jpeg')
+
+    expect(result?.start_time).toBe('11:00')
+    expect(result?.end_time).toBe('15:00')
+  })
+
   it('extracts a source_url printed on the poster', async () => {
     getImageObjectMock.mockResolvedValue(imageObject())
     createMock.mockResolvedValue(
