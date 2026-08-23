@@ -267,6 +267,13 @@
       "when": 1787088056525,
       "tag": "0037_abnormal_norrin_radd",
       "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1787490211736,
+      "tag": "0038_safe_cerise",
+      "breakpoints": true
     }
   ]
 }

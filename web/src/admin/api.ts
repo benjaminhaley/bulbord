@@ -35,6 +35,21 @@ export async function sendTestNewsletterEmail(): Promise<void> {
   }
 }
 
+// Dev tool (feedback #120) — renders and sends the "day off camp" reminder
+// email for the soonest upcoming school break that actually has camps
+// listed, to the admin's own address, ignoring the real 28-days-before
+// trigger so it can be checked live anytime.
+export async function sendTestCampReminderEmail(): Promise<void> {
+  const response = await fetch(`${API_URL}/admin/camp-reminders/test-send`, {
+    method: 'POST',
+    headers: authHeaders(),
+  })
+  if (!response.ok) {
+    const body = (await response.json().catch(() => null)) as { error?: { message?: string } } | null
+    throw new Error(body?.error?.message ?? `Failed to send test email: ${response.status}`)
+  }
+}
+
 // Dev tool: renders and sends a real "X added you as a friend" alert email
 // (connections/template.ts) to the admin's own address, using their own
 // name/photo as the "adder" — same "no second account needed" shape as the

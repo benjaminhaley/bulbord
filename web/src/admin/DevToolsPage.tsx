@@ -15,6 +15,7 @@ import {
   IonToolbar,
 } from '@ionic/react'
 import {
+  alarmOutline,
   alertCircle,
   analyticsOutline,
   eyeOutline,
@@ -37,6 +38,7 @@ import {
   createTestFollow,
   fetchSourcesLastCheckedAt,
   resourceEventSources,
+  sendTestCampReminderEmail,
   sendTestConnectionAlertEmail,
   sendTestNewsletterEmail,
   type ResourceReport,
@@ -68,6 +70,7 @@ export function DevToolsPage() {
   const { user, refresh } = useAuth()
   const { freshness, refresh: refreshFreshness } = useDataFreshness()
   const [sending, setSending] = useState(false)
+  const [sendingCampReminderTest, setSendingCampReminderTest] = useState(false)
   const [sendingConnectionTest, setSendingConnectionTest] = useState(false)
   const [creatingTestFollow, setCreatingTestFollow] = useState(false)
   const [toast, setToast] = useState<string | null>(null)
@@ -94,6 +97,18 @@ export function DevToolsPage() {
       setToast(err instanceof Error ? err.message : 'Could not send test email')
     } finally {
       setSending(false)
+    }
+  }
+
+  async function sendCampReminderTest() {
+    setSendingCampReminderTest(true)
+    try {
+      await sendTestCampReminderEmail()
+      setToast(`Sent to ${user?.email ?? 'your email'}`)
+    } catch (err) {
+      setToast(err instanceof Error ? err.message : 'Could not send test email')
+    } finally {
+      setSendingCampReminderTest(false)
     }
   }
 
@@ -160,6 +175,14 @@ export function DevToolsPage() {
               <p>This week's real events, using the same template as the live send — sent only to you.</p>
             </IonLabel>
             {sending && <IonSpinner slot="end" name="dots" />}
+          </IonItem>
+          <IonItem button disabled={sendingCampReminderTest} onClick={sendCampReminderTest}>
+            <IonIcon slot="start" icon={alarmOutline} />
+            <IonLabel className="ion-text-wrap">
+              <h2>Send yourself a test day-off camp reminder email</h2>
+              <p>The soonest upcoming school break with camps listed, same template as the real 28-days-before send.</p>
+            </IonLabel>
+            {sendingCampReminderTest && <IonSpinner slot="end" name="dots" />}
           </IonItem>
           <IonItem button disabled={sendingConnectionTest} onClick={sendConnectionTest}>
             <IonIcon slot="start" icon={personAddOutline} />

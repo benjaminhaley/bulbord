@@ -568,6 +568,16 @@ export const schoolBreaks = pgTable('school_breaks', {
   // since camps run week-by-week over the summer.
   splitWeekly: boolean('split_weekly').notNull().default(false),
   notes: text('notes'), // source citation, same convention as eventSources.notes
+  // When the "day off camp" reminder email (feedback #120) was actually sent
+  // for this break — null means not yet. Set once, by
+  // camp-reminders/send-due.ts, only after a real send (never for a break
+  // with zero camps overlapping it — see camp-reminders/window.ts). Prevents
+  // a second email for the same break on a later cron run, while still
+  // letting the cron catch up automatically if a run was missed on the
+  // exact due date (see the recurring-series-health.ts header above for why
+  // "silently never fires again" is the failure mode this codebase has
+  // learned to design against).
+  remindedAt: timestamp('reminded_at', { withTimezone: true }),
   ...timestamps,
 })
 

@@ -13,7 +13,7 @@
 // the exact same rule (feedback #78) — so it lives in ../dayLabel (truly
 // generic shared infra, the same bar auth/uploads/Avatar already clear)
 // rather than as a second diverging copy here.
-import { dayLabel, type DayLabelMode } from '../dayLabel'
+import { dayLabel, type DayLabelMode } from '../dayLabel.js'
 
 function shortDateLabel(dateStr: string): string {
   return new Date(`${dateStr}T00:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })

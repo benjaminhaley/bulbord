@@ -1,0 +1,1 @@
+ALTER TABLE "school_breaks" ADD COLUMN "reminded_at" timestamp with time zone;

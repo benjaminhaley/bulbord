@@ -3,6 +3,7 @@ import type { FastifyInstance } from 'fastify'
 import { getAnalyticsSummary } from '../analytics/service.js'
 import { requireRole } from '../auth/plugin.js'
 import { listUsersForAdmin } from '../auth/service.js'
+import { sendTestCampReminderEmail } from '../camp-reminders/service.js'
 import { getCampsLastUpdatedAt } from '../camps/staleness.js'
 import { createTestFollow, sendTestConnectionAlertEmail } from '../connections/service.js'
 import { todayInChicago } from '../dates.js'
@@ -50,6 +51,23 @@ export async function adminRoutes(app: FastifyInstance) {
       return reply.code(400).send({ error: { message: 'Your account has no email on file' } })
     }
     await sendTestNewsletterEmail({ id: user.id, name: user.name, email: user.email })
+    return reply.send({ sent: true })
+  })
+
+  // Dev tool (feedback #120): preview the "day off camp" reminder email
+  // without waiting for the real 28-days-before trigger. Sends whatever the
+  // soonest upcoming break with real camps listed would actually look like
+  // — see camp-reminders/service.ts for why this ignores the real due-date
+  // gate rather than only working on the exact day a break would fire.
+  app.post('/admin/camp-reminders/test-send', { preHandler: requireRole('admin') }, async (request, reply) => {
+    const user = request.currentUser!
+    if (!user.email) {
+      return reply.code(400).send({ error: { message: 'Your account has no email on file' } })
+    }
+    const result = await sendTestCampReminderEmail({ id: user.id, name: user.name, email: user.email })
+    if (result === 'no_upcoming_camps') {
+      return reply.code(400).send({ error: { message: 'No upcoming school break currently has any camps listed' } })
+    }
     return reply.send({ sent: true })
   })
 
