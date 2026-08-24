@@ -1,6 +1,6 @@
 import { IonButton, IonIcon, IonInput, IonItem, IonLabel, IonList, IonSpinner, IonText, IonTextarea } from '@ionic/react'
 import { closeOutline, imageOutline } from 'ionicons/icons'
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 import { API_URL } from '../config'
 import type { UploadedImage } from '../uploads/api'
@@ -149,6 +149,32 @@ export function FeedbackForm({
   const [error, setError] = useState<string | null>(null)
   const { images, fileInputRef, uploading, attachFiles, removeAt } = useMultiImageUpload(initialImages)
   const handlePaste = makePasteHandler((files) => void attachFiles(files))
+  const titleInputRef = useRef<HTMLIonInputElement>(null)
+
+  // The plain HTML `autofocus` attribute this used to carry doesn't
+  // actually move focus here: this form is revealed by clicking a toggle
+  // button (FeedbackPage's toolbar "+", or a post's own edit pencil) that
+  // stays mounted right next to it, and Chrome's autofocus processing is a
+  // no-op whenever *anything* in the document already has focus -- which
+  // the still-present toggle button does. Left focus stuck on that button,
+  // so pasting an image right after opening the form (without clicking
+  // into a field first) silently went nowhere: the paste event never
+  // reached this list's onPaste handler at all (feedback #121, reproduced
+  // directly -- document.activeElement stayed the toggle ion-button, not
+  // the title input). A real, imperative setFocus() call doesn't have that
+  // "something else already has focus" escape hatch.
+  useEffect(() => {
+    // A setFocus() called immediately here (react's effect fires right
+    // after commit) resolves its promise but silently focuses nothing --
+    // verified directly (the promise resolved, yet document.activeElement
+    // never changed). Stencil schedules ion-input's *internal* shadow
+    // render (which is what actually creates the real native <input>
+    // setFocus() needs to call .focus() on) asynchronously relative to the
+    // custom element being inserted, so it isn't necessarily ready the
+    // instant this effect runs. A double rAF reliably waits past that.
+    const raf = requestAnimationFrame(() => requestAnimationFrame(() => titleInputRef.current?.setFocus()))
+    return () => cancelAnimationFrame(raf)
+  }, [])
 
   async function submit() {
     if (!title.trim()) return
@@ -167,7 +193,7 @@ export function FeedbackForm({
     <IonList inset onPaste={handlePaste}>
       <IonItem>
         <IonLabel position="stacked">Title</IonLabel>
-        <IonInput value={title} onIonInput={(e) => setTitle(e.detail.value ?? '')} autofocus />
+        <IonInput ref={titleInputRef} value={title} onIonInput={(e) => setTitle(e.detail.value ?? '')} />
       </IonItem>
       <IonItem>
         <IonLabel position="stacked">Description</IonLabel>

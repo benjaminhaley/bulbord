@@ -28,6 +28,7 @@ import { useAuth } from '../auth/AuthContext'
 import { InstitutionBanner } from '../app/InstitutionBanner'
 import { API_URL } from '../config'
 import { defaultAgesForKids } from '../gradeAges'
+import { useDefaultAgesSync } from '../useDefaultAgesSync'
 import { Avatar } from '../uploads/Avatar'
 import { createCamp, fetchCampsByBreak, type BreakBucket, type Camp, type InterestStatus } from './api'
 import { CampFilterChips } from './CampFilterChips'
@@ -181,6 +182,10 @@ export function CampsPage() {
   // on to the viewer's own kids' permissive ages (see ../gradeAges.ts)
   // rather than starting empty/off the way Events'/Sports & Clubs' chips do.
   const [ages, setAges] = useState<number[]>(() => defaultAgesForKids(user?.kids ?? []))
+  // Re-syncs `ages` if the viewer's kids change later in the same session
+  // (feedback #122 — see useDefaultAgesSync.ts for why the useState
+  // initializer above isn't enough on its own).
+  useDefaultAgesSync(user?.kids, ages, setAges)
   const [filtersOpen, setFiltersOpen] = useState(false)
 
   function updateCampInBuckets(updated: Camp) {

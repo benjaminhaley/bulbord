@@ -28,6 +28,7 @@ import { InstitutionBanner } from '../app/InstitutionBanner'
 import { useAuth } from '../auth/AuthContext'
 import { API_URL } from '../config'
 import { defaultAgesForKids } from '../gradeAges'
+import { useDefaultAgesSync } from '../useDefaultAgesSync'
 import { Avatar } from '../uploads/Avatar'
 import { createSportsClub, fetchSportsClubs, type InterestStatus, type SportsClubListItem } from './api'
 import { matchesCategoryFilter, matchesScheduleFilter, matchesSportsClubAgeFilter } from './filters'
@@ -166,6 +167,10 @@ export function SportsClubsPage() {
   // Age defaults on to the viewer's own kids' permissive ages (feedback
   // #103, 2026-08-19) — every other filter here still defaults empty/off.
   const [filters, setFilters] = useState(() => ({ ...DEFAULT_SPORTS_CLUB_FILTERS, ages: defaultAgesForKids(user?.kids ?? []) }))
+  // Re-syncs filters.ages if the viewer's kids change later in the same
+  // session (feedback #122 — see useDefaultAgesSync.ts for why the
+  // useState initializer above isn't enough on its own).
+  useDefaultAgesSync(user?.kids, filters.ages, (updater) => setFilters((prev) => ({ ...prev, ages: updater(prev.ages) })))
   const activeFilterCount = filters.categories.length + filters.days.length + filters.times.length + filters.ages.length
   const hasActiveFilters = activeFilterCount > 0
 
