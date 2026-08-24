@@ -7,6 +7,7 @@ import {
   IonItem,
   IonLabel,
   IonList,
+  IonListHeader,
   IonNote,
   IonPage,
   IonSpinner,
@@ -167,57 +168,31 @@ export function DevToolsPage() {
         </IonToolbar>
       </IonHeader>
       <IonContent fullscreen>
+        {/* Feedback #125 ("organize developer tools... hodgepodge"): grouped
+            into three sections by what kind of task each item serves,
+            rather than one flat list of everything — a member/oversight
+            group, a content-pipeline group, and a dev/QA-utility group,
+            roughly ordered least-to-most technical. */}
         <IonList inset>
-          <IonItem button disabled={sending} onClick={sendTest}>
-            <IonIcon slot="start" icon={mailOutline} />
-            <IonLabel className="ion-text-wrap">
-              <h2>Send yourself a test newsletter email</h2>
-              <p>This week's real events, using the same template as the live send — sent only to you.</p>
-            </IonLabel>
-            {sending && <IonSpinner slot="end" name="dots" />}
-          </IonItem>
-          <IonItem button disabled={sendingCampReminderTest} onClick={sendCampReminderTest}>
-            <IonIcon slot="start" icon={alarmOutline} />
-            <IonLabel className="ion-text-wrap">
-              <h2>Send yourself a test day-off camp reminder email</h2>
-              <p>The soonest upcoming school break with camps listed, same template as the real 28-days-before send.</p>
-            </IonLabel>
-            {sendingCampReminderTest && <IonSpinner slot="end" name="dots" />}
-          </IonItem>
-          <IonItem button disabled={sendingConnectionTest} onClick={sendConnectionTest}>
-            <IonIcon slot="start" icon={personAddOutline} />
-            <IonLabel className="ion-text-wrap">
-              <h2>Send yourself a test friend-request email</h2>
-              <p>The real "added you as a friend" alert (using your own name/photo), same template as the live send.</p>
-            </IonLabel>
-            {sendingConnectionTest && <IonSpinner slot="end" name="dots" />}
-          </IonItem>
-          <IonItem button disabled={creatingTestFollow} onClick={createFollow}>
-            <IonIcon slot="start" icon={flaskOutline} />
-            <IonLabel className="ion-text-wrap">
-              <h2>Create a test friend follow</h2>
-              <p>A real throwaway member follows you — the actual alert email and in-app notification, repeatable anytime. Delete it from All members after.</p>
-            </IonLabel>
-            {creatingTestFollow && <IonSpinner slot="end" name="dots" />}
-          </IonItem>
-          <IonItem button routerLink="/admin/invite-preview">
-            <IonIcon slot="start" icon={eyeOutline} />
-            <IonLabel className="ion-text-wrap">
-              <h2>Preview the sign-up flow</h2>
-              <p>Walk through what a new member sees, from tapping your invite QR code through setting up their profile.</p>
-            </IonLabel>
-          </IonItem>
+          <IonListHeader>
+            <IonLabel>Members & Analytics</IonLabel>
+          </IonListHeader>
           <IonItem button routerLink="/admin/users">
             <IonIcon slot="start" icon={peopleOutline} />
             <IonLabel>All members</IonLabel>
           </IonItem>
-          <IonItem button routerLink="/admin/analytics">
+          <IonItem button routerLink="/admin/analytics" lines="none">
             <IonIcon slot="start" icon={analyticsOutline} />
             <IonLabel className="ion-text-wrap">
               <h2>Analytics</h2>
               <p>Daily active members, who's viewing/sharing, and a recent activity log.</p>
             </IonLabel>
           </IonItem>
+        </IonList>
+        <IonList inset>
+          <IonListHeader>
+            <IonLabel>Sourcing & Data</IonLabel>
+          </IonListHeader>
           <IonItem button disabled={resourcing} onClick={resource}>
             <IonIcon slot="start" icon={refreshOutline} />
             <IonLabel className="ion-text-wrap">
@@ -250,7 +225,7 @@ export function DevToolsPage() {
               <p>View existing camp sources, or add a new one.</p>
             </IonLabel>
           </IonItem>
-          <IonItem button routerLink="/sports-club-sources" lines="none">
+          <IonItem button routerLink="/sports-club-sources">
             <IonIcon slot="start" icon={ribbonOutline} />
             <IonLabel className="ion-text-wrap">
               <h2>Manage sports & clubs sources</h2>
@@ -270,6 +245,50 @@ export function DevToolsPage() {
                 )}
               </p>
             </IonLabel>
+          </IonItem>
+        </IonList>
+        <IonList inset>
+          <IonListHeader>
+            <IonLabel>Test & Preview Tools</IonLabel>
+          </IonListHeader>
+          <IonItem button routerLink="/admin/invite-preview">
+            <IonIcon slot="start" icon={eyeOutline} />
+            <IonLabel className="ion-text-wrap">
+              <h2>Preview the sign-up flow</h2>
+              <p>Walk through what a new member sees, from tapping your invite QR code through setting up their profile.</p>
+            </IonLabel>
+          </IonItem>
+          <IonItem button disabled={sending} onClick={sendTest}>
+            <IonIcon slot="start" icon={mailOutline} />
+            <IonLabel className="ion-text-wrap">
+              <h2>Send yourself a test newsletter email</h2>
+              <p>This week's real events, using the same template as the live send — sent only to you.</p>
+            </IonLabel>
+            {sending && <IonSpinner slot="end" name="dots" />}
+          </IonItem>
+          <IonItem button disabled={sendingCampReminderTest} onClick={sendCampReminderTest}>
+            <IonIcon slot="start" icon={alarmOutline} />
+            <IonLabel className="ion-text-wrap">
+              <h2>Send yourself a test day-off camp reminder email</h2>
+              <p>The soonest upcoming school break with camps listed, same template as the real 28-days-before send.</p>
+            </IonLabel>
+            {sendingCampReminderTest && <IonSpinner slot="end" name="dots" />}
+          </IonItem>
+          <IonItem button disabled={sendingConnectionTest} onClick={sendConnectionTest}>
+            <IonIcon slot="start" icon={personAddOutline} />
+            <IonLabel className="ion-text-wrap">
+              <h2>Send yourself a test friend-request email</h2>
+              <p>The real "added you as a friend" alert (using your own name/photo), same template as the live send.</p>
+            </IonLabel>
+            {sendingConnectionTest && <IonSpinner slot="end" name="dots" />}
+          </IonItem>
+          <IonItem button disabled={creatingTestFollow} onClick={createFollow} lines="none">
+            <IonIcon slot="start" icon={flaskOutline} />
+            <IonLabel className="ion-text-wrap">
+              <h2>Create a test friend follow</h2>
+              <p>A real throwaway member follows you — the actual alert email and in-app notification, repeatable anytime. Delete it from All members after.</p>
+            </IonLabel>
+            {creatingTestFollow && <IonSpinner slot="end" name="dots" />}
           </IonItem>
         </IonList>
         {report && (
