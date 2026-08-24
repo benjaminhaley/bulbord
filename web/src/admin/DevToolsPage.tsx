@@ -317,11 +317,13 @@ export function DevToolsPage() {
             notice — see api/src/events/recurring-series-health.ts. */}
         {(freshness?.recurring_series_running_low.length ?? 0) > 0 && (
           <IonList inset>
-            <IonItem lines="none">
-              <IonLabel className="ion-text-wrap" color="medium">
-                <h2>Recurring listings running low</h2>
-                <p>These have a real recurring history but no confirmed occurrence coming up soon — worth a re-check.</p>
-              </IonLabel>
+            <IonListHeader>
+              <IonLabel>Recurring listings running low</IonLabel>
+            </IonListHeader>
+            <IonItem lines="full">
+              <IonNote className="ion-text-wrap" color="medium">
+                These have a real recurring history but no confirmed occurrence coming up soon — worth a re-check.
+              </IonNote>
             </IonItem>
             {freshness!.recurring_series_running_low.map((series) => (
               <IonItem
