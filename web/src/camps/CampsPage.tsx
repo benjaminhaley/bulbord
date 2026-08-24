@@ -185,7 +185,7 @@ export function CampsPage() {
   // Re-syncs `ages` if the viewer's kids change later in the same session
   // (feedback #122 — see useDefaultAgesSync.ts for why the useState
   // initializer above isn't enough on its own).
-  useDefaultAgesSync(user?.kids, ages, setAges)
+  useDefaultAgesSync(user?.kids, setAges)
   const [filtersOpen, setFiltersOpen] = useState(false)
 
   function updateCampInBuckets(updated: Camp) {

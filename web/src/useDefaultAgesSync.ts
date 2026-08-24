@@ -27,7 +27,7 @@ function sameAges(a: number[], b: number[]): boolean {
 // *previous* computed default -- so a member who has manually adjusted the
 // filter away from the default doesn't have that choice silently
 // overwritten by an unrelated kids change.
-export function useDefaultAgesSync(kids: { grade: Grade }[] | undefined, ages: number[], setAges: (updater: (prev: number[]) => number[]) => void) {
+export function useDefaultAgesSync(kids: { grade: Grade }[] | undefined, setAges: (updater: (prev: number[]) => number[]) => void) {
   const lastDefaultRef = useRef<number[]>(defaultAgesForKids(kids ?? []))
   const kidsKey = (kids ?? []).map((kid) => kid.grade).join(',')
 
@@ -37,8 +37,8 @@ export function useDefaultAgesSync(kids: { grade: Grade }[] | undefined, ages: n
       setAges((prevAges) => (sameAges(prevAges, lastDefaultRef.current) ? nextDefault : prevAges))
       lastDefaultRef.current = nextDefault
     }
-    // Only kidsKey actually needs to retrigger this -- `kids`/`ages`/
-    // `setAges` are all read fresh via closure when it does.
+    // Only kidsKey actually needs to retrigger this -- `kids`/`setAges` are
+    // both read fresh via closure when it does.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [kidsKey])
 }

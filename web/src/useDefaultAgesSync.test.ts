@@ -20,7 +20,7 @@ function useHarness(kids: { grade: Grade }[] | undefined) {
   // useState initializer for the first render, kept in sync afterward by
   // the hook under test.
   const [ages, setAges] = useState<number[]>(() => defaultAgesForKids(kids ?? []))
-  useDefaultAgesSync(kids, ages, setAges)
+  useDefaultAgesSync(kids, setAges)
   return { ages, setAges }
 }
 

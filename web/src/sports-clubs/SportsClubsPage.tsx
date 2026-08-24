@@ -170,7 +170,7 @@ export function SportsClubsPage() {
   // Re-syncs filters.ages if the viewer's kids change later in the same
   // session (feedback #122 — see useDefaultAgesSync.ts for why the
   // useState initializer above isn't enough on its own).
-  useDefaultAgesSync(user?.kids, filters.ages, (updater) => setFilters((prev) => ({ ...prev, ages: updater(prev.ages) })))
+  useDefaultAgesSync(user?.kids, (updater) => setFilters((prev) => ({ ...prev, ages: updater(prev.ages) })))
   const activeFilterCount = filters.categories.length + filters.days.length + filters.times.length + filters.ages.length
   const hasActiveFilters = activeFilterCount > 0
 
