@@ -795,17 +795,6 @@ export function JoinGate({ children }: { children: ReactNode }) {
   const { user, isLoading } = useAuth()
   const location = useLocation()
 
-  // The invite screen's new "Learn more" link (feedback #85) points at the
-  // real About page, which normally only renders once already a member (see
-  // App.tsx's own /about Route, inside these `children`). Special-cased here
-  // so a not-yet-a-member visitor can read it too, without duplicating its
-  // content into a second copy just for the logged-out state. Only bypasses
-  // the gate for this one path — every other route still requires being a
-  // full member, same as before.
-  if (location.pathname === '/about' && (isLoading || !user || !user.profileComplete)) {
-    return <AboutPage />
-  }
-
   if (isLoading) {
     return (
       <IonPage>
@@ -814,6 +803,53 @@ export function JoinGate({ children }: { children: ReactNode }) {
         </CenteredMessage>
       </IonPage>
     )
+  }
+
+  // A pending invite/rootSecret always wins over any route-specific,
+  // pre-auth "peek" content — checked once, here, before any such bypass
+  // exists in the function below, rather than inside each one individually.
+  // ShareButton always encodes "whatever page you're on" as the invite link
+  // (see Sharing in CLAUDE.md), so a real invite can arrive pointed at
+  // *any* route, not just the ones anyone thought to special-case at the
+  // time. Putting this check first makes it structurally impossible for a
+  // future bypass to repeat the mistake below: by the time that bypass's
+  // own code runs, reaching it at all already proves there's no pending
+  // invite left to honor.
+  //
+  // Real incident, 2026-08-22: the /about "Learn more" bypass (feedback
+  // #85) used to sit where this check now sits, gated only on pathname.
+  // ShareButton encodes whatever page the sharer is on, so a member who hit
+  // Share while sitting on /about produced an invite link shaped exactly
+  // like `/about?invite=<id>`. The old bypass swallowed that unconditionally
+  // — a real invitee landed on the plain About page with no Accept-Invite
+  // affordance at all, and its only interactive element (a back button with
+  // a bare `defaultHref="/events"`, dropping the invite param) then showed
+  // "you need an invitation" on top of it. Scoped only `!user` (not
+  // `!user.profileComplete` too): once a session exists at all, the visitor
+  // has already registered — re-showing JoinScreen would try to register a
+  // second passkey instead of letting ProfileSetupWizard/ChooseFriendsScreen
+  // pick up where they left off, so a stray invite param on an
+  // already-started account is correctly ignored past this point.
+  const searchParams = new URLSearchParams(location.search)
+  const hasPendingInvite = searchParams.has('invite') || searchParams.has('rootSecret')
+  if (hasPendingInvite && !user) {
+    return (
+      <IonPage>
+        <JoinScreen />
+      </IonPage>
+    )
+  }
+
+  // The invite screen's "Learn more" link (feedback #85) points at the real
+  // About page, which normally only renders once already a member (see
+  // App.tsx's own /about Route, inside these `children`). Special-cased
+  // here so a not-yet-a-member visitor can read it too, without duplicating
+  // its content into a second copy just for the logged-out state. Safe from
+  // the incident above by construction: reaching this line already means
+  // `hasPendingInvite && !user` was false, i.e. there's nothing this bypass
+  // could be swallowing.
+  if (location.pathname === '/about' && (!user || !user.profileComplete)) {
+    return <AboutPage />
   }
 
   if (!user) {

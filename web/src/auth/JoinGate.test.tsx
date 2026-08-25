@@ -80,6 +80,41 @@ describe('JoinGate', () => {
     expect(await screen.findByText('Sam Rivera invited you')).toBeInTheDocument()
   })
 
+  it('shows the plain About page for a non-member visiting /about with no invite param', () => {
+    mockUseAuth.mockReturnValue({ user: null, isLoading: false })
+    renderGate('/about')
+    expect(screen.getByText('About Nettelhorst Bulbord')).toBeInTheDocument()
+  })
+
+  // Real incident, 2026-08-22: ShareButton encodes whatever page the sharer
+  // is on, so an invite generated from the About page is shaped exactly
+  // like this — `/about?invite=...`. The gate must route this to the real
+  // invite-accept screen, not silently swallow it into the plain About page
+  // with no way to actually join (see JoinGate.tsx's own comment on this).
+  it('shows the invite-accept screen, not the plain About page, when /about carries a pending invite', async () => {
+    mockUseAuth.mockReturnValue({ user: null, isLoading: false })
+    renderGate('/about?invite=user-42')
+    expect(await screen.findByText('Sam Rivera invited you')).toBeInTheDocument()
+    expect(screen.queryByText('About Nettelhorst Bulbord')).not.toBeInTheDocument()
+  })
+
+  // A pending invite wins over *any* path, not just /about's known bypass —
+  // this is the general fix: the priority check runs once, before any
+  // route-specific pre-auth content, so a future bypass on some other page
+  // can't reintroduce the same failure mode by accident.
+  it('shows the invite-accept screen for a pending invite on an arbitrary path, not just /about', async () => {
+    mockUseAuth.mockReturnValue({ user: null, isLoading: false })
+    renderGate('/camps/some-camp-id?invite=user-42')
+    expect(await screen.findByText('Sam Rivera invited you')).toBeInTheDocument()
+  })
+
+  it('a root-secret bootstrap link also wins over /about\'s bypass', () => {
+    mockUseAuth.mockReturnValue({ user: null, isLoading: false })
+    renderGate('/about?rootSecret=shh')
+    expect(screen.getByText('Join Nettelhorst Bulbord')).toBeInTheDocument()
+    expect(screen.queryByText('About Nettelhorst Bulbord')).not.toBeInTheDocument()
+  })
+
   it('shows the profile setup wizard for a signed-in user with no completed profile', () => {
     mockUseAuth.mockReturnValue({ user: { id: 'u1', name: 'New Nettelhorst member', profileComplete: false }, isLoading: false })
     renderGate('/events')
