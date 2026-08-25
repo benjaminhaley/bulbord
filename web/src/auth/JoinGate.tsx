@@ -101,8 +101,38 @@ function BrandHeader() {
 // so both stay visually identical rather than two hand-copied versions.
 function SignInLink({ busy, onSignIn }: { busy: boolean; onSignIn: () => void }) {
   return (
-    <p className="ion-margin-top" style={{ color: 'var(--ion-color-medium)', fontSize: '0.8125rem' }}>
-      Already on Nettelhorst Bulbord?{' '}
+    // A flex row with `align-items: center`, not inline text + vertical-align
+    // (feedback #128, round two): `ion-button`'s shadow DOM has no text
+    // baseline the browser can reliably read for inline-level alignment
+    // (vertical-align/inline-flex baseline all left the button sitting
+    // visibly below "Already on..." — confirmed persisting even in a fresh
+    // incognito browser, so it was a real cross-platform rendering gap, not
+    // a caching artifact). A `text-bottom` nudge measured as a perfect 0px
+    // match in Chromium and Linux WebKit, but that keyword aligns to the
+    // *font's own descent metric* — which differs by the actual physical
+    // font a platform substitutes for the system-ui stack, so a value tuned
+    // against one platform's fonts doesn't necessarily hold on another's
+    // (this is likely why it still looked off on a real iPhone). Centering
+    // the two boxes instead doesn't depend on either element correctly
+    // reporting an internal baseline through the shadow boundary — measured
+    // as consistently within 1px in both Chromium and WebKit, versus a
+    // consistent ~3px miss from every baseline-based attempt in both
+    // engines alike. Prefer this pattern over baseline/vertical-align
+    // tricks anywhere else in this app that inlines a real Ionic component
+    // next to plain text.
+    <p
+      className="ion-margin-top"
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        flexWrap: 'wrap',
+        justifyContent: 'center',
+        gap: '0.25em',
+        color: 'var(--ion-color-medium)',
+        fontSize: '0.8125rem',
+      }}
+    >
+      <span>Already on Nettelhorst Bulbord?</span>
       {/* A real IonButton, not a hand-rolled `<a onClick>` with no href
           (2026-08-22 audit — see InstitutionBanner.tsx's own comment for the
           fuller story): an anchor with no href has no implicit link
@@ -113,15 +143,7 @@ function SignInLink({ busy, onSignIn }: { busy: boolean; onSignIn: () => void })
         onClick={onSignIn}
         style={{
           ...unstyledButtonStyle,
-          // `inline-flex` (Ionic's own default is inline-block) has no text
-          // baseline of its own to align against, so the browser fell back to
-          // sitting the button on its bottom margin edge — visibly lower than
-          // "Already on..." next to it (feedback #128). `text-bottom` lines
-          // this button's own text up with the sibling text node's bottom
-          // edge instead, which is what a shared baseline looks like here
-          // (measured: 0px offset, vs. ~3.5px with inline-flex).
           display: 'inline-block',
-          verticalAlign: 'text-bottom',
           color: 'var(--ion-color-medium)',
           textDecoration: 'underline',
           opacity: busy ? 0.6 : 1,
