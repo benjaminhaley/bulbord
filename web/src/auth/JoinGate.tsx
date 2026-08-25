@@ -113,7 +113,15 @@ function SignInLink({ busy, onSignIn }: { busy: boolean; onSignIn: () => void })
         onClick={onSignIn}
         style={{
           ...unstyledButtonStyle,
-          display: 'inline-flex',
+          // `inline-flex` (Ionic's own default is inline-block) has no text
+          // baseline of its own to align against, so the browser fell back to
+          // sitting the button on its bottom margin edge — visibly lower than
+          // "Already on..." next to it (feedback #128). `text-bottom` lines
+          // this button's own text up with the sibling text node's bottom
+          // edge instead, which is what a shared baseline looks like here
+          // (measured: 0px offset, vs. ~3.5px with inline-flex).
+          display: 'inline-block',
+          verticalAlign: 'text-bottom',
           color: 'var(--ion-color-medium)',
           textDecoration: 'underline',
           opacity: busy ? 0.6 : 1,
