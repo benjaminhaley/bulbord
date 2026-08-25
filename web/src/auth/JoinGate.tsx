@@ -100,43 +100,33 @@ function BrandHeader() {
 // attention. Shared between InviteAcceptCard and JoinScreen's dead-end state
 // so both stay visually identical rather than two hand-copied versions.
 function SignInLink({ busy, onSignIn }: { busy: boolean; onSignIn: () => void }) {
+  // The whole line is one IonButton (feedback #128, round three), not plain
+  // text plus a separately-aligned inline button. Every attempt to line up
+  // an ion-button's shadow-DOM content against a *sibling* text node's own
+  // baseline/box (inline-flex, vertical-align: text-bottom, flex
+  // align-items: center) measured as fixed in Chromium/Linux WebKit but
+  // still visibly off on a real iPhone — this class of bug is caused by
+  // crossing the shadow boundary at all, not by which alignment keyword was
+  // used, so no keyword was ever going to fix it for good. Making the whole
+  // sentence the button's own text content sidesteps the problem instead of
+  // solving it: there's no second element to line up against, since it's
+  // all one element's internal text layout. "Sign In" is underlined via a
+  // nested <span> rather than styling the whole button, so it still reads
+  // as "here's the actionable word" the way it did before.
+  //
+  // The button's slotted content all lives inside ONE outer <span>, not two
+  // siblings (a bare text node next to the "Sign In" span) — Ionic's own
+  // shadow DOM renders `.button-native` as `display: flex`, and CSS turns
+  // every in-flow child of a flex container into its own flex item,
+  // *including* an anonymous box around a bare run of slotted text. Two
+  // siblings meant two separate flex items sitting in two independently
+  // shrinking columns under `flex-wrap: nowrap` — at a narrow width, the
+  // plain-text column wrapped to two lines on its own while "Sign In" sat
+  // detached in a second column beside it, not below it. One outer <span>
+  // is one flex item, so its own content wraps as an ordinary paragraph
+  // instead of splitting into columns.
   return (
-    // A flex row with `align-items: center`, not inline text + vertical-align
-    // (feedback #128, round two): `ion-button`'s shadow DOM has no text
-    // baseline the browser can reliably read for inline-level alignment
-    // (vertical-align/inline-flex baseline all left the button sitting
-    // visibly below "Already on..." — confirmed persisting even in a fresh
-    // incognito browser, so it was a real cross-platform rendering gap, not
-    // a caching artifact). A `text-bottom` nudge measured as a perfect 0px
-    // match in Chromium and Linux WebKit, but that keyword aligns to the
-    // *font's own descent metric* — which differs by the actual physical
-    // font a platform substitutes for the system-ui stack, so a value tuned
-    // against one platform's fonts doesn't necessarily hold on another's
-    // (this is likely why it still looked off on a real iPhone). Centering
-    // the two boxes instead doesn't depend on either element correctly
-    // reporting an internal baseline through the shadow boundary — measured
-    // as consistently within 1px in both Chromium and WebKit, versus a
-    // consistent ~3px miss from every baseline-based attempt in both
-    // engines alike. Prefer this pattern over baseline/vertical-align
-    // tricks anywhere else in this app that inlines a real Ionic component
-    // next to plain text.
-    <p
-      className="ion-margin-top"
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        flexWrap: 'wrap',
-        justifyContent: 'center',
-        gap: '0.25em',
-        color: 'var(--ion-color-medium)',
-        fontSize: '0.8125rem',
-      }}
-    >
-      <span>Already on Nettelhorst Bulbord?</span>
-      {/* A real IonButton, not a hand-rolled `<a onClick>` with no href
-          (2026-08-22 audit — see InstitutionBanner.tsx's own comment for the
-          fuller story): an anchor with no href has no implicit link
-          semantics at all, so it was never keyboard-focusable either. */}
+    <p className="ion-margin-top">
       <IonButton
         fill="clear"
         disabled={busy}
@@ -144,12 +134,17 @@ function SignInLink({ busy, onSignIn }: { busy: boolean; onSignIn: () => void })
         style={{
           ...unstyledButtonStyle,
           display: 'inline-block',
+          whiteSpace: 'normal',
+          textAlign: 'center',
           color: 'var(--ion-color-medium)',
-          textDecoration: 'underline',
+          fontSize: '0.8125rem',
           opacity: busy ? 0.6 : 1,
         }}
       >
-        Sign In
+        <span>
+          Already on Nettelhorst Bulbord?{' '}
+          <span style={{ textDecoration: 'underline' }}>Sign In</span>
+        </span>
       </IonButton>
     </p>
   )
