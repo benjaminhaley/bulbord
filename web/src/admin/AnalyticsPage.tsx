@@ -140,7 +140,7 @@ export function AnalyticsPage() {
               <IonLabel>Filter by person</IonLabel>
               <IonSelect
                 slot="end"
-                interface="popover"
+                interface="action-sheet"
                 placeholder="Everyone"
                 value={actorId ?? ''}
                 onIonChange={(e) => setActorId((e.detail.value as string) || undefined)}

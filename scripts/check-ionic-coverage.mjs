@@ -49,6 +49,21 @@ const PATTERNS = [
   ['a raw checkbox/radio input (use IonCheckbox/IonRadio)', /type=["'](checkbox|radio)["']/],
   ['a raw file input (Ionic has no file picker — this one is a legitimate, common exception)', /type=["']file["']/],
   ['a raw <canvas> or canvas element creation (Ionic has no canvas/crop/chart component)', /<canvas\b|createElement\(['"]canvas['"]\)/],
+  // feedback #129, 2026-08-28: ion-app carries Ionic's own `.ion-page` class,
+  // which sets `contain: size layout style` — that establishes a new CSS
+  // containing block for every position:fixed descendant, including a
+  // trigger-anchored ion-popover. On this app's phone-frame desktop layout
+  // (#root pinned to 430px, centered with wide margins — see index.css),
+  // that means an ion-popover's *outer host* correctly confines itself to
+  // the 430px column, but Ionic's own internal offset math for the popover's
+  // *content* is computed against the real (much wider) window — so the
+  // rendered dropdown lands far outside the visible app, near the real
+  // browser's right edge. IonSelect's action-sheet/alert interfaces (and
+  // this app's usual custom IonModal bottom-sheet pattern — see JoinGate's
+  // RolePicker) don't do trigger-relative math, so they're unaffected. Ban
+  // interface="popover" outright rather than trusting each future picker to
+  // remember this.
+  ['an IonSelect/IonPopover using interface="popover" (mispositions off-screen on any viewport wider than the phone frame — use interface="action-sheet" or a custom IonModal bottom sheet instead)', /interface=["']popover["']/],
 ]
 
 function listTsxFiles(dir) {
