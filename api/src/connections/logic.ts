@@ -1,24 +1,39 @@
 import type { MemberSummary } from './service.js'
 
-export interface ConnectionsState {
-  friends: MemberSummary[] // mutual — both sides added each other
-  following: MemberSummary[] // I added them, they haven't added me back
-  followers: MemberSummary[] // they added me, I haven't added them back ("Added you")
+// One row per (requester, recipient) pair — status flips from 'pending' to
+// 'accepted' in place once the recipient accepts; there's no second row for
+// the reverse direction (see schema.ts's userConnections.status comment).
+export interface ConnectionEdge {
+  connectionId: string
+  status: 'pending' | 'accepted'
+  member: MemberSummary
 }
 
-// Pure derivation of the Friends page's three buckets (feedback #83) from
-// the two raw edge queries — pulled out so the mutual/one-directional split
-// is unit-testable without a real database, same posture as
-// events/comment-permissions.ts and camps/grouping.ts elsewhere in this
-// codebase.
-export function deriveConnectionsState(outgoing: MemberSummary[], incoming: MemberSummary[]): ConnectionsState {
-  const outgoingIds = new Set(outgoing.map((m) => m.id))
-  const incomingIds = new Set(incoming.map((m) => m.id))
+interface ReceivedRequest extends MemberSummary {
+  connectionId: string // needed by the Accept/Decline buttons
+}
 
+export interface ConnectionsState {
+  friends: MemberSummary[] // accepted, from either direction
+  sentRequests: MemberSummary[] // I requested them, still pending
+  receivedRequests: ReceivedRequest[] // they requested me, still pending — mine to accept/decline
+}
+
+// Pure derivation of the Friends page's three buckets (feedback #83,
+// reworked into a real request/accept model by feedback #127) from the two
+// raw edge queries — pulled out so it's unit-testable without a real
+// database, same posture as events/comment-permissions.ts and
+// camps/grouping.ts elsewhere in this codebase.
+export function deriveConnectionsState(outgoing: ConnectionEdge[], incoming: ConnectionEdge[]): ConnectionsState {
   return {
-    friends: outgoing.filter((m) => incomingIds.has(m.id)),
-    following: outgoing.filter((m) => !incomingIds.has(m.id)),
-    followers: incoming.filter((m) => !outgoingIds.has(m.id)),
+    friends: [
+      ...outgoing.filter((e) => e.status === 'accepted').map((e) => e.member),
+      ...incoming.filter((e) => e.status === 'accepted').map((e) => e.member),
+    ],
+    sentRequests: outgoing.filter((e) => e.status === 'pending').map((e) => e.member),
+    receivedRequests: incoming
+      .filter((e) => e.status === 'pending')
+      .map((e) => ({ ...e.member, connectionId: e.connectionId })),
   }
 }
 

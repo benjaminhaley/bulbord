@@ -17,14 +17,29 @@ export interface MemberSummary {
   reason?: string
 }
 
+// A pending request someone sent me — connectionId is what Accept/Decline
+// act on (feedback #127).
+export interface ReceivedRequest extends MemberSummary {
+  connectionId: string
+}
+
 export interface ConnectionsState {
   friends: MemberSummary[]
-  following: MemberSummary[]
-  followers: MemberSummary[]
+  sentRequests: MemberSummary[]
+  receivedRequests: ReceivedRequest[]
 }
 
 async function getJson<T>(path: string): Promise<T> {
   const response = await fetch(`${API_URL}${path}`, { headers: authHeaders() })
+  if (!response.ok) {
+    throw new Error(await readErrorMessage(response, `Request failed: ${response.status}`))
+  }
+  const body = (await response.json()) as { data: T }
+  return body.data
+}
+
+async function postJson<T>(path: string): Promise<T> {
+  const response = await fetch(`${API_URL}${path}`, { method: 'POST', headers: authHeaders() })
   if (!response.ok) {
     throw new Error(await readErrorMessage(response, `Request failed: ${response.status}`))
   }
@@ -48,15 +63,26 @@ export function searchMembers(query: string): Promise<MemberSummary[]> {
   return getJson(`/connections/members?q=${encodeURIComponent(query)}`)
 }
 
-export async function addConnection(userId: string): Promise<void> {
+// Sends a friend request (feedback #127) — if the target already sent you
+// one, this accepts theirs instead of creating a second one; either way the
+// caller doesn't need to know which happened, just that it resolved.
+export async function requestConnection(userId: string): Promise<void> {
   const response = await fetch(`${API_URL}/connections`, {
     method: 'POST',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
     body: JSON.stringify({ userId }),
   })
   if (!response.ok) {
-    throw new Error(await readErrorMessage(response, `Failed to add connection: ${response.status}`))
+    throw new Error(await readErrorMessage(response, `Failed to send friend request: ${response.status}`))
   }
+}
+
+export function acceptConnection(connectionId: string): Promise<void> {
+  return postJson(`/connections/${connectionId}/accept`)
+}
+
+export function declineConnection(connectionId: string): Promise<void> {
+  return postJson(`/connections/${connectionId}/decline`)
 }
 
 export async function finishFriendsOnboarding(): Promise<void> {
@@ -68,4 +94,3 @@ export async function finishFriendsOnboarding(): Promise<void> {
     throw new Error(await readErrorMessage(response, `Failed to finish onboarding: ${response.status}`))
   }
 }
-

@@ -185,7 +185,7 @@ export const notifications = pgTable('notifications', {
   userId: uuid('user_id')
     .notNull()
     .references(() => users.id), // the recipient
-  type: text('type').notNull(), // 'friend_added' | 'feedback_reply' | 'event_comment' | 'camp_comment' | 'sports_club_comment'
+  type: text('type').notNull(), // 'friend_added' | 'friend_request_accepted' | 'feedback_reply' | 'event_comment' | 'camp_comment' | 'sports_club_comment'
   actorUserId: uuid('actor_user_id').references(() => users.id), // who triggered it, for the avatar shown in the list
   message: text('message').notNull(),
   targetPath: text('target_path').notNull(), // e.g. '/friends', '/feedback/:id', '/events/:id', '/camps/:id'
@@ -227,14 +227,22 @@ export const userConnections = pgTable(
       .references(() => users.id), // the one who added
     connectedUserId: uuid('connected_user_id')
       .notNull()
-      .references(() => users.id), // the one added
-    // False when this edge was created to complete an already-initiated
-    // mutual pair (the reverse edge already existed) — mirrors
-    // addConnection()'s own "reciprocal completion is silent" check for the
-    // alert email (feedback, 2026-08-14), reused here so the in-app unseen
-    // count (feedback #94) doesn't flag something the recipient already
-    // knew about. Set once at creation time rather than re-derived later.
-    notify: boolean('notify').notNull().default(true),
+      .references(() => users.id), // the one added / requested
+    // Real friend-request semantics (feedback #127, 2026-09-03, reversing
+    // the original 2026-08-14 "instant, no approval needed" design): a row
+    // starts 'pending' when userId sends connectedUserId a request, and
+    // only becomes 'accepted' once connectedUserId explicitly accepts it —
+    // there's no second row for the reverse direction once accepted; one
+    // row represents the whole relationship regardless of who initiated it.
+    // A decline soft-deletes the row (deletedAt) rather than a third status
+    // value, so a fresh request can be sent again later — same toggle
+    // convention as every other deletedAt-toggled table in this codebase.
+    // Migrated from the old instant-add data (connections/backfill-
+    // 2026-09-03-request-status.ts): an existing mutual pair (both
+    // directions' rows already existed) became 'accepted' on both rows'
+    // sides collapsed into one; an existing one-directional edge became a
+    // 'pending' request — the same shape a real request already has.
+    status: text('status').notNull().default('pending'), // 'pending' | 'accepted'
     ...timestamps,
   },
   (table) => [uniqueIndex('user_connections_user_id_connected_user_id_idx').on(table.userId, table.connectedUserId)],

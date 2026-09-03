@@ -281,6 +281,20 @@
       "when": 1787508971041,
       "tag": "0039_add_events_end_time",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1788464982924,
+      "tag": "0040_add_connection_request_status",
+      "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1788464997710,
+      "tag": "0041_drop_connection_notify_column",
+      "breakpoints": true
     }
   ]
 }

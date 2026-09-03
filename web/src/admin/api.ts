@@ -65,18 +65,19 @@ export async function sendTestConnectionAlertEmail(): Promise<void> {
   }
 }
 
-// Dev tool (feedback, 2026-08-16): creates a real throwaway member that
-// actually follows the admin, repeatable on demand — unlike the email
-// preview above, this exercises the whole real path (email, notify flag,
-// in-app dot/banner), not just the template.
-export async function createTestFollow(): Promise<{ id: string; name: string }> {
-  const response = await fetch(`${API_URL}/admin/connections/test-follow`, {
+// Dev tool (feedback, 2026-08-16; reworked into a real request/accept model
+// by feedback #127): creates a real throwaway member that actually sends
+// the admin a friend request, repeatable on demand — unlike the email
+// preview above, this exercises the whole real path (email, in-app
+// notification, and the real Accept/Decline buttons), not just the template.
+export async function createTestFriendRequest(): Promise<{ id: string; name: string }> {
+  const response = await fetch(`${API_URL}/admin/connections/test-request`, {
     method: 'POST',
     headers: authHeaders(),
   })
   if (!response.ok) {
     const body = (await response.json().catch(() => null)) as { error?: { message?: string } } | null
-    throw new Error(body?.error?.message ?? `Failed to create test follow: ${response.status}`)
+    throw new Error(body?.error?.message ?? `Failed to create test friend request: ${response.status}`)
   }
   const body = (await response.json()) as { data: { id: string; name: string } }
   return body.data

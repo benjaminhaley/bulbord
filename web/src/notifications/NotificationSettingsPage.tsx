@@ -18,7 +18,7 @@ import { useEffect, useState } from 'react'
 import { fetchNotificationSettings, updateNotificationSettings, type NotificationSettings } from './api'
 
 const ROWS: { key: keyof NotificationSettings; label: string; description: string }[] = [
-  { key: 'friend_added_email', label: 'New followers', description: 'Someone starts following you.' },
+  { key: 'friend_added_email', label: 'Friend requests', description: 'Someone sends you a friend request.' },
   { key: 'feedback_reply_email', label: 'Feedback replies', description: 'Someone replies to feedback you posted.' },
   {
     key: 'content_comment_email',

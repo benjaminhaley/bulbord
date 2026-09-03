@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react'
 import { useAuth } from '../auth/AuthContext'
 import { MosaicMotif } from '../auth/MosaicMotif'
 import { Avatar } from '../uploads/Avatar'
-import { addConnection, fetchConnectionsOf, fetchSuggestions, finishFriendsOnboarding, searchMembers, type MemberSummary } from './api'
+import { requestConnection, fetchConnectionsOf, fetchSuggestions, finishFriendsOnboarding, searchMembers, type MemberSummary } from './api'
 
 // Closing screen of the real onboarding flow (feedback #88), shown after
 // Continue/Skip below — not part of the AddFriendsPage.tsx reuse (see
@@ -66,7 +66,7 @@ function MemberRow({
       ) : busy ? (
         <IonSpinner slot="end" name="dots" />
       ) : (
-        <IonButton slot="end" fill="clear" onClick={onAdd} aria-label={`Add ${member.name}`}>
+        <IonButton slot="end" fill="clear" onClick={onAdd} aria-label={`Send friend request to ${member.name}`}>
           <IonIcon icon={addCircleOutline} slot="icon-only" />
         </IonButton>
       )}
@@ -210,7 +210,7 @@ export function ChooseFriendsScreen({
     setAddingId(member.id)
     setError(null)
     try {
-      if (!preview) await addConnection(member.id)
+      if (!preview) await requestConnection(member.id)
       setAddedIds((prev) => new Set(prev).add(member.id))
       // "As you add potential friends, suggest their friends at the bottom
       // of the list" — append the newly-added person's own connections.

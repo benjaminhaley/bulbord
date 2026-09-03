@@ -5,7 +5,7 @@ import { requireRole } from '../auth/plugin.js'
 import { listUsersForAdmin } from '../auth/service.js'
 import { sendTestCampReminderEmail } from '../camp-reminders/service.js'
 import { getCampsLastUpdatedAt } from '../camps/staleness.js'
-import { createTestFollow, sendTestConnectionAlertEmail } from '../connections/service.js'
+import { createTestFriendRequest, sendTestConnectionAlertEmail } from '../connections/service.js'
 import { todayInChicago } from '../dates.js'
 import { findLowRecurringSeries } from '../events/recurring-series-health.js'
 import { getApprovedEventOccurrences } from '../events/recurring-series-query.js'
@@ -71,7 +71,7 @@ export async function adminRoutes(app: FastifyInstance) {
     return reply.send({ sent: true })
   })
 
-  // Dev tool: preview the "X added you as a friend" alert email
+  // Dev tool: preview the "X sent you a friend request" alert email
   // (connections/template.ts) without needing a second real account.
   app.post('/admin/connections/test-send', { preHandler: requireRole('admin') }, async (request, reply) => {
     const user = request.currentUser!
@@ -82,13 +82,15 @@ export async function adminRoutes(app: FastifyInstance) {
     return reply.send({ sent: true })
   })
 
-  // Dev tool (feedback, 2026-08-16): unlike the email preview above, this
-  // creates a real throwaway member that actually follows the admin — the
-  // full real path (alert email, notify flag, in-app dot/banner), repeatable
-  // on demand rather than a one-off script. Delete the resulting account
-  // from All members when done.
-  app.post('/admin/connections/test-follow', { preHandler: requireRole('admin') }, async (request, reply) => {
-    const testUser = await createTestFollow(request.currentUser!.id)
+  // Dev tool (feedback, 2026-08-16; reworked into a real request/accept
+  // model by feedback #127): unlike the email preview above, this creates a
+  // real throwaway member that actually sends the admin a friend request —
+  // the full real path (alert email, in-app notification), repeatable on
+  // demand rather than a one-off script, and testable end-to-end against
+  // the real Accept/Decline buttons on the admin's own Friends page. Delete
+  // the resulting account from All members when done.
+  app.post('/admin/connections/test-request', { preHandler: requireRole('admin') }, async (request, reply) => {
+    const testUser = await createTestFriendRequest(request.currentUser!.id)
     return reply.send({ data: testUser })
   })
 

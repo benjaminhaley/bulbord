@@ -36,7 +36,7 @@ import { formatDate, formatRelativeDateTime } from '../format'
 import { useAuth } from '../auth/AuthContext'
 import { useDataFreshness } from './DataFreshnessContext'
 import {
-  createTestFollow,
+  createTestFriendRequest,
   fetchSourcesLastCheckedAt,
   resourceEventSources,
   sendTestCampReminderEmail,
@@ -73,7 +73,7 @@ export function DevToolsPage() {
   const [sending, setSending] = useState(false)
   const [sendingCampReminderTest, setSendingCampReminderTest] = useState(false)
   const [sendingConnectionTest, setSendingConnectionTest] = useState(false)
-  const [creatingTestFollow, setCreatingTestFollow] = useState(false)
+  const [creatingTestRequest, setCreatingTestRequest] = useState(false)
   const [toast, setToast] = useState<string | null>(null)
   const [resourcing, setResourcing] = useState(false)
   const [report, setReport] = useState<ResourceReport | null>(null)
@@ -125,19 +125,19 @@ export function DevToolsPage() {
     }
   }
 
-  async function createFollow() {
-    setCreatingTestFollow(true)
+  async function createFriendRequest() {
+    setCreatingTestRequest(true)
     try {
-      const testUser = await createTestFollow()
+      const testUser = await createTestFriendRequest()
       // Updates the avatar dot/count immediately, same as visiting Friends
       // would — otherwise it'd only show up on this page's next real
       // GET /auth/me (the next navigation).
       await refresh()
-      setToast(`Created "${testUser.name}" — check your alert email and the red dot. Delete it from All members when done.`)
+      setToast(`Created "${testUser.name}" — check your alert email and the notification bell, then Accept/Decline it from Friends. Delete it from All members when done.`)
     } catch (err) {
-      setToast(err instanceof Error ? err.message : 'Could not create test follow')
+      setToast(err instanceof Error ? err.message : 'Could not create test friend request')
     } finally {
-      setCreatingTestFollow(false)
+      setCreatingTestRequest(false)
     }
   }
 
@@ -278,17 +278,17 @@ export function DevToolsPage() {
             <IonIcon slot="start" icon={personAddOutline} />
             <IonLabel className="ion-text-wrap">
               <h2>Send yourself a test friend-request email</h2>
-              <p>The real "added you as a friend" alert (using your own name/photo), same template as the live send.</p>
+              <p>The real "sent you a friend request" alert (using your own name/photo), same template as the live send.</p>
             </IonLabel>
             {sendingConnectionTest && <IonSpinner slot="end" name="dots" />}
           </IonItem>
-          <IonItem button disabled={creatingTestFollow} onClick={createFollow} lines="none">
+          <IonItem button disabled={creatingTestRequest} onClick={createFriendRequest} lines="none">
             <IonIcon slot="start" icon={flaskOutline} />
             <IonLabel className="ion-text-wrap">
-              <h2>Create a test friend follow</h2>
-              <p>A real throwaway member follows you — the actual alert email and in-app notification, repeatable anytime. Delete it from All members after.</p>
+              <h2>Create a test friend request</h2>
+              <p>A real throwaway member sends you a friend request — the actual alert email and in-app notification, testable end-to-end against the real Accept/Decline buttons, repeatable anytime. Delete it from All members after.</p>
             </IonLabel>
-            {creatingTestFollow && <IonSpinner slot="end" name="dots" />}
+            {creatingTestRequest && <IonSpinner slot="end" name="dots" />}
           </IonItem>
         </IonList>
         {report && (

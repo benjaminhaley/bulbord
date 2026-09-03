@@ -1,39 +1,53 @@
 import { describe, expect, it } from 'vitest'
 
-import { buildSuggestionList, deriveConnectionsState } from './logic.js'
+import { buildSuggestionList, deriveConnectionsState, type ConnectionEdge } from './logic.js'
 import type { MemberSummary } from './service.js'
 
 function member(id: string, name = id): MemberSummary {
   return { id, name, avatarUrl: null }
 }
 
+function edge(id: string, status: 'pending' | 'accepted', connectionId = `c-${id}`): ConnectionEdge {
+  return { connectionId, status, member: member(id) }
+}
+
 describe('deriveConnectionsState', () => {
-  it('puts a mutual pair in friends, not following/followers', () => {
-    const result = deriveConnectionsState([member('a')], [member('a')])
-    expect(result).toEqual({ friends: [member('a')], following: [], followers: [] })
+  it('puts an accepted outgoing edge in friends', () => {
+    const result = deriveConnectionsState([edge('a', 'accepted')], [])
+    expect(result).toEqual({ friends: [member('a')], sentRequests: [], receivedRequests: [] })
   })
 
-  it('puts a one-directional add I made into following', () => {
-    const result = deriveConnectionsState([member('a')], [])
-    expect(result).toEqual({ friends: [], following: [member('a')], followers: [] })
+  it('puts an accepted incoming edge in friends too', () => {
+    const result = deriveConnectionsState([], [edge('a', 'accepted')])
+    expect(result).toEqual({ friends: [member('a')], sentRequests: [], receivedRequests: [] })
   })
 
-  it('puts someone who added me (and I have not added back) into followers', () => {
-    const result = deriveConnectionsState([], [member('a')])
-    expect(result).toEqual({ friends: [], following: [], followers: [member('a')] })
+  it('puts a pending request I sent into sentRequests', () => {
+    const result = deriveConnectionsState([edge('a', 'pending')], [])
+    expect(result).toEqual({ friends: [], sentRequests: [member('a')], receivedRequests: [] })
   })
 
-  it('splits a mixed set correctly', () => {
-    const result = deriveConnectionsState([member('mutual'), member('following-only')], [member('mutual'), member('follower-only')])
+  it('puts a pending request someone sent me into receivedRequests, with its connectionId', () => {
+    const result = deriveConnectionsState([], [edge('a', 'pending', 'conn-123')])
     expect(result).toEqual({
-      friends: [member('mutual')],
-      following: [member('following-only')],
-      followers: [member('follower-only')],
+      friends: [],
+      sentRequests: [],
+      receivedRequests: [{ id: 'a', name: 'a', avatarUrl: null, connectionId: 'conn-123' }],
     })
   })
 
+  it('splits a mixed set correctly', () => {
+    const result = deriveConnectionsState(
+      [edge('friend-out', 'accepted'), edge('sent', 'pending')],
+      [edge('friend-in', 'accepted'), edge('received', 'pending')],
+    )
+    expect(result.friends).toEqual([member('friend-out'), member('friend-in')])
+    expect(result.sentRequests).toEqual([member('sent')])
+    expect(result.receivedRequests).toEqual([{ id: 'received', name: 'received', avatarUrl: null, connectionId: 'c-received' }])
+  })
+
   it('returns empty buckets with no connections either way', () => {
-    expect(deriveConnectionsState([], [])).toEqual({ friends: [], following: [], followers: [] })
+    expect(deriveConnectionsState([], [])).toEqual({ friends: [], sentRequests: [], receivedRequests: [] })
   })
 })
 

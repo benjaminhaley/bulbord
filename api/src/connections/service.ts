@@ -5,8 +5,8 @@ import { eventsLog, userChildren, userConnections, users } from '../db/schema.js
 import { requireEnv } from '../env.js'
 import { sendEmail } from '../newsletter/mailer.js'
 import { createNotification } from '../notifications/service.js'
-import { buildSuggestionList, deriveConnectionsState, type ConnectionsState } from './logic.js'
-import { connectionAlertHtml, connectionAlertSubject } from './template.js'
+import { buildSuggestionList, deriveConnectionsState, type ConnectionEdge, type ConnectionsState } from './logic.js'
+import { connectionRequestHtml, connectionRequestSubject } from './template.js'
 
 export interface MemberSummary {
   id: string
@@ -22,105 +22,226 @@ const MEMBER_COLUMNS = { id: users.id, name: users.name, avatarUrl: users.avatar
 // friend suggestion. See schema.ts's isServiceAccount comment.
 const NOT_SERVICE_ACCOUNT = eq(users.isServiceAccount, false)
 
-// Every active (not soft-deleted) outgoing edge a user has added — "who
-// they're following". Reused both by the onboarding suggestion algorithm's
-// "inviter's own friends" step and by the "suggest their friends at the
-// bottom" expansion once the viewer adds a suggested person (feedback #83).
-export async function listOutgoingConnections(userId: string): Promise<MemberSummary[]> {
+// A user's real, *accepted* friends only — used wherever "who does this
+// person actually know" matters (onboarding suggestions' "inviter's own
+// friends" tier, and "suggest their friends at the bottom of the list"
+// after adding someone) — a still-pending request isn't a real connection
+// yet, so it's deliberately excluded here.
+export async function listAcceptedConnections(userId: string): Promise<MemberSummary[]> {
   return db
     .select(MEMBER_COLUMNS)
     .from(userConnections)
     .innerJoin(users, eq(users.id, userConnections.connectedUserId))
-    .where(and(eq(userConnections.userId, userId), isNull(userConnections.deletedAt), isNull(users.deletedAt)))
+    .where(
+      and(
+        eq(userConnections.userId, userId),
+        eq(userConnections.status, 'accepted'),
+        isNull(userConnections.deletedAt),
+        isNull(users.deletedAt),
+      ),
+    )
 }
 
-async function listIncomingConnections(userId: string): Promise<MemberSummary[]> {
-  return db
-    .select(MEMBER_COLUMNS)
+// Every active edge (either status) with the requester on `userId`'s side —
+// the raw building block for both halves of ConnectionsState and for the
+// "don't suggest someone I already have a pending or accepted edge with"
+// exclusion list.
+async function listOutgoingEdges(userId: string): Promise<ConnectionEdge[]> {
+  const rows = await db
+    .select({
+      connectionId: userConnections.id,
+      status: userConnections.status,
+      id: users.id,
+      name: users.name,
+      avatarUrl: users.avatarUrl,
+    })
+    .from(userConnections)
+    .innerJoin(users, eq(users.id, userConnections.connectedUserId))
+    .where(and(eq(userConnections.userId, userId), isNull(userConnections.deletedAt), isNull(users.deletedAt)))
+  return rows.map((r) => ({
+    connectionId: r.connectionId,
+    status: r.status as 'pending' | 'accepted',
+    member: { id: r.id, name: r.name, avatarUrl: r.avatarUrl },
+  }))
+}
+
+async function listIncomingEdges(userId: string): Promise<ConnectionEdge[]> {
+  const rows = await db
+    .select({
+      connectionId: userConnections.id,
+      status: userConnections.status,
+      id: users.id,
+      name: users.name,
+      avatarUrl: users.avatarUrl,
+    })
     .from(userConnections)
     .innerJoin(users, eq(users.id, userConnections.userId))
     .where(and(eq(userConnections.connectedUserId, userId), isNull(userConnections.deletedAt), isNull(users.deletedAt)))
+  return rows.map((r) => ({
+    connectionId: r.connectionId,
+    status: r.status as 'pending' | 'accepted',
+    member: { id: r.id, name: r.name, avatarUrl: r.avatarUrl },
+  }))
 }
 
-// Powers the Friends page (feedback #83: "have a page where you can see
-// friends and their state") — the mutual/one-directional split itself is
-// pure logic, unit-tested in logic.test.ts; this just supplies the two raw
-// edge queries.
+// Powers the Friends page (feedback #83, reworked into a real request/
+// accept model by feedback #127) — the three-bucket split itself is pure
+// logic, unit-tested in logic.test.ts; this just supplies the two raw edge
+// queries.
 export async function getConnectionsState(userId: string): Promise<ConnectionsState> {
-  const [outgoing, incoming] = await Promise.all([listOutgoingConnections(userId), listIncomingConnections(userId)])
+  const [outgoing, incoming] = await Promise.all([listOutgoingEdges(userId), listIncomingEdges(userId)])
   return deriveConnectionsState(outgoing, incoming)
 }
 
-// One-directional add, instant, no approval needed (feedback #83 — mirrors
-// event_interests' toggle-via-deletedAt shape: a pair gets at most one row,
-// reactivated rather than re-inserted). Returns whether this call actually
-// created/reactivated the edge (vs. a no-op repeat), since that's what
-// decides whether the alert email below fires.
-export async function addConnection(userId: string, connectedUserId: string): Promise<{ created: boolean }> {
-  if (userId === connectedUserId) {
+// Real friend-request semantics (feedback #127, 2026-09-03 — reverses the
+// original 2026-08-14 "instant, no approval needed" design): sending a
+// request creates a 'pending' row; it only becomes a real friendship once
+// the recipient explicitly accepts (see acceptConnection below). If the
+// target already sent *me* a pending request, this call is really an
+// accept of *their* request, not a second competing row — same as two
+// people adding each other used to silently become "Friends" under the old
+// model, just expressed as accept rather than a second insert.
+export async function requestConnection(
+  userId: string,
+  targetId: string,
+): Promise<{ status: 'pending' | 'accepted' }> {
+  if (userId === targetId) {
     throw new Error('cannot add yourself as a connection')
   }
 
-  const [existing] = await db
-    .select({ id: userConnections.id, deletedAt: userConnections.deletedAt })
+  const [reverseEdge] = await db
+    .select({ id: userConnections.id, status: userConnections.status })
     .from(userConnections)
-    .where(and(eq(userConnections.userId, userId), eq(userConnections.connectedUserId, connectedUserId)))
+    .where(and(eq(userConnections.userId, targetId), eq(userConnections.connectedUserId, userId), isNull(userConnections.deletedAt)))
     .limit(1)
 
-  const created = !existing || existing.deletedAt !== null
-
-  if (created) {
-    // Only a surprise to the recipient — and so only "notify"-worthy, both
-    // for the alert email and the in-app unseen-count badge (feedback #94)
-    // — when the reverse edge (them -> the adder) doesn't already exist
-    // (feedback, 2026-08-14: Ben added Anna, she was correctly alerted;
-    // Anna then added him back to complete the pair, and he was wrongly
-    // alerted too — he'd already initiated it himself, so there was
-    // nothing to tell him). Computed before the insert so the new row's own
-    // `notify` column can record it once, rather than re-deriving it later.
-    const [reverseEdge] = await db
-      .select({ id: userConnections.id })
-      .from(userConnections)
-      .where(and(eq(userConnections.userId, connectedUserId), eq(userConnections.connectedUserId, userId), isNull(userConnections.deletedAt)))
-      .limit(1)
-    const notify = !reverseEdge
-
-    if (!existing) {
-      await db.insert(userConnections).values({ userId, connectedUserId, notify })
-    } else {
-      await db.update(userConnections).set({ deletedAt: null, notify, updatedAt: new Date() }).where(eq(userConnections.id, existing.id))
-    }
-
-    await db.insert(eventsLog).values({ actor: userId, action: 'connection_added', metadata: { connectedUserId } })
-
-    if (notify) {
-      // Best-effort — a failed send shouldn't undo the add.
-      await notifyConnectionAdded(userId, connectedUserId).catch((err) => {
-        console.error('connection alert email failed', err)
-      })
-    }
+  if (reverseEdge?.status === 'pending') {
+    await acceptConnectionRow(reverseEdge.id, targetId, userId)
+    return { status: 'accepted' }
   }
-  return { created }
+  if (reverseEdge?.status === 'accepted') {
+    return { status: 'accepted' } // already friends, no-op
+  }
+
+  const [existing] = await db
+    .select({ id: userConnections.id, status: userConnections.status, deletedAt: userConnections.deletedAt })
+    .from(userConnections)
+    .where(and(eq(userConnections.userId, userId), eq(userConnections.connectedUserId, targetId)))
+    .limit(1)
+
+  if (existing && !existing.deletedAt) {
+    return { status: existing.status as 'pending' | 'accepted' } // already requested (or already friends) — no-op
+  }
+
+  if (existing) {
+    await db
+      .update(userConnections)
+      .set({ deletedAt: null, status: 'pending', updatedAt: new Date() })
+      .where(eq(userConnections.id, existing.id))
+  } else {
+    await db.insert(userConnections).values({ userId, connectedUserId: targetId, status: 'pending' })
+  }
+
+  await db.insert(eventsLog).values({ actor: userId, action: 'connection_requested', metadata: { targetId } })
+  // Best-effort — a failed send shouldn't undo the request.
+  await notifyConnectionRequested(userId, targetId).catch((err) => {
+    console.error('connection request alert email failed', err)
+  })
+  return { status: 'pending' }
 }
 
-async function notifyConnectionAdded(adderId: string, recipientId: string) {
-  const [[adder], [recipient]] = await Promise.all([
-    db.select({ name: users.name, avatarUrl: users.avatarUrl }).from(users).where(eq(users.id, adderId)).limit(1),
+// Shared by acceptConnection (the recipient tapping Accept) and
+// requestConnection's auto-accept case (sending a request to someone who
+// already requested you) — the actual row update + notification, keyed by
+// the pending row's own id rather than re-deriving it, since both callers
+// already know it.
+async function acceptConnectionRow(connectionId: string, requesterId: string, recipientId: string): Promise<void> {
+  await db
+    .update(userConnections)
+    .set({ status: 'accepted', updatedAt: new Date() })
+    .where(eq(userConnections.id, connectionId))
+
+  await db.insert(eventsLog).values({ actor: recipientId, action: 'connection_accepted', metadata: { requesterId } })
+
+  // The requester is the one with news here — they sent a request and it
+  // just got accepted. No email counterpart (in-app only), same
+  // minimal-noise posture the old model already had for a reciprocal
+  // completion that isn't a surprise to anyone.
+  const [requester] = await db.select({ name: users.name }).from(users).where(eq(users.id, recipientId)).limit(1)
+  const recipientName = requester?.name ?? 'Someone'
+  await createNotification({
+    userId: requesterId,
+    type: 'friend_request_accepted',
+    actorUserId: recipientId,
+    message: `${recipientName} accepted your friend request`,
+    targetPath: '/friends',
+  })
+}
+
+// Recipient-only — a request can only be accepted or declined by the
+// person it was sent to. Returns false (rather than throwing) for a
+// not-found/not-pending/not-yours id so the route can 404 cleanly.
+export async function acceptConnection(userId: string, connectionId: string): Promise<boolean> {
+  const [row] = await db
+    .select({ id: userConnections.id, userId: userConnections.userId })
+    .from(userConnections)
+    .where(
+      and(
+        eq(userConnections.id, connectionId),
+        eq(userConnections.connectedUserId, userId),
+        eq(userConnections.status, 'pending'),
+        isNull(userConnections.deletedAt),
+      ),
+    )
+    .limit(1)
+  if (!row) return false
+
+  await acceptConnectionRow(row.id, row.userId, userId)
+  return true
+}
+
+// Soft-deletes the pending row rather than a third status value, so the
+// same person can send a fresh request later — same toggle convention as
+// every other deletedAt-toggled table in this codebase. Deliberately
+// silent (no notification back to the requester), matching the ordinary
+// social norm around a declined request.
+export async function declineConnection(userId: string, connectionId: string): Promise<boolean> {
+  const [updated] = await db
+    .update(userConnections)
+    .set({ deletedAt: new Date(), updatedAt: new Date() })
+    .where(
+      and(
+        eq(userConnections.id, connectionId),
+        eq(userConnections.connectedUserId, userId),
+        eq(userConnections.status, 'pending'),
+        isNull(userConnections.deletedAt),
+      ),
+    )
+    .returning({ id: userConnections.id })
+  if (!updated) return false
+
+  await db.insert(eventsLog).values({ actor: userId, action: 'connection_declined', metadata: { connectionId } })
+  return true
+}
+
+async function notifyConnectionRequested(requesterId: string, recipientId: string) {
+  const [[requester], [recipient]] = await Promise.all([
+    db.select({ name: users.name, avatarUrl: users.avatarUrl }).from(users).where(eq(users.id, requesterId)).limit(1),
     db
       .select({ name: users.name, email: users.email, notifyEmail: users.notifyFriendAddedEmail })
       .from(users)
       .where(eq(users.id, recipientId))
       .limit(1),
   ])
-  const adderName = adder?.name ?? 'Someone'
+  const requesterName = requester?.name ?? 'Someone'
 
   // In-app entry always created (feedback #100: the notification list is
   // the inbox itself, not an optional channel — only Email is toggleable).
   await createNotification({
     userId: recipientId,
     type: 'friend_added',
-    actorUserId: adderId,
-    message: `${adderName} started following you`,
+    actorUserId: requesterId,
+    message: `${requesterName} sent you a friend request`,
     targetPath: '/friends',
   })
 
@@ -130,8 +251,8 @@ async function notifyConnectionAdded(adderId: string, recipientId: string) {
   const webUrl = requireEnv('PUBLIC_WEB_URL')
   await sendEmail(
     recipient.email,
-    connectionAlertSubject(adderName),
-    connectionAlertHtml(adderName, adder?.avatarUrl ?? null, apiUrl, `${webUrl}/friends`),
+    connectionRequestSubject(requesterName),
+    connectionRequestHtml(requesterName, requester?.avatarUrl ?? null, apiUrl, `${webUrl}/friends`),
   )
 }
 
@@ -148,15 +269,18 @@ const SUGGESTIONS_LIMIT = 200
 // once that's exhausted, every other member on Nettelhorst Bulbord (up to
 // SUGGESTIONS_LIMIT total), so the default list is never just "no
 // suggestions yet" once a community has more than a handful of members.
-// Deduped throughout, excluding the viewer and anyone already connected.
+// Deduped throughout, excluding the viewer and anyone already connected
+// (pending or accepted, either direction — feedback #127: don't suggest
+// someone I already have a request in flight with).
 export async function getSuggestions(userId: string): Promise<MemberSummary[]> {
-  const [[me], myKids, existingConnections] = await Promise.all([
+  const [[me], myKids, outgoingEdges, incomingEdges] = await Promise.all([
     db.select({ invitedByUserId: users.invitedByUserId }).from(users).where(eq(users.id, userId)).limit(1),
     db
       .select({ grade: userChildren.grade })
       .from(userChildren)
       .where(and(eq(userChildren.userId, userId), isNull(userChildren.deletedAt))),
-    listOutgoingConnections(userId),
+    listOutgoingEdges(userId),
+    listIncomingEdges(userId),
   ])
 
   const inviterId = me?.invitedByUserId
@@ -167,7 +291,7 @@ export async function getSuggestions(userId: string): Promise<MemberSummary[]> {
           .from(users)
           .where(and(eq(users.id, inviterId), isNull(users.deletedAt), NOT_SERVICE_ACCOUNT))
           .limit(1),
-        listOutgoingConnections(inviterId),
+        listAcceptedConnections(inviterId),
       ])
     : [[], []]
 
@@ -191,10 +315,11 @@ export async function getSuggestions(userId: string): Promise<MemberSummary[]> {
     .orderBy(users.name)
     .limit(SUGGESTIONS_LIMIT)
 
+  const alreadyConnectedIds = [...outgoingEdges, ...incomingEdges].map((e) => e.member.id)
   const suggestions = buildSuggestionList(
     userId,
     [inviterGroup, inviterConnectionsGroup, gradeMatchGroup, everyoneElseGroup],
-    existingConnections.map((c) => c.id),
+    alreadyConnectedIds,
   )
   return suggestions.slice(0, SUGGESTIONS_LIMIT)
 }
@@ -214,12 +339,12 @@ export async function searchMembers(userId: string, query: string): Promise<Memb
 }
 
 // Admin dev tool (feedback, 2026-08-14): lets an admin see a live render of
-// the "X added you as a friend" alert without needing a second real account
-// to trigger one — same shape as newsletter/service.ts's
+// the "you have a new friend request" alert without needing a second real
+// account to trigger one — same shape as newsletter/service.ts's
 // sendTestNewsletterEmail, reusing the exact real template/mailer path
-// rather than a separately-maintained preview. The admin is both "adder"
+// rather than a separately-maintained preview. The admin is both requester
 // and recipient here (their own name/photo, sent to their own address) —
-// there's no second person to stand in as the adder, and this still
+// there's no second person to stand in as the requester, and this still
 // exercises the real render with real data, same "exact reproduction"
 // posture as the sign-up flow preview.
 export async function sendTestConnectionAlertEmail(admin: {
@@ -229,22 +354,24 @@ export async function sendTestConnectionAlertEmail(admin: {
 }): Promise<void> {
   const apiUrl = requireEnv('PUBLIC_API_URL')
   const webUrl = requireEnv('PUBLIC_WEB_URL')
-  const html = connectionAlertHtml(admin.name, admin.avatarUrl, apiUrl, `${webUrl}/friends`)
-  await sendEmail(admin.email, `[Test] ${connectionAlertSubject(admin.name)}`, html)
+  const html = connectionRequestHtml(admin.name, admin.avatarUrl, apiUrl, `${webUrl}/friends`)
+  await sendEmail(admin.email, `[Test] ${connectionRequestSubject(admin.name)}`, html)
 }
 
 // Dev tool (feedback, 2026-08-16: "I don't wanna just be able to test this
 // one time... I'd like to really trigger it anytime"): unlike the email
 // preview above (which fakes the template with the admin's own name/photo,
 // no real row written), this creates a genuine throwaway member and has it
-// follow the admin for real — through the same addConnection() path a real
-// follow takes, so the alert email, the notify flag, and the in-app
-// notification all fire exactly as they would for a real follow. isServiceAccount
-// keeps it out of every discovery surface (search, suggestions) while it
-// exists; deleting it afterward is the existing admin member-deletion tool
-// (DELETE /admin/users/:id), not a separate cleanup path.
-export async function createTestFollow(adminId: string): Promise<{ id: string; name: string }> {
-  const name = `Test Follower (delete me) ${Math.random().toString(36).slice(2, 6)}`
+// send the admin a real friend request — through the same
+// requestConnection() path a real request takes, so the alert email, and
+// the in-app notification all fire exactly as they would for a real
+// request, and the admin can test Accept/Decline against it on the real
+// Friends page. isServiceAccount keeps it out of every discovery surface
+// (search, suggestions) while it exists; deleting it afterward is the
+// existing admin member-deletion tool (DELETE /admin/users/:id), not a
+// separate cleanup path.
+export async function createTestFriendRequest(adminId: string): Promise<{ id: string; name: string }> {
+  const name = `Test Friend Request (delete me) ${Math.random().toString(36).slice(2, 6)}`
   const [tempUser] = await db
     .insert(users)
     .values({
@@ -257,8 +384,8 @@ export async function createTestFollow(adminId: string): Promise<{ id: string; n
     })
     .returning({ id: users.id, name: users.name })
 
-  await db.insert(eventsLog).values({ actor: adminId, action: 'test_follow_created', metadata: { testUserId: tempUser.id } })
-  await addConnection(tempUser.id, adminId)
+  await db.insert(eventsLog).values({ actor: adminId, action: 'test_friend_request_created', metadata: { testUserId: tempUser.id } })
+  await requestConnection(tempUser.id, adminId)
 
   return tempUser
 }
