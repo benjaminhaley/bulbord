@@ -24,16 +24,24 @@ import { eventsLog, schoolBreaks } from '../db/schema.js'
 // non-attendance day gets its own school_breaks row, not just the major
 // ones — see the exclusion note below for the one deliberate exception.
 //
-// Excluded on purpose: the five official paid public holidays CPS also
-// happens to be closed for — Labor Day, Indigenous Peoples' Day, MLK Jr.
-// Day, Presidents' Day, Memorial Day (feedback, 2026-08-04) — since this
-// app exists to help parents find care on days their KIDS are off school
-// but THEY still have to work (see readme.md's "work days when kids are
-// not in school"); on a nationally-recognized paid holiday most parents are
-// off too, so there's no real camp-need to solve for. Election Day is kept
-// despite CPS observing it in lieu of Veterans Day — it isn't a
-// universally-recognized paid holiday for most employers the way the other
-// five are, so the same reasoning doesn't apply. Also excluded: the five
+// Excluded on purpose (as of this original pass): the five official paid
+// public holidays CPS also happens to be closed for — Labor Day, Indigenous
+// Peoples' Day, MLK Jr. Day, Presidents' Day, Memorial Day (feedback,
+// 2026-08-04) — since this app exists to help parents find care on days
+// their KIDS are off school but THEY still have to work (see readme.md's
+// "work days when kids are not in school"); on a nationally-recognized paid
+// holiday most parents are off too, so there's no real camp-need to solve
+// for. Election Day is kept despite CPS observing it in lieu of Veterans
+// Day — it isn't a universally-recognized paid holiday for most employers
+// the way the other five are, so the same reasoning doesn't apply.
+//
+// NARROWED 2026-09-03 (feedback #130): confirmed with Ben that the real
+// exclusion list is just six "core" holidays — New Year's Day, Memorial
+// Day, Independence Day, Labor Day, Thanksgiving, Christmas — not all five
+// listed above. Indigenous Peoples' Day, MLK Jr. Day, and Presidents' Day
+// are no longer excluded; they were added as their own school_breaks rows
+// by backfill-2026-09-03-restore-three-holidays.ts rather than by editing
+// the historical values below. Also excluded: the five
 // staff-only PD days Aug 17-21, 2026 (before the 2026-27 school year even
 // starts — already inside the seeded Summer Break range below, so a
 // separate row would be redundant) and the Jun 14, 2027 PD day (after the
