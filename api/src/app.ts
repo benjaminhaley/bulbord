@@ -10,6 +10,7 @@ import { campCommentsRoutes } from './camps/comments.js'
 import { campsRoutes } from './camps/routes.js'
 import { connectionsRoutes } from './connections/routes.js'
 import { eventCommentsRoutes } from './events/comments.js'
+import { emailIngestRoutes } from './events/email-ingest-routes.js'
 import { eventsRoutes } from './events/routes.js'
 import { feedbackCommentsRoutes } from './feedback/comments.js'
 import { feedbackRoutes } from './feedback/routes.js'
@@ -36,6 +37,7 @@ export async function buildApp() {
   await app.register(analyticsRoutes)
   await app.register(eventsRoutes)
   await app.register(eventCommentsRoutes)
+  await app.register(emailIngestRoutes)
   await app.register(campsRoutes)
   await app.register(campCommentsRoutes)
   await app.register(connectionsRoutes)

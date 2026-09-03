@@ -9,6 +9,7 @@ import { createTestFriendRequest, sendTestConnectionAlertEmail } from '../connec
 import { todayInChicago } from '../dates.js'
 import { findLowRecurringSeries } from '../events/recurring-series-health.js'
 import { getApprovedEventOccurrences } from '../events/recurring-series-query.js'
+import { processInboundEmail } from '../events/email-ingest.js'
 import { getSourcesLastCheckedAt, resourceActiveEventSources } from '../events/resourcing.js'
 import { sendTestNewsletterEmail } from '../newsletter/service.js'
 import { impersonateUser } from './impersonation.js'
@@ -225,5 +226,19 @@ export async function adminRoutes(app: FastifyInstance) {
         })),
       },
     })
+  })
+
+  // Dev tool (feedback #115): run the exact same extraction/ingestion pass
+  // a real inbound email webhook triggers, but against pasted-in text —
+  // works today even before the real Resend receiving-domain/webhook setup
+  // is finished (see CLAUDE.md's Events data model & sourcing section), and
+  // doubles as a repeatable way to test the pipeline afterward too.
+  app.post('/admin/events/test-email-ingest', { preHandler: requireRole('admin') }, async (request, reply) => {
+    const { from_address, subject, body } = (request.body ?? {}) as { from_address?: string; subject?: string; body?: string }
+    if (!from_address || !body) {
+      return reply.code(400).send({ error: { message: 'from_address and body are required' } })
+    }
+    const result = await processInboundEmail({ fromAddress: from_address, fromName: null, subject: subject ?? '(no subject)', text: body, html: null })
+    return reply.send({ data: { added: result.added, skipped: result.skipped } })
   })
 }

@@ -6,7 +6,11 @@ import { requireEnv } from '../env.js'
 // uploads/storage.ts — throws at module load if the required env vars are
 // missing, rather than failing lazily on first send.
 const fromEmail = requireEnv('RESEND_FROM_EMAIL')
-const client = new Resend(requireEnv('RESEND_API_KEY'))
+// Exported so events/email-ingest.ts can reuse the same client for reading
+// received emails and verifying inbound webhooks — same "one Resend client,
+// not a second one" posture as sendEmail below.
+export const resendClient = new Resend(requireEnv('RESEND_API_KEY'))
+const client = resendClient
 
 // Generic transactional-email sender — used by the weekly newsletter and, as
 // of feedback #83, the connections feature's "X added you as a friend"

@@ -142,6 +142,24 @@ export async function resourceEventSources(): Promise<ResourceReport> {
   return body.data
 }
 
+// Dev tool (feedback #115) — runs the same extraction/ingestion pass a real
+// inbound email webhook triggers, against pasted-in text. Works today even
+// before the real Resend receiving-domain/webhook setup is finished (see
+// CLAUDE.md's Events data model & sourcing section).
+export async function testEmailIngest(params: { fromAddress: string; subject: string; body: string }): Promise<{ added: number; skipped: number }> {
+  const response = await fetch(`${API_URL}/admin/events/test-email-ingest`, {
+    method: 'POST',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ from_address: params.fromAddress, subject: params.subject, body: params.body }),
+  })
+  if (!response.ok) {
+    const errBody = (await response.json().catch(() => null)) as { error?: { message?: string } } | null
+    throw new Error(errBody?.error?.message ?? `Failed to test email ingest: ${response.status}`)
+  }
+  const body = (await response.json()) as { data: { added: number; skipped: number } }
+  return body.data
+}
+
 // Shown before the admin has clicked anything, so "0 added" after a run
 // doesn't read as broken when it just hasn't been run recently.
 export async function fetchSourcesLastCheckedAt(): Promise<string | null> {

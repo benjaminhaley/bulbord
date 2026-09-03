@@ -11,7 +11,7 @@ export const eventSources = pgTable('event_sources', {
   id: uuid('id').primaryKey().defaultRandom(),
   name: text('name').notNull(),
   url: text('url').notNull(),
-  type: text('type').notNull(), // 'generic_search' | 'website' | 'facebook_group' | ...
+  type: text('type').notNull(), // 'generic_search' | 'website' | 'facebook_group' | 'email' | ...
   isActive: boolean('is_active').notNull().default(true),
   lastCheckedAt: timestamp('last_checked_at', { withTimezone: true }),
   notes: text('notes'),

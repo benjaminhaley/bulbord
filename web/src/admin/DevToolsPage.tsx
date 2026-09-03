@@ -1,9 +1,11 @@
 import {
   IonBackButton,
+  IonButton,
   IonButtons,
   IonContent,
   IonHeader,
   IonIcon,
+  IonInput,
   IonItem,
   IonLabel,
   IonList,
@@ -11,6 +13,7 @@ import {
   IonNote,
   IonPage,
   IonSpinner,
+  IonTextarea,
   IonTitle,
   IonToast,
   IonToolbar,
@@ -42,6 +45,7 @@ import {
   sendTestCampReminderEmail,
   sendTestConnectionAlertEmail,
   sendTestNewsletterEmail,
+  testEmailIngest,
   type ResourceReport,
 } from './api'
 
@@ -77,6 +81,11 @@ export function DevToolsPage() {
   const [toast, setToast] = useState<string | null>(null)
   const [resourcing, setResourcing] = useState(false)
   const [report, setReport] = useState<ResourceReport | null>(null)
+  const [emailIngestOpen, setEmailIngestOpen] = useState(false)
+  const [emailIngestFrom, setEmailIngestFrom] = useState('')
+  const [emailIngestSubject, setEmailIngestSubject] = useState('')
+  const [emailIngestBody, setEmailIngestBody] = useState('')
+  const [testingEmailIngest, setTestingEmailIngest] = useState(false)
   // Kept as its own state (rather than reading straight off `freshness`)
   // because resource() below needs to update it optimistically from the
   // POST response, before a fresh GET /admin/data-freshness round-trip
@@ -157,6 +166,18 @@ export function DevToolsPage() {
     }
   }
 
+  async function runEmailIngestTest() {
+    setTestingEmailIngest(true)
+    try {
+      const result = await testEmailIngest({ fromAddress: emailIngestFrom, subject: emailIngestSubject, body: emailIngestBody })
+      setToast(`Added ${result.added} event(s), skipped ${result.skipped} duplicate(s)`)
+    } catch (err) {
+      setToast(err instanceof Error ? err.message : 'Could not test email ingest')
+    } finally {
+      setTestingEmailIngest(false)
+    }
+  }
+
   return (
     <IonPage>
       <IonHeader>
@@ -205,6 +226,58 @@ export function DevToolsPage() {
             </IonLabel>
             {resourcing && <IonSpinner slot="end" name="dots" />}
           </IonItem>
+          {/* Feedback #115: paste in an email's text and run it through the
+              real extraction/ingestion pipeline — works today even before
+              the real inbound-email webhook (Resend receiving domain + DNS)
+              is set up, and doubles as a repeatable way to test it after. */}
+          <IonItem button onClick={() => setEmailIngestOpen((open) => !open)}>
+            <IonIcon slot="start" icon={mailOutline} />
+            <IonLabel className="ion-text-wrap">
+              <h2>Test email-based event ingestion</h2>
+              <p>Paste in an email's text and see what events get extracted, same pipeline a forwarded email will use.</p>
+            </IonLabel>
+          </IonItem>
+          {emailIngestOpen && (
+            <>
+              <IonItem>
+                <IonInput
+                  label="From address"
+                  labelPlacement="stacked"
+                  placeholder="newsletter@example.org"
+                  value={emailIngestFrom}
+                  onIonInput={(e) => setEmailIngestFrom(e.detail.value ?? '')}
+                />
+              </IonItem>
+              <IonItem>
+                <IonInput
+                  label="Subject"
+                  labelPlacement="stacked"
+                  placeholder="This week's events"
+                  value={emailIngestSubject}
+                  onIonInput={(e) => setEmailIngestSubject(e.detail.value ?? '')}
+                />
+              </IonItem>
+              <IonItem>
+                <IonTextarea
+                  label="Body"
+                  labelPlacement="stacked"
+                  placeholder="Paste the email's text here..."
+                  autoGrow
+                  value={emailIngestBody}
+                  onIonInput={(e) => setEmailIngestBody(e.detail.value ?? '')}
+                />
+              </IonItem>
+              <IonItem lines="none">
+                <IonButton
+                  disabled={testingEmailIngest || !emailIngestFrom.trim() || !emailIngestBody.trim()}
+                  onClick={runEmailIngestTest}
+                >
+                  Run
+                </IonButton>
+                {testingEmailIngest && <IonSpinner slot="end" name="dots" />}
+              </IonItem>
+            </>
+          )}
           {/* Feedback (2026-08-17, "consolidate these icons"): sources used
               to be one tap away from the Events tab itself (a standalone
               list icon) — moved here since adding one is now admin-only.
