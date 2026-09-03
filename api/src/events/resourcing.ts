@@ -1,10 +1,10 @@
 import * as cheerio from 'cheerio'
-import { and, eq, isNull, sql } from 'drizzle-orm'
+import { and, desc, eq, isNull, sql } from 'drizzle-orm'
 
 import { getAnthropicClient, stripJsonCodeFence } from '../claude.js'
 import { db } from '../db/client.js'
 import { todayInChicago } from '../dates.js'
-import { eventSources } from '../db/schema.js'
+import { eventSources, eventsLog } from '../db/schema.js'
 import { fetchWithTimeout } from '../uploads/fetch-with-timeout.js'
 import { ingestEvents, type CandidateEvent } from './ingest.js'
 
@@ -177,11 +177,54 @@ export async function resourceActiveEventSources(actor: string): Promise<Resourc
 
   await Promise.all(Array.from({ length: Math.min(RESOURCE_CONCURRENCY, sources.length) }, worker))
 
-  return {
+  const report: ResourceReport = {
     sourcesChecked: sources.length,
     totalAdded: results.reduce((sum, r) => sum + r.added, 0),
     totalSkipped: results.reduce((sum, r) => sum + r.skipped, 0),
     lastCheckedAt: await getSourcesLastCheckedAt(),
     results,
+  }
+
+  // One row summarizing the whole run (all sources at once), distinct from
+  // ingestEvents()'s own per-source `events_ingested` entries — same
+  // "one entry per run" shape as newsletter_sent/camp_reminder_sent
+  // (CLAUDE.md's Newsletter/Camp reminder email sections), and what
+  // feedback #131's "keep some summary in admin of what has changed" reads
+  // from (see Dev Tools' "Auto-updating events" section). Written for both
+  // an admin-triggered manual run and the weekly cron run alike, since both
+  // callers go through this one function.
+  await db.insert(eventsLog).values({
+    actor,
+    action: 'event_sourcing_run',
+    metadata: { ...report, lastCheckedAt: report.lastCheckedAt?.toISOString() ?? null },
+  })
+
+  return report
+}
+
+export interface EventSourcingRunSummary {
+  actor: string
+  ranAt: Date
+  report: ResourceReport
+}
+
+// Backs Dev Tools' "last run" summary (feedback #131) — read on page load,
+// not just held in local state after a manual click, so a weekly cron run
+// that happened while nobody was looking is still visible the next time an
+// admin checks.
+export async function getLatestEventSourcingRun(): Promise<EventSourcingRunSummary | null> {
+  const [row] = await db
+    .select({ actor: eventsLog.actor, createdAt: eventsLog.createdAt, metadata: eventsLog.metadata })
+    .from(eventsLog)
+    .where(eq(eventsLog.action, 'event_sourcing_run'))
+    .orderBy(desc(eventsLog.createdAt))
+    .limit(1)
+
+  if (!row) return null
+  const metadata = row.metadata as ResourceReport & { lastCheckedAt: string | null }
+  return {
+    actor: row.actor,
+    ranAt: row.createdAt,
+    report: { ...metadata, lastCheckedAt: metadata.lastCheckedAt ? new Date(metadata.lastCheckedAt) : null },
   }
 }

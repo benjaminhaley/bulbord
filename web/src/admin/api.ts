@@ -118,7 +118,7 @@ export async function deleteMember(userId: string): Promise<void> {
   }
 }
 
-export interface ResourceReport {
+interface ResourceReport {
   sources_checked: number
   total_added: number
   total_skipped: number
@@ -128,8 +128,8 @@ export interface ResourceReport {
 
 // Dev tool (feedback #41) — re-runs the ingestion pipeline against every
 // known active source on demand, instead of waiting for a manual sourcing
-// pass or a future daily job.
-export async function resourceEventSources(): Promise<ResourceReport> {
+// pass or the weekly cron (feedback #131, see fetchEventSourcingStatus below).
+export async function resourceEventSources(): Promise<LastEventSourcingRun> {
   const response = await fetch(`${API_URL}/admin/events/resource`, {
     method: 'POST',
     headers: authHeaders(),
@@ -138,7 +138,7 @@ export async function resourceEventSources(): Promise<ResourceReport> {
     const body = (await response.json().catch(() => null)) as { error?: { message?: string } } | null
     throw new Error(body?.error?.message ?? `Failed to re-run sourcing: ${response.status}`)
   }
-  const body = (await response.json()) as { data: ResourceReport }
+  const body = (await response.json()) as { data: LastEventSourcingRun }
   return body.data
 }
 
@@ -160,15 +160,31 @@ export async function testEmailIngest(params: { fromAddress: string; subject: st
   return body.data
 }
 
+// Feedback #131 ("keep some summary in admin of what has changed"): the
+// weekly auto-sourcing cron and the manual "Re-run event sourcing" button
+// both go through resourceActiveEventSources() and write the same one
+// `event_sourcing_run` events_log summary — this reads that back so Dev
+// Tools shows the most recent run (whichever kind) on page load, not just
+// right after a manual click.
+export interface LastEventSourcingRun extends ResourceReport {
+  actor: string
+  ran_at: string
+}
+
+export interface EventSourcingStatus {
+  lastCheckedAt: string | null
+  lastRun: LastEventSourcingRun | null
+}
+
 // Shown before the admin has clicked anything, so "0 added" after a run
 // doesn't read as broken when it just hasn't been run recently.
-export async function fetchSourcesLastCheckedAt(): Promise<string | null> {
+export async function fetchEventSourcingStatus(): Promise<EventSourcingStatus> {
   const response = await fetch(`${API_URL}/admin/events/resource`, { headers: authHeaders() })
   if (!response.ok) {
-    throw new Error(`Failed to fetch sources last-checked time: ${response.status}`)
+    throw new Error(`Failed to fetch event-sourcing status: ${response.status}`)
   }
-  const body = (await response.json()) as { data: { last_checked_at: string | null } }
-  return body.data.last_checked_at
+  const body = (await response.json()) as { data: { last_checked_at: string | null; last_run: LastEventSourcingRun | null } }
+  return { lastCheckedAt: body.data.last_checked_at, lastRun: body.data.last_run }
 }
 
 // Feedback #119 — a recurring listing (e.g. the Nettelhorst French Market)

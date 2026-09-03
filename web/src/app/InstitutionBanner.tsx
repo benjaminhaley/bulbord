@@ -33,17 +33,16 @@ export function InstitutionBanner() {
   const { user, isAdmin } = useAuth()
   const { freshness } = useDataFreshness()
   const history = useHistory()
-  // Feedback #69: a quiet nudge that events/camps data has gone stale,
-  // visible from anywhere without opening Dev Tools first — admin-only,
-  // since only Ben acts on it. Independent of the unified notification
-  // badge below (it's an operational nudge, not a member notification) —
-  // color="warning" (feedback #114) is what actually marks that
-  // independence visually, since both badges otherwise share the same
-  // corner/size/position on the avatar.
-  // Feedback #119: a recurring listing running low on confirmed future
-  // occurrences is the same kind of operational nudge as is_stale above —
-  // both fold into this one badge rather than adding a second corner/dot.
-  const showStaleBadge =
+  // Feedback #69/#119: a quiet nudge that events/camps data has gone stale,
+  // or a recurring listing is running low on confirmed future occurrences —
+  // admin-only, since only Ben acts on it. Originally its own amber dot on
+  // the avatar (feedback #114 gave it a distinct color specifically so it
+  // wouldn't be confused with a real notification); feedback #132 reversed
+  // that ("the one on my face should not be used any more... there should
+  // not be a second way") — it now folds into the same red bell badge as
+  // every other alert, and gets its own row in the Notifications list (see
+  // NotificationsPage.tsx) rather than a separate indicator elsewhere.
+  const showStaleAlert =
     isAdmin && ((freshness?.is_stale ?? false) || (freshness?.recurring_series_running_low?.length ?? 0) > 0)
   // Feedback #100: one unified badge for every notification type (friend
   // added, feedback reply, event/camp comment) — replaces the earlier three
@@ -54,7 +53,7 @@ export function InstitutionBanner() {
   // longer carries its own dot either. Lives on the bell icon now, not the
   // avatar (see the file-level doc comment above).
   const unseenNotificationCount = user?.unseenNotificationCount ?? 0
-  const showNotificationBadge = unseenNotificationCount > 0
+  const showNotificationBadge = unseenNotificationCount > 0 || showStaleAlert
 
   // Every tap target here used to be a bare `<div role="button" onClick>` —
   // visually fine, but not actually keyboard-operable (no tabIndex, no
@@ -87,15 +86,12 @@ export function InstitutionBanner() {
         <IonButton fill="clear" aria-label="Notifications" onClick={() => history.push('/notifications')} style={bannerButtonStyle}>
           <span style={{ display: 'flex', alignItems: 'center', position: 'relative' }}>
             <IonIcon icon={notificationsOutline} style={{ fontSize: '1.5rem' }} />
-            {showNotificationBadge && (
-              <BadgeDot corner="top-right" label="New notifications" count={unseenNotificationCount} />
-            )}
+            {showNotificationBadge && <BadgeDot label="Alerts" count={unseenNotificationCount} />}
           </span>
         </IonButton>
         <IonButton fill="clear" aria-label="Account" onClick={() => history.push('/account')} style={bannerButtonStyle}>
           <span style={{ display: 'flex', alignItems: 'center', position: 'relative' }}>
             {user && <Avatar url={user.avatarUrl} name={user.name} size={32} />}
-            {showStaleBadge && <BadgeDot corner="top-right" label="Events/camps data needs a refresh" color="warning" />}
           </span>
         </IonButton>
       </div>

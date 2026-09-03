@@ -40,13 +40,13 @@ import { useAuth } from '../auth/AuthContext'
 import { useDataFreshness } from './DataFreshnessContext'
 import {
   createTestFriendRequest,
-  fetchSourcesLastCheckedAt,
+  fetchEventSourcingStatus,
   resourceEventSources,
   sendTestCampReminderEmail,
   sendTestConnectionAlertEmail,
   sendTestNewsletterEmail,
   testEmailIngest,
-  type ResourceReport,
+  type LastEventSourcingRun,
 } from './api'
 
 // A week with no refresh is the same threshold the admin avatar badge uses
@@ -80,7 +80,7 @@ export function DevToolsPage() {
   const [creatingTestRequest, setCreatingTestRequest] = useState(false)
   const [toast, setToast] = useState<string | null>(null)
   const [resourcing, setResourcing] = useState(false)
-  const [report, setReport] = useState<ResourceReport | null>(null)
+  const [report, setReport] = useState<LastEventSourcingRun | null>(null)
   const [emailIngestOpen, setEmailIngestOpen] = useState(false)
   const [emailIngestFrom, setEmailIngestFrom] = useState('')
   const [emailIngestSubject, setEmailIngestSubject] = useState('')
@@ -93,8 +93,15 @@ export function DevToolsPage() {
   const [lastCheckedAt, setLastCheckedAt] = useState<string | null>(null)
 
   useEffect(() => {
-    fetchSourcesLastCheckedAt()
-      .then(setLastCheckedAt)
+    // Feedback #131: the weekly cron writes the same summary a manual click
+    // does (see resourcing.ts's resourceActiveEventSources), so loading the
+    // most recent run here — not just after a button press — surfaces an
+    // overnight automatic run too, not only ones triggered from this page.
+    fetchEventSourcingStatus()
+      .then(({ lastCheckedAt, lastRun }) => {
+        setLastCheckedAt(lastCheckedAt)
+        if (lastRun) setReport(lastRun)
+      })
       .catch(() => {})
   }, [])
 
@@ -218,11 +225,17 @@ export function DevToolsPage() {
             <IonIcon slot="start" icon={refreshOutline} />
             <IonLabel className="ion-text-wrap">
               <h2>Re-run event sourcing</h2>
-              <p>Re-check every active source for new or updated events and report what was added.</p>
+              <p>Re-check every active source for new or updated events and report what was added — also runs automatically every week (feedback #131).</p>
               <p>
                 Last checked: {lastCheckedAt ? formatRelativeDateTime(lastCheckedAt) : 'never'}
                 {isStale(lastCheckedAt) && <IonIcon icon={alertCircle} color="danger" style={{ verticalAlign: '-2px', marginInlineStart: 4 }} />}
               </p>
+              {report && (
+                <p>
+                  Last run: {formatRelativeDateTime(report.ran_at)} ({report.actor.startsWith('system:') ? 'automatic' : 'manual'}) — added{' '}
+                  {report.total_added}, skipped {report.total_skipped}
+                </p>
+              )}
             </IonLabel>
             {resourcing && <IonSpinner slot="end" name="dots" />}
           </IonItem>

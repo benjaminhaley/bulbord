@@ -10,7 +10,12 @@ import { todayInChicago } from '../dates.js'
 import { findLowRecurringSeries } from '../events/recurring-series-health.js'
 import { getApprovedEventOccurrences } from '../events/recurring-series-query.js'
 import { processInboundEmail } from '../events/email-ingest.js'
-import { getSourcesLastCheckedAt, resourceActiveEventSources } from '../events/resourcing.js'
+import {
+  getLatestEventSourcingRun,
+  getSourcesLastCheckedAt,
+  resourceActiveEventSources,
+  type ResourceReport,
+} from '../events/resourcing.js'
 import { sendTestNewsletterEmail } from '../newsletter/service.js'
 import { impersonateUser } from './impersonation.js'
 import { deleteMember } from './memberDeletion.js'
@@ -21,6 +26,25 @@ import { computeDataFreshness } from './staleness.js'
 // missed weekly refresh pass is a real signal, not noise from day-to-day
 // timing.
 const STALE_AFTER_MS = 7 * 24 * 60 * 60 * 1000
+
+// Shared by the manual re-run button and the "last run" summary (feedback
+// #131) so both render the same shape whether the run was just triggered or
+// read back from a past one (manual or the weekly cron).
+function serializeResourceReport(report: ResourceReport) {
+  return {
+    sources_checked: report.sourcesChecked,
+    total_added: report.totalAdded,
+    total_skipped: report.totalSkipped,
+    last_checked_at: report.lastCheckedAt,
+    results: report.results.map((r) => ({
+      source_id: r.sourceId,
+      name: r.name,
+      added: r.added,
+      skipped: r.skipped,
+      error: r.error,
+    })),
+  }
+}
 
 // First admin view in the app (see CLAUDE.md's Introspectability section) —
 // everyone else so far has been ad-hoc per-feature admin gating, not a
@@ -96,10 +120,20 @@ export async function adminRoutes(app: FastifyInstance) {
   })
 
   // Lets Developer Tools show "Sources last checked: ..." before the admin
-  // has clicked anything (feedback #41 follow-up), not just after a run.
+  // has clicked anything (feedback #41 follow-up), not just after a run —
+  // and, since feedback #131 added a weekly automated run alongside the
+  // manual button, the full summary of whichever run (auto or manual)
+  // happened most recently, so a weekly cron run that happened overnight
+  // is visible the next time an admin opens this page, not just right
+  // after clicking the button themselves.
   app.get('/admin/events/resource', { preHandler: requireRole('admin') }, async (_request, reply) => {
-    const lastCheckedAt = await getSourcesLastCheckedAt()
-    return reply.send({ data: { last_checked_at: lastCheckedAt } })
+    const [lastCheckedAt, lastRun] = await Promise.all([getSourcesLastCheckedAt(), getLatestEventSourcingRun()])
+    return reply.send({
+      data: {
+        last_checked_at: lastCheckedAt,
+        last_run: lastRun ? { actor: lastRun.actor, ran_at: lastRun.ranAt, ...serializeResourceReport(lastRun.report) } : null,
+      },
+    })
   })
 
   // Feedback #69: lets Developer Tools show "how stale is our data" for both
@@ -210,22 +244,9 @@ export async function adminRoutes(app: FastifyInstance) {
   // pass. Scoped to known sources only, not new-source discovery — see
   // resourcing.ts.
   app.post('/admin/events/resource', { preHandler: requireRole('admin') }, async (request, reply) => {
-    const report = await resourceActiveEventSources(`admin:${request.currentUser!.id}`)
-    return reply.send({
-      data: {
-        sources_checked: report.sourcesChecked,
-        total_added: report.totalAdded,
-        total_skipped: report.totalSkipped,
-        last_checked_at: report.lastCheckedAt,
-        results: report.results.map((r) => ({
-          source_id: r.sourceId,
-          name: r.name,
-          added: r.added,
-          skipped: r.skipped,
-          error: r.error,
-        })),
-      },
-    })
+    const actor = `admin:${request.currentUser!.id}`
+    const report = await resourceActiveEventSources(actor)
+    return reply.send({ data: { actor, ran_at: new Date(), ...serializeResourceReport(report) } })
   })
 
   // Dev tool (feedback #115): run the exact same extraction/ingestion pass

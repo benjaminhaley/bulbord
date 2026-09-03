@@ -15,7 +15,8 @@
     "events:seed": "tsx src/events/seed-2026-07-29.ts",
     "events:refine-sources": "tsx src/events/update-2026-07-29-refine-sources.ts",
     "newsletter:send": "tsx src/newsletter/send-weekly.ts",
-    "camp-reminders:send": "tsx src/camp-reminders/send-due.ts"
+    "camp-reminders:send": "tsx src/camp-reminders/send-due.ts",
+    "events:resource": "tsx src/events/sourcing-cron.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.115.0",
