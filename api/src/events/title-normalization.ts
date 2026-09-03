@@ -23,7 +23,20 @@ export async function simplifyTitle(input: {
   try {
     const response = await anthropic.messages.create({
       model: 'claude-opus-5',
-      max_tokens: 60,
+      // Bumped from 60 (2026-09-03, found via a real incident — see below):
+      // 60 was tight enough that an occasional response starting with even
+      // a few words of commentary before the actual title (despite the
+      // system prompt's "ONLY the rewritten title, no explanation") could
+      // run out of budget mid-word, and the code below used to trust
+      // whatever partial text came back. 120 gives real headroom without
+      // meaningfully increasing cost for what's still a short-output task.
+      max_tokens: 120,
+      // Same reasoning as resourcing.ts's extraction call: re-simplifying
+      // the same input (a source re-checked on an unchanged page) should
+      // produce the same output every time, so ingestEvents()'s dedup
+      // actually catches it instead of inserting a near-duplicate with a
+      // slightly different title.
+      temperature: 0,
       output_config: { effort: 'low' },
       system: SYSTEM_PROMPT,
       messages: [
@@ -39,6 +52,12 @@ export async function simplifyTitle(input: {
     })
 
     if (response.stop_reason === 'refusal') return input.title
+    // A real incident (2026-09-03): a max_tokens-truncated response was
+    // trusted as-is, producing garbled fragment titles ("N", "No",
+    // "Nettel") that then landed as real events. A truncated response is
+    // never safe to use — the original, unsimplified title is always a
+    // better fallback than a cut-off partial string.
+    if (response.stop_reason === 'max_tokens') return input.title
     const block = response.content.find((b) => b.type === 'text')
     const simplified = block?.type === 'text' ? block.text.trim() : ''
     return simplified || input.title

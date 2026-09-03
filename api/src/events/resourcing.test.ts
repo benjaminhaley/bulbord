@@ -67,12 +67,13 @@ describe('extractCandidateEventsFromSource', () => {
         address: undefined,
         locationName: 'Music Box Theatre',
         sourceUrl: 'https://example.com/events',
-        status: 'pending',
+        status: 'approved',
       },
     ])
     expect(createMock).toHaveBeenCalledWith(
       expect.objectContaining({
         model: 'claude-opus-5',
+        temperature: 0,
         messages: [
           expect.objectContaining({
             content: expect.stringContaining('"source_notes":"only the family series"'),

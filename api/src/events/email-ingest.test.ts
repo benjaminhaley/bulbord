@@ -57,12 +57,13 @@ describe('extractCandidateEventsFromEmail', () => {
         address: '3635 N Clark St, Chicago',
         locationName: 'Gallagher Way',
         sourceUrl: 'mailto:newsletter@example.org',
-        status: 'pending',
+        status: 'approved',
       },
     ])
     expect(createMock).toHaveBeenCalledWith(
       expect.objectContaining({
         model: 'claude-opus-5',
+        temperature: 0,
         messages: [expect.objectContaining({ content: expect.stringContaining('"subject":"This weekend"') })],
       }),
     )

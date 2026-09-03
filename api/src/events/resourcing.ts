@@ -52,10 +52,12 @@ function toCandidateEvent(raw: ExtractedEvent, sourceUrl: string): CandidateEven
     address: typeof raw.address === 'string' ? raw.address : undefined,
     locationName: typeof raw.location_name === 'string' ? raw.location_name : undefined,
     sourceUrl,
-    // Automated extraction is never hand-vetted, so it goes through the same
-    // pending-review queue as any other sourced/user-submitted event (see
-    // CLAUDE.md's Events data model & sourcing) — never auto-approved.
-    status: 'pending',
+    // Auto-approved directly (2026-09-03, reversing the original "always
+    // pending, never auto-approved" rule) — Ben: "the process shouldn't go
+    // through pending... really, just add them." There was never a review
+    // UI built for this queue anyway, so pending sourced events had no real
+    // path to becoming visible other than a one-off manual status flip.
+    status: 'approved',
   }
 }
 
@@ -87,6 +89,13 @@ export async function extractCandidateEventsFromSource(
     const message = await anthropic.messages.create({
       model: 'claude-opus-5',
       max_tokens: 4000,
+      // Re-running this against an unchanged page (a routine weekly cron
+      // re-check, or two manual runs in quick succession — see the
+      // 2026-09-03 duplicate-events incident) should extract the same
+      // events every time; temperature: 0 minimizes run-to-run sampling
+      // variance so ingestEvents()'s exact-string dedup actually matches on
+      // a re-scrape instead of drifting into near-duplicate titles.
+      temperature: 0,
       output_config: { effort: 'medium' },
       system: SYSTEM_PROMPT,
       messages: [

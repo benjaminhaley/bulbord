@@ -33,6 +33,7 @@ describe('simplifyTitle', () => {
     expect(createMock).toHaveBeenCalledWith(
       expect.objectContaining({
         model: 'claude-opus-5',
+        temperature: 0,
         messages: [
           expect.objectContaining({
             role: 'user',
@@ -82,5 +83,19 @@ describe('simplifyTitle', () => {
     const result = await simplifyTitle({ title: 'Baby Time' })
 
     expect(result).toBe('Baby Time')
+  })
+
+  // Real incident (2026-09-03): a max_tokens-truncated response used to be
+  // trusted as-is, producing garbled fragment titles ("N", "No", "Nettel")
+  // that then landed as real events — a truncated response is never a safe
+  // title, regardless of how much (non-empty) text came back before the
+  // cutoff.
+  it('falls back to the original title when the response is truncated by max_tokens', async () => {
+    createMock.mockResolvedValue(textResponse('N', 'max_tokens'))
+    const { simplifyTitle } = await import('./title-normalization.js')
+
+    const result = await simplifyTitle({ title: 'Chicago Nettelhorst French Market' })
+
+    expect(result).toBe('Chicago Nettelhorst French Market')
   })
 })

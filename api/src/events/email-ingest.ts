@@ -14,8 +14,10 @@ import { ingestEvents, type CandidateEvent } from './ingest.js'
 // whatever real, dated events are in it get extracted the same way
 // resourcing.ts extracts events from a scraped webpage — same model
 // (claude-opus-5, medium effort), same rule (never invent, empty array if
-// nothing real and dated is found), same destination (always `pending`,
-// same as any other automated extraction — never auto-approved).
+// nothing real and dated is found), same destination (`approved` directly,
+// same as any other automated extraction since 2026-09-03 — see
+// resourcing.ts's own note on why the earlier "always pending" rule was
+// reversed).
 //
 // Bounds the LLM call's input size/cost — plenty for a real email body,
 // even a long HTML newsletter once tags are stripped.
@@ -58,7 +60,7 @@ function toCandidateEvent(raw: ExtractedEvent, sourceUrl: string): CandidateEven
     address: typeof raw.address === 'string' ? raw.address : undefined,
     locationName: typeof raw.location_name === 'string' ? raw.location_name : undefined,
     sourceUrl,
-    status: 'pending',
+    status: 'approved',
   }
 }
 
@@ -76,6 +78,9 @@ export async function extractCandidateEventsFromEmail(subject: string, bodyText:
     const message = await anthropic.messages.create({
       model: 'claude-opus-5',
       max_tokens: 4000,
+      // Same reasoning as resourcing.ts's extraction call — a webhook retry
+      // re-processing the same email should extract the same events.
+      temperature: 0,
       output_config: { effort: 'medium' },
       system: SYSTEM_PROMPT,
       messages: [{ role: 'user', content: JSON.stringify({ today: todayInChicago(), subject, body_text: trimmedBody }) }],
