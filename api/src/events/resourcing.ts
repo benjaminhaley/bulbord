@@ -193,10 +193,20 @@ export async function resourceActiveEventSources(actor: string): Promise<Resourc
   // from (see Dev Tools' "Auto-updating events" section). Written for both
   // an admin-triggered manual run and the weekly cron run alike, since both
   // callers go through this one function.
+  //
+  // report.lastCheckedAt is typed Date | null but getSourcesLastCheckedAt()
+  // hands back whatever the postgres driver returns for a raw sql
+  // max(timestamp) aggregate, which is a string at runtime despite the
+  // query's own sql<Date | null> annotation only asserting the TS type —
+  // the same gotcha admin/staleness.ts's own doc comment already documents
+  // (found there by testing against a live request, same lesson repeated
+  // here since this new call site didn't inherit that normalization).
+  // `new Date(...)` accepts either shape, so this doesn't need its own
+  // instanceof branch.
   await db.insert(eventsLog).values({
     actor,
     action: 'event_sourcing_run',
-    metadata: { ...report, lastCheckedAt: report.lastCheckedAt?.toISOString() ?? null },
+    metadata: { ...report, lastCheckedAt: report.lastCheckedAt ? new Date(report.lastCheckedAt).toISOString() : null },
   })
 
   return report

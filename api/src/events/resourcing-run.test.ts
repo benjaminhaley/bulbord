@@ -66,7 +66,13 @@ describe('resourceActiveEventSources', () => {
       { id: 'source-2', name: 'Lakeview Chamber', url: 'https://example.com/2', notes: null },
     ]
     sourceSelectCallCount = 0
-    lastCheckedAtValue = new Date('2026-09-03T12:00:00Z')
+    // A real string, not a Date, deliberately — postgres.js hands back a
+    // string for a raw sql max(timestamp) aggregate at runtime despite
+    // getSourcesLastCheckedAt()'s own `Date | null` return type (same
+    // gotcha admin/staleness.ts documents); a live admin request crashed
+    // on `.toISOString is not a function` the first time this shipped
+    // because the test above it used a real Date and never caught it.
+    lastCheckedAtValue = '2026-09-03T12:00:00.000Z' as unknown as Date
     latestLogRows = []
     insertedRows.length = 0
     updateCalls.length = 0
@@ -92,7 +98,12 @@ describe('resourceActiveEventSources', () => {
     const summaryInsert = insertedRows.find((r) => r.table === eventsLog)
     expect(summaryInsert).toBeDefined()
     expect(summaryInsert!.row).toMatchObject({ actor: 'system:event-sourcing-cron', action: 'event_sourcing_run' })
-    expect(summaryInsert!.row.metadata).toMatchObject({ sourcesChecked: 2, totalAdded: 3, totalSkipped: 3 })
+    expect(summaryInsert!.row.metadata).toMatchObject({
+      sourcesChecked: 2,
+      totalAdded: 3,
+      totalSkipped: 3,
+      lastCheckedAt: '2026-09-03T12:00:00.000Z',
+    })
   })
 
   it('records a per-source error without failing the whole run', async () => {
