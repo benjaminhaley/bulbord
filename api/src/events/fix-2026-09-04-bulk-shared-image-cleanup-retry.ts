@@ -60,7 +60,7 @@ async function main() {
   let sourced = 0
   let none = 0
   for (const row of rows) {
-    const result = await enrichEventImage(row.id, { sourceUrl: null, overrideImageUrl: null, title: row.title, description: row.description })
+    const { result } = await enrichEventImage(row.id, { sourceUrl: null, overrideImageUrl: null, title: row.title, description: row.description })
     console.log(`${row.title}: ${result}`)
     if (result === 'sourced') sourced++
     else none++

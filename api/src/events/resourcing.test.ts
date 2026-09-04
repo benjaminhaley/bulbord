@@ -100,12 +100,17 @@ describe('extractCandidateEventsFromSource', () => {
     const { extractCandidateEventsFromSource } = await import('./resourcing.js')
 
     const first = await extractCandidateEventsFromSource('https://example.com/events', null)
-    expect(createMock).toHaveBeenCalledTimes(1)
+    // 2, not 1: the extraction call itself, plus one candidate-validation.js
+    // second-pass call now made for the resulting non-empty candidate list
+    // (see candidate-validation.ts) — the content-hash-match skip below is
+    // what this test actually cares about, so the count just needs to stay
+    // flat across the second, skipped call rather than being exactly 1.
+    expect(createMock).toHaveBeenCalledTimes(2)
 
     const second = await extractCandidateEventsFromSource('https://example.com/events', null, first.contentHash)
 
-    expect(second).toEqual({ candidates: [], contentHash: first.contentHash })
-    expect(createMock).toHaveBeenCalledTimes(1)
+    expect(second).toEqual({ candidates: [], rejectedCandidates: [], contentHash: first.contentHash })
+    expect(createMock).toHaveBeenCalledTimes(2)
   })
 
   it('re-runs the model call when the page content hash has changed', async () => {
@@ -117,7 +122,8 @@ describe('extractCandidateEventsFromSource', () => {
 
     const result = await extractCandidateEventsFromSource('https://example.com/events', null, 'a-completely-different-hash')
 
-    expect(createMock).toHaveBeenCalledTimes(1)
+    // 2: the extraction call, plus the candidate-validation.js second pass.
+    expect(createMock).toHaveBeenCalledTimes(2)
     expect(result.candidates).toHaveLength(1)
   })
 
@@ -152,7 +158,7 @@ describe('extractCandidateEventsFromSource', () => {
 
     const result = await extractCandidateEventsFromSource('https://example.com/events', null)
 
-    expect(result).toEqual({ candidates: [], contentHash: null })
+    expect(result).toEqual({ candidates: [], rejectedCandidates: [], contentHash: null })
     expect(fetchWithTimeoutMock).not.toHaveBeenCalled()
   })
 
@@ -162,7 +168,7 @@ describe('extractCandidateEventsFromSource', () => {
 
     const result = await extractCandidateEventsFromSource('https://example.com/events', null)
 
-    expect(result).toEqual({ candidates: [], contentHash: null })
+    expect(result).toEqual({ candidates: [], rejectedCandidates: [], contentHash: null })
     expect(createMock).not.toHaveBeenCalled()
   })
 
@@ -173,7 +179,7 @@ describe('extractCandidateEventsFromSource', () => {
 
     const result = await extractCandidateEventsFromSource('https://example.com/events', null)
 
-    expect(result).toEqual({ candidates: [], contentHash: null })
+    expect(result).toEqual({ candidates: [], rejectedCandidates: [], contentHash: null })
   })
 
   it('returns nothing when the model refuses', async () => {
@@ -183,6 +189,6 @@ describe('extractCandidateEventsFromSource', () => {
 
     const result = await extractCandidateEventsFromSource('https://example.com/events', null)
 
-    expect(result).toEqual({ candidates: [], contentHash: null })
+    expect(result).toEqual({ candidates: [], rejectedCandidates: [], contentHash: null })
   })
 })

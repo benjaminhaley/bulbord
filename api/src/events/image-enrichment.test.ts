@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const extractPageImageCandidatesMock = vi.fn()
 const fetchExternalImageMock = vi.fn()
 const isLowQualityImageMock = vi.fn()
+const scoreImageRelevanceMock = vi.fn()
 const uploadImageMock = vi.fn()
 const searchWebImageMock = vi.fn()
 const updateMock = vi.fn()
@@ -18,6 +19,7 @@ const dbQueryResults: Record<string, unknown>[][] = []
 vi.mock('../uploads/extract-page-image.js', () => ({ extractPageImageCandidates: extractPageImageCandidatesMock }))
 vi.mock('../uploads/fetch-external-image.js', () => ({ fetchExternalImage: fetchExternalImageMock }))
 vi.mock('../uploads/image-quality.js', () => ({ isLowQualityImage: isLowQualityImageMock }))
+vi.mock('../uploads/image-relevance.js', () => ({ scoreImageRelevance: scoreImageRelevanceMock }))
 vi.mock('../uploads/storage.js', () => ({ imageUrl: (key: string) => `/uploads/${key}`, uploadImage: uploadImageMock }))
 vi.mock('../uploads/web-image-search.js', () => ({ searchWebImage: searchWebImageMock }))
 vi.mock('../db/client.js', () => ({
@@ -36,6 +38,7 @@ describe('enrichEventImage', () => {
     extractPageImageCandidatesMock.mockReset().mockResolvedValue([])
     fetchExternalImageMock.mockReset()
     isLowQualityImageMock.mockReset()
+    scoreImageRelevanceMock.mockReset().mockResolvedValue({ keep: true, reason: null })
     uploadImageMock.mockReset().mockResolvedValue({ key: 'events/final.jpg', thumbnailKey: 'events/final-thumb.jpg' })
     searchWebImageMock.mockReset().mockResolvedValue([])
     setMock.mockClear()
@@ -56,7 +59,7 @@ describe('enrichEventImage', () => {
 
     const result = await enrichEventImage('event-1', { sourceUrl: 'https://example.com/page', overrideImageUrl: null })
 
-    expect(result).toBe('sourced')
+    expect(result.result).toBe('sourced')
     expect(fetchExternalImageMock).toHaveBeenNthCalledWith(1, 'https://example.com/logo.png')
     expect(fetchExternalImageMock).toHaveBeenNthCalledWith(2, 'https://example.com/real-photo.jpg')
     expect(isLowQualityImageMock).toHaveBeenNthCalledWith(1, Buffer.from('logo-bytes'), { isLogo: true })
@@ -75,7 +78,7 @@ describe('enrichEventImage', () => {
       overrideImageUrl: 'https://wikipedia.org/poster.jpg',
     })
 
-    expect(result).toBe('sourced')
+    expect(result.result).toBe('sourced')
     expect(fetchExternalImageMock).toHaveBeenCalledTimes(1)
     expect(fetchExternalImageMock).toHaveBeenCalledWith('https://wikipedia.org/poster.jpg')
   })
@@ -91,7 +94,7 @@ describe('enrichEventImage', () => {
 
     const result = await enrichEventImage('event-1', { sourceUrl: 'https://example.com/page', overrideImageUrl: null })
 
-    expect(result).toBe('none')
+    expect(result.result).toBe('none')
     expect(uploadImageMock).not.toHaveBeenCalled()
   })
 
@@ -100,7 +103,7 @@ describe('enrichEventImage', () => {
 
     const result = await enrichEventImage('event-1', { sourceUrl: null, overrideImageUrl: null })
 
-    expect(result).toBe('none')
+    expect(result.result).toBe('none')
     expect(extractPageImageCandidatesMock).not.toHaveBeenCalled()
     expect(searchWebImageMock).not.toHaveBeenCalled()
   })
@@ -119,7 +122,7 @@ describe('enrichEventImage', () => {
       description: 'A curriculum night for K-2 families.',
     })
 
-    expect(result).toBe('sourced')
+    expect(result.result).toBe('sourced')
     expect(searchWebImageMock).toHaveBeenCalledWith('Grades K-2 Curriculum Night', 'A curriculum night for K-2 families.')
     expect(fetchExternalImageMock).toHaveBeenLastCalledWith('https://upload.wikimedia.org/found.jpg')
     expect(uploadImageMock).toHaveBeenCalledWith(Buffer.from('found-bytes'), 'events')
@@ -141,7 +144,7 @@ describe('enrichEventImage', () => {
       title: 'A Craft Series September: Jeanius',
     })
 
-    expect(result).toBe('sourced')
+    expect(result.result).toBe('sourced')
     expect(extractPageImageCandidatesMock).not.toHaveBeenCalled()
     expect(fetchExternalImageMock).toHaveBeenCalledTimes(1)
     expect(fetchExternalImageMock).toHaveBeenCalledWith('https://upload.wikimedia.org/found.jpg')
@@ -164,7 +167,7 @@ describe('enrichEventImage', () => {
       title: 'Nettelhorst French Market',
     })
 
-    expect(result).toBe('sourced')
+    expect(result.result).toBe('sourced')
     expect(extractPageImageCandidatesMock).toHaveBeenCalledWith('https://example.com/weekly-market')
     expect(fetchExternalImageMock).toHaveBeenCalledWith('https://example.com/market-photo.jpg')
   })
@@ -181,7 +184,7 @@ describe('enrichEventImage', () => {
       title: 'Some Event',
     })
 
-    expect(result).toBe('sourced')
+    expect(result.result).toBe('sourced')
     expect(extractPageImageCandidatesMock).not.toHaveBeenCalled()
     expect(fetchExternalImageMock).toHaveBeenCalledWith('https://wikipedia.org/poster.jpg')
   })
@@ -206,7 +209,7 @@ describe('enrichEventImage', () => {
       title: 'Craft Supply Swap',
     })
 
-    expect(result).toBe('sourced')
+    expect(result.result).toBe('sourced')
     // The claimed candidate was never even downloaded — skipped by URL alone.
     expect(fetchExternalImageMock).not.toHaveBeenCalledWith('https://example.com/cpl-logo.png')
     expect(fetchExternalImageMock).toHaveBeenCalledWith('https://upload.wikimedia.org/found.jpg')
@@ -223,13 +226,55 @@ describe('enrichEventImage', () => {
     expect(setMock).toHaveBeenCalledWith(expect.objectContaining({ sourceImageUrl: 'https://example.com/real-photo.jpg' }))
   })
 
+  it('skips a page-extracted candidate that fails the content-relevance score, and falls back to web search', async () => {
+    // Feedback #158: a real, well-formed, correctly-sized photo of the
+    // wrong thing (a hosting org's own generic branding photo) used to
+    // sail straight through the old dimension/aspect-ratio-only gate.
+    extractPageImageCandidatesMock.mockResolvedValue([{ url: 'https://example.com/generic-branding.jpg', isLogo: false }])
+    fetchExternalImageMock.mockResolvedValueOnce(Buffer.from('branding-bytes')).mockResolvedValueOnce(Buffer.from('found-bytes'))
+    isLowQualityImageMock.mockResolvedValue(false)
+    scoreImageRelevanceMock.mockResolvedValueOnce({ keep: false, reason: 'generic branding photo' }).mockResolvedValueOnce({ keep: true, reason: 'matches' })
+    searchWebImageMock.mockResolvedValue(['https://upload.wikimedia.org/found.jpg'])
+    const { enrichEventImage } = await import('./image-enrichment.js')
+
+    const result = await enrichEventImage('event-1', {
+      sourceUrl: 'https://example.com/page',
+      overrideImageUrl: null,
+      title: 'Virtual Leadership Training Info Session',
+      description: 'Online info session about a sustainability leadership program.',
+    })
+
+    expect(result.result).toBe('sourced')
+    expect(scoreImageRelevanceMock).toHaveBeenNthCalledWith(1, Buffer.from('branding-bytes'), {
+      title: 'Virtual Leadership Training Info Session',
+      description: 'Online info session about a sustainability leadership program.',
+    })
+    expect(uploadImageMock).toHaveBeenCalledWith(Buffer.from('found-bytes'), 'events')
+  })
+
+  it('does not content-score a site-logo fallback candidate', async () => {
+    extractPageImageCandidatesMock.mockResolvedValue([{ url: 'https://example.com/logo.png', isLogo: true }])
+    fetchExternalImageMock.mockResolvedValueOnce(Buffer.from('logo-bytes'))
+    isLowQualityImageMock.mockResolvedValueOnce(false)
+    const { enrichEventImage } = await import('./image-enrichment.js')
+
+    const result = await enrichEventImage('event-1', {
+      sourceUrl: 'https://example.com/page',
+      overrideImageUrl: null,
+      title: 'Some Event',
+    })
+
+    expect(result.result).toBe('sourced')
+    expect(scoreImageRelevanceMock).not.toHaveBeenCalled()
+  })
+
   it('never calls the web image search fallback when no title is given', async () => {
     extractPageImageCandidatesMock.mockResolvedValue([])
     const { enrichEventImage } = await import('./image-enrichment.js')
 
     const result = await enrichEventImage('event-1', { sourceUrl: 'https://example.com/page', overrideImageUrl: null })
 
-    expect(result).toBe('none')
+    expect(result.result).toBe('none')
     expect(searchWebImageMock).not.toHaveBeenCalled()
   })
 })

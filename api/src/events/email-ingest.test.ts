@@ -47,19 +47,22 @@ describe('extractCandidateEventsFromEmail', () => {
 
     const result = await extractCandidateEventsFromEmail('This weekend', 'Fall Festival, Oct 4, 10am', 'mailto:newsletter@example.org')
 
-    expect(result).toEqual([
-      {
-        title: 'Fall Festival',
-        description: undefined,
-        startDate: '2099-10-04',
-        startTime: '10:00',
-        allDay: false,
-        address: '3635 N Clark St, Chicago',
-        locationName: 'Gallagher Way',
-        sourceUrl: 'mailto:newsletter@example.org',
-        status: 'approved',
-      },
-    ])
+    expect(result).toEqual({
+      candidates: [
+        {
+          title: 'Fall Festival',
+          description: undefined,
+          startDate: '2099-10-04',
+          startTime: '10:00',
+          allDay: false,
+          address: '3635 N Clark St, Chicago',
+          locationName: 'Gallagher Way',
+          sourceUrl: 'mailto:newsletter@example.org',
+          status: 'approved',
+        },
+      ],
+      rejectedCandidates: [],
+    })
     expect(createMock).toHaveBeenCalledWith(
       expect.objectContaining({
         model: 'claude-opus-5',
@@ -74,7 +77,7 @@ describe('extractCandidateEventsFromEmail', () => {
 
     const result = await extractCandidateEventsFromEmail('subject', 'body', 'mailto:x@example.org')
 
-    expect(result).toEqual([])
+    expect(result).toEqual({ candidates: [], rejectedCandidates: [] })
   })
 
   it('strips a markdown code fence around the JSON response', async () => {
@@ -85,8 +88,8 @@ describe('extractCandidateEventsFromEmail', () => {
 
     const result = await extractCandidateEventsFromEmail('subject', 'body', 'mailto:x@example.org')
 
-    expect(result).toHaveLength(1)
-    expect(result[0].title).toBe('Fenced Event')
+    expect(result.candidates).toHaveLength(1)
+    expect(result.candidates[0].title).toBe('Fenced Event')
   })
 
   it('returns an empty array when the body is empty or whitespace-only', async () => {
@@ -94,7 +97,7 @@ describe('extractCandidateEventsFromEmail', () => {
 
     const result = await extractCandidateEventsFromEmail('subject', '   ', 'mailto:x@example.org')
 
-    expect(result).toEqual([])
+    expect(result).toEqual({ candidates: [], rejectedCandidates: [] })
     expect(createMock).not.toHaveBeenCalled()
   })
 
@@ -104,7 +107,7 @@ describe('extractCandidateEventsFromEmail', () => {
 
     const result = await extractCandidateEventsFromEmail('subject', 'real body text', 'mailto:x@example.org')
 
-    expect(result).toEqual([])
+    expect(result).toEqual({ candidates: [], rejectedCandidates: [] })
     expect(createMock).not.toHaveBeenCalled()
   })
 
@@ -114,7 +117,7 @@ describe('extractCandidateEventsFromEmail', () => {
 
     const result = await extractCandidateEventsFromEmail('subject', 'body', 'mailto:x@example.org')
 
-    expect(result).toEqual([])
+    expect(result).toEqual({ candidates: [], rejectedCandidates: [] })
   })
 
   it('returns nothing when the model refuses', async () => {
@@ -123,7 +126,7 @@ describe('extractCandidateEventsFromEmail', () => {
 
     const result = await extractCandidateEventsFromEmail('subject', 'body', 'mailto:x@example.org')
 
-    expect(result).toEqual([])
+    expect(result).toEqual({ candidates: [], rejectedCandidates: [] })
   })
 
   it('extracts multiple distinct events from one digest-style email', async () => {
@@ -139,7 +142,7 @@ describe('extractCandidateEventsFromEmail', () => {
 
     const result = await extractCandidateEventsFromEmail('subject', 'body', 'mailto:x@example.org')
 
-    expect(result.map((c) => c.title)).toEqual(['Event A', 'Event B'])
+    expect(result.candidates.map((c) => c.title)).toEqual(['Event A', 'Event B'])
   })
 })
 

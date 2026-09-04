@@ -35,14 +35,27 @@ export interface CandidateEvent {
 export interface IngestOptions {
   sourceId: string
   actor: string // e.g. 'claude:manual-sourcing', 'system:daily-job'
+  // Candidates the caller's own second-pass relevance check
+  // (candidate-validation.ts) already dropped BEFORE calling ingestEvents —
+  // passed through purely so this function's one events_log write covers
+  // the whole pipeline's reasoning for a run, not just what made it as far
+  // as ingestEvents. See the 2026-09-04 debuggability note below.
+  filteredOut?: { title: string; reason: string }[]
 }
 
 // Reusable by any trigger — a manual sourcing pass today, a future daily job,
 // or a future per-source scraper. Upserts on (title, start_date, source_url).
-export async function ingestEvents(candidates: CandidateEvent[], { sourceId, actor }: IngestOptions) {
+export async function ingestEvents(candidates: CandidateEvent[], { sourceId, actor, filteredOut = [] }: IngestOptions) {
   let inserted = 0
   let skipped = 0
   const toEnrich: { id: string; sourceUrl: string; imageUrl?: string | null; title: string; description?: string }[] = []
+  // Debuggability, added 2026-09-04 directly in response to Ben asking
+  // whether this pipeline records enough to figure out after the fact why a
+  // bad event/image got through — before this, a skip only ever incremented
+  // a counter, with the actual title and which of the two dedup checks
+  // caught it gone the instant `continue` ran. Recorded here and logged
+  // below in the same events_ingested row as everything else this run did.
+  const duplicateSkips: { title: string; reason: 'exact_match' | 'likely_duplicate' }[] = []
 
   for (const candidate of candidates) {
     // Simplified once and reused for both the dedup lookup and the insert
@@ -64,6 +77,7 @@ export async function ingestEvents(candidates: CandidateEvent[], { sourceId, act
 
     if (existing.length > 0) {
       skipped++
+      duplicateSkips.push({ title, reason: 'exact_match' })
       continue
     }
 
@@ -82,6 +96,7 @@ export async function ingestEvents(candidates: CandidateEvent[], { sourceId, act
     const likelyDuplicate = findLikelyDuplicateEvent({ title, address: candidate.address }, sameDayEvents)
     if (likelyDuplicate) {
       skipped++
+      duplicateSkips.push({ title, reason: 'likely_duplicate' })
       continue
     }
 
@@ -124,12 +139,30 @@ export async function ingestEvents(candidates: CandidateEvent[], { sourceId, act
     toEnrich.push({ id: row.id, sourceUrl: candidate.sourceUrl, imageUrl, title, description: candidate.description })
   }
 
-  const { sourced, none } = await enrichEventImages(toEnrich)
+  const { sourced, none, traces } = await enrichEventImages(toEnrich)
 
   await db.insert(eventsLog).values({
     actor,
     action: 'events_ingested',
-    metadata: { candidateCount: candidates.length, inserted, skipped, sourceId, imagesSourced: sourced, imagesMissing: none },
+    metadata: {
+      candidateCount: candidates.length,
+      inserted,
+      skipped,
+      sourceId,
+      imagesSourced: sourced,
+      imagesMissing: none,
+      // Full per-candidate/per-image reasoning for this run — see
+      // IngestOptions.filteredOut, duplicateSkips above, and
+      // image-enrichment.ts's ImageCandidateTrace for what each covers and
+      // why they exist. Only image traces with at least one rejected
+      // candidate are worth a human's attention, but every trace is kept
+      // (not just the "interesting" ones) so a future "why did THIS image
+      // get picked over the alternatives" question about an
+      // apparently-fine event can still be answered too.
+      filteredOut,
+      duplicateSkips,
+      imageTraces: traces,
+    },
   })
 
   return { inserted, skipped }

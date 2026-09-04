@@ -6,6 +6,7 @@ import { db } from '../db/client.js'
 import { todayInChicago } from '../dates.js'
 import { eventSources } from '../db/schema.js'
 import { resendClient } from '../newsletter/mailer.js'
+import { filterFamilyRelevantCandidates } from './candidate-validation.js'
 import { AUDIENCE_RELEVANCE_RULES } from './extraction-filters.js'
 import { ingestEvents, type CandidateEvent } from './ingest.js'
 
@@ -69,12 +70,16 @@ function toCandidateEvent(raw: ExtractedEvent, sourceUrl: string): CandidateEven
 // Best-effort like resourcing.ts's own extractor: no ANTHROPIC_API_KEY, a
 // refusal, or malformed model output all degrade to "found nothing" rather
 // than throwing, so one bad email can't fail the whole webhook.
-export async function extractCandidateEventsFromEmail(subject: string, bodyText: string, sourceUrl: string): Promise<CandidateEvent[]> {
+export async function extractCandidateEventsFromEmail(
+  subject: string,
+  bodyText: string,
+  sourceUrl: string,
+): Promise<{ candidates: CandidateEvent[]; rejectedCandidates: { title: string; reason: string }[] }> {
   const anthropic = getAnthropicClient()
-  if (!anthropic) return []
+  if (!anthropic) return { candidates: [], rejectedCandidates: [] }
 
   const trimmedBody = bodyText.trim().slice(0, MAX_EMAIL_TEXT_CHARS)
-  if (!trimmedBody) return []
+  if (!trimmedBody) return { candidates: [], rejectedCandidates: [] }
 
   try {
     const message = await anthropic.messages.create({
@@ -85,19 +90,21 @@ export async function extractCandidateEventsFromEmail(subject: string, bodyText:
       messages: [{ role: 'user', content: JSON.stringify({ today: todayInChicago(), subject, body_text: trimmedBody }) }],
     })
 
-    if (message.stop_reason === 'refusal') return []
+    if (message.stop_reason === 'refusal') return { candidates: [], rejectedCandidates: [] }
     const block = message.content.find((b) => b.type === 'text')
     const raw = block?.type === 'text' ? block.text.trim() : ''
-    if (!raw) return []
+    if (!raw) return { candidates: [], rejectedCandidates: [] }
 
     const parsed = JSON.parse(stripJsonCodeFence(raw))
-    if (!Array.isArray(parsed)) return []
+    if (!Array.isArray(parsed)) return { candidates: [], rejectedCandidates: [] }
 
-    return parsed
+    const rawCandidates = parsed
       .map((item) => toCandidateEvent(item as ExtractedEvent, sourceUrl))
       .filter((c): c is CandidateEvent => c !== null)
+    const { kept: candidates, rejected: rejectedCandidates } = await filterFamilyRelevantCandidates(rawCandidates)
+    return { candidates, rejectedCandidates }
   } catch {
-    return []
+    return { candidates: [], rejectedCandidates: [] }
   }
 }
 
@@ -161,8 +168,8 @@ export async function processInboundEmail(params: {
 }): Promise<InboundEmailResult> {
   const source = await findOrCreateEmailSource(params.fromAddress, params.fromName)
   const bodyText = extractBodyText(params.text, params.html)
-  const candidates = await extractCandidateEventsFromEmail(params.subject, bodyText, source.url)
-  const { inserted, skipped } = await ingestEvents(candidates, { sourceId: source.id, actor: 'system:inbound-email' })
+  const { candidates, rejectedCandidates } = await extractCandidateEventsFromEmail(params.subject, bodyText, source.url)
+  const { inserted, skipped } = await ingestEvents(candidates, { sourceId: source.id, actor: 'system:inbound-email', filteredOut: rejectedCandidates })
   await db.update(eventSources).set({ lastCheckedAt: new Date() }).where(eq(eventSources.id, source.id))
   return { fromAddress: params.fromAddress, subject: params.subject, added: inserted, skipped }
 }

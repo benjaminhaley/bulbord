@@ -8,6 +8,7 @@ import { db } from '../db/client.js'
 import { todayInChicago } from '../dates.js'
 import { eventSources, eventsLog } from '../db/schema.js'
 import { fetchWithTimeout } from '../uploads/fetch-with-timeout.js'
+import { filterFamilyRelevantCandidates } from './candidate-validation.js'
 import { AUDIENCE_RELEVANCE_RULES } from './extraction-filters.js'
 import { ingestEvents, type CandidateEvent } from './ingest.js'
 
@@ -67,6 +68,12 @@ function toCandidateEvent(raw: ExtractedEvent, sourceUrl: string): CandidateEven
 
 export interface ExtractionResult {
   candidates: CandidateEvent[]
+  // Candidates the second-pass validator (candidate-validation.ts) already
+  // dropped, with its own stated reason — carried on this result so the
+  // caller can log them into ingestEvents()'s own events_ingested row
+  // rather than them vanishing the moment filterFamilyRelevantCandidates
+  // filters them out. See ingest.ts's IngestOptions.filteredOut.
+  rejectedCandidates: { title: string; reason: string }[]
   // The hash of the page text this result is based on, to persist on
   // event_sources so the *next* check can skip re-extracting unchanged
   // content — see the schema.ts doc comment on lastContentHash for why
@@ -95,19 +102,19 @@ export async function extractCandidateEventsFromSource(
   previousContentHash: string | null = null,
 ): Promise<ExtractionResult> {
   const anthropic = getAnthropicClient()
-  if (!anthropic) return { candidates: [], contentHash: null }
+  if (!anthropic) return { candidates: [], rejectedCandidates: [], contentHash: null }
 
   const response = await fetchWithTimeout(sourceUrl, FETCH_TIMEOUT_MS)
-  if (!response || !response.ok) return { candidates: [], contentHash: null }
+  if (!response || !response.ok) return { candidates: [], rejectedCandidates: [], contentHash: null }
   const contentType = response.headers.get('content-type') ?? ''
-  if (!contentType.includes('html')) return { candidates: [], contentHash: null }
+  if (!contentType.includes('html')) return { candidates: [], rejectedCandidates: [], contentHash: null }
 
   try {
     const html = await response.text()
     const $ = cheerio.load(html)
     $('script, style, nav, footer, noscript').remove()
     const pageText = $('body').text().replace(/\s+/g, ' ').trim().slice(0, MAX_PAGE_TEXT_CHARS)
-    if (!pageText) return { candidates: [], contentHash: null }
+    if (!pageText) return { candidates: [], rejectedCandidates: [], contentHash: null }
 
     const contentHash = hashPageText(pageText)
     // The real fix for the 2026-09-03 duplicate-events incident: this
@@ -117,7 +124,7 @@ export async function extractCandidateEventsFromSource(
     // rather than a clean skip. Not calling the LLM at all when nothing
     // has changed is the only robust guarantee.
     if (previousContentHash && contentHash === previousContentHash) {
-      return { candidates: [], contentHash }
+      return { candidates: [], rejectedCandidates: [], contentHash }
     }
 
     const message = await anthropic.messages.create({
@@ -133,20 +140,21 @@ export async function extractCandidateEventsFromSource(
       ],
     })
 
-    if (message.stop_reason === 'refusal') return { candidates: [], contentHash: null }
+    if (message.stop_reason === 'refusal') return { candidates: [], rejectedCandidates: [], contentHash: null }
     const block = message.content.find((b) => b.type === 'text')
     const raw = block?.type === 'text' ? block.text.trim() : ''
-    if (!raw) return { candidates: [], contentHash: null }
+    if (!raw) return { candidates: [], rejectedCandidates: [], contentHash: null }
 
     const parsed = JSON.parse(stripJsonCodeFence(raw))
-    if (!Array.isArray(parsed)) return { candidates: [], contentHash: null }
+    if (!Array.isArray(parsed)) return { candidates: [], rejectedCandidates: [], contentHash: null }
 
-    const candidates = parsed
+    const rawCandidates = parsed
       .map((item) => toCandidateEvent(item as ExtractedEvent, sourceUrl))
       .filter((c): c is CandidateEvent => c !== null)
-    return { candidates, contentHash }
+    const { kept: candidates, rejected: rejectedCandidates } = await filterFamilyRelevantCandidates(rawCandidates)
+    return { candidates, rejectedCandidates, contentHash }
   } catch {
-    return { candidates: [], contentHash: null }
+    return { candidates: [], rejectedCandidates: [], contentHash: null }
   }
 }
 
@@ -196,12 +204,12 @@ export async function resourceActiveEventSources(actor: string): Promise<Resourc
       const i = index++
       const source = sources[i]
       try {
-        const { candidates, contentHash } = await extractCandidateEventsFromSource(
+        const { candidates, rejectedCandidates, contentHash } = await extractCandidateEventsFromSource(
           source.url,
           source.notes,
           source.lastContentHash,
         )
-        const { inserted, skipped } = await ingestEvents(candidates, { sourceId: source.id, actor })
+        const { inserted, skipped } = await ingestEvents(candidates, { sourceId: source.id, actor, filteredOut: rejectedCandidates })
         await db
           .update(eventSources)
           .set({ lastCheckedAt: new Date(), ...(contentHash ? { lastContentHash: contentHash } : {}) })
