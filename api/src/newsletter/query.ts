@@ -2,6 +2,7 @@ import { and, asc, eq, getTableColumns, isNull, sql } from 'drizzle-orm'
 
 import { db } from '../db/client.js'
 import { events, eventInterests, users } from '../db/schema.js'
+import { prioritizeNewsletterEvents, type WeeklyEventCandidate } from './prioritize.js'
 
 interface InterestedPerson {
   id: string
@@ -36,10 +37,9 @@ export interface WeeklyEvent {
 // one query result is rendered once per recipient, so the "You" swap
 // happens per-recipient at render time instead (see format.ts).
 // A week with a lot of activity could otherwise produce an unbounded, very
-// long email — cap it at the soonest 10 events (the ordering below is by
-// date/time, so this is "the next 10," not an arbitrary slice).
-const MAX_NEWSLETTER_EVENTS = 10
-
+// long email — capped at 10 (prioritize.ts's MAX_NEWSLETTER_EVENTS) after
+// the non-recurring/recurring prioritization below, not by a plain SQL
+// LIMIT on chronological order.
 export async function getWeeklyEvents(fromDate: string, toDate: string): Promise<WeeklyEvent[]> {
   const conditions = [
     eq(events.status, 'approved'),
@@ -62,6 +62,24 @@ export async function getWeeklyEvents(fromDate: string, toDate: string): Promise
       .where(and(...conditions)),
   )
 
+  // How many total (all-time, approved, non-deleted) rows share this same
+  // series key — not scoped to [fromDate, toDate], deliberately: a weekly
+  // series only ever has one occurrence inside any single week, so counting
+  // within the newsletter's own window can't tell a recurring series apart
+  // from a genuine one-time event. A series with more than one occurrence
+  // anywhere (past or future) is "recurring" for feedback #143's purposes.
+  const seriesCounts = db.$with('series_counts').as(
+    db
+      .select({
+        title: events.title,
+        seriesKey: sql`coalesce(${events.sourceUrl}, ${events.id}::text)`.as('series_key'),
+        occurrenceCount: sql<number>`count(*)::int`.as('occurrence_count'),
+      })
+      .from(events)
+      .where(and(eq(events.status, 'approved'), isNull(events.deletedAt)))
+      .groupBy(events.title, sql`coalesce(${events.sourceUrl}, ${events.id}::text)`),
+  )
+
   const interestCounts = db.$with('interest_counts').as(
     db
       .select({
@@ -79,8 +97,8 @@ export async function getWeeklyEvents(fromDate: string, toDate: string): Promise
       .groupBy(eventInterests.eventId),
   )
 
-  return db
-    .with(nextOccurrence, interestCounts)
+  const candidates: WeeklyEventCandidate[] = await db
+    .with(nextOccurrence, interestCounts, seriesCounts)
     .select({
       id: nextOccurrence.id,
       title: nextOccurrence.title,
@@ -94,10 +112,19 @@ export async function getWeeklyEvents(fromDate: string, toDate: string): Promise
       thumbnailUrl: nextOccurrence.thumbnailUrl,
       interestedCount: sql<number>`coalesce(${interestCounts.interestedCount}, 0)`,
       interestedNames: sql<InterestedPerson[]>`coalesce(${interestCounts.interestedNames}, '[]'::json)`,
+      isRecurring: sql<boolean>`coalesce(${seriesCounts.occurrenceCount}, 1) > 1`,
     })
     .from(nextOccurrence)
     .leftJoin(interestCounts, eq(interestCounts.eventId, nextOccurrence.id))
+    .leftJoin(
+      seriesCounts,
+      and(
+        eq(seriesCounts.title, nextOccurrence.title),
+        eq(seriesCounts.seriesKey, sql`coalesce(${nextOccurrence.sourceUrl}, ${nextOccurrence.id}::text)`),
+      ),
+    )
     .where(eq(nextOccurrence.rn, 1))
     .orderBy(asc(nextOccurrence.startDate), asc(nextOccurrence.sortTime), asc(nextOccurrence.id))
-    .limit(MAX_NEWSLETTER_EVENTS)
+
+  return prioritizeNewsletterEvents(candidates)
 }

@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm'
+import { and, eq, isNull, ne } from 'drizzle-orm'
 
 import { db } from '../db/client.js'
 import { events } from '../db/schema.js'
@@ -8,13 +8,36 @@ import { isLowQualityImage } from '../uploads/image-quality.js'
 import { imageUrl, uploadImage } from '../uploads/storage.js'
 import { searchWebImage } from '../uploads/web-image-search.js'
 
+// A real, found incident (feedback #146/#150/#153, 2026-09-04): 8 different,
+// unrelated events sourced from the same generic "upcoming events" listing
+// page (northalsted.com/upcoming/) all ended up with the exact same og:image
+// — byte-identical, confirmed by hash — because extractPageImageCandidates()
+// fetches that one shared page regardless of which specific event is asking,
+// so every event gets the *page's* own generic hero image, not anything
+// specific to it. In this case that image was also inappropriate for a
+// family app. A page-extracted content-image candidate (og:image, JSON-LD,
+// best plain <img>) can only ever represent one specific thing; if this
+// event's own source_url is already shared by another, differently-titled
+// event, that candidate is definitionally not this event's own photo, no
+// matter how well it scores on the existing size/aspect-ratio quality gate.
+async function isSharedListingPage(sourceUrl: string, eventId: string): Promise<boolean> {
+  const [other] = await db
+    .select({ id: events.id })
+    .from(events)
+    .where(and(eq(events.sourceUrl, sourceUrl), ne(events.id, eventId), isNull(events.deletedAt)))
+    .limit(1)
+  return other !== undefined
+}
+
 // Tries every candidate image in priority order — a manually-vetted
 // overrideImageUrl first (a subject-specific lookup like
 // movie-poster-lookup.ts, or a hand-verified URL for a source extraction
-// can't reach; see CandidateEvent.imageUrl in ingest.ts), then whatever
-// extractPageImageCandidates finds on the source page (og:image, JSON-LD,
-// WordPress featured image, best plain <img>, site logo), then — feedback
-// #139, "the pipeline should assess image quality... find a better one"
+// can't reach; see CandidateEvent.imageUrl in ingest.ts), then — unless
+// source_url turns out to be a shared listing page another event already
+// points at (see isSharedListingPage above) — whatever extractPageImageCandidates
+// finds on the source page (og:image, JSON-LD, WordPress featured image, best
+// plain <img>, site logo), then — feedback #139, "the pipeline should assess
+// image quality... find a better one"
 // rather than settling for a flat placeholder the moment page-extraction
 // comes up empty — a generic web image search keyed off the event's own
 // title/description (see web-image-search.ts). Every candidate is downloaded
@@ -35,9 +58,10 @@ export async function enrichEventImage(
     description,
   }: { sourceUrl: string | null; overrideImageUrl?: string | null; title?: string; description?: string | null },
 ): Promise<'sourced' | 'none'> {
+  const sharedListingPage = sourceUrl ? await isSharedListingPage(sourceUrl, eventId) : false
   const pageCandidates = [
     ...(overrideImageUrl ? [{ url: overrideImageUrl, isLogo: false }] : []),
-    ...(sourceUrl ? await extractPageImageCandidates(sourceUrl) : []),
+    ...(sourceUrl && !sharedListingPage ? await extractPageImageCandidates(sourceUrl) : []),
   ]
 
   for (const candidate of pageCandidates) {
