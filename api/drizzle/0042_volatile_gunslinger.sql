@@ -1,0 +1,1 @@
+ALTER TABLE "event_sources" ADD COLUMN "last_content_hash" text;

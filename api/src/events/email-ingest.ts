@@ -78,9 +78,6 @@ export async function extractCandidateEventsFromEmail(subject: string, bodyText:
     const message = await anthropic.messages.create({
       model: 'claude-opus-5',
       max_tokens: 4000,
-      // Same reasoning as resourcing.ts's extraction call — a webhook retry
-      // re-processing the same email should extract the same events.
-      temperature: 0,
       output_config: { effort: 'medium' },
       system: SYSTEM_PROMPT,
       messages: [{ role: 'user', content: JSON.stringify({ today: todayInChicago(), subject, body_text: trimmedBody }) }],

@@ -295,6 +295,13 @@
       "when": 1788464997710,
       "tag": "0041_drop_connection_notify_column",
       "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1788476670702,
+      "tag": "0042_volatile_gunslinger",
+      "breakpoints": true
     }
   ]
 }

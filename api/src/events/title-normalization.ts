@@ -31,12 +31,6 @@ export async function simplifyTitle(input: {
       // whatever partial text came back. 120 gives real headroom without
       // meaningfully increasing cost for what's still a short-output task.
       max_tokens: 120,
-      // Same reasoning as resourcing.ts's extraction call: re-simplifying
-      // the same input (a source re-checked on an unchanged page) should
-      // produce the same output every time, so ingestEvents()'s dedup
-      // actually catches it instead of inserting a near-duplicate with a
-      // slightly different title.
-      temperature: 0,
       output_config: { effort: 'low' },
       system: SYSTEM_PROMPT,
       messages: [

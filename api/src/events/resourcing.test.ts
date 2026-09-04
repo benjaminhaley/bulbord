@@ -38,7 +38,7 @@ describe('extractCandidateEventsFromSource', () => {
     vi.resetModules()
   })
 
-  it('returns candidate events parsed from a successful model call', async () => {
+  it('returns candidate events and a content hash from a successful model call', async () => {
     fetchWithTimeoutMock.mockResolvedValue(htmlResponse('<body>Family Movie Night, Aug 10, 6pm</body>'))
     createMock.mockResolvedValue(
       textResponse(
@@ -57,7 +57,7 @@ describe('extractCandidateEventsFromSource', () => {
 
     const result = await extractCandidateEventsFromSource('https://example.com/events', 'only the family series')
 
-    expect(result).toEqual([
+    expect(result.candidates).toEqual([
       {
         title: 'Family Movie Night',
         description: undefined,
@@ -70,10 +70,10 @@ describe('extractCandidateEventsFromSource', () => {
         status: 'approved',
       },
     ])
+    expect(result.contentHash).toMatch(/^[0-9a-f]{64}$/)
     expect(createMock).toHaveBeenCalledWith(
       expect.objectContaining({
         model: 'claude-opus-5',
-        temperature: 0,
         messages: [
           expect.objectContaining({
             content: expect.stringContaining('"source_notes":"only the family series"'),
@@ -81,6 +81,44 @@ describe('extractCandidateEventsFromSource', () => {
         ],
       }),
     )
+  })
+
+  // The real fix for the 2026-09-03 duplicate-events incident (see
+  // CLAUDE.md's Events data model & sourcing section): this model has no
+  // temperature/top_p knob, so a second extraction over the identical page
+  // text is not safe to run at all — it reliably produces near-duplicate
+  // titles instead of a clean "nothing new" skip. Verified this fails
+  // against the pre-fix code (the LLM call would fire a second time) before
+  // landing the fix, same "verify the guard is real" discipline as this
+  // codebase's other regression tests.
+  it('skips the model call entirely when the page content hash matches the previous check', async () => {
+    const html = '<body>Family Movie Night, Aug 10, 6pm</body>'
+    fetchWithTimeoutMock.mockResolvedValue(htmlResponse(html))
+    createMock.mockResolvedValue(
+      textResponse(JSON.stringify([{ title: 'Family Movie Night', start_date: '2099-08-10', all_day: true }])),
+    )
+    const { extractCandidateEventsFromSource } = await import('./resourcing.js')
+
+    const first = await extractCandidateEventsFromSource('https://example.com/events', null)
+    expect(createMock).toHaveBeenCalledTimes(1)
+
+    const second = await extractCandidateEventsFromSource('https://example.com/events', null, first.contentHash)
+
+    expect(second).toEqual({ candidates: [], contentHash: first.contentHash })
+    expect(createMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('re-runs the model call when the page content hash has changed', async () => {
+    fetchWithTimeoutMock.mockResolvedValue(htmlResponse('<body>Updated event listing</body>'))
+    createMock.mockResolvedValue(
+      textResponse(JSON.stringify([{ title: 'New Event', start_date: '2099-08-10', all_day: true }])),
+    )
+    const { extractCandidateEventsFromSource } = await import('./resourcing.js')
+
+    const result = await extractCandidateEventsFromSource('https://example.com/events', null, 'a-completely-different-hash')
+
+    expect(createMock).toHaveBeenCalledTimes(1)
+    expect(result.candidates).toHaveLength(1)
   })
 
   it('filters out events the model returned in the past', async () => {
@@ -92,7 +130,7 @@ describe('extractCandidateEventsFromSource', () => {
 
     const result = await extractCandidateEventsFromSource('https://example.com/events', null)
 
-    expect(result).toEqual([])
+    expect(result.candidates).toEqual([])
   })
 
   it('strips a markdown code fence around the JSON response', async () => {
@@ -104,8 +142,8 @@ describe('extractCandidateEventsFromSource', () => {
 
     const result = await extractCandidateEventsFromSource('https://example.com/events', null)
 
-    expect(result).toHaveLength(1)
-    expect(result[0].title).toBe('Fenced Event')
+    expect(result.candidates).toHaveLength(1)
+    expect(result.candidates[0].title).toBe('Fenced Event')
   })
 
   it('returns nothing when no API key is configured', async () => {
@@ -114,7 +152,7 @@ describe('extractCandidateEventsFromSource', () => {
 
     const result = await extractCandidateEventsFromSource('https://example.com/events', null)
 
-    expect(result).toEqual([])
+    expect(result).toEqual({ candidates: [], contentHash: null })
     expect(fetchWithTimeoutMock).not.toHaveBeenCalled()
   })
 
@@ -124,18 +162,18 @@ describe('extractCandidateEventsFromSource', () => {
 
     const result = await extractCandidateEventsFromSource('https://example.com/events', null)
 
-    expect(result).toEqual([])
+    expect(result).toEqual({ candidates: [], contentHash: null })
     expect(createMock).not.toHaveBeenCalled()
   })
 
-  it('returns nothing when the response is not valid JSON', async () => {
+  it('returns nothing (and no hash to persist) when the response is not valid JSON', async () => {
     fetchWithTimeoutMock.mockResolvedValue(htmlResponse('<body>Event</body>'))
     createMock.mockResolvedValue(textResponse('not json'))
     const { extractCandidateEventsFromSource } = await import('./resourcing.js')
 
     const result = await extractCandidateEventsFromSource('https://example.com/events', null)
 
-    expect(result).toEqual([])
+    expect(result).toEqual({ candidates: [], contentHash: null })
   })
 
   it('returns nothing when the model refuses', async () => {
@@ -145,6 +183,6 @@ describe('extractCandidateEventsFromSource', () => {
 
     const result = await extractCandidateEventsFromSource('https://example.com/events', null)
 
-    expect(result).toEqual([])
+    expect(result).toEqual({ candidates: [], contentHash: null })
   })
 })

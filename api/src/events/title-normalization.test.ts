@@ -33,7 +33,6 @@ describe('simplifyTitle', () => {
     expect(createMock).toHaveBeenCalledWith(
       expect.objectContaining({
         model: 'claude-opus-5',
-        temperature: 0,
         messages: [
           expect.objectContaining({
             role: 'user',

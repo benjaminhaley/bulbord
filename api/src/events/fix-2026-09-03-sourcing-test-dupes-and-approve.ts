@@ -13,11 +13,10 @@ import { events, eventsLog } from '../db/schema.js'
 // already happened) — 134 from the first run, 21 more from the second,
 // which should have all deduped against the first run's rows but didn't,
 // because extractCandidateEventsFromSource()/simplifyTitle() aren't fully
-// deterministic between calls (see the temperature:0 + max_tokens-guard fix
-// landed alongside this script) — a second call over the same unchanged
-// page text produced slightly different titles for the same real event
-// ("No School: PD Day" vs "No School: Professional Development Day", or
-// worse, a genuinely truncated fragment like "N"/"No"/"Nettel" from
+// deterministic between calls — a second call over the same unchanged page
+// text produced slightly different titles for the same real event ("No
+// School: PD Day" vs "No School: Professional Development Day", or worse,
+// a genuinely truncated fragment like "N"/"No"/"Nettel" from
 // simplifyTitle() silently trusting a max_tokens-cut response).
 //
 // Each pair below was confirmed by hand: same source, same start_date,

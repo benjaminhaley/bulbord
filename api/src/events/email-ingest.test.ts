@@ -63,7 +63,6 @@ describe('extractCandidateEventsFromEmail', () => {
     expect(createMock).toHaveBeenCalledWith(
       expect.objectContaining({
         model: 'claude-opus-5',
-        temperature: 0,
         messages: [expect.objectContaining({ content: expect.stringContaining('"subject":"This weekend"') })],
       }),
     )

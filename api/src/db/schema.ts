@@ -14,6 +14,18 @@ export const eventSources = pgTable('event_sources', {
   type: text('type').notNull(), // 'generic_search' | 'website' | 'facebook_group' | 'email' | ...
   isActive: boolean('is_active').notNull().default(true),
   lastCheckedAt: timestamp('last_checked_at', { withTimezone: true }),
+  // A hash of the page's cleaned text as of the last successful extraction
+  // (2026-09-03) — lets resourcing.ts skip re-running extraction entirely
+  // when a source's page hasn't changed since the last check. This isn't
+  // an efficiency nicety: this model doesn't support `temperature`/`top_p`
+  // (confirmed via a real 400 from the API — both are "deprecated for this
+  // model"), so there's no sampling-control knob to make a re-extraction
+  // of unchanged content reliably produce the same output. Real, repeated
+  // testing showed the same unchanged page re-extracted minutes apart
+  // reliably produces near-duplicate titles for the same events — the
+  // only robust fix is to not re-run extraction at all when nothing on
+  // the page has changed.
+  lastContentHash: text('last_content_hash'),
   notes: text('notes'),
   ...timestamps,
 })

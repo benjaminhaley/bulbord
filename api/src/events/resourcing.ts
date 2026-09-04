@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto'
+
 import * as cheerio from 'cheerio'
 import { and, desc, eq, isNull, sql } from 'drizzle-orm'
 
@@ -61,6 +63,24 @@ function toCandidateEvent(raw: ExtractedEvent, sourceUrl: string): CandidateEven
   }
 }
 
+export interface ExtractionResult {
+  candidates: CandidateEvent[]
+  // The hash of the page text this result is based on, to persist on
+  // event_sources so the *next* check can skip re-extracting unchanged
+  // content — see the schema.ts doc comment on lastContentHash for why
+  // this exists (no sampling-control parameter is available on this model
+  // to make repeat extraction deterministic instead). `null` means this
+  // call didn't reach a trustworthy outcome (fetch/parse failure, no API
+  // key) — the caller should leave the source's stored hash untouched so
+  // the next run retries properly rather than wrongly "remembering" a
+  // failed attempt as if it were a real check of that content.
+  contentHash: string | null
+}
+
+function hashPageText(pageText: string): string {
+  return createHash('sha256').update(pageText).digest('hex')
+}
+
 // Fetches a known source's page and asks Claude to pull out any real,
 // upcoming, dated events from its visible text. Best-effort like
 // image-enrichment.ts/title-normalization.ts: any failure (unreachable page,
@@ -70,32 +90,37 @@ function toCandidateEvent(raw: ExtractedEvent, sourceUrl: string): CandidateEven
 export async function extractCandidateEventsFromSource(
   sourceUrl: string,
   notes: string | null,
-): Promise<CandidateEvent[]> {
+  previousContentHash: string | null = null,
+): Promise<ExtractionResult> {
   const anthropic = getAnthropicClient()
-  if (!anthropic) return []
+  if (!anthropic) return { candidates: [], contentHash: null }
 
   const response = await fetchWithTimeout(sourceUrl, FETCH_TIMEOUT_MS)
-  if (!response || !response.ok) return []
+  if (!response || !response.ok) return { candidates: [], contentHash: null }
   const contentType = response.headers.get('content-type') ?? ''
-  if (!contentType.includes('html')) return []
+  if (!contentType.includes('html')) return { candidates: [], contentHash: null }
 
   try {
     const html = await response.text()
     const $ = cheerio.load(html)
     $('script, style, nav, footer, noscript').remove()
     const pageText = $('body').text().replace(/\s+/g, ' ').trim().slice(0, MAX_PAGE_TEXT_CHARS)
-    if (!pageText) return []
+    if (!pageText) return { candidates: [], contentHash: null }
+
+    const contentHash = hashPageText(pageText)
+    // The real fix for the 2026-09-03 duplicate-events incident: this
+    // model has no temperature/top_p knob, so re-running extraction over
+    // page text we've already successfully processed is not safe — it
+    // reliably produces near-duplicate titles for the same real events
+    // rather than a clean skip. Not calling the LLM at all when nothing
+    // has changed is the only robust guarantee.
+    if (previousContentHash && contentHash === previousContentHash) {
+      return { candidates: [], contentHash }
+    }
 
     const message = await anthropic.messages.create({
       model: 'claude-opus-5',
       max_tokens: 4000,
-      // Re-running this against an unchanged page (a routine weekly cron
-      // re-check, or two manual runs in quick succession — see the
-      // 2026-09-03 duplicate-events incident) should extract the same
-      // events every time; temperature: 0 minimizes run-to-run sampling
-      // variance so ingestEvents()'s exact-string dedup actually matches on
-      // a re-scrape instead of drifting into near-duplicate titles.
-      temperature: 0,
       output_config: { effort: 'medium' },
       system: SYSTEM_PROMPT,
       messages: [
@@ -106,19 +131,20 @@ export async function extractCandidateEventsFromSource(
       ],
     })
 
-    if (message.stop_reason === 'refusal') return []
+    if (message.stop_reason === 'refusal') return { candidates: [], contentHash: null }
     const block = message.content.find((b) => b.type === 'text')
     const raw = block?.type === 'text' ? block.text.trim() : ''
-    if (!raw) return []
+    if (!raw) return { candidates: [], contentHash: null }
 
     const parsed = JSON.parse(stripJsonCodeFence(raw))
-    if (!Array.isArray(parsed)) return []
+    if (!Array.isArray(parsed)) return { candidates: [], contentHash: null }
 
-    return parsed
+    const candidates = parsed
       .map((item) => toCandidateEvent(item as ExtractedEvent, sourceUrl))
       .filter((c): c is CandidateEvent => c !== null)
+    return { candidates, contentHash }
   } catch {
-    return []
+    return { candidates: [], contentHash: null }
   }
 }
 
@@ -168,9 +194,16 @@ export async function resourceActiveEventSources(actor: string): Promise<Resourc
       const i = index++
       const source = sources[i]
       try {
-        const candidates = await extractCandidateEventsFromSource(source.url, source.notes)
+        const { candidates, contentHash } = await extractCandidateEventsFromSource(
+          source.url,
+          source.notes,
+          source.lastContentHash,
+        )
         const { inserted, skipped } = await ingestEvents(candidates, { sourceId: source.id, actor })
-        await db.update(eventSources).set({ lastCheckedAt: new Date() }).where(eq(eventSources.id, source.id))
+        await db
+          .update(eventSources)
+          .set({ lastCheckedAt: new Date(), ...(contentHash ? { lastContentHash: contentHash } : {}) })
+          .where(eq(eventSources.id, source.id))
         results[i] = { sourceId: source.id, name: source.name, added: inserted, skipped }
       } catch (err) {
         results[i] = {
