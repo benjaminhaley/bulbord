@@ -6,6 +6,7 @@ import { db } from '../db/client.js'
 import { todayInChicago } from '../dates.js'
 import { eventSources } from '../db/schema.js'
 import { resendClient } from '../newsletter/mailer.js'
+import { AUDIENCE_RELEVANCE_RULES } from './extraction-filters.js'
 import { ingestEvents, type CandidateEvent } from './ingest.js'
 
 // Feedback #115 (2026-09-03), "how do I add these email based events... I'd
@@ -33,6 +34,7 @@ Rules:
 - If the email lists several distinct events (e.g. a newsletter digest), include each as its own entry.
 - Ignore forwarding boilerplate, footers, unsubscribe links, and signature blocks — they're never real events.
 - If you can't confidently identify any real, dated, upcoming events in this email, return an empty array — never invent one.
+${AUDIENCE_RELEVANCE_RULES}
 
 Respond with ONLY a JSON array, no markdown fences, no explanation. Each element:
 {"title": string, "description"?: string, "start_date": string, "start_time"?: string, "all_day": boolean, "address"?: string, "location_name"?: string}`

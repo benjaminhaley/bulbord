@@ -1,8 +1,9 @@
-import { and, eq } from 'drizzle-orm'
+import { and, eq, isNull } from 'drizzle-orm'
 
 import { db } from '../db/client.js'
 import { events, eventsLog } from '../db/schema.js'
 import { uploadPlaceholderImage } from '../uploads/placeholder.js'
+import { findLikelyDuplicateEvent } from './duplicate-detection.js'
 import { enrichEventImages } from './image-enrichment.js'
 import { lookupMoviePoster } from './movie-poster-lookup.js'
 import { simplifyTitle } from './title-normalization.js'
@@ -41,7 +42,7 @@ export interface IngestOptions {
 export async function ingestEvents(candidates: CandidateEvent[], { sourceId, actor }: IngestOptions) {
   let inserted = 0
   let skipped = 0
-  const toEnrich: { id: string; sourceUrl: string; imageUrl?: string | null }[] = []
+  const toEnrich: { id: string; sourceUrl: string; imageUrl?: string | null; title: string; description?: string }[] = []
 
   for (const candidate of candidates) {
     // Simplified once and reused for both the dedup lookup and the insert
@@ -62,6 +63,24 @@ export async function ingestEvents(candidates: CandidateEvent[], { sourceId, act
       .limit(1)
 
     if (existing.length > 0) {
+      skipped++
+      continue
+    }
+
+    // Feedback #137: the exact-match check above only catches a source
+    // re-scraping its own already-ingested page. A second, fuzzier check —
+    // across every approved event on the same date regardless of which
+    // source it came from — catches the real cross-source shape this
+    // feedback flagged (a generic chamber-calendar scrape re-describing an
+    // event a dedicated source already carries under a fuller name). See
+    // duplicate-detection.ts's own header for why this is a substring check
+    // on squashed titles, address-aware, rather than a word-overlap ratio.
+    const sameDayEvents = await db
+      .select({ id: events.id, title: events.title, address: events.address })
+      .from(events)
+      .where(and(eq(events.startDate, candidate.startDate), isNull(events.deletedAt)))
+    const likelyDuplicate = findLikelyDuplicateEvent({ title, address: candidate.address }, sameDayEvents)
+    if (likelyDuplicate) {
       skipped++
       continue
     }
@@ -102,7 +121,7 @@ export async function ingestEvents(candidates: CandidateEvent[], { sourceId, act
     const movieMatch = candidate.imageUrl ? null : title.match(MOVIE_NIGHT_TITLE_PATTERN)
     const imageUrl = candidate.imageUrl ?? (movieMatch ? await lookupMoviePoster(movieMatch[1]) : null)
 
-    toEnrich.push({ id: row.id, sourceUrl: candidate.sourceUrl, imageUrl })
+    toEnrich.push({ id: row.id, sourceUrl: candidate.sourceUrl, imageUrl, title, description: candidate.description })
   }
 
   const { sourced, none } = await enrichEventImages(toEnrich)

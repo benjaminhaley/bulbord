@@ -8,6 +8,7 @@ import { db } from '../db/client.js'
 import { todayInChicago } from '../dates.js'
 import { eventSources, eventsLog } from '../db/schema.js'
 import { fetchWithTimeout } from '../uploads/fetch-with-timeout.js'
+import { AUDIENCE_RELEVANCE_RULES } from './extraction-filters.js'
 import { ingestEvents, type CandidateEvent } from './ingest.js'
 
 const FETCH_TIMEOUT_MS = 10_000
@@ -27,6 +28,7 @@ Rules:
 - location_name is an optional human-friendly venue name (not a street address) when the page names one; address is an optional street address.
 - If a recurring series lists multiple future occurrences, include each occurrence as its own entry with its own date.
 - If you can't confidently identify any real, dated, upcoming events on this page, return an empty array — never invent one.
+${AUDIENCE_RELEVANCE_RULES}
 
 Respond with ONLY a JSON array, no markdown fences, no explanation. Each element:
 {"title": string, "description"?: string, "start_date": string, "start_time"?: string, "all_day": boolean, "address"?: string, "location_name"?: string}`

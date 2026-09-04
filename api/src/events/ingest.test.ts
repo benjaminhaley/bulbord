@@ -1,7 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const insertCalls: Record<string, unknown>[] = []
+// Consumed by the exact-match dedup query, which always terminates with
+// .limit(1).
 const selectResults: Record<string, unknown>[][] = []
+// Consumed by the fuzzy same-day duplicate query, which is awaited directly
+// off .where() with no .limit() call. Defaults to an empty array (no
+// same-day events found) when nothing is queued, so existing tests that
+// never touch this queue keep passing unchanged.
+const sameDayResults: Record<string, unknown>[][] = []
 const uploadPlaceholderImageMock = vi.fn()
 const simplifyTitleMock = vi.fn()
 const lookupMoviePosterMock = vi.fn()
@@ -12,8 +19,13 @@ vi.mock('../db/client.js', () => {
   Object.assign(builder, {
     select: () => builder,
     from: () => builder,
-    where: () => builder,
-    limit: () => Promise.resolve(selectResults.shift() ?? []),
+    where: () => ({
+      limit: () => Promise.resolve(selectResults.shift() ?? []),
+      // Makes the object returned by .where() itself awaitable, for the
+      // fuzzy dedup query that never calls .limit().
+      then: (resolve: (value: unknown) => void, reject?: (reason: unknown) => void) =>
+        Promise.resolve(sameDayResults.shift() ?? []).then(resolve, reject),
+    }),
     insert: () => ({
       values: (row: Record<string, unknown>) => {
         insertCalls.push(row)
@@ -40,6 +52,7 @@ describe('ingestEvents', () => {
   beforeEach(() => {
     insertCalls.length = 0
     selectResults.length = 0
+    sameDayResults.length = 0
     uploadPlaceholderImageMock.mockReset().mockResolvedValue({
       imageUrl: '/uploads/events/placeholder.png',
       thumbnailUrl: '/uploads/events/placeholder-thumb.jpg',
@@ -87,6 +100,20 @@ describe('ingestEvents', () => {
     // entry — no event row (and so no placeholder) was ever created.
     expect(insertCalls).toHaveLength(1)
     expect(insertCalls[0]).toEqual(expect.objectContaining({ action: 'events_ingested' }))
+  })
+
+  it('skips a candidate that fuzzy-matches an already-approved event on the same date from a different source', async () => {
+    selectResults.push([]) // no exact title+startDate+sourceUrl match
+    sameDayResults.push([{ id: 'existing-market', title: 'Low-Line Market at Southport', address: 'Southport Ave & Newport Ave' }])
+    const { ingestEvents } = await import('./ingest.js')
+
+    const result = await ingestEvents(
+      [{ ...CANDIDATE, title: 'Lowline Market' }],
+      { sourceId: 'source-1', actor: 'test' },
+    )
+
+    expect(result).toEqual({ inserted: 0, skipped: 1 })
+    expect(uploadPlaceholderImageMock).not.toHaveBeenCalled()
   })
 
   it('still hands the inserted row to enrichEventImages, which can upgrade the placeholder to a real photo', async () => {
