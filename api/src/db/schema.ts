@@ -61,6 +61,18 @@ export const events = pgTable('events', {
   // null. Reverses the 2026-07-31 decision that left it nullable.
   imageUrl: text('image_url').notNull(),
   thumbnailUrl: text('thumbnail_url').notNull(),
+  // The external URL of whichever candidate image actually won (before it
+  // was downloaded and re-hosted as imageUrl above) — null for a generated
+  // placeholder. Added 2026-09-04 after a real incident: several different
+  // BiblioCommons event pages (each with its own distinct source_url) all
+  // fell back to the exact same site logo image when neither had a real
+  // photo of its own — a case image-enrichment.ts's URL-equality-based
+  // isSharedListingPage() check can't catch, since the *pages* genuinely
+  // differ even though the *resolved image* doesn't. This column lets a
+  // future enrichment call check "has this exact external image already
+  // been claimed by a different-titled event" directly, without needing to
+  // re-download and hash every other event's already-uploaded copy.
+  sourceImageUrl: text('source_image_url'),
   status: text('status').notNull().default('pending'), // 'pending' | 'approved' | 'rejected'
   submittedByUserId: uuid('submitted_by_user_id'),
   approvedByUserId: uuid('approved_by_user_id'),

@@ -302,6 +302,13 @@
       "when": 1788476670702,
       "tag": "0042_volatile_gunslinger",
       "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1788545675812,
+      "tag": "0043_add_events_source_image_url",
+      "breakpoints": true
     }
   ]
 }
