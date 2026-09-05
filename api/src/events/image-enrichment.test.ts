@@ -333,3 +333,46 @@ describe('enrichEventImage', () => {
     expect(searchWebImageMock).not.toHaveBeenCalled()
   })
 })
+
+// findCandidateEventImage (feedback #133) runs the exact same candidate
+// search as enrichEventImage above, just for an event that doesn't exist
+// yet — these tests focus on what's different (no DB write, a real
+// eventId is never involved) rather than re-covering every candidate-
+// priority case the enrichEventImage suite above already exercises.
+describe('findCandidateEventImage', () => {
+  it('returns the uploaded URLs for a found candidate, without writing to the DB', async () => {
+    extractPageImageCandidatesMock.mockResolvedValue([{ url: 'https://example.com/real-photo.jpg', isLogo: false }])
+    fetchExternalImageMock.mockResolvedValue(Buffer.from('real-photo-bytes'))
+    isLowQualityImageMock.mockResolvedValue(false)
+    const { findCandidateEventImage } = await import('./image-enrichment.js')
+
+    const result = await findCandidateEventImage({ sourceUrl: 'https://example.com/page', title: 'Fall Festival' })
+
+    expect(result).toEqual({ imageUrl: '/uploads/events/final.jpg', thumbnailUrl: '/uploads/events/final-thumb.jpg' })
+    expect(setMock).not.toHaveBeenCalled()
+  })
+
+  it('returns null when nothing passes any tier', async () => {
+    extractPageImageCandidatesMock.mockResolvedValue([])
+    const { findCandidateEventImage } = await import('./image-enrichment.js')
+
+    const result = await findCandidateEventImage({ sourceUrl: null, title: 'A made-up event' })
+
+    expect(result).toBeNull()
+  })
+
+  it('never treats a not-yet-created event as already claiming its own image', async () => {
+    // dbQueryResults defaults to "no sibling row found" for every select —
+    // simulating a real self-match here would be the bug this guards
+    // against (a random eventId should never coincidentally match a real
+    // row), so this just confirms the ordinary "not claimed" path is taken.
+    extractPageImageCandidatesMock.mockResolvedValue([{ url: 'https://example.com/photo.jpg', isLogo: false }])
+    fetchExternalImageMock.mockResolvedValue(Buffer.from('photo-bytes'))
+    isLowQualityImageMock.mockResolvedValue(false)
+    const { findCandidateEventImage } = await import('./image-enrichment.js')
+
+    const result = await findCandidateEventImage({ sourceUrl: 'https://example.com/page', title: 'Fall Festival' })
+
+    expect(result).not.toBeNull()
+  })
+})

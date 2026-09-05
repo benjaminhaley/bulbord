@@ -12,5 +12,9 @@ export function useEventImageUpload(initial: UploadedImage | null = null) {
   const [image, setImage] = useState<UploadedImage | null>(initial)
   const { fileInputRef, uploading, attach } = useImageUpload('events', setImage)
 
-  return { image, fileInputRef, uploading, attach, remove: () => setImage(null) }
+  // Exposed directly (not just remove()) so a caller can apply an image
+  // found some other way than the file picker — e.g. EventForm's own
+  // imageSuggestion prop (feedback #133's description-flow photo search),
+  // which resolves after mount and isn't a file attach at all.
+  return { image, fileInputRef, uploading, attach, remove: () => setImage(null), setImage }
 }

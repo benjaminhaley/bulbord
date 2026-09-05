@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto'
+
 import { and, eq, isNull, ne } from 'drizzle-orm'
 
 import { db } from '../db/client.js'
@@ -8,6 +10,7 @@ import { scoreImageRelevance } from '../uploads/image-relevance.js'
 import { isLowQualityImage } from '../uploads/image-quality.js'
 import { imageUrl, uploadImage } from '../uploads/storage.js'
 import { searchWebImage } from '../uploads/web-image-search.js'
+import { SEARCH_STAGE_DEADLINE_MS, withDeadline } from './extraction-shared.js'
 
 // A real, found incident (feedback #146/#150/#153, 2026-09-04): 8 different,
 // unrelated events sourced from the same generic "upcoming events" listing
@@ -133,15 +136,37 @@ export interface ImageEnrichmentResult {
   trace: ImageCandidateTrace[]
 }
 
-export async function enrichEventImage(
+interface ImageSearchOptions {
+  sourceUrl: string | null
+  overrideImageUrl?: string | null
+  title?: string
+  description?: string | null
+}
+
+interface ChosenCandidate {
+  key: string
+  thumbnailKey: string
+  sourceImageUrl: string
+}
+
+// The core "try every real candidate in priority order, download it,
+// quality/relevance-check it, upload the first that passes" search —
+// extracted out of enrichEventImage (which additionally writes the result
+// onto an existing events row) so the same real search can also run for an
+// event that doesn't exist yet (see findCandidateEventImage below, feedback
+// #133: a member reviewing a description-flow post should see a real photo
+// — or a clear "still looking"/"none found" state — before they ever tap
+// Post, not just an invisible server-side mutation afterward).
+//
+// `eventId` is used only for the isAlreadyClaimedImage/isSharedListingPage
+// self-exclusion checks below — a not-yet-created event passes a fresh
+// random id that can never match a real row, so those checks behave
+// identically either way (there's no "self" row to exclude from, since one
+// doesn't exist yet).
+async function findImageCandidate(
   eventId: string,
-  {
-    sourceUrl,
-    overrideImageUrl,
-    title,
-    description,
-  }: { sourceUrl: string | null; overrideImageUrl?: string | null; title?: string; description?: string | null },
-): Promise<ImageEnrichmentResult> {
+  { sourceUrl, overrideImageUrl, title, description }: ImageSearchOptions,
+): Promise<{ chosen: ChosenCandidate | null; trace: ImageCandidateTrace[] }> {
   const trace: ImageCandidateTrace[] = []
   const sharedListingPage = sourceUrl && title ? await isSharedListingPage(sourceUrl, eventId, title) : false
   if (sharedListingPage && sourceUrl) {
@@ -159,7 +184,7 @@ export async function enrichEventImage(
   // and uploading+returning on the first that passes every gate. Shared by
   // all three tiers below so the priority ordering between them is just the
   // order these calls happen in, not three copies of the same loop body.
-  async function tryCandidates(candidates: { url: string; isLogo: boolean }[]): Promise<ImageEnrichmentResult | null> {
+  async function tryCandidates(candidates: { url: string; isLogo: boolean }[]): Promise<ChosenCandidate | null> {
     for (const candidate of candidates) {
       if (title && (await isAlreadyClaimedImage(candidate.url, eventId, title))) {
         trace.push({ url: candidate.url, outcome: 'already_claimed' })
@@ -183,32 +208,68 @@ export async function enrichEventImage(
       }
 
       const { key, thumbnailKey } = await uploadImage(downloaded, 'events')
-      // Non-null: uploadImage() always returns a real key, so imageUrl()
-      // (only ever null for a falsy key) can't actually be null here.
-      await db
-        .update(events)
-        .set({ imageUrl: imageUrl(key)!, thumbnailUrl: imageUrl(thumbnailKey)!, sourceImageUrl: candidate.url, updatedAt: new Date() })
-        .where(eq(events.id, eventId))
-
       trace.push({ url: candidate.url, outcome: 'chosen' })
-      return { result: 'sourced', trace }
+      return { key, thumbnailKey, sourceImageUrl: candidate.url }
     }
     return null
   }
 
   const fromContent = await tryCandidates(contentCandidates)
-  if (fromContent) return fromContent
+  if (fromContent) return { chosen: fromContent, trace }
 
   if (title) {
     const webCandidates = (await searchWebImage(title, description)).map((url) => ({ url, isLogo: false }))
     const fromWeb = await tryCandidates(webCandidates)
-    if (fromWeb) return fromWeb
+    if (fromWeb) return { chosen: fromWeb, trace }
   }
 
   const fromLogo = await tryCandidates(logoCandidates)
-  if (fromLogo) return fromLogo
+  if (fromLogo) return { chosen: fromLogo, trace }
 
-  return { result: 'none', trace }
+  return { chosen: null, trace }
+}
+
+export async function enrichEventImage(eventId: string, options: ImageSearchOptions): Promise<ImageEnrichmentResult> {
+  const { chosen, trace } = await findImageCandidate(eventId, options)
+  if (!chosen) return { result: 'none', trace }
+
+  // Non-null: uploadImage() always returns a real key, so imageUrl() (only
+  // ever null for a falsy key) can't actually be null here.
+  await db
+    .update(events)
+    .set({
+      imageUrl: imageUrl(chosen.key)!,
+      thumbnailUrl: imageUrl(chosen.thumbnailKey)!,
+      sourceImageUrl: chosen.sourceImageUrl,
+      updatedAt: new Date(),
+    })
+    .where(eq(events.id, eventId))
+
+  return { result: 'sourced', trace }
+}
+
+// A real, uploaded (but not yet attached to any row) candidate image for an
+// event that doesn't exist yet — feedback #133's own review-before-post
+// flow: a member describing an event should see the same real photo search
+// a sourced/scraped event already gets, before they ever tap Post, not
+// find out afterward (or never) that nothing was attached. Bounded by the
+// same generous deadline as the description flow's own web-search stage —
+// this can walk through several candidates (page extraction, then a web
+// image search, then a logo fallback), each involving a download and
+// possibly a Claude vision call, so it's slower than a simple field
+// extraction but still needs a hard ceiling rather than risking an
+// unbounded hang on a live HTTP request. Returns null (not found, or timed
+// out) rather than throwing — same best-effort posture as every other
+// Claude-backed step in this pipeline; the caller (POST /events) already
+// has its own background enrichEventImage fallback for exactly this case.
+export async function findCandidateEventImage(options: ImageSearchOptions): Promise<{ imageUrl: string; thumbnailUrl: string } | null> {
+  return withDeadline(findCandidateEventImageInner(options), null, SEARCH_STAGE_DEADLINE_MS)
+}
+
+async function findCandidateEventImageInner(options: ImageSearchOptions): Promise<{ imageUrl: string; thumbnailUrl: string } | null> {
+  const { chosen } = await findImageCandidate(randomUUID(), options)
+  if (!chosen) return null
+  return { imageUrl: imageUrl(chosen.key)!, thumbnailUrl: imageUrl(chosen.thumbnailKey)! }
 }
 
 const ENRICH_CONCURRENCY = 5

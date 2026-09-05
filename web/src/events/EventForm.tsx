@@ -108,6 +108,7 @@ export function EventForm({
   onSubmit,
   onCancel,
   fieldSuggestions,
+  imageSuggestion,
   hidePhotoAttach,
 }: {
   initial?: EventFormInitialValues
@@ -116,6 +117,14 @@ export function EventForm({
   onSubmit: (input: EventInput) => Promise<void>
   onCancel: () => void
   fieldSuggestions?: EventFieldSuggestions | null
+  // Same late-arriving-suggestion mechanism as fieldSuggestions above, but
+  // for a real photo the description flow's own stage 3 found (feedback
+  // #133, 2026-09-05) — a separate prop rather than folded into
+  // EventFieldSuggestions since an image is a genuinely different shape
+  // (an UploadedImage object tied to useEventImageUpload's own state, not
+  // a plain string an IonInput owns). Only applied if the member hasn't
+  // already attached their own photo.
+  imageSuggestion?: UploadedImage | null
   // True when the caller (AddEventModal.tsx) already shows the attached
   // photo prominently pinned at the top of the screen — avoids showing the
   // same photo a second time via this form's own attach/thumbnail section.
@@ -133,9 +142,14 @@ export function EventForm({
   const [topic, setTopic] = useState(initial?.topic ?? '')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const { image, fileInputRef, uploading, attach, remove } = useEventImageUpload(
+  const { image, fileInputRef, uploading, attach, remove, setImage } = useEventImageUpload(
     initial?.image_url && initial?.thumbnail_url ? { image_url: initial.image_url, thumbnail_url: initial.thumbnail_url } : null,
   )
+
+  useEffect(() => {
+    if (imageSuggestion && !image) setImage(imageSuggestion)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [imageSuggestion])
 
   useEffect(() => {
     if (!fieldSuggestions) return

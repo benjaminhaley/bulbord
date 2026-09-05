@@ -16,7 +16,7 @@ import { buildEventFilterConditions, parseAfterTimeParam, parseBeforeTimeParam, 
 import { getEventsForWeek } from './week-query.js'
 import { canEditEvent } from './permissions.js'
 import { extractEventFieldsFromDescription, findEventDetailsFromDescription } from './description-extraction.js'
-import { enrichEventImage } from './image-enrichment.js'
+import { enrichEventImage, findCandidateEventImage } from './image-enrichment.js'
 import { extractEventFieldsFromPhoto, findEventSource, type ExtractedEventFields } from './photo-extraction.js'
 import { registerDiscoveredEventSource } from './source-registration.js'
 import {
@@ -203,6 +203,32 @@ export async function eventsRoutes(app: FastifyInstance) {
     }
     const found = await findEventDetailsFromDescription(description, body.fields ?? {})
     return reply.send({ data: found })
+  })
+
+  // Description-to-listing extraction, stage 3 — a real photo search for
+  // the event, run and shown *before* the member ever taps Post (feedback,
+  // 2026-09-05: "I don't see a picture showing up here... make sure it's
+  // indicated [as its own pipeline step]... or make sure it actually pulls
+  // in the picture and it's visible"). A description-flow post has no
+  // photo of its own the way the photo-extraction flow does (the poster
+  // photo itself becomes the event's image), so without this it would
+  // otherwise only ever get the generated placeholder unless the member
+  // manually attached one. Reuses the exact same candidate search a
+  // sourced/scraped event's own image-enrichment pass already runs
+  // (image-enrichment.ts), just without an event row to write the result
+  // onto yet — the found image (if any) is uploaded and its URLs handed
+  // back so the frontend can show it and include it directly in the
+  // POST /events body, same as an attached photo would be. If the member
+  // posts before this resolves (or it finds nothing), POST/PATCH /events'
+  // own background enrichEventImage call is the fallback safety net.
+  app.post('/events/find-event-image', { preHandler: requireAuth }, async (request, reply) => {
+    const body = request.body as { source_url?: string; title?: string; description?: string }
+    const title = body.title?.trim()
+    if (!title) {
+      return reply.code(400).send({ error: { message: 'title is required' } })
+    }
+    const found = await findCandidateEventImage({ sourceUrl: body.source_url?.trim() || null, title, description: body.description })
+    return reply.send({ data: found ? { image_url: found.imageUrl, thumbnail_url: found.thumbnailUrl } : null })
   })
 
   // Member self-service event posting (feedback #46) — goes live immediately,

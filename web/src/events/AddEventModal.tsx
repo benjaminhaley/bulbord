@@ -2,6 +2,7 @@ import { IonButton, IonContent, IonHeader, IonIcon, IonModal, IonSpinner, IonTex
 import { cameraOutline, checkmarkCircle, chatbubbleEllipsesOutline, closeCircleOutline, closeOutline } from 'ionicons/icons'
 import { useRef, useState } from 'react'
 
+import { API_URL } from '../config'
 import { unstyledButtonStyle } from '../theme/layout'
 import type { UploadedImage } from '../uploads/api'
 import { uploadImage } from '../uploads/api'
@@ -10,6 +11,7 @@ import {
   extractEventFieldsFromDescription,
   extractEventFieldsFromPhoto,
   findEventDetailsFromDescription,
+  findEventImage,
   findEventSource,
   updateEvent,
   type DiscoveredEventDetails,
@@ -130,20 +132,27 @@ function toFieldSuggestions({ source_name: _sourceName, ...suggestions }: Discov
   return suggestions
 }
 
-// Which half of the pipeline is showing, and how far each stage has gotten
-// (feedback, 2026-08-23: "it should be pretty clear in the UI that there
-// are two funnel stages... we should know when they're running and when
-// they complete"). Rendered by PipelineStatus below, right under the
-// pinned photo/description, for both the photo flow and the description
-// flow — 'skipped' means stage 2 was never applicable (photo flow only:
-// stage 1 failed, or the poster already had a printed URL so no search was
-// ever needed; the description flow's stage 2 always runs — see
-// handleDescription's own comment).
+// Which half (or third) of the pipeline is showing, and how far each stage
+// has gotten (feedback, 2026-08-23: "it should be pretty clear in the UI
+// that there are two funnel stages... we should know when they're running
+// and when they complete"). Rendered by PipelineStatus below, right under
+// the pinned photo/description, for both the photo flow and the
+// description flow — 'skipped' means a stage was never applicable (photo
+// flow: stage 2 only runs if stage 1 didn't already find a URL/address,
+// and stage 3 never runs at all, since the attached photo itself already
+// is the event's image; the description flow's stage 2 always runs — see
+// handleDescription's own comment — and stage 3, a real photo search, is
+// unique to that flow, feedback #133, 2026-09-05: "make sure it's
+// indicated [as its own step]... or make sure it actually pulls in the
+// picture").
 interface Pipeline {
   active: boolean
   stage1: 'running' | 'ok' | 'failed'
   stage2: 'skipped' | 'running' | 'found' | 'not_found'
+  stage3: 'skipped' | 'running' | 'found' | 'not_found'
 }
+
+const PIPELINE_IDLE: Pipeline = { active: false, stage1: 'running', stage2: 'skipped', stage3: 'skipped' }
 
 function PipelineRow({ running, ok, runningLabel, doneLabel }: { running: boolean; ok: boolean; runningLabel: string; doneLabel: string }) {
   return (
@@ -195,6 +204,14 @@ function PipelineStatus({ pipeline, mode }: { pipeline: Pipeline; mode: PinnedIn
           doneLabel={pipeline.stage2 === 'found' ? 'Found more details online' : 'No additional details found online'}
         />
       )}
+      {pipeline.stage3 !== 'skipped' && (
+        <PipelineRow
+          running={pipeline.stage3 === 'running'}
+          ok={pipeline.stage3 === 'found'}
+          runningLabel="Finding a photo…"
+          doneLabel={pipeline.stage3 === 'found' ? 'Found a photo' : "Couldn't find a photo — we'll keep looking after you post"}
+        />
+      )}
     </div>
   )
 }
@@ -234,7 +251,8 @@ export function AddEventModal({
   const [initialValues, setInitialValues] = useState<EventFormInitialValues | null>(null)
   const [formNote, setFormNote] = useState<string | null>(null)
   const [fieldSuggestions, setFieldSuggestions] = useState<EventFieldSuggestions | null>(null)
-  const [pipeline, setPipeline] = useState<Pipeline>({ active: false, stage1: 'running', stage2: 'skipped' })
+  const [foundImage, setFoundImage] = useState<UploadedImage | null>(null)
+  const [pipeline, setPipeline] = useState<Pipeline>(PIPELINE_IDLE)
 
   // Points at the most recent attempt's session for as long as it's the
   // one on screen — used only to guard live UI updates (setState calls)
@@ -253,7 +271,8 @@ export function AddEventModal({
     setInitialValues(null)
     setFormNote(null)
     setFieldSuggestions(null)
-    setPipeline({ active: false, stage1: 'running', stage2: 'skipped' })
+    setFoundImage(null)
+    setPipeline(PIPELINE_IDLE)
   }
 
   function handleDismiss() {
@@ -314,7 +333,8 @@ export function AddEventModal({
     setInitialValues(null)
     setFormNote(null)
     setFieldSuggestions(null)
-    setPipeline({ active: true, stage1: 'running', stage2: 'skipped' })
+    setFoundImage(null)
+    setPipeline({ active: true, stage1: 'running', stage2: 'skipped', stage3: 'skipped' })
     setStage('form')
 
     let image: UploadedImage
@@ -322,7 +342,7 @@ export function AddEventModal({
       image = await uploadImage(file, 'events')
     } catch {
       if (session.cancelled) return
-      setPipeline({ active: false, stage1: 'running', stage2: 'skipped' })
+      setPipeline(PIPELINE_IDLE)
       setPinned((prev) => {
         if (prev?.kind === 'photo') URL.revokeObjectURL(prev.previewUrl)
         return null
@@ -371,15 +391,22 @@ export function AddEventModal({
     setInitialValues(null)
     setFormNote(null)
     setFieldSuggestions(null)
-    setPipeline({ active: true, stage1: 'running', stage2: 'skipped' })
+    setFoundImage(null)
+    setPipeline({ active: true, stage1: 'running', stage2: 'running', stage3: 'skipped' })
     setStage('form')
 
     // Stage 2 always runs for this flow (see findEventDetailsFromDescription's
     // own comment) and doesn't need stage 1's result to start — it's given
     // the raw description directly and treats any hint as optional — so the
     // two stages fire concurrently rather than stage 2 waiting on stage 1's
-    // (often several-second) round trip first.
-    runStage2(session, findEventDetailsFromDescription(description, {}))
+    // (often several-second) round trip first. searchPromise is consumed
+    // twice below: once by runStage2 (applies field suggestions / patches
+    // an already-posted event) and once directly here (to feed stage 3 the
+    // richest fields available) — a promise can be awaited/then'd more than
+    // once, each getting the same resolved value, so this doesn't re-run
+    // the search.
+    const searchPromise = findEventDetailsFromDescription(description, {})
+    runStage2(session, searchPromise)
 
     let fields: ExtractedEventFields | null = null
     try {
@@ -396,6 +423,42 @@ export function AddEventModal({
         : "Couldn't tell enough about the event from that description — fill in what you can below, we're still searching online for the rest.",
     )
     setPipeline((prev) => ({ ...prev, stage1: fields ? 'ok' : 'failed' }))
+
+    // Stage 3: a real photo search (feedback #133, 2026-09-05 — a
+    // description-flow post has no photo of its own the way an attached
+    // poster photo does, and "the pipeline found more details" shouldn't
+    // silently mean "and also either found or didn't find a photo, with no
+    // indication either way"). Waits for stage 2 so it can search with the
+    // richest fields available — a discovered source_url in particular is
+    // the single most useful signal for finding a real, on-topic photo,
+    // same as a sourced/scraped event's own image-enrichment pass already
+    // gets. Doesn't block Post: if the member submits before this
+    // resolves, POST /events' own background image search (same
+    // enrichEventImage pipeline) is the fallback safety net.
+    setPipeline((prev) => ({ ...prev, stage3: 'running' }))
+    const found = await searchPromise.catch(() => null)
+    if (session.cancelled || session.createdEvent) return
+    const bestTitle = found?.title ?? fields?.title ?? description
+    const bestDescription = found?.description ?? fields?.description ?? null
+    const bestSourceUrl = found?.source_url ?? fields?.source_url ?? null
+
+    let image: UploadedImage | null = null
+    try {
+      image = await findEventImage({ source_url: bestSourceUrl, title: bestTitle, description: bestDescription })
+    } catch {
+      image = null
+    }
+    // Re-checked after the second await: the member may have already
+    // tapped Post while this was searching — in that case, leave the
+    // already-created event alone and let its own background enrichment
+    // (triggered server-side since no image was in the POST body) handle
+    // it, rather than racing a second, independent image search against
+    // the same row.
+    if (session.cancelled || session.createdEvent) return
+    if (activeSessionRef.current === session) {
+      setPipeline((prev) => ({ ...prev, stage3: image ? 'found' : 'not_found' }))
+      if (image) setFoundImage(image)
+    }
   }
 
   async function handleSubmit(input: EventInput) {
@@ -544,59 +607,73 @@ export function AddEventModal({
         )}
         {stage === 'form' && (
           <>
-            {pinned?.kind === 'photo' && (
+            {pinned && (
               // Pinned at the top of the screen for the whole time the
               // member is reviewing/editing (feedback, 2026-08-23: "keep
               // the picture and view at the top of the screen") — sticky,
               // not just first-in-DOM, so it stays visible while scrolling
-              // through the fields below. A solid background is required
-              // for sticky content or text scrolling underneath would show
-              // through.
+              // through the fields below. PipelineStatus lives inside this
+              // SAME sticky element (feedback, 2026-09-05: "the pipeline
+              // is still running [indicator] should remain on top and
+              // should not scroll out of view") — it used to be a
+              // separate, non-sticky element right after this one, which
+              // meant it scrolled away independently the moment the
+              // member scrolled the form beneath it. A solid background is
+              // required for sticky content or text scrolling underneath
+              // would show through.
               <div
                 style={{
                   position: 'sticky',
                   top: 0,
                   zIndex: 1,
                   background: 'var(--ion-background-color, #fff)',
-                  padding: '12px 16px 0',
-                  textAlign: 'center',
                 }}
               >
-                <img
-                  src={pinned.previewUrl}
-                  alt="Your photo"
-                  style={{ maxWidth: '100%', maxHeight: 160, borderRadius: 10, boxShadow: '0 1px 6px rgba(0,0,0,0.15)' }}
-                />
+                {pinned.kind === 'photo' && (
+                  <div style={{ padding: '12px 16px 0', textAlign: 'center' }}>
+                    <img
+                      src={pinned.previewUrl}
+                      alt="Your photo"
+                      style={{ maxWidth: '100%', maxHeight: 160, borderRadius: 10, boxShadow: '0 1px 6px rgba(0,0,0,0.15)' }}
+                    />
+                  </div>
+                )}
+                {pinned.kind === 'description' && (
+                  <div style={{ padding: '12px 16px 0' }}>
+                    <div
+                      style={{
+                        padding: '10px 14px',
+                        borderRadius: 10,
+                        background: 'var(--ion-color-light, #f4f4f4)',
+                        fontStyle: 'italic',
+                        color: 'var(--ion-text-color)',
+                      }}
+                    >
+                      “{pinned.text}”
+                    </div>
+                    {/* The real photo stage 3 found, shown large as the
+                        event's actual picture — not the small 60x60
+                        attach-preview EventForm's own photo section uses
+                        elsewhere (feedback, 2026-09-05: "it shouldn't
+                        appear just as a small attachment, it should appear
+                        as part of the main post... what you see is what
+                        you get"). Same size/style treatment as the photo
+                        flow's own pinned preview above, so a found photo
+                        reads exactly like an attached one would. */}
+                    {foundImage && (
+                      <div style={{ textAlign: 'center', marginTop: 10 }}>
+                        <img
+                          src={`${API_URL}${foundImage.image_url}`}
+                          alt="Photo found for this event"
+                          style={{ maxWidth: '100%', maxHeight: 160, borderRadius: 10, boxShadow: '0 1px 6px rgba(0,0,0,0.15)' }}
+                        />
+                      </div>
+                    )}
+                  </div>
+                )}
+                <PipelineStatus pipeline={pipeline} mode={pinned.kind} />
               </div>
             )}
-            {pinned?.kind === 'description' && (
-              // Same pinned-at-the-top treatment as the photo flow's own
-              // preview, so the member can always see exactly what they
-              // typed while the pipeline works and while they review the
-              // fields it filled in.
-              <div
-                style={{
-                  position: 'sticky',
-                  top: 0,
-                  zIndex: 1,
-                  background: 'var(--ion-background-color, #fff)',
-                  padding: '12px 16px 0',
-                }}
-              >
-                <div
-                  style={{
-                    padding: '10px 14px',
-                    borderRadius: 10,
-                    background: 'var(--ion-color-light, #f4f4f4)',
-                    fontStyle: 'italic',
-                    color: 'var(--ion-text-color)',
-                  }}
-                >
-                  “{pinned.text}”
-                </div>
-              </div>
-            )}
-            <PipelineStatus pipeline={pipeline} mode={pinned?.kind ?? 'photo'} />
             {formNote && (
               <IonText color="medium">
                 <p style={{ fontSize: '0.8125rem', margin: '12px 16px 8px' }}>{formNote}</p>
@@ -608,7 +685,8 @@ export function AddEventModal({
               submitLabel="Post"
               errorMessage="Could not post this event"
               fieldSuggestions={fieldSuggestions}
-              hidePhotoAttach={pinned?.kind === 'photo' && pipeline.active}
+              imageSuggestion={foundImage}
+              hidePhotoAttach={pipeline.active}
               onSubmit={handleSubmit}
               onCancel={handleDismiss}
             />

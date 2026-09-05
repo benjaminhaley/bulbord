@@ -1,5 +1,6 @@
 import { API_URL } from '../config'
 import { authHeaders } from '../auth/token'
+import type { UploadedImage } from '../uploads/api'
 
 export type InterestStatus = 'interested' | 'dismissed'
 
@@ -380,6 +381,36 @@ export async function findEventDetailsFromDescription(
     throw new Error(`Failed to find event details: ${response.status}`)
   }
   const body = (await response.json()) as FindEventDetailsResponse
+  return body.data
+}
+
+interface FindEventImageResponse {
+  data: UploadedImage | null
+}
+
+// Description-to-listing extraction, stage 3 — a real photo search run and
+// shown *before* the member ever taps Post (feedback, 2026-09-05: "make
+// sure it's indicated... or make sure it actually pulls in the picture and
+// it's visible"), rather than only ever happening as an invisible
+// server-side mutation after posting. Returns the same UploadedImage shape
+// a real file attach would, so AddEventModal.tsx can hand it straight to
+// EventForm's imageSuggestion prop — a member who taps Post before this
+// resolves (or when it finds nothing) still gets a real photo via
+// POST/PATCH /events' own background image-enrichment fallback.
+export async function findEventImage(fields: {
+  source_url?: string | null
+  title: string
+  description?: string | null
+}): Promise<UploadedImage | null> {
+  const response = await fetch(`${API_URL}/events/find-event-image`, {
+    method: 'POST',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify(fields),
+  })
+  if (!response.ok) {
+    throw new Error(`Failed to find event image: ${response.status}`)
+  }
+  const body = (await response.json()) as FindEventImageResponse
   return body.data
 }
 
