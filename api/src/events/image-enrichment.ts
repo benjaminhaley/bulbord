@@ -66,31 +66,50 @@ async function isAlreadyClaimedImage(url: string, eventId: string, title: string
 // can't reach; see CandidateEvent.imageUrl in ingest.ts), then — unless
 // source_url turns out to be a shared listing page another differently-
 // titled event already points at (see isSharedListingPage above) — whatever
-// extractPageImageCandidates finds on the source page (og:image, JSON-LD,
-// WordPress featured image, best plain <img>, site logo), then — feedback
-// #139, "the pipeline should assess image quality... find a better one"
-// rather than settling for a flat placeholder the moment page-extraction
-// comes up empty — a generic web image search keyed off the event's own
-// title/description (see web-image-search.ts). Every candidate is downloaded
-// and quality-checked (see image-quality.ts), and cross-checked against
-// isAlreadyClaimedImage (see above), rather than trusted on sight: a
-// highest-priority tag can point at something unusably small (a site's own
-// tiny header badge misconfigured as its og:image) or, even at a passing
-// size, at the same generic fallback another event already has. Since
-// 2026-09-04 (feedback #158), a real content-relevance candidate is also
-// scored against the event's own title/description via
+// extractPageImageCandidates finds on the source page's actual CONTENT
+// (og:image, JSON-LD, WordPress featured image, best plain <img> — NOT the
+// site-logo tier, held back until last; see below), then — feedback #139,
+// "the pipeline should assess image quality... find a better one" rather
+// than settling for a flat placeholder the moment page-extraction comes up
+// empty — a generic web image search keyed off the event's own
+// title/description (see web-image-search.ts), and only THEN, as the
+// genuine last resort, the source page's own site-logo candidate. Every
+// candidate is downloaded and quality-checked (see image-quality.ts), and
+// cross-checked against isAlreadyClaimedImage (see above), rather than
+// trusted on sight: a highest-priority tag can point at something unusably
+// small (a site's own tiny header badge misconfigured as its og:image) or,
+// even at a passing size, at the same generic fallback another event
+// already has. Since 2026-09-04 (feedback #158), a real content-relevance
+// candidate is also scored against the event's own title/description via
 // scoreImageRelevance() (see image-relevance.ts) — the size/aspect-ratio
 // gate above only ever caught a badly-shaped image, never a real,
 // well-formed photo of the WRONG thing (a hosting org's own generic
-// branding photo, an unrelated stock photo). Not applied to a site-logo
-// fallback candidate (isLogo), since that tier exists specifically to show
-// generic org branding as a last resort when nothing more specific was
-// found — scoring it against the event description would reject the very
-// thing it's meant to provide. Returns 'none' when nothing in the whole
-// list passes; the caller (ingest.ts) has already inserted a generated
-// solid-color placeholder to satisfy events.imageUrl's NOT NULL constraint,
-// so 'none' just means that placeholder stays rather than being replaced by
-// a real photo.
+// branding photo, an unrelated stock photo). Not applied to the site-logo
+// candidate, since that tier exists specifically to show generic org
+// branding as a genuine last resort — scoring it against the event
+// description would reject the very thing it's meant to provide.
+//
+// **The logo tier moved to last, 2026-09-05, after a real incident**: it
+// used to sit at the end of the *page-extraction* candidate list, tried
+// immediately once real content candidates were exhausted but BEFORE web
+// search ever ran — so any page with a findable logo (nearly every
+// BiblioCommons/library page has one) would always win over a genuinely
+// better photo web search might have found, since the logo's own loose
+// gate is easy to pass and it's never scored. Re-running enrichment on an
+// event already stuck on a logo just kept re-selecting a logo (sometimes a
+// *different* logo, which looks like progress in a diff but isn't) — this
+// was flagged as a known limitation and left as "not worth a dedicated fix"
+// until it kept recurring and became the actual reason a direct fix report
+// ("Musical Theater Club still just has the building logo") wasn't
+// resolved by simply re-running the existing pipeline. Moving the logo
+// candidate to try dead last — after both real content candidates AND web
+// search have been exhausted — means it only ever wins when nothing better
+// exists anywhere, which is what "last resort" was always supposed to mean.
+//
+// Returns 'none' when nothing in the whole list passes; the caller
+// (ingest.ts) has already inserted a generated solid-color placeholder to
+// satisfy events.imageUrl's NOT NULL constraint, so 'none' just means that
+// placeholder stays rather than being replaced by a real photo.
 // One line per candidate image actually considered, kept regardless of
 // outcome — added 2026-09-04 directly in response to Ben asking whether
 // this pipeline outputs enough information to debug a bad image after the
@@ -128,76 +147,66 @@ export async function enrichEventImage(
   if (sharedListingPage && sourceUrl) {
     trace.push({ url: sourceUrl, outcome: 'shared_listing_page_skipped', reason: 'source_url shared by a differently-titled event' })
   }
-  const pageCandidates = [
+  const extracted = sourceUrl && !sharedListingPage ? await extractPageImageCandidates(sourceUrl) : []
+  const contentCandidates = [
     ...(overrideImageUrl ? [{ url: overrideImageUrl, isLogo: false }] : []),
-    ...(sourceUrl && !sharedListingPage ? await extractPageImageCandidates(sourceUrl) : []),
+    ...extracted.filter((c) => !c.isLogo),
   ]
+  const logoCandidates = extracted.filter((c) => c.isLogo)
 
-  for (const candidate of pageCandidates) {
-    if (title && (await isAlreadyClaimedImage(candidate.url, eventId, title))) {
-      trace.push({ url: candidate.url, outcome: 'already_claimed' })
-      continue
-    }
-    const downloaded = await fetchExternalImage(candidate.url)
-    if (!downloaded) {
-      trace.push({ url: candidate.url, outcome: 'download_failed' })
-      continue
-    }
-    if (await isLowQualityImage(downloaded, { isLogo: candidate.isLogo })) {
-      trace.push({ url: candidate.url, outcome: 'low_quality' })
-      continue
-    }
-    if (title && !candidate.isLogo) {
-      const score = await scoreImageRelevance(downloaded, { title, description })
-      if (!score.keep) {
-        trace.push({ url: candidate.url, outcome: 'rejected_relevance', reason: score.reason ?? undefined })
+  // Tries one candidate list start to finish, scoring each one (unless
+  // isLogo, which is never scored — see this function's own header for why)
+  // and uploading+returning on the first that passes every gate. Shared by
+  // all three tiers below so the priority ordering between them is just the
+  // order these calls happen in, not three copies of the same loop body.
+  async function tryCandidates(candidates: { url: string; isLogo: boolean }[]): Promise<ImageEnrichmentResult | null> {
+    for (const candidate of candidates) {
+      if (title && (await isAlreadyClaimedImage(candidate.url, eventId, title))) {
+        trace.push({ url: candidate.url, outcome: 'already_claimed' })
         continue
       }
-    }
-
-    const { key, thumbnailKey } = await uploadImage(downloaded, 'events')
-    // Non-null: uploadImage() always returns a real key, so imageUrl() (only
-    // ever null for a falsy key) can't actually be null here.
-    await db
-      .update(events)
-      .set({ imageUrl: imageUrl(key)!, thumbnailUrl: imageUrl(thumbnailKey)!, sourceImageUrl: candidate.url, updatedAt: new Date() })
-      .where(eq(events.id, eventId))
-
-    trace.push({ url: candidate.url, outcome: 'chosen' })
-    return { result: 'sourced', trace }
-  }
-
-  if (title) {
-    for (const url of await searchWebImage(title, description)) {
-      if (await isAlreadyClaimedImage(url, eventId, title)) {
-        trace.push({ url, outcome: 'already_claimed' })
-        continue
-      }
-      const downloaded = await fetchExternalImage(url)
+      const downloaded = await fetchExternalImage(candidate.url)
       if (!downloaded) {
-        trace.push({ url, outcome: 'download_failed' })
+        trace.push({ url: candidate.url, outcome: 'download_failed' })
         continue
       }
-      if (await isLowQualityImage(downloaded)) {
-        trace.push({ url, outcome: 'low_quality' })
+      if (await isLowQualityImage(downloaded, { isLogo: candidate.isLogo })) {
+        trace.push({ url: candidate.url, outcome: 'low_quality' })
         continue
       }
-      const score = await scoreImageRelevance(downloaded, { title, description })
-      if (!score.keep) {
-        trace.push({ url, outcome: 'rejected_relevance', reason: score.reason ?? undefined })
-        continue
+      if (title && !candidate.isLogo) {
+        const score = await scoreImageRelevance(downloaded, { title, description })
+        if (!score.keep) {
+          trace.push({ url: candidate.url, outcome: 'rejected_relevance', reason: score.reason ?? undefined })
+          continue
+        }
       }
 
       const { key, thumbnailKey } = await uploadImage(downloaded, 'events')
+      // Non-null: uploadImage() always returns a real key, so imageUrl()
+      // (only ever null for a falsy key) can't actually be null here.
       await db
         .update(events)
-        .set({ imageUrl: imageUrl(key)!, thumbnailUrl: imageUrl(thumbnailKey)!, sourceImageUrl: url, updatedAt: new Date() })
+        .set({ imageUrl: imageUrl(key)!, thumbnailUrl: imageUrl(thumbnailKey)!, sourceImageUrl: candidate.url, updatedAt: new Date() })
         .where(eq(events.id, eventId))
 
-      trace.push({ url, outcome: 'chosen' })
+      trace.push({ url: candidate.url, outcome: 'chosen' })
       return { result: 'sourced', trace }
     }
+    return null
   }
+
+  const fromContent = await tryCandidates(contentCandidates)
+  if (fromContent) return fromContent
+
+  if (title) {
+    const webCandidates = (await searchWebImage(title, description)).map((url) => ({ url, isLogo: false }))
+    const fromWeb = await tryCandidates(webCandidates)
+    if (fromWeb) return fromWeb
+  }
+
+  const fromLogo = await tryCandidates(logoCandidates)
+  if (fromLogo) return fromLogo
 
   return { result: 'none', trace }
 }

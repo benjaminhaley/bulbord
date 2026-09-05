@@ -46,13 +46,13 @@ describe('enrichEventImage', () => {
     dbQueryResults.length = 0
   })
 
-  it('skips a low-quality candidate and sources from the next one down the list', async () => {
+  it('skips a low-quality content candidate and sources from the next one down the list', async () => {
     extractPageImageCandidatesMock.mockResolvedValue([
-      { url: 'https://example.com/logo.png', isLogo: true },
+      { url: 'https://example.com/tiny-badge.jpg', isLogo: false },
       { url: 'https://example.com/real-photo.jpg', isLogo: false },
     ])
     fetchExternalImageMock
-      .mockResolvedValueOnce(Buffer.from('logo-bytes'))
+      .mockResolvedValueOnce(Buffer.from('badge-bytes'))
       .mockResolvedValueOnce(Buffer.from('real-photo-bytes'))
     isLowQualityImageMock.mockResolvedValueOnce(true).mockResolvedValueOnce(false)
     const { enrichEventImage } = await import('./image-enrichment.js')
@@ -60,11 +60,51 @@ describe('enrichEventImage', () => {
     const result = await enrichEventImage('event-1', { sourceUrl: 'https://example.com/page', overrideImageUrl: null })
 
     expect(result.result).toBe('sourced')
-    expect(fetchExternalImageMock).toHaveBeenNthCalledWith(1, 'https://example.com/logo.png')
+    expect(fetchExternalImageMock).toHaveBeenNthCalledWith(1, 'https://example.com/tiny-badge.jpg')
     expect(fetchExternalImageMock).toHaveBeenNthCalledWith(2, 'https://example.com/real-photo.jpg')
-    expect(isLowQualityImageMock).toHaveBeenNthCalledWith(1, Buffer.from('logo-bytes'), { isLogo: true })
+    expect(isLowQualityImageMock).toHaveBeenNthCalledWith(1, Buffer.from('badge-bytes'), { isLogo: false })
     expect(isLowQualityImageMock).toHaveBeenNthCalledWith(2, Buffer.from('real-photo-bytes'), { isLogo: false })
     expect(uploadImageMock).toHaveBeenCalledWith(Buffer.from('real-photo-bytes'), 'events')
+  })
+
+  it('tries a site-logo candidate only after both content candidates and web search are exhausted', async () => {
+    // The 2026-09-05 reordering: a logo used to sit at the end of the
+    // page-extraction list, tried BEFORE web search ever ran — so any page
+    // with a findable logo always won over a possibly-better web-search
+    // photo. Now the logo tier is tried dead last.
+    extractPageImageCandidatesMock.mockResolvedValue([{ url: 'https://example.com/logo.png', isLogo: true }])
+    searchWebImageMock.mockResolvedValue([])
+    fetchExternalImageMock.mockResolvedValueOnce(Buffer.from('logo-bytes'))
+    isLowQualityImageMock.mockResolvedValueOnce(false)
+    const { enrichEventImage } = await import('./image-enrichment.js')
+
+    const result = await enrichEventImage('event-1', {
+      sourceUrl: 'https://example.com/page',
+      overrideImageUrl: null,
+      title: 'Some Event',
+    })
+
+    expect(result.result).toBe('sourced')
+    expect(searchWebImageMock).toHaveBeenCalled()
+    expect(fetchExternalImageMock).toHaveBeenCalledWith('https://example.com/logo.png')
+  })
+
+  it('prefers a real web-search photo over a site logo found on the same page', async () => {
+    extractPageImageCandidatesMock.mockResolvedValue([{ url: 'https://example.com/logo.png', isLogo: true }])
+    searchWebImageMock.mockResolvedValue(['https://upload.wikimedia.org/found.jpg'])
+    fetchExternalImageMock.mockResolvedValueOnce(Buffer.from('found-bytes'))
+    isLowQualityImageMock.mockResolvedValueOnce(false)
+    const { enrichEventImage } = await import('./image-enrichment.js')
+
+    const result = await enrichEventImage('event-1', {
+      sourceUrl: 'https://example.com/page',
+      overrideImageUrl: null,
+      title: 'Some Event',
+    })
+
+    expect(result.result).toBe('sourced')
+    expect(fetchExternalImageMock).not.toHaveBeenCalledWith('https://example.com/logo.png')
+    expect(fetchExternalImageMock).toHaveBeenCalledWith('https://upload.wikimedia.org/found.jpg')
   })
 
   it('tries overrideImageUrl before any page-extracted candidate', async () => {
@@ -189,14 +229,14 @@ describe('enrichEventImage', () => {
     expect(fetchExternalImageMock).toHaveBeenCalledWith('https://wikipedia.org/poster.jpg')
   })
 
-  it('skips a page-extracted candidate already claimed as another differently-titled event\'s image, even from a different source_url', async () => {
+  it('prefers a real web-search photo over an already-claimed site logo from a different source_url', async () => {
     // Real 2026-09-04 incident: two different BiblioCommons event pages,
     // each with its own distinct source_url, both fell back to the exact
     // same site logo image — isSharedListingPage can't catch this (the
     // pages genuinely differ), so isAlreadyClaimedImage checks the
-    // *resolved* image URL directly instead.
-    dbQueryResults.push([]) // isSharedListingPage: no other row shares this URL
-    dbQueryResults.push([{ id: 'other-event' }]) // isAlreadyClaimedImage: already claimed
+    // *resolved* image URL directly instead. The logo tier is tried last
+    // (see the reordering above), so this claimed logo is never even
+    // reached once web search finds something real.
     extractPageImageCandidatesMock.mockResolvedValue([{ url: 'https://example.com/cpl-logo.png', isLogo: true }])
     searchWebImageMock.mockResolvedValue(['https://upload.wikimedia.org/found.jpg'])
     fetchExternalImageMock.mockResolvedValueOnce(Buffer.from('found-bytes'))
@@ -210,9 +250,24 @@ describe('enrichEventImage', () => {
     })
 
     expect(result.result).toBe('sourced')
-    // The claimed candidate was never even downloaded — skipped by URL alone.
     expect(fetchExternalImageMock).not.toHaveBeenCalledWith('https://example.com/cpl-logo.png')
     expect(fetchExternalImageMock).toHaveBeenCalledWith('https://upload.wikimedia.org/found.jpg')
+  })
+
+  it('skips an already-claimed site logo within the logo tier itself, once reached', async () => {
+    dbQueryResults.push([{ id: 'other-event' }]) // isAlreadyClaimedImage: already claimed
+    extractPageImageCandidatesMock.mockResolvedValue([{ url: 'https://example.com/cpl-logo.png', isLogo: true }])
+    searchWebImageMock.mockResolvedValue([])
+    const { enrichEventImage } = await import('./image-enrichment.js')
+
+    const result = await enrichEventImage('event-1', {
+      sourceUrl: 'https://example.com/events/this-events-own-page',
+      overrideImageUrl: null,
+      title: 'Craft Supply Swap',
+    })
+
+    expect(result.result).toBe('none')
+    expect(fetchExternalImageMock).not.toHaveBeenCalled()
   })
 
   it('records the winning external URL as sourceImageUrl for future duplicate checks', async () => {

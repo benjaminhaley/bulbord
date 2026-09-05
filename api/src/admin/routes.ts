@@ -7,6 +7,7 @@ import { sendTestCampReminderEmail } from '../camp-reminders/service.js'
 import { getCampsLastUpdatedAt } from '../camps/staleness.js'
 import { createTestFriendRequest, sendTestConnectionAlertEmail } from '../connections/service.js'
 import { todayInChicago } from '../dates.js'
+import { checkImageHealth } from '../events/image-health.js'
 import { findLowRecurringSeries } from '../events/recurring-series-health.js'
 import { getApprovedEventOccurrences } from '../events/recurring-series-query.js'
 import { processInboundEmail } from '../events/email-ingest.js'
@@ -247,6 +248,17 @@ export async function adminRoutes(app: FastifyInstance) {
     const actor = `admin:${request.currentUser!.id}`
     const report = await resourceActiveEventSources(actor)
     return reply.send({ data: { actor, ran_at: new Date(), ...serializeResourceReport(report) } })
+  })
+
+  // Real, repeatable admin check (2026-09-05, after a broken-image icon
+  // reached production undetected — see image-health.ts's own header for
+  // the full incident) — checks whether every live event's stored image is
+  // actually servable right now, from the same vantage point real traffic
+  // uses. GET (not POST) since it's read-only and cheap enough to run on
+  // every page load of its own admin view, not just an explicit click.
+  app.get('/admin/events/image-health', { preHandler: requireRole('admin') }, async (_request, reply) => {
+    const broken = await checkImageHealth()
+    return reply.send({ data: { checked_at: new Date(), broken: broken.map((b) => ({ event_id: b.eventId, title: b.title, image_url: b.imageUrl })) } })
   })
 
   // Dev tool (feedback #115): run the exact same extraction/ingestion pass

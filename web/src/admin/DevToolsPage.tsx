@@ -25,6 +25,7 @@ import {
   eyeOutline,
   flaskOutline,
   globeOutline,
+  imageOutline,
   mailOutline,
   peopleOutline,
   personAddOutline,
@@ -41,11 +42,13 @@ import { useDataFreshness } from './DataFreshnessContext'
 import {
   createTestFriendRequest,
   fetchEventSourcingStatus,
+  fetchImageHealth,
   resourceEventSources,
   sendTestCampReminderEmail,
   sendTestConnectionAlertEmail,
   sendTestNewsletterEmail,
   testEmailIngest,
+  type BrokenImage,
   type LastEventSourcingRun,
 } from './api'
 
@@ -91,6 +94,30 @@ export function DevToolsPage() {
   // POST response, before a fresh GET /admin/data-freshness round-trip
   // would land.
   const [lastCheckedAt, setLastCheckedAt] = useState<string | null>(null)
+  const [imageHealthCheckedAt, setImageHealthCheckedAt] = useState<string | null>(null)
+  const [brokenImages, setBrokenImages] = useState<BrokenImage[] | null>(null)
+  const [checkingImageHealth, setCheckingImageHealth] = useState(false)
+
+  async function checkImages() {
+    setCheckingImageHealth(true)
+    try {
+      const result = await fetchImageHealth()
+      setImageHealthCheckedAt(result.checkedAt)
+      setBrokenImages(result.broken)
+    } catch (err) {
+      setToast(err instanceof Error ? err.message : 'Could not check image health')
+    } finally {
+      setCheckingImageHealth(false)
+    }
+  }
+
+  useEffect(() => {
+    // Cheap (no downloads/vision calls, just a bucket existence check per
+    // event) and read-only, so this runs on every page load rather than
+    // waiting for an explicit click — the whole point is catching a broken
+    // image before a member notices it, not after.
+    checkImages()
+  }, [])
 
   useEffect(() => {
     // Feedback #131: the weekly cron writes the same summary a manual click
@@ -291,6 +318,40 @@ export function DevToolsPage() {
               </IonItem>
             </>
           )}
+          {/* 2026-09-05: catches the exact incident that motivated this —
+              a real fix looked successful (a real key stored, the script
+              said "done") but the object was never actually reachable
+              through the live /uploads/* proxy, and the only reason anyone
+              found out was a broken-image icon spotted while browsing on a
+              phone. Runs on page load automatically (see the effect above)
+              so this is a standing check, not a one-off script someone has
+              to remember to run — but the button lets it be re-checked
+              on demand too, e.g. right after fixing something flagged here. */}
+          <IonItem button disabled={checkingImageHealth} onClick={checkImages} lines={brokenImages && brokenImages.length > 0 ? 'none' : undefined}>
+            <IonIcon slot="start" icon={imageOutline} color={brokenImages && brokenImages.length > 0 ? 'danger' : undefined} />
+            <IonLabel className="ion-text-wrap">
+              <h2>Image health</h2>
+              <p>
+                Checks that every live event's image actually loads — not just that the database has a URL for it.
+                {imageHealthCheckedAt && !checkingImageHealth && (
+                  <>
+                    {' '}
+                    Last checked: {formatRelativeDateTime(imageHealthCheckedAt)} —{' '}
+                    {brokenImages && brokenImages.length > 0
+                      ? `${brokenImages.length} broken`
+                      : 'all good'}
+                  </>
+                )}
+              </p>
+            </IonLabel>
+            {checkingImageHealth && <IonSpinner slot="end" name="dots" />}
+          </IonItem>
+          {brokenImages?.map((b) => (
+            <IonItem key={b.event_id} routerLink={`/events/${b.event_id}`}>
+              <IonIcon slot="start" icon={alertCircle} color="danger" />
+              <IonLabel className="ion-text-wrap">{b.title}</IonLabel>
+            </IonItem>
+          ))}
           {/* Feedback (2026-08-17, "consolidate these icons"): sources used
               to be one tap away from the Events tab itself (a standalone
               list icon) — moved here since adding one is now admin-only.

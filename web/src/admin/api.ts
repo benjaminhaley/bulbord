@@ -187,6 +187,28 @@ export async function fetchEventSourcingStatus(): Promise<EventSourcingStatus> {
   return { lastCheckedAt: body.data.last_checked_at, lastRun: body.data.last_run }
 }
 
+export interface BrokenImage {
+  event_id: string
+  title: string
+  image_url: string
+}
+
+// Dev tool (2026-09-05, after a broken-image icon reached production
+// undetected — see api/src/events/image-health.ts's own header for the
+// full incident): checks whether every live event's stored image is
+// actually servable right now, from the same vantage point real member
+// traffic uses — cheap enough to run on every Dev Tools page load, not
+// just an explicit click, the same "don't make someone remember to press a
+// button" posture as the data-freshness badge.
+export async function fetchImageHealth(): Promise<{ checkedAt: string; broken: BrokenImage[] }> {
+  const response = await fetch(`${API_URL}/admin/events/image-health`, { headers: authHeaders() })
+  if (!response.ok) {
+    throw new Error(`Failed to check image health: ${response.status}`)
+  }
+  const body = (await response.json()) as { data: { checked_at: string; broken: BrokenImage[] } }
+  return { checkedAt: body.data.checked_at, broken: body.data.broken }
+}
+
 // Feedback #119 — a recurring listing (e.g. the Nettelhorst French Market)
 // with an established real cadence whose last known occurrence is closer
 // than its own typical gap between occurrences: "you're about due for
