@@ -651,27 +651,48 @@ export function AddEventModal({
                     >
                       “{pinned.text}”
                     </div>
-                    {/* The real photo stage 3 found, shown large as the
-                        event's actual picture — not the small 60x60
-                        attach-preview EventForm's own photo section uses
-                        elsewhere (feedback, 2026-09-05: "it shouldn't
-                        appear just as a small attachment, it should appear
-                        as part of the main post... what you see is what
-                        you get"). Same size/style treatment as the photo
-                        flow's own pinned preview above, so a found photo
-                        reads exactly like an attached one would. */}
-                    {foundImage && (
-                      <div style={{ textAlign: 'center', marginTop: 10 }}>
-                        <img
-                          src={`${API_URL}${foundImage.image_url}`}
-                          alt="Photo found for this event"
-                          style={{ maxWidth: '100%', maxHeight: 160, borderRadius: 10, boxShadow: '0 1px 6px rgba(0,0,0,0.15)' }}
-                        />
-                      </div>
-                    )}
                   </div>
                 )}
                 <PipelineStatus pipeline={pipeline} mode={pinned.kind} />
+              </div>
+            )}
+            {/* The real photo stage 3 found (or, while still searching, a
+                placeholder reserving its spot) — deliberately NOT inside the
+                sticky block above (feedback, 2026-09-05: "the photo should
+                appear above the title, as part of the post, not above the
+                checkmarks — it should be scrollable"). The pinned quote and
+                pipeline checkmarks are reference/status info worth keeping
+                on screen the whole time; this is the event's actual
+                picture, so it belongs in the ordinary scrollable body,
+                right above the fields it's the photo *for* — not stuck
+                fighting for space with an always-visible status readout.
+                Shown large, not as the small 60x60 attach-preview
+                EventForm's own photo section uses elsewhere ("it shouldn't
+                appear just as a small attachment... what you see is what
+                you get"). */}
+            {pinned?.kind === 'description' && (pipeline.stage3 === 'running' || foundImage) && (
+              <div style={{ padding: '12px 16px 0', textAlign: 'center' }}>
+                {foundImage ? (
+                  <img
+                    src={`${API_URL}${foundImage.image_url}`}
+                    alt="Photo found for this event"
+                    style={{ maxWidth: '100%', maxHeight: 160, borderRadius: 10, boxShadow: '0 1px 6px rgba(0,0,0,0.15)' }}
+                  />
+                ) : (
+                  <div
+                    style={{
+                      maxWidth: '100%',
+                      height: 160,
+                      borderRadius: 10,
+                      background: 'var(--ion-color-light, #f4f4f4)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    <IonSpinner name="dots" />
+                  </div>
+                )}
               </div>
             )}
             {formNote && (

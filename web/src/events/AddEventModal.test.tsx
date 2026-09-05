@@ -82,6 +82,27 @@ describe('AddEventModal — Describe It flow (feedback #133)', () => {
     expect(screen.getByText('Found more details online')).toBeInTheDocument()
   })
 
+  it('shows a loading placeholder in the photo\'s own spot while stage 3 is still searching', async () => {
+    let resolveImage: (value: unknown) => void = () => {}
+    mockFindEventImage.mockReturnValue(
+      new Promise((resolve) => {
+        resolveImage = resolve
+      }),
+    )
+
+    await openDescribeItAndSubmit()
+
+    expect(await screen.findByText('Finding a photo…')).toBeInTheDocument()
+    expect(screen.queryByAltText('Photo found for this event')).not.toBeInTheDocument()
+    // The placeholder box itself has no accessible text/alt — assert via
+    // the spinner it contains, the same "still working" signal the other
+    // pipeline rows use.
+    expect(document.querySelectorAll('ion-spinner').length).toBeGreaterThan(1)
+
+    resolveImage!({ image_url: '/uploads/events/found-photo.jpg', thumbnail_url: '/uploads/events/found-photo-thumb.jpg' })
+    expect(await screen.findByAltText('Photo found for this event')).toBeInTheDocument()
+  })
+
   it('shows a clear "not found" step instead of silently having no photo at all', async () => {
     mockFindEventImage.mockResolvedValue(null)
 

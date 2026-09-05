@@ -361,6 +361,37 @@ describe('findCandidateEventImage', () => {
     expect(result).toBeNull()
   })
 
+  // Feedback, 2026-09-05: a member was shown a chamber-of-commerce logo as
+  // "the photo" for a specific parade they'd just described — unlike
+  // enrichEventImage's background/silent path (which deliberately never
+  // scores a logo, see that describe block's own test below), this
+  // interactive, member-reviewed path scores the logo tier too, since a
+  // generic logo essentially never matches a specific event's description.
+  it('rejects a site-logo candidate that fails relevance scoring, once content and web search are exhausted', async () => {
+    extractPageImageCandidatesMock.mockResolvedValue([{ url: 'https://example.com/logo.png', isLogo: true }])
+    fetchExternalImageMock.mockResolvedValue(Buffer.from('logo-bytes'))
+    isLowQualityImageMock.mockResolvedValue(false)
+    scoreImageRelevanceMock.mockResolvedValue({ keep: false, reason: 'a generic organization logo, not a photo of the parade' })
+    const { findCandidateEventImage } = await import('./image-enrichment.js')
+
+    const result = await findCandidateEventImage({ sourceUrl: 'https://example.com/page', title: 'WOOGMS Parade' })
+
+    expect(scoreImageRelevanceMock).toHaveBeenCalledWith(Buffer.from('logo-bytes'), { title: 'WOOGMS Parade', description: undefined })
+    expect(result).toBeNull()
+  })
+
+  it('still accepts a site-logo candidate that genuinely passes relevance scoring', async () => {
+    extractPageImageCandidatesMock.mockResolvedValue([{ url: 'https://example.com/logo.png', isLogo: true }])
+    fetchExternalImageMock.mockResolvedValue(Buffer.from('logo-bytes'))
+    isLowQualityImageMock.mockResolvedValue(false)
+    scoreImageRelevanceMock.mockResolvedValue({ keep: true, reason: null })
+    const { findCandidateEventImage } = await import('./image-enrichment.js')
+
+    const result = await findCandidateEventImage({ sourceUrl: 'https://example.com/page', title: 'Chamber of Commerce Open House' })
+
+    expect(result).not.toBeNull()
+  })
+
   it('never treats a not-yet-created event as already claiming its own image', async () => {
     // dbQueryResults defaults to "no sibling row found" for every select —
     // simulating a real self-match here would be the bug this guards

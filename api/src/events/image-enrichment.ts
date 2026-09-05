@@ -163,9 +163,24 @@ interface ChosenCandidate {
 // random id that can never match a real row, so those checks behave
 // identically either way (there's no "self" row to exclude from, since one
 // doesn't exist yet).
+//
+// `scoreLogos` (feedback, 2026-09-05 — a member shown a chamber-of-commerce
+// logo as "the photo" for a specific parade they just described, and asked
+// directly why the relevance check hadn't caught it): the background,
+// silent enrichEventImage() path keeps the original exemption (a logo tier
+// exists specifically to give a library/chamber-hosted event *some* real
+// image rather than a bare placeholder, and scoring it against the event's
+// own description would reject the very thing it's meant to provide — see
+// this file's header history). findCandidateEventImage's interactive,
+// member-reviewed path is a different case: presenting a generic org logo
+// as "we found a photo of your event" is actively misleading in a way a
+// silent background fallback isn't, so that path scores the logo tier too
+// — a logo essentially never "matches the description" of a specific event,
+// so this reliably surfaces as an honest "couldn't find a photo" instead.
 async function findImageCandidate(
   eventId: string,
   { sourceUrl, overrideImageUrl, title, description }: ImageSearchOptions,
+  { scoreLogos = false }: { scoreLogos?: boolean } = {},
 ): Promise<{ chosen: ChosenCandidate | null; trace: ImageCandidateTrace[] }> {
   const trace: ImageCandidateTrace[] = []
   const sharedListingPage = sourceUrl && title ? await isSharedListingPage(sourceUrl, eventId, title) : false
@@ -199,7 +214,7 @@ async function findImageCandidate(
         trace.push({ url: candidate.url, outcome: 'low_quality' })
         continue
       }
-      if (title && !candidate.isLogo) {
+      if (title && (!candidate.isLogo || scoreLogos)) {
         const score = await scoreImageRelevance(downloaded, { title, description })
         if (!score.keep) {
           trace.push({ url: candidate.url, outcome: 'rejected_relevance', reason: score.reason ?? undefined })
@@ -267,7 +282,7 @@ export async function findCandidateEventImage(options: ImageSearchOptions): Prom
 }
 
 async function findCandidateEventImageInner(options: ImageSearchOptions): Promise<{ imageUrl: string; thumbnailUrl: string } | null> {
-  const { chosen } = await findImageCandidate(randomUUID(), options)
+  const { chosen } = await findImageCandidate(randomUUID(), options, { scoreLogos: true })
   if (!chosen) return null
   return { imageUrl: imageUrl(chosen.key)!, thumbnailUrl: imageUrl(chosen.thumbnailKey)! }
 }
