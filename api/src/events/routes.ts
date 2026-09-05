@@ -15,7 +15,8 @@ import { uploadPlaceholderImage } from '../uploads/placeholder.js'
 import { buildEventFilterConditions, parseAfterTimeParam, parseBeforeTimeParam, parseTopicsParam } from './filters.js'
 import { getEventsForWeek } from './week-query.js'
 import { canEditEvent } from './permissions.js'
-import { extractEventFieldsFromPhoto, findEventSource } from './photo-extraction.js'
+import { extractEventFieldsFromDescription, findEventDetailsFromDescription } from './description-extraction.js'
+import { extractEventFieldsFromPhoto, findEventSource, type ExtractedEventFields } from './photo-extraction.js'
 import { registerDiscoveredEventSource } from './source-registration.js'
 import {
   interestedCountExpr,
@@ -166,6 +167,41 @@ export async function eventsRoutes(app: FastifyInstance) {
     }
     const found = await findEventSource({ title, location_name: body.location_name, address: body.address })
     return reply.send({ data: found ? { source_url: found.url, source_name: found.sourceName, address: found.address } : null })
+  })
+
+  // Description-to-listing extraction (feedback #133), stage 1 of 2 — the
+  // same review-before-post shape as the photo flow above, this time
+  // starting from a member-typed sentence instead of a photo. A fast,
+  // non-search text call: reads whatever the description already states
+  // outright. Unlike the photo flow, a start_date isn't required for this
+  // to count as "found" — a typed description often can't pin one down on
+  // its own, and stage 2 below (always run for this flow, not conditional)
+  // is what's actually responsible for finding it via search.
+  app.post('/events/extract-from-description', { preHandler: requireAuth }, async (request, reply) => {
+    const body = request.body as { description?: string }
+    const description = body.description?.trim()
+    if (!description) {
+      return reply.code(400).send({ error: { message: 'description is required' } })
+    }
+    const extracted = await extractEventFieldsFromDescription(description)
+    return reply.send({ data: extracted })
+  })
+
+  // Description-to-listing extraction, stage 2 of 2 — a live web search for
+  // the real event being described, filling in whatever stage 1 couldn't
+  // determine (which, for a sparse description, can be nearly everything:
+  // real date/time/address, not just a source URL). Stateless here for the
+  // same reason as find-event-source above — the frontend decides whether
+  // to apply the result to the still-open form or patch an already-created
+  // event.
+  app.post('/events/find-event-details-from-description', { preHandler: requireAuth }, async (request, reply) => {
+    const body = request.body as { description?: string; fields?: Partial<ExtractedEventFields> }
+    const description = body.description?.trim()
+    if (!description) {
+      return reply.code(400).send({ error: { message: 'description is required' } })
+    }
+    const found = await findEventDetailsFromDescription(description, body.fields ?? {})
+    return reply.send({ data: found })
   })
 
   // Member self-service event posting (feedback #46) — goes live immediately,

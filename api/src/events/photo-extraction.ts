@@ -1,62 +1,18 @@
 import { getAnthropicClient, stripJsonCodeFence } from '../claude.js'
 import { todayInChicago } from '../dates.js'
 import { getImageObject } from '../uploads/storage.js'
-
-// Mirrors web/src/events/topics.ts's EVENT_TOPIC_OPTIONS, minus "Other"
-// (which the model should just omit for rather than pick) — a small
-// hardcoded literal here rather than a cross-package import, since there's
-// no shared package between api/ and web/ (see CLAUDE.md's Newsletter "kept
-// in sync" note) and topic is free text with no server-side enum to begin
-// with.
-const TOPIC_OPTIONS = ['Movie Night', 'Sports & Fitness', 'Arts & Crafts', 'Community & Social']
-
-// Real, per-request bounds on every Claude call this file makes — added
-// 2026-08-23 after a real production request hung for 25+ minutes with no
-// response and no error logged. Root cause: neither call set an explicit
-// timeout, so a slow/degraded upstream response fell back to the SDK's own
-// default (10 min, retried up to 3 times — ~30 min worst case), which is
-// wildly too long for a member sitting on a spinner waiting for their photo
-// to process. A short timeout + a single retry means a bad call fails fast
-// (within ~1 minute) and the caller gets an honest "couldn't do this"
-// result instead of an unbounded hang. See CALL_TIMEOUT_MS's call site below
-// (stage 1 only, as of 2026-08-23 — see the SOURCE_SEARCH_* constants below
-// for stage 2's own, larger budget) and STAGE_DEADLINE_MS's outer race,
-// which is a hard backstop against a hang anywhere else in the function
-// (e.g. the S3 stream read), not just inside the Anthropic call itself.
-const CALL_TIMEOUT_MS = 20_000
-const CALL_MAX_RETRIES = 1
-const STAGE_DEADLINE_MS = 45_000
-
-// Stage 2 (findEventSource, below) needs its own, much larger budget — its
-// web_search tool loop (server-side, up to 3 rounds) genuinely takes longer
-// than a vision-only stage 1 call. Found by direct measurement (2026-08-23,
-// feedback: "why weren't additional details found online? They should be...
-// can you debug and make this pipeline more reliable"): a real, correct
-// answer routinely took 17-30s (up to 3 web_search_requests per call, per
-// the response's own usage.server_tool_use), well past CALL_TIMEOUT_MS —
-// the *shared* 20s timeout above (sized for stage 1's fast vision-only
-// calls) was aborting a legitimately-still-working stage 2 request mid-
-// search, retrying once (also often too slow to finish inside 20s), then
-// silently degrading to "No additional details found online" even though
-// the model would have found the real source given a few more seconds.
-// Safe to size generously since stage 2 already runs in the background
-// while the member reviews stage 1's result (see AddEventModal.tsx) — it
-// never blocks Post, so a longer worst case here costs nothing in the UI.
-const SOURCE_SEARCH_CALL_TIMEOUT_MS = 60_000
-const SOURCE_SEARCH_CALL_MAX_RETRIES = 1
-const SOURCE_SEARCH_STAGE_DEADLINE_MS = 130_000
-
-async function withDeadline<T>(work: Promise<T>, fallback: T, ms: number): Promise<T> {
-  let timer: ReturnType<typeof setTimeout>
-  const deadline = new Promise<T>((resolve) => {
-    timer = setTimeout(() => resolve(fallback), ms)
-  })
-  try {
-    return await Promise.race([work, deadline])
-  } finally {
-    clearTimeout(timer!)
-  }
-}
+import {
+  CALL_MAX_RETRIES,
+  CALL_TIMEOUT_MS,
+  isHttpUrl,
+  SEARCH_CALL_MAX_RETRIES,
+  SEARCH_CALL_TIMEOUT_MS,
+  SEARCH_STAGE_DEADLINE_MS,
+  STAGE_DEADLINE_MS,
+  TOPIC_OPTIONS,
+  withDeadline,
+  type RawExtractedFields,
+} from './extraction-shared.js'
 
 const EXTRACT_SYSTEM_PROMPT = `You extract event details from a photo of a poster, flyer, or a screenshot of an online listing, for a family/community events app in the Chicago area (feedback #93 — "take a picture of a poster around town and have everything auto populate").
 
@@ -130,30 +86,7 @@ async function bufferFromStream(stream: NodeJS.ReadableStream): Promise<Buffer> 
   return Buffer.concat(chunks)
 }
 
-interface RawExtraction {
-  found?: unknown
-  title?: unknown
-  description?: unknown
-  start_date?: unknown
-  start_time?: unknown
-  end_time?: unknown
-  all_day?: unknown
-  address?: unknown
-  location_name?: unknown
-  source_url?: unknown
-  topic?: unknown
-}
-
-function isHttpUrl(value: unknown): value is string {
-  if (typeof value !== 'string' || !value.trim()) return false
-  try {
-    return ['http:', 'https:'].includes(new URL(value.trim()).protocol)
-  } catch {
-    return false
-  }
-}
-
-function toExtractedFields(raw: RawExtraction): ExtractedEventFields | null {
+function toExtractedFields(raw: RawExtractedFields): ExtractedEventFields | null {
   if (raw.found !== true) return null
   if (typeof raw.title !== 'string' || !raw.title.trim()) return null
   if (typeof raw.start_date !== 'string' || !raw.start_date.trim()) return null
@@ -228,7 +161,7 @@ async function extractEventFieldsFromPhotoInner(imageUrl: string): Promise<Extra
     const raw = block?.type === 'text' ? block.text.trim() : ''
     if (!raw) return null
 
-    return toExtractedFields(JSON.parse(stripJsonCodeFence(raw)) as RawExtraction)
+    return toExtractedFields(JSON.parse(stripJsonCodeFence(raw)) as RawExtractedFields)
   } catch {
     return null
   }
@@ -256,7 +189,7 @@ interface RawSourceSearch {
 export async function findEventSource(
   fields: Pick<ExtractedEventFields, 'title' | 'location_name' | 'address'>,
 ): Promise<DiscoveredEventSource | null> {
-  return withDeadline(findEventSourceInner(fields), null, SOURCE_SEARCH_STAGE_DEADLINE_MS)
+  return withDeadline(findEventSourceInner(fields), null, SEARCH_STAGE_DEADLINE_MS)
 }
 
 async function findEventSourceInner(
@@ -284,7 +217,7 @@ async function findEventSourceInner(
           },
         ],
       },
-      { timeout: SOURCE_SEARCH_CALL_TIMEOUT_MS, maxRetries: SOURCE_SEARCH_CALL_MAX_RETRIES },
+      { timeout: SEARCH_CALL_TIMEOUT_MS, maxRetries: SEARCH_CALL_MAX_RETRIES },
     )
 
     if (message.stop_reason === 'refusal') return null

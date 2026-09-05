@@ -309,6 +309,80 @@ export async function findEventSource(fields: {
   return body.data
 }
 
+interface ExtractFromDescriptionResponse {
+  data: ExtractedEventFields | null
+}
+
+// Description-to-listing extraction (feedback #133), stage 1 of 2 — the
+// same shape as extractEventFieldsFromPhoto above, this time starting from
+// a member-typed sentence instead of a photo. Fast, no web search: reads
+// whatever the description already states outright. Unlike the photo
+// flow, a missing start_date doesn't mean "couldn't extract anything" —
+// see toStage1Fields's own comment in api/src/events/description-
+// extraction.ts — so `start_date` can legitimately come back empty even
+// when `data` itself isn't null.
+export async function extractEventFieldsFromDescription(description: string): Promise<ExtractedEventFields | null> {
+  const response = await fetch(`${API_URL}/events/extract-from-description`, {
+    method: 'POST',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ description }),
+  })
+  if (!response.ok) {
+    throw new Error(`Failed to extract event from description: ${response.status}`)
+  }
+  const body = (await response.json()) as ExtractFromDescriptionResponse
+  return body.data
+}
+
+// A superset of DiscoveredEventSource above — the description flow's stage
+// 2 search is responsible for finding the whole event (date/time/address
+// included), not just its source, since a typed description frequently
+// can't supply those on its own the way a photographed poster almost
+// always can. Every field is optional; AddEventModal.tsx only ever
+// applies one to a form field that's still empty. No `all_day` here — see
+// api/src/events/description-extraction.ts's identical interface for why:
+// it's derived from start_time's presence, not asked of the model, so
+// there's nothing for this shape to carry.
+export interface DiscoveredEventDetails {
+  source_url?: string
+  source_name?: string
+  title?: string
+  description?: string
+  start_date?: string
+  start_time?: string
+  end_time?: string
+  address?: string
+  location_name?: string
+  topic?: string
+}
+
+interface FindEventDetailsResponse {
+  data: DiscoveredEventDetails | null
+}
+
+// Description-to-listing extraction, stage 2 of 2 — always worth calling
+// for this flow (unlike findEventSource above, which the photo flow only
+// calls conditionally), since even a fully-successful stage 1 still
+// benefits from a confirmed real source page, and a stage-1 failure means
+// this is the only remaining path to a usable result. Takes the raw
+// description text (not just stage 1's structured fields) plus whatever
+// stage 1 already found, so the search has real context to work from.
+export async function findEventDetailsFromDescription(
+  description: string,
+  alreadyKnown: Partial<ExtractedEventFields>,
+): Promise<DiscoveredEventDetails | null> {
+  const response = await fetch(`${API_URL}/events/find-event-details-from-description`, {
+    method: 'POST',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ description, fields: alreadyKnown }),
+  })
+  if (!response.ok) {
+    throw new Error(`Failed to find event details: ${response.status}`)
+  }
+  const body = (await response.json()) as FindEventDetailsResponse
+  return body.data
+}
+
 export async function updateEvent(id: string, input: EventInput): Promise<Event> {
   const response = await fetch(`${API_URL}/events/${id}`, {
     method: 'PATCH',

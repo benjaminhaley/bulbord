@@ -75,14 +75,39 @@ export type EventFormInitialValues = Pick<
 // shape as feedback/FeedbackForm's shared new/edit component. Only
 // title, location (address), and start_date are required; everything else
 // (description, time, all-day, source url, photo) is optional.
+// A background extraction stage's late-arriving result (feedback,
+// 2026-08-23: "as a user I should be able to edit or accept the results
+// during this entire process") — arrives well after mount, once a stage-2
+// web search finds something, so it's threaded through as a prop rather
+// than baked into `initial` (which only ever applies once, at mount). Every
+// field is optional and applied independently: only to a field that's
+// still empty when the suggestion arrives — a member's own edit (typed or
+// accepted-then-changed) always wins over a late suggestion. Originally two
+// narrow props (sourceUrlSuggestion/addressSuggestion, photo-extraction's
+// own stage 2) — generalized (feedback #133) once the description-based
+// flow's own stage 2 needed to suggest nearly every field, not just those
+// two, so both flows now share one mechanism instead of drifting into two.
+// Stage-running/complete status is shown by AddEventModal.tsx's own
+// pipeline indicator, not here.
+export interface EventFieldSuggestions {
+  title?: string
+  description?: string
+  start_date?: string
+  start_time?: string
+  end_time?: string
+  location_name?: string
+  address?: string
+  source_url?: string
+  topic?: string
+}
+
 export function EventForm({
   initial,
   submitLabel,
   errorMessage,
   onSubmit,
   onCancel,
-  sourceUrlSuggestion,
-  addressSuggestion,
+  fieldSuggestions,
   hidePhotoAttach,
 }: {
   initial?: EventFormInitialValues
@@ -90,21 +115,7 @@ export function EventForm({
   errorMessage: string
   onSubmit: (input: EventInput) => Promise<void>
   onCancel: () => void
-  // Photo-extraction's background stage-2 (feedback, 2026-08-23: "as a user
-  // I should be able to edit or accept the results during this entire
-  // process") — arrives well after mount, once a live web search for the
-  // event's source finds something, so it's threaded through as a prop
-  // rather than baked into `initial` (which only ever applies once, at
-  // mount). Only ever applied if the field it targets is still empty when
-  // it arrives — a member's own edit (typed or accepted-then-changed)
-  // always wins over a late suggestion. Stage-running/complete status is
-  // shown by AddEventModal.tsx's own pipeline indicator, not here.
-  sourceUrlSuggestion?: string | null
-  // Same live-suggestion mechanism, for a real street address the stage-2
-  // search confirmed (feedback, 2026-08-23: "the address is a specific
-  // thing that Google Maps would always get right" — a poster naming a
-  // well-known venue often has no printed street address at all).
-  addressSuggestion?: string | null
+  fieldSuggestions?: EventFieldSuggestions | null
   // True when the caller (AddEventModal.tsx) already shows the attached
   // photo prominently pinned at the top of the screen — avoids showing the
   // same photo a second time via this form's own attach/thumbnail section.
@@ -127,12 +138,32 @@ export function EventForm({
   )
 
   useEffect(() => {
-    setSourceUrl((current) => (sourceUrlSuggestion && !current.trim() ? sourceUrlSuggestion : current))
-  }, [sourceUrlSuggestion])
-
-  useEffect(() => {
-    setAddress((current) => (addressSuggestion && !current.trim() ? addressSuggestion : current))
-  }, [addressSuggestion])
+    if (!fieldSuggestions) return
+    const s = fieldSuggestions
+    // Apply each suggested field only if its own form field is still
+    // empty — a member's own edit (typed or accepted-then-changed) always
+    // wins over a late suggestion.
+    const applyIfEmpty = (setter: (v: string) => void, current: string, suggested: string | undefined) => {
+      if (suggested && !current.trim()) setter(suggested)
+    }
+    applyIfEmpty(setTitle, title, s.title)
+    applyIfEmpty(setDescription, description, s.description)
+    applyIfEmpty(setStartDate, startDate, s.start_date)
+    applyIfEmpty(setEndTime, endTime, s.end_time)
+    applyIfEmpty(setLocationName, locationName, s.location_name)
+    applyIfEmpty(setAddress, address, s.address)
+    applyIfEmpty(setSourceUrl, sourceUrl, s.source_url)
+    applyIfEmpty(setTopic, topic, s.topic)
+    // A suggested start_time also turns off All day when applied — the
+    // time fields are hidden while allDay is true (see below), so
+    // suggesting a real time and leaving allDay untouched would silently
+    // fill in a field the member can't even see.
+    if (s.start_time && !startTime.trim()) {
+      setStartTime(s.start_time)
+      setAllDay(false)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fieldSuggestions])
 
   // Named, not just enforced silently — a disabled Post with no explanation
   // left a member stuck with no path to remediate (feedback, 2026-08-23:

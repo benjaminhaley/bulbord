@@ -1,5 +1,5 @@
-import { IonButton, IonContent, IonHeader, IonIcon, IonModal, IonSpinner, IonText, IonTitle, IonToolbar } from '@ionic/react'
-import { cameraOutline, checkmarkCircle, closeCircleOutline, closeOutline } from 'ionicons/icons'
+import { IonButton, IonContent, IonHeader, IonIcon, IonModal, IonSpinner, IonText, IonTextarea, IonTitle, IonToolbar } from '@ionic/react'
+import { cameraOutline, checkmarkCircle, chatbubbleEllipsesOutline, closeCircleOutline, closeOutline } from 'ionicons/icons'
 import { useRef, useState } from 'react'
 
 import { unstyledButtonStyle } from '../theme/layout'
@@ -7,17 +7,19 @@ import type { UploadedImage } from '../uploads/api'
 import { uploadImage } from '../uploads/api'
 import {
   createEvent,
+  extractEventFieldsFromDescription,
   extractEventFieldsFromPhoto,
+  findEventDetailsFromDescription,
   findEventSource,
   updateEvent,
-  type DiscoveredEventSource,
+  type DiscoveredEventDetails,
   type Event,
   type EventInput,
   type ExtractedEventFields,
 } from './api'
-import { EventForm, type EventFormInitialValues } from './EventForm'
+import { EventForm, type EventFieldSuggestions, type EventFormInitialValues } from './EventForm'
 
-function toInitialValues(extracted: ExtractedEventFields | null, image: UploadedImage): EventFormInitialValues {
+function toInitialValues(extracted: ExtractedEventFields | null, image: UploadedImage | null): EventFormInitialValues {
   return {
     title: extracted?.title ?? '',
     description: extracted?.description ?? null,
@@ -32,66 +34,111 @@ function toInitialValues(extracted: ExtractedEventFields | null, image: Uploaded
     // self-service form has always had both fields available server-side
     // (system-sourced events already carry location_name separately from
     // address), it just never exposed the split to a member posting their
-    // own event until now. A real address the poster didn't print may
-    // still arrive shortly after, via stage 2 — see addressSuggestion.
+    // own event until now. A real address the poster didn't print (or the
+    // description didn't state) may still arrive shortly after, via stage
+    // 2 — see EventForm's fieldSuggestions prop.
     location_name: extracted?.location_name ?? null,
     address: extracted?.address ?? null,
-    // Found either printed on the poster itself (stage 1, free) or via the
-    // background stage-2 live search — see the sourceUrlSuggestion prop on
-    // EventForm for how a stage-2 result reaches an already-open form.
+    // Found either directly in stage 1 (free — printed on the poster, or
+    // literally typed in the description) or via the background stage-2
+    // live search — see EventForm's fieldSuggestions prop for how a
+    // stage-2 result reaches an already-open form.
     source_url: extracted?.source_url ?? null,
     topic: extracted?.topic ?? null,
-    image_url: image.image_url,
-    thumbnail_url: image.thumbnail_url,
+    image_url: image?.image_url ?? null,
+    thumbnail_url: image?.thumbnail_url ?? null,
   }
 }
+
+// What's pinned at the top of the review form, for as long as the member is
+// looking at it — a photo preview (feedback #93) or the description they
+// typed (feedback #133). A single discriminated field rather than a
+// separate `mode` flag plus one nullable value per input type, so there's
+// no way for those to fall out of sync with each other.
+type PinnedInput = { kind: 'photo'; previewUrl: string } | { kind: 'description'; text: string }
 
 // One attempt's worth of mutable state that the stage-2 background search
 // needs to keep reading/writing after it resolves — which can happen well
 // after this component has re-rendered onto a different attempt, or closed
-// entirely. A fresh object per handleFile() call (not a flat set of refs)
-// so a late-resolving OLD attempt's search can never cross-contaminate a
-// NEWER attempt's state — see handleFile's own comment.
-interface PhotoSession {
+// entirely. A fresh object per attempt (not a flat set of refs) so a
+// late-resolving OLD attempt's search can never cross-contaminate a NEWER
+// attempt's state — see handlePhoto/handleDescription's own comments.
+// Shared by both the photo flow (feedback #93) and the description flow
+// (feedback #133) — the two differ in how they populate `discovered`
+// (findEventSource's narrow url/name/address vs.
+// findEventDetailsFromDescription's much broader field set), not in how
+// the session itself is tracked or patched back onto an already-created
+// event.
+interface ExtractionSession {
   cancelled: boolean
   createdEvent: Event | null
-  sourceUrlSuggestion: string | null
-  sourceName: string | null
+  discovered: DiscoveredEventDetails | null
 }
 
-async function patchDiscoveredSource(event: Event, found: DiscoveredEventSource): Promise<void> {
+// Every field a stage-2 search might contribute that's also a real column
+// on Event — the set hasSomethingToAdd checks before bothering to patch an
+// already-created event.
+const DISCOVERABLE_FIELDS = [
+  'source_url',
+  'address',
+  'start_date',
+  'start_time',
+  'location_name',
+  'topic',
+  'description',
+] as const satisfies readonly (keyof DiscoveredEventDetails & keyof Event)[]
+
+// True if `found` carries any field the already-created `event` doesn't
+// already have its own value for — the general condition under which a
+// late-resolving stage 2 is worth patching in at all.
+function hasSomethingToAdd(event: Event, found: DiscoveredEventDetails): boolean {
+  return DISCOVERABLE_FIELDS.some((field) => !!found[field] && !event[field])
+}
+
+async function patchDiscoveredDetails(event: Event, found: DiscoveredEventDetails): Promise<void> {
   try {
+    const startTime = event.start_time?.slice(0, 5) || found.start_time || ''
     await updateEvent(event.id, {
-      title: event.title,
-      description: event.description ?? '',
-      start_date: event.start_date,
-      start_time: event.start_time?.slice(0, 5) ?? '',
-      end_time: event.end_time?.slice(0, 5) ?? '',
-      all_day: event.all_day,
-      location_name: event.location_name ?? '',
-      // Same "don't clobber what's already there" rule as the live-form
-      // suggestion (EventForm's addressSuggestion effect) — only apply a
-      // found address if the posted event doesn't already have its own.
+      title: event.title || found.title || '',
+      description: event.description ?? found.description ?? '',
+      start_date: event.start_date || found.start_date || '',
+      start_time: startTime,
+      end_time: event.end_time?.slice(0, 5) || found.end_time || '',
+      // A newly-arrived real start_time means this can no longer be an
+      // all-day event, even if it was created as one for lack of anything
+      // better — same "a stated time wins" rule EventForm's own
+      // fieldSuggestions effect applies live.
+      all_day: startTime ? false : event.all_day,
+      location_name: event.location_name || found.location_name || '',
       address: event.address || (found.address ?? ''),
-      source_url: found.source_url,
+      source_url: event.source_url || found.source_url || '',
       image_url: event.image_url,
       thumbnail_url: event.thumbnail_url,
-      topic: event.topic ?? '',
+      topic: event.topic || found.topic || '',
       source_name: found.source_name,
     })
   } catch {
-    // Best-effort, silent — a failed background patch just means the
-    // source never got attached/registered; the event itself already
-    // posted successfully and nothing else depends on this succeeding.
+    // Best-effort, silent — a failed background patch just means whatever
+    // stage 2 found never got attached; the event itself already posted
+    // successfully and nothing else depends on this succeeding.
   }
+}
+
+// DiscoveredEventDetails minus source_name (a create-time-only field, never
+// shown/edited in the form) is exactly EventForm's fieldSuggestions shape.
+function toFieldSuggestions({ source_name: _sourceName, ...suggestions }: DiscoveredEventDetails): EventFieldSuggestions {
+  return suggestions
 }
 
 // Which half of the pipeline is showing, and how far each stage has gotten
 // (feedback, 2026-08-23: "it should be pretty clear in the UI that there
 // are two funnel stages... we should know when they're running and when
-// they complete"). Rendered by PipelineStatus below, right under the pinned
-// photo — 'skipped' means stage 2 was never applicable (stage 1 failed, or
-// the poster already had a printed URL so no search was ever needed).
+// they complete"). Rendered by PipelineStatus below, right under the
+// pinned photo/description, for both the photo flow and the description
+// flow — 'skipped' means stage 2 was never applicable (photo flow only:
+// stage 1 failed, or the poster already had a printed URL so no search was
+// ever needed; the description flow's stage 2 always runs — see
+// handleDescription's own comment).
 interface Pipeline {
   active: boolean
   stage1: 'running' | 'ok' | 'failed'
@@ -122,15 +169,23 @@ function PipelineRow({ running, ok, runningLabel, doneLabel }: { running: boolea
 // 32px left padding matches an inset IonList's own item text start (16px
 // list margin + 16px item padding-start), confirmed by direct measurement
 // against a real rendered ion-item rather than assumed.
-function PipelineStatus({ pipeline }: { pipeline: Pipeline }) {
+function PipelineStatus({ pipeline, mode }: { pipeline: Pipeline; mode: PinnedInput['kind'] }) {
   if (!pipeline.active) return null
   return (
     <div style={{ padding: '16px 32px 8px', display: 'flex', flexDirection: 'column', gap: 10 }}>
       <PipelineRow
         running={pipeline.stage1 === 'running'}
         ok={pipeline.stage1 === 'ok'}
-        runningLabel="Reading photo…"
-        doneLabel={pipeline.stage1 === 'ok' ? 'Read details from photo' : "Couldn't read the photo"}
+        runningLabel={mode === 'photo' ? 'Reading photo…' : 'Reading description…'}
+        doneLabel={
+          pipeline.stage1 === 'ok'
+            ? mode === 'photo'
+              ? 'Read details from photo'
+              : 'Read details from description'
+            : mode === 'photo'
+              ? "Couldn't read the photo"
+              : "Couldn't find enough in that description"
+        }
       />
       {pipeline.stage2 !== 'skipped' && (
         <PipelineRow
@@ -145,18 +200,23 @@ function PipelineStatus({ pipeline }: { pipeline: Pipeline }) {
 }
 
 // Feedback #93 ("take a picture of a poster... have everything auto
-// populate"), restyled and re-architected 2026-08-23 per direct feedback:
-// (1) a full-screen modal, not inline content pushed above the events list
-// — "you don't need to see existing events when you're adding a new event";
-// (2) Add from Photo leads as the primary, spacious choice, manual entry a
-// small subtitle link; (3) a real two-stage pipeline — a fast vision-only
-// pass fills the form immediately, then a slower live web search for the
-// event's source runs in the background while the member is already
+// populate") and feedback #133 ("if I don't wanna enter a picture, my
+// other option should be to describe the event in words... look up the
+// details based on that description using a similar pipeline just like in
+// the photo system") — two on-ramps into the same review-before-post flow.
+// Restyled/re-architected 2026-08-23 for the photo flow, then extended
+// 2026-09 for the description flow on top of the same architecture: (1) a
+// full-screen modal, not inline content pushed above the events list; (2)
+// Add from Photo leads as the primary, spacious choice, Describe It a
+// secondary choice below it, manual entry a small subtitle link; (3) a
+// real two-stage pipeline — a fast pass fills the form immediately, then a
+// slower background web search runs while the member is already
 // reviewing/editing, and keeps going even after Post is tapped, patching
-// the source in afterward rather than blocking submission on it; (4) the
-// form itself (not a separate blank "processing" screen) shows the instant
-// a photo is picked, so the fields are visibly what's being populated, with
-// the photo pinned at the top of the screen throughout.
+// details in afterward rather than blocking submission on it; (4) the form
+// itself (not a separate blank "processing" screen) shows the instant a
+// photo is picked or a description is submitted, so the fields are visibly
+// what's being populated, with the photo/description pinned at the top of
+// the screen throughout.
 export function AddEventModal({
   isOpen,
   onClose,
@@ -167,32 +227,32 @@ export function AddEventModal({
   onCreated: (event: Event) => void
 }) {
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const [stage, setStage] = useState<'choice' | 'form'>('choice')
-  const [photoPreviewUrl, setPhotoPreviewUrl] = useState<string | null>(null)
+  const [stage, setStage] = useState<'choice' | 'describe' | 'form'>('choice')
+  const [pinned, setPinned] = useState<PinnedInput | null>(null)
+  const [descriptionDraft, setDescriptionDraft] = useState('')
   const [choiceError, setChoiceError] = useState<string | null>(null)
   const [initialValues, setInitialValues] = useState<EventFormInitialValues | null>(null)
   const [formNote, setFormNote] = useState<string | null>(null)
-  const [sourceUrlSuggestion, setSourceUrlSuggestion] = useState<string | null>(null)
-  const [addressSuggestion, setAddressSuggestion] = useState<string | null>(null)
+  const [fieldSuggestions, setFieldSuggestions] = useState<EventFieldSuggestions | null>(null)
   const [pipeline, setPipeline] = useState<Pipeline>({ active: false, stage1: 'running', stage2: 'skipped' })
 
-  // Points at the most recent handleFile() attempt's session for as long as
-  // it's the one on screen — used only to guard live UI updates (setState
-  // calls) against a stale/late resolution; never read by the session's own
+  // Points at the most recent attempt's session for as long as it's the
+  // one on screen — used only to guard live UI updates (setState calls)
+  // against a stale/late resolution; never read by the session's own
   // closure below, which always captures its own `session` object directly.
-  const activeSessionRef = useRef<PhotoSession | null>(null)
+  const activeSessionRef = useRef<ExtractionSession | null>(null)
 
   function resetVisibleState() {
     setStage('choice')
-    setPhotoPreviewUrl((prev) => {
-      if (prev) URL.revokeObjectURL(prev)
+    setPinned((prev) => {
+      if (prev?.kind === 'photo') URL.revokeObjectURL(prev.previewUrl)
       return null
     })
+    setDescriptionDraft('')
     setChoiceError(null)
     setInitialValues(null)
     setFormNote(null)
-    setSourceUrlSuggestion(null)
-    setAddressSuggestion(null)
+    setFieldSuggestions(null)
     setPipeline({ active: false, stage1: 'running', stage2: 'skipped' })
   }
 
@@ -206,44 +266,42 @@ export function AddEventModal({
     onClose()
   }
 
-  function runSourceSearch(session: PhotoSession, fields: Pick<ExtractedEventFields, 'title' | 'location_name' | 'address'>) {
+  // Shared by both flows' background stage 2 — the only real difference
+  // between them is which search produces the DiscoveredEventDetails (see
+  // handlePhoto/handleDescription's own call sites), not how the result
+  // gets applied once it resolves.
+  function runStage2(session: ExtractionSession, search: Promise<DiscoveredEventDetails | null>) {
     setPipeline((prev) => ({ ...prev, stage2: 'running' }))
-    findEventSource({ title: fields.title, location_name: fields.location_name, address: fields.address })
+    search
       .then((found) => {
         if (activeSessionRef.current === session) setPipeline((prev) => ({ ...prev, stage2: found ? 'found' : 'not_found' }))
         if (!found) return
 
-        session.sourceUrlSuggestion = found.source_url
-        session.sourceName = found.source_name
+        session.discovered = found
 
         if (session.createdEvent) {
           // Already posted by the time this resolved — only patch in
           // whichever fields the created event doesn't already have its
           // own value for (the member's own, or one already applied to
           // the still-open form before they submitted).
-          const needsSourceUrl = !session.createdEvent.source_url
-          const needsAddress = !session.createdEvent.address && !!found.address
-          if (needsSourceUrl || needsAddress) void patchDiscoveredSource(session.createdEvent, found)
+          if (hasSomethingToAdd(session.createdEvent, found)) void patchDiscoveredDetails(session.createdEvent, found)
           return
         }
         if (session.cancelled) return
         // Still on the form for this exact attempt — reflect it live.
         // EventForm itself only applies each suggestion if its own target
         // field is still empty (see that component's own comment).
-        if (activeSessionRef.current === session) {
-          setSourceUrlSuggestion(found.source_url)
-          if (found.address) setAddressSuggestion(found.address)
-        }
+        if (activeSessionRef.current === session) setFieldSuggestions(toFieldSuggestions(found))
       })
       .catch(() => {
         if (activeSessionRef.current === session) setPipeline((prev) => ({ ...prev, stage2: 'not_found' }))
       })
   }
 
-  async function handleFile(file: File) {
-    // A fresh session per attempt — see PhotoSession's own comment on why
-    // this can't be a flat set of refs shared across attempts.
-    const session: PhotoSession = { cancelled: false, createdEvent: null, sourceUrlSuggestion: null, sourceName: null }
+  async function handlePhoto(file: File) {
+    // A fresh session per attempt — see ExtractionSession's own comment on
+    // why this can't be a flat set of refs shared across attempts.
+    const session: ExtractionSession = { cancelled: false, createdEvent: null, discovered: null }
     activeSessionRef.current = session
 
     // Show the real form immediately — even before the photo finishes
@@ -251,13 +309,11 @@ export function AddEventModal({
     // away (feedback, 2026-08-23: "even at this stage, I should see the
     // fields... it should be obvious what the thing is trying to
     // populate"). The photo itself is pinned at the top the whole time.
-    const previewUrl = URL.createObjectURL(file)
-    setPhotoPreviewUrl(previewUrl)
+    setPinned({ kind: 'photo', previewUrl: URL.createObjectURL(file) })
     setChoiceError(null)
     setInitialValues(null)
     setFormNote(null)
-    setSourceUrlSuggestion(null)
-    setAddressSuggestion(null)
+    setFieldSuggestions(null)
     setPipeline({ active: true, stage1: 'running', stage2: 'skipped' })
     setStage('form')
 
@@ -267,8 +323,8 @@ export function AddEventModal({
     } catch {
       if (session.cancelled) return
       setPipeline({ active: false, stage1: 'running', stage2: 'skipped' })
-      setPhotoPreviewUrl((prev) => {
-        if (prev) URL.revokeObjectURL(prev)
+      setPinned((prev) => {
+        if (prev?.kind === 'photo') URL.revokeObjectURL(prev.previewUrl)
         return null
       })
       setChoiceError('Could not upload that photo — try again, or enter the event manually below.')
@@ -293,14 +349,59 @@ export function AddEventModal({
     // on the poster, and a real street address (a poster naming a
     // well-known venue often has no address printed at all).
     if (fields && (!fields.source_url || !fields.address)) {
-      runSourceSearch(session, fields)
+      const { title, location_name, address } = fields
+      runStage2(
+        session,
+        findEventSource({ title, location_name, address }).then((found) =>
+          found ? { source_url: found.source_url, source_name: found.source_name, address: found.address } : null,
+        ),
+      )
     }
+  }
+
+  async function handleDescription(description: string) {
+    const session: ExtractionSession = { cancelled: false, createdEvent: null, discovered: null }
+    activeSessionRef.current = session
+
+    // Same "show the real form immediately" posture as the photo flow —
+    // the description itself is pinned at the top the whole time, in place
+    // of a photo.
+    setPinned({ kind: 'description', text: description })
+    setChoiceError(null)
+    setInitialValues(null)
+    setFormNote(null)
+    setFieldSuggestions(null)
+    setPipeline({ active: true, stage1: 'running', stage2: 'skipped' })
+    setStage('form')
+
+    // Stage 2 always runs for this flow (see findEventDetailsFromDescription's
+    // own comment) and doesn't need stage 1's result to start — it's given
+    // the raw description directly and treats any hint as optional — so the
+    // two stages fire concurrently rather than stage 2 waiting on stage 1's
+    // (often several-second) round trip first.
+    runStage2(session, findEventDetailsFromDescription(description, {}))
+
+    let fields: ExtractedEventFields | null = null
+    try {
+      fields = await extractEventFieldsFromDescription(description)
+    } catch {
+      fields = null
+    }
+    if (session.cancelled) return
+
+    setInitialValues(fields ? toInitialValues(fields, null) : null)
+    setFormNote(
+      fields
+        ? null
+        : "Couldn't tell enough about the event from that description — fill in what you can below, we're still searching online for the rest.",
+    )
+    setPipeline((prev) => ({ ...prev, stage1: fields ? 'ok' : 'failed' }))
   }
 
   async function handleSubmit(input: EventInput) {
     const session = activeSessionRef.current
     const sourceName =
-      session && input.source_url && input.source_url === session.sourceUrlSuggestion ? (session.sourceName ?? undefined) : undefined
+      session && input.source_url && input.source_url === session.discovered?.source_url ? (session.discovered?.source_name ?? undefined) : undefined
     const created = await createEvent(sourceName ? { ...input, source_name: sourceName } : input)
     // Deliberately not cleared/reset here — the background search (if still
     // running) needs this to still be reachable once it resolves, so it can
@@ -351,13 +452,32 @@ export function AddEventModal({
               hidden
               onChange={(e) => {
                 const file = e.target.files?.[0]
-                if (file) void handleFile(file)
+                if (file) void handlePhoto(file)
                 e.target.value = ''
               }}
             />
             <IonButton expand="block" style={{ width: '100%', maxWidth: 320 }} onClick={() => fileInputRef.current?.click()}>
               <IonIcon slot="start" icon={cameraOutline} />
               Add from Photo
+            </IonButton>
+            {/* Feedback #133: "if I don't wanna enter a picture, my other
+                option should be to describe the event in words". A second,
+                secondary-weight choice right below the primary photo
+                button — not buried behind "enter manually", since it still
+                runs the same auto-populate pipeline, just from text
+                instead of a photo. */}
+            <IonButton
+              expand="block"
+              fill="outline"
+              style={{ width: '100%', maxWidth: 320, marginTop: 12 }}
+              onClick={() => {
+                setDescriptionDraft('')
+                setChoiceError(null)
+                setStage('describe')
+              }}
+            >
+              <IonIcon slot="start" icon={chatbubbleEllipsesOutline} />
+              Describe It
             </IonButton>
             {choiceError && (
               <IonText color="danger">
@@ -383,9 +503,48 @@ export function AddEventModal({
             </IonButton>
           </div>
         )}
+        {stage === 'describe' && (
+          <div style={{ display: 'flex', flexDirection: 'column', minHeight: '70vh', padding: '32px 24px' }}>
+            <IonIcon
+              icon={chatbubbleEllipsesOutline}
+              style={{ fontSize: 40, color: 'var(--ion-color-primary)', marginBottom: 12, alignSelf: 'center' }}
+            />
+            <h2 style={{ margin: '0 0 8px', fontSize: '1.25rem', textAlign: 'center' }}>Describe the Event</h2>
+            <p style={{ color: 'var(--ion-color-medium)', margin: '0 0 20px', textAlign: 'center' }}>
+              Tell us what you know — a name, a place, roughly when — and we'll try to find and fill in the rest.
+            </p>
+            <IonTextarea
+              value={descriptionDraft}
+              onIonInput={(e) => setDescriptionDraft(e.detail.value ?? '')}
+              autoGrow
+              autofocus
+              placeholder="e.g. “Fall Festival at Nettelhorst Park this Saturday morning”"
+              style={{ border: '1px solid var(--ion-color-step-200, #ccc)', borderRadius: 10, padding: '10px 12px', minHeight: 100 }}
+            />
+            <IonButton
+              expand="block"
+              style={{ marginTop: 20 }}
+              disabled={!descriptionDraft.trim()}
+              onClick={() => void handleDescription(descriptionDraft.trim())}
+            >
+              Look It Up
+            </IonButton>
+            <IonButton
+              fill="clear"
+              color="medium"
+              style={{ marginTop: 8 }}
+              onClick={() => {
+                setChoiceError(null)
+                setStage('choice')
+              }}
+            >
+              Back
+            </IonButton>
+          </div>
+        )}
         {stage === 'form' && (
           <>
-            {photoPreviewUrl && (
+            {pinned?.kind === 'photo' && (
               // Pinned at the top of the screen for the whole time the
               // member is reviewing/editing (feedback, 2026-08-23: "keep
               // the picture and view at the top of the screen") — sticky,
@@ -404,26 +563,52 @@ export function AddEventModal({
                 }}
               >
                 <img
-                  src={photoPreviewUrl}
+                  src={pinned.previewUrl}
                   alt="Your photo"
                   style={{ maxWidth: '100%', maxHeight: 160, borderRadius: 10, boxShadow: '0 1px 6px rgba(0,0,0,0.15)' }}
                 />
               </div>
             )}
-            <PipelineStatus pipeline={pipeline} />
+            {pinned?.kind === 'description' && (
+              // Same pinned-at-the-top treatment as the photo flow's own
+              // preview, so the member can always see exactly what they
+              // typed while the pipeline works and while they review the
+              // fields it filled in.
+              <div
+                style={{
+                  position: 'sticky',
+                  top: 0,
+                  zIndex: 1,
+                  background: 'var(--ion-background-color, #fff)',
+                  padding: '12px 16px 0',
+                }}
+              >
+                <div
+                  style={{
+                    padding: '10px 14px',
+                    borderRadius: 10,
+                    background: 'var(--ion-color-light, #f4f4f4)',
+                    fontStyle: 'italic',
+                    color: 'var(--ion-text-color)',
+                  }}
+                >
+                  “{pinned.text}”
+                </div>
+              </div>
+            )}
+            <PipelineStatus pipeline={pipeline} mode={pinned?.kind ?? 'photo'} />
             {formNote && (
               <IonText color="medium">
                 <p style={{ fontSize: '0.8125rem', margin: '12px 16px 8px' }}>{formNote}</p>
               </IonText>
             )}
             <EventForm
-              key={initialValues ? 'photo-prefill' : 'blank'}
+              key={initialValues ? `${pinned?.kind ?? 'manual'}-prefill` : 'blank'}
               initial={initialValues ?? undefined}
               submitLabel="Post"
               errorMessage="Could not post this event"
-              sourceUrlSuggestion={sourceUrlSuggestion}
-              addressSuggestion={addressSuggestion}
-              hidePhotoAttach={pipeline.active}
+              fieldSuggestions={fieldSuggestions}
+              hidePhotoAttach={pinned?.kind === 'photo' && pipeline.active}
               onSubmit={handleSubmit}
               onCancel={handleDismiss}
             />
