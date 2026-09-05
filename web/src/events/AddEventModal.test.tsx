@@ -65,6 +65,36 @@ describe('AddEventModal — Describe It flow (feedback #133)', () => {
     fireEvent.click(screen.getByText('Look It Up').closest('ion-button')!)
   }
 
+  it('shows all three pipeline steps together immediately, not just once an earlier stage resolves', async () => {
+    // Feedback, 2026-09-05: "Finding photo step doesn't appear at first.
+    // Takes a second to show" — it used to only get added to the pipeline
+    // once stage 1 finished. Hold stage 1/2 pending so this test can check
+    // the DOM in the window before either resolves.
+    let resolveExtract: (value: unknown) => void = () => {}
+    let resolveDetails: (value: unknown) => void = () => {}
+    mockExtractFromDescription.mockReturnValue(
+      new Promise((resolve) => {
+        resolveExtract = resolve
+      }),
+    )
+    mockFindEventDetails.mockReturnValue(
+      new Promise((resolve) => {
+        resolveDetails = resolve
+      }),
+    )
+    mockFindEventImage.mockResolvedValue(null)
+
+    await openDescribeItAndSubmit()
+
+    expect(await screen.findByText('Reading description…')).toBeInTheDocument()
+    expect(screen.getByText('Searching online…')).toBeInTheDocument()
+    expect(screen.getByText('Finding a photo…')).toBeInTheDocument()
+
+    resolveExtract!({ title: 'Fall Festival', start_date: '2026-10-03', all_day: true })
+    resolveDetails!(null)
+    await waitFor(() => expect(screen.getByText(/Couldn't find a photo/)).toBeInTheDocument())
+  })
+
   it('shows a real photo stage 3 finds, large and pinned, before the member ever posts', async () => {
     mockFindEventImage.mockResolvedValue({
       image_url: '/uploads/events/found-photo.jpg',

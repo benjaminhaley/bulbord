@@ -392,7 +392,15 @@ export function AddEventModal({
     setFormNote(null)
     setFieldSuggestions(null)
     setFoundImage(null)
-    setPipeline({ active: true, stage1: 'running', stage2: 'running', stage3: 'skipped' })
+    // All three steps start 'running' together, even though stage 3's own
+    // real search doesn't kick off until stage 1/2 both resolve (see
+    // below) — feedback, 2026-09-05: the "Finding a photo…" row was popping
+    // in late, after stage 1 finished, rather than being visible from the
+    // start alongside the other two. Showing all three immediately is a
+    // more honest picture of the whole pipeline the member is waiting on,
+    // not just whichever parts have technically started their own network
+    // call yet.
+    setPipeline({ active: true, stage1: 'running', stage2: 'running', stage3: 'running' })
     setStage('form')
 
     // Stage 2 always runs for this flow (see findEventDetailsFromDescription's
@@ -428,14 +436,14 @@ export function AddEventModal({
     // description-flow post has no photo of its own the way an attached
     // poster photo does, and "the pipeline found more details" shouldn't
     // silently mean "and also either found or didn't find a photo, with no
-    // indication either way"). Waits for stage 2 so it can search with the
-    // richest fields available — a discovered source_url in particular is
-    // the single most useful signal for finding a real, on-topic photo,
-    // same as a sourced/scraped event's own image-enrichment pass already
-    // gets. Doesn't block Post: if the member submits before this
+    // indication either way"). Already shown as 'running' from the start
+    // (see above) — waits here for stage 2 so its real search can use the
+    // richest fields available, a discovered source_url in particular
+    // being the single most useful signal for finding a real, on-topic
+    // photo, same as a sourced/scraped event's own image-enrichment pass
+    // already gets. Doesn't block Post: if the member submits before this
     // resolves, POST /events' own background image search (same
     // enrichEventImage pipeline) is the fallback safety net.
-    setPipeline((prev) => ({ ...prev, stage3: 'running' }))
     const found = await searchPromise.catch(() => null)
     if (session.cancelled || session.createdEvent) return
     const bestTitle = found?.title ?? fields?.title ?? description
