@@ -47,6 +47,29 @@ describe('extractPageImageCandidates', () => {
     expect(candidates).toEqual([{ url: 'https://cdn.example.com/logo.png', isLogo: true }])
   })
 
+  it('skips a UI loading-spinner graphic in the header and falls through to a real logo', async () => {
+    // Real incident, 2026-09-05: gallagherway.com/img/loader.gif — a
+    // 110x130 JS loading spinner shown before the page's real lazy-loaded
+    // images finish loading — was picked up as "the site logo," passed the
+    // loose logo-size gate, and (being isLogo: true) skipped content-
+    // relevance scoring entirely, ending up as several events' actual image.
+    fetchWithTimeoutMock.mockResolvedValue(
+      htmlResponse(`
+        <html><body>
+          <header>
+            <img src="/img/loader.gif" alt="">
+            <img alt="Gallagher Way" src="//cdn.example.com/gallagher-logo.png" />
+          </header>
+        </body></html>
+      `),
+    )
+
+    const { extractPageImageCandidates } = await import('./extract-page-image.js')
+    const candidates = await extractPageImageCandidates(PAGE_URL)
+
+    expect(candidates).toEqual([{ url: 'https://cdn.example.com/gallagher-logo.png', isLogo: true }])
+  })
+
   it('returns no candidates when every header image is an unrendered template placeholder', async () => {
     fetchWithTimeoutMock.mockResolvedValue(
       htmlResponse(`<html><body><header><img src="{{user_avatar}}"></header></body></html>`),

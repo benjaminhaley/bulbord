@@ -15,13 +15,28 @@ const SKIP_SRC_PATTERN = /logo|icon|sprite|avatar/i
 // a src is read, not just in siteLogo(), since any extraction path could hit
 // the same kind of stub on some other site.
 const TEMPLATE_PLACEHOLDER_PATTERN = /\{\{.*\}\}/
+// Found 2026-09-05 auditing image-relevance.ts's new scoring results:
+// gallagherway.com/img/loader.gif — a 110x130 JS loading-spinner shown
+// before the page's real (lazy-loaded) images finish loading — sat in the
+// page's <header> markup and was picked up by siteLogo() as "the org's
+// logo," since nothing there checks whether a header <img> is actually a
+// logo versus a UI-chrome asset. It then passed the loose logo-size gate
+// (image-quality.ts's LOGO_MIN_IMAGE_DIMENSION_PX) and, being isLogo: true,
+// skipped content-relevance scoring by design (see image-enrichment.ts) —
+// so a blank loading spinner was treated exactly like a real small logo,
+// with nothing anywhere positioned to catch it. Filenames matching this
+// pattern are excluded everywhere isUsableSrc is checked, same as the
+// template-placeholder stub above — a loading/spinner/placeholder graphic
+// is never a real logo or a real content image, regardless of which tier
+// would otherwise pick it.
+const UI_CHROME_ASSET_PATTERN = /loader|loading|spinner/i
 // Schema.org types likely to carry an image for the specific thing the page
 // is about. Deliberately excludes WebSite/Organization — those usually carry
 // a site logo under "image"/"logo", not the page's own content image.
 const JSON_LD_TYPES_WITH_CONTENT_IMAGE = new Set(['Event', 'Article', 'NewsArticle', 'BlogPosting', 'Product'])
 
 function isUsableSrc(src: string | undefined): src is string {
-  return !!src && !TEMPLATE_PLACEHOLDER_PATTERN.test(src)
+  return !!src && !TEMPLATE_PLACEHOLDER_PATTERN.test(src) && !UI_CHROME_ASSET_PATTERN.test(src)
 }
 
 function resolveUrl(url: string, base: string): string | null {

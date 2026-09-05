@@ -20,11 +20,21 @@ import type { CandidateEvent } from './ingest.js'
 // triggers, rather than re-reading the whole page — a narrower, cheaper,
 // more reliable task than extraction itself, and one where a miss in this
 // prompt's wording isn't the same miss as a gap in the other one.
+//
+// Tightened 2026-09-05 after running this function against every live
+// approved event to verify it actually worked (see the same-dated addition
+// to extraction-filters.ts's own header for the full incident and false
+// positives found: a kid-inclusive minimum age like "6+" flagged as an
+// adult exclusion, a plain "Adult Book Discussion" library category label
+// flagged the same way, a bounded street segment flagged as vague, and a
+// dog-costume "Pup Crawl" flagged as a bar crawl purely for the word
+// "crawl"). Each trigger below now states explicitly what does NOT count,
+// mirroring the fixes made to AUDIENCE_RELEVANCE_RULES.
 const VALIDATION_SYSTEM_PROMPT = `You are reviewing a list of already-extracted candidate events for a family/community events app serving Nettelhorst School families (pre-K through 8th grade) in Chicago. For each event, decide whether it should be REJECTED for any of these reasons:
 
-1. Age-restricted: the event's own title/description states an age restriction (e.g. "18+," "21+," "adults only," "ages 21 and up") or is otherwise explicitly not for children — regardless of how family-friendly the venue normally is.
-2. Bar/drink crawl: the event is a "crawl" format — walking between multiple bars/restaurants/venues to sample food and/or alcohol (a pub crawl, bar crawl, progressive dinner, "food and drink sampling crawl") — even if it's citywide, one-time, or framed as a neighborhood festival. A single-site festival or street fair with one central location (an Oktoberfest, a market, a "Market Days" street festival) is NOT a crawl and should be kept.
-3. Vague location: for an IN-PERSON event, neither address nor location_name names a specific, real-world place a person could navigate to (a street address, or a specific venue/business name). A bare neighborhood, business district, or general area name (e.g. "Northalsted," "Lakeview," "downtown," "the West Loop") does not count as specific, even as location_name. Does NOT apply to a genuinely virtual/online event (a webinar, a virtual info session) — those have no physical location by nature, so no address is expected or required.
+1. Age-restricted: the event's own title/description EXPLICITLY excludes children — a stated numeric age gate meant to keep minors out (e.g. "18+," "21+," "ages 21 and up") or an explicit "adults only"/"no children" statement — regardless of how family-friendly the venue normally is. Do NOT flag a reasonable MINIMUM age meant to include kids/teens, not exclude them (e.g. "ages 6+," "ages 13+" on a zoo/museum/library program is a normal safety/maturity requirement, not an adult-only exclusion). Do NOT flag a plain audience-category label with no actual stated exclusion (a library "Adult Book Discussion," an "adult"/"grown-ups" branded talk or game night) — that's a programming-category term, not a restriction that children can't attend.
+2. Bar/drink crawl: the event is a "crawl" format — walking between multiple bars/restaurants/venues to sample food and/or alcohol (a pub crawl, bar crawl, progressive dinner, "food and drink sampling crawl") — even if it's citywide, one-time, or framed as a neighborhood festival. A single-site festival or street fair with one central location (an Oktoberfest, a market, a "Market Days" street festival) is NOT a crawl and should be kept. The word "crawl" in the title alone is NOT enough to trigger this — check the event's own description for what's actually happening: something that uses "crawl" in its name but doesn't involve visiting bars/drinking alcohol (a costume walk, a pet parade, a scavenger hunt) is a different format and should be kept.
+3. Vague location: for an IN-PERSON event, neither address nor location_name names a place a person could navigate to. A street address, a specific venue/business name, OR a street segment bounded by two named cross streets (e.g. "Halsted St between Addison St & Belmont Ave," "Lincoln Ave from Wellington to Diversey") all count as specific enough, even a segment spanning several blocks. Only a bare neighborhood/business district/area name with no street or venue at all (e.g. "Northalsted," "Lakeview," "downtown," "the West Loop," "the Southport corridor" with no street given) fails this. Does NOT apply to a genuinely virtual/online event (a webinar, a virtual info session) — those have no physical location by nature, so no address is expected or required.
 
 Respond with ONLY a JSON array, same length and order as the input, no markdown fences, no explanation. Each element: {"keep": boolean, "reason"?: string} — reason only when keep is false, one short phrase naming which of the three triggers applied.`
 
