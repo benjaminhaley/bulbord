@@ -16,6 +16,7 @@ import { buildEventFilterConditions, parseAfterTimeParam, parseBeforeTimeParam, 
 import { getEventsForWeek } from './week-query.js'
 import { canEditEvent } from './permissions.js'
 import { extractEventFieldsFromDescription, findEventDetailsFromDescription } from './description-extraction.js'
+import { enrichEventImage } from './image-enrichment.js'
 import { extractEventFieldsFromPhoto, findEventSource, type ExtractedEventFields } from './photo-extraction.js'
 import { registerDiscoveredEventSource } from './source-registration.js'
 import {
@@ -271,6 +272,27 @@ export async function eventsRoutes(app: FastifyInstance) {
       metadata: { eventId: created.id },
     })
 
+    // Member self-service posting had no automated image-sourcing of its
+    // own — a member who doesn't attach a photo (both the manual-entry and
+    // describe-it paths allow this) used to just get the generated
+    // placeholder and nothing more, unlike a sourced/scraped event, which
+    // always gets a real search first (see image-enrichment.ts's own header
+    // and CLAUDE.md's "never settle for a placeholder without exhausting
+    // real search first" rule). Reusing the exact same enrichEventImage()
+    // a sourced event's ingestion already calls closes that gap here too —
+    // fire-and-forget (not awaited into the response), same posture as the
+    // registerDiscoveredEventSource call just below, so posting still feels
+    // instant; the real photo (if one is found) shows up the next time the
+    // event is fetched, same as every other background enrichment in this
+    // codebase.
+    if (!(body.image_url && body.thumbnail_url)) {
+      void enrichEventImage(created.id, {
+        sourceUrl: body.source_url?.trim() || null,
+        title,
+        description: body.description?.trim() || null,
+      }).catch(() => {})
+    }
+
     // Best-effort, non-blocking: a failure here must never undo or fail the
     // event creation that already succeeded above.
     const sourceUrl = body.source_url?.trim()
@@ -376,6 +398,17 @@ export async function eventsRoutes(app: FastifyInstance) {
         metadata: { eventId: id },
       }),
     ])
+
+    // Same fire-and-forget image search as POST /events above — clearing a
+    // photo on edit shouldn't leave the event permanently stuck on a
+    // placeholder any more than never having one in the first place should.
+    if (!(body.image_url && body.thumbnail_url)) {
+      void enrichEventImage(id, {
+        sourceUrl: body.source_url?.trim() || null,
+        title,
+        description: body.description?.trim() || null,
+      }).catch(() => {})
+    }
 
     // Best-effort, non-blocking — same as POST /events above.
     const sourceUrl = body.source_url?.trim()
