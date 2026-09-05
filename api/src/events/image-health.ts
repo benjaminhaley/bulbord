@@ -2,7 +2,7 @@ import { and, eq, isNull } from 'drizzle-orm'
 
 import { db } from '../db/client.js'
 import { events } from '../db/schema.js'
-import { getImageObject } from '../uploads/storage.js'
+import { objectExists } from '../uploads/storage.js'
 
 // Direct response to a real production incident (2026-09-05): a one-off
 // script uploaded a replacement image directly to the storage bucket from
@@ -19,14 +19,10 @@ import { getImageObject } from '../uploads/storage.js'
 // every event's stored image actually servable right now" from the same
 // vantage point real traffic uses.
 //
-// Calls getImageObject() directly — the exact same function the real
-// GET /uploads/* route calls — rather than a separate raw S3 read, since
-// this function runs as part of the same deployed service real users hit;
-// a raw SDK check from a different environment (a local script, this
-// sandbox) can give a falsely reassuring answer if that environment
-// happens to reach a different storage backend edge than the deployed
-// service does, which is the exact shape of bug that motivated this in
-// the first place.
+// Uses objectExists() — a lightweight HEAD, not a full download — against
+// the exact same bucket/credentials the real GET /uploads/* route reads
+// from, so this answers the same question a real request would, just
+// without transferring image bytes for every one of a few hundred events.
 function keyFromImageUrl(url: string): string {
   return url.replace(/^\/uploads\//, '')
 }
@@ -37,11 +33,17 @@ export interface BrokenImage {
   imageUrl: string
 }
 
-// Read-only and cheap (a HEAD-equivalent object lookup per event, no
-// downloads/vision calls) — safe to run on every page load of its own
-// admin view, not just on an explicit button press, the same "don't make
-// someone remember to click a button" posture as the existing data-
-// freshness badge.
+const CHECK_CONCURRENCY = 15
+
+// Read-only and cheap (a HEAD request per event, no downloads/vision
+// calls) — safe to run on every page load of its own admin view, not just
+// on an explicit button press, the same "don't make someone remember to
+// click a button" posture as the existing data-freshness badge. Bounded
+// concurrency, same reasoning as image-enrichment.ts's own
+// ENRICH_CONCURRENCY: checking a few hundred events one at a time was slow
+// enough in practice to risk the request itself timing out before it ever
+// finished — found by actually calling this against production once it
+// shipped, not assumed safe from the code alone.
 export async function checkImageHealth(): Promise<BrokenImage[]> {
   const rows = await db
     .select({ id: events.id, title: events.title, imageUrl: events.imageUrl, thumbnailUrl: events.thumbnailUrl })
@@ -49,14 +51,21 @@ export async function checkImageHealth(): Promise<BrokenImage[]> {
     .where(and(isNull(events.deletedAt), eq(events.status, 'approved')))
 
   const broken: BrokenImage[] = []
-  for (const row of rows) {
-    const [image, thumbnail] = await Promise.all([
-      getImageObject(keyFromImageUrl(row.imageUrl)),
-      getImageObject(keyFromImageUrl(row.thumbnailUrl)),
-    ])
-    if (!image || !thumbnail) {
-      broken.push({ eventId: row.id, title: row.title, imageUrl: row.imageUrl })
+  let index = 0
+
+  async function worker() {
+    while (index < rows.length) {
+      const row = rows[index++]
+      const [imageOk, thumbnailOk] = await Promise.all([
+        objectExists(keyFromImageUrl(row.imageUrl)),
+        objectExists(keyFromImageUrl(row.thumbnailUrl)),
+      ])
+      if (!imageOk || !thumbnailOk) {
+        broken.push({ eventId: row.id, title: row.title, imageUrl: row.imageUrl })
+      }
     }
   }
+
+  await Promise.all(Array.from({ length: Math.min(CHECK_CONCURRENCY, rows.length) }, worker))
   return broken
 }

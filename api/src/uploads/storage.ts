@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import type { Readable } from 'node:stream'
 
-import { GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3'
+import { GetObjectCommand, HeadObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3'
 import sharp from 'sharp'
 
 import { requireEnv } from '../env.js'
@@ -79,4 +79,18 @@ export async function getImageObject(key: string): Promise<StoredObject | null> 
 
 export function imageUrl(key: string | null): string | null {
   return key ? `/uploads/${key}` : null
+}
+
+// A lightweight existence check (no body transferred, unlike
+// getImageObject()) against the same bucket/credentials the real
+// GET /uploads/* route reads from — used by image-health.ts to verify many
+// objects quickly without downloading full image bytes for each one.
+export async function objectExists(key: string): Promise<boolean> {
+  try {
+    await client.send(new HeadObjectCommand({ Bucket: bucket, Key: prefixedKey(key) }))
+    return true
+  } catch (err) {
+    if (err instanceof Error && (err.name === 'NotFound' || err.name === 'NoSuchKey')) return false
+    throw err
+  }
 }
