@@ -61,7 +61,20 @@ function weekRangeLabel(weekStart: string): string {
 // (acceptable: they're two views of the same underlying data, re-synced on
 // every fetch, not a case where staleness could mislead about something
 // that matters).
-export function CalendarWeekView({ filters, multiTouch }: { filters: EventFilters; multiTouch: boolean }) {
+export function CalendarWeekView({
+  filters,
+  multiTouch,
+  refreshKey,
+}: {
+  filters: EventFilters
+  multiTouch: boolean
+  // Bumped by EventsPage.tsx whenever a new event is created — this view's
+  // own fetch otherwise only re-runs when weekStart/filters change, so a
+  // freshly-posted event (which only ever updates List's own `events`
+  // state) would stay invisible here until something else triggered a
+  // refetch or the whole page reloaded.
+  refreshKey?: number
+}) {
   const [weekStart, setWeekStart] = useState(() => toISODate(startOfWeekSunday(new Date())))
   const [weekEvents, setWeekEvents] = useState<Event[] | null>(null)
   const [error, setError] = useState(false)
@@ -77,7 +90,7 @@ export function CalendarWeekView({ filters, multiTouch }: { filters: EventFilter
       .then(setWeekEvents)
       .catch(() => setError(true))
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [weekStart, topicsKey, filters.beforeTime])
+  }, [weekStart, topicsKey, filters.beforeTime, refreshKey])
 
   const days = useMemo(() => Array.from({ length: 7 }, (_, i) => toISODate(addDays(parseISODate(weekStart), i))), [weekStart])
   const today = toISODate(new Date())

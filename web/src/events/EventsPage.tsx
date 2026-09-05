@@ -128,6 +128,15 @@ export function EventsPage() {
   // Occurrences the next-occurrence collapse is currently suppressing
   // (feedback #48) — 0 once revealHidden() below has fetched everything.
   const [hiddenCount, setHiddenCount] = useState(0)
+  // Bumped whenever a new event is created, so CalendarWeekView — a fully
+  // separate fetch/state from this page's own `events` (see that
+  // component's own header comment) — knows to refetch too. Without this,
+  // posting a new event while on Calendar view updated List's own state
+  // (via onCreated below) but Calendar kept showing its last fetch until
+  // something else changed weekStart/filters or the whole page reloaded
+  // (feedback, 2026-09-05: "I just posted one, but it didn't appear
+  // immediately... had to reload the page").
+  const [calendarRefreshKey, setCalendarRefreshKey] = useState(0)
   const { setInterest, clearInterest } = useEventInterest(updateEvent)
 
   // Feedback #97: List/Calendar view toggle, and the topic/time-cutoff
@@ -285,9 +294,12 @@ export function EventsPage() {
         <AddEventModal
           isOpen={showForm}
           onClose={() => setShowForm(false)}
-          onCreated={(created) => setEvents((prev) => [created, ...(prev ?? [])])}
+          onCreated={(created) => {
+            setEvents((prev) => [created, ...(prev ?? [])])
+            setCalendarRefreshKey((k) => k + 1)
+          }}
         />
-        {viewMode === 'calendar' && <CalendarWeekView filters={filters} multiTouch={multiTouch} />}
+        {viewMode === 'calendar' && <CalendarWeekView filters={filters} multiTouch={multiTouch} refreshKey={calendarRefreshKey} />}
         {viewMode === 'list' && events === null && !error && (
           <div className="coming-soon">
             <IonSpinner name="dots" />
