@@ -309,6 +309,13 @@
       "when": 1788545675812,
       "tag": "0043_add_events_source_image_url",
       "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1788654865711,
+      "tag": "0044_stiff_giant_man",
+      "breakpoints": true
     }
   ]
 }

@@ -96,10 +96,15 @@ describe('ingestEvents', () => {
 
     expect(result).toEqual({ inserted: 0, skipped: 1 })
     expect(uploadPlaceholderImageMock).not.toHaveBeenCalled()
-    // The only insert() call left is ingestEvents' own events_log audit
-    // entry — no event row (and so no placeholder) was ever created.
-    expect(insertCalls).toHaveLength(1)
-    expect(insertCalls[0]).toEqual(expect.objectContaining({ action: 'events_ingested' }))
+    // No event row (and so no placeholder) was ever created — the only two
+    // insert() calls left are the new rejected_event_candidates batch insert
+    // (Pipeline Review, feedback #138) and ingestEvents' own events_log
+    // audit entry.
+    expect(insertCalls).toHaveLength(2)
+    expect(insertCalls[0]).toEqual([
+      expect.objectContaining({ rejectionType: 'duplicate', duplicateOfEventId: 'existing-event' }),
+    ])
+    expect(insertCalls[1]).toEqual(expect.objectContaining({ action: 'events_ingested' }))
   })
 
   it('skips a candidate that fuzzy-matches an already-approved event on the same date from a different source', async () => {
@@ -114,6 +119,25 @@ describe('ingestEvents', () => {
 
     expect(result).toEqual({ inserted: 0, skipped: 1 })
     expect(uploadPlaceholderImageMock).not.toHaveBeenCalled()
+  })
+
+  it('persists a relevance-rejected candidate (from the caller\'s filteredOut) so it can be reviewed/added-anyway later', async () => {
+    selectResults.push([]) // no existing duplicate for the one real candidate below
+    const rejected = { ...CANDIDATE, title: 'Adults-only Wine Tasting' }
+    const { ingestEvents } = await import('./ingest.js')
+
+    await ingestEvents([], { sourceId: 'source-1', actor: 'test', filteredOut: [{ candidate: rejected, reason: 'age-restricted' }] })
+
+    expect(insertCalls[0]).toEqual([
+      expect.objectContaining({
+        eventSourceId: 'source-1',
+        title: rejected.title,
+        candidateData: rejected,
+        rejectionType: 'relevance',
+        rejectionReason: 'age-restricted',
+      }),
+    ])
+    expect(insertCalls[1]).toEqual(expect.objectContaining({ action: 'events_ingested' }))
   })
 
   it('still hands the inserted row to enrichEventImages, which can upgrade the placeholder to a real photo', async () => {

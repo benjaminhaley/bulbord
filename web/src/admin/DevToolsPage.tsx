@@ -47,6 +47,7 @@ import {
   sendTestCampReminderEmail,
   sendTestConnectionAlertEmail,
   sendTestNewsletterEmail,
+  sendTestPipelineReviewEmail,
   testEmailIngest,
   type BrokenImage,
   type LastEventSourcingRun,
@@ -80,6 +81,7 @@ export function DevToolsPage() {
   const [sending, setSending] = useState(false)
   const [sendingCampReminderTest, setSendingCampReminderTest] = useState(false)
   const [sendingConnectionTest, setSendingConnectionTest] = useState(false)
+  const [sendingPipelineReviewTest, setSendingPipelineReviewTest] = useState(false)
   const [creatingTestRequest, setCreatingTestRequest] = useState(false)
   const [toast, setToast] = useState<string | null>(null)
   const [resourcing, setResourcing] = useState(false)
@@ -165,6 +167,18 @@ export function DevToolsPage() {
       setToast(err instanceof Error ? err.message : 'Could not send test email')
     } finally {
       setSendingConnectionTest(false)
+    }
+  }
+
+  async function sendPipelineReviewTest() {
+    setSendingPipelineReviewTest(true)
+    try {
+      await sendTestPipelineReviewEmail()
+      setToast(`Sent to ${user?.email ?? 'your email'}`)
+    } catch (err) {
+      setToast(err instanceof Error ? err.message : 'Could not send test email')
+    } finally {
+      setSendingPipelineReviewTest(false)
     }
   }
 
@@ -265,6 +279,18 @@ export function DevToolsPage() {
               )}
             </IonLabel>
             {resourcing && <IonSpinner slot="end" name="dots" />}
+          </IonItem>
+          {/* Feedback #138: a post-hoc audit of everything the sourcing
+              pipeline kept or rejected, with the checks/reasons behind each,
+              and one-tap Approve/Remove/Retry-image/Agree/Add-anyway
+              actions — reached here, from the weekly digest email, or from
+              its own in-app notification. */}
+          <IonItem button routerLink="/admin/pipeline-review">
+            <IonIcon slot="start" icon={eyeOutline} />
+            <IonLabel className="ion-text-wrap">
+              <h2>Pipeline review</h2>
+              <p>See everything the sourcing pipeline kept or rejected, with why — and fix what it got wrong.</p>
+            </IonLabel>
           </IonItem>
           {/* Feedback #115: paste in an email's text and run it through the
               real extraction/ingestion pipeline — works today even before
@@ -428,6 +454,14 @@ export function DevToolsPage() {
               <p>The real "sent you a friend request" alert (using your own name/photo), same template as the live send.</p>
             </IonLabel>
             {sendingConnectionTest && <IonSpinner slot="end" name="dots" />}
+          </IonItem>
+          <IonItem button disabled={sendingPipelineReviewTest} onClick={sendPipelineReviewTest}>
+            <IonIcon slot="start" icon={mailOutline} />
+            <IonLabel className="ion-text-wrap">
+              <h2>Send yourself a test pipeline review email</h2>
+              <p>The current unreviewed kept/rejected candidates, same template as the real Wednesday send.</p>
+            </IonLabel>
+            {sendingPipelineReviewTest && <IonSpinner slot="end" name="dots" />}
           </IonItem>
           <IonItem button disabled={creatingTestRequest} onClick={createFriendRequest} lines="none">
             <IonIcon slot="start" icon={flaskOutline} />

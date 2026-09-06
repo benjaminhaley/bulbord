@@ -50,7 +50,10 @@ describe('filterFamilyRelevantCandidates', () => {
 
     const result = await filterFamilyRelevantCandidates([good, bad])
 
-    expect(result).toEqual({ kept: [good], rejected: [{ title: bad.title, reason: 'age-restricted' }] })
+    expect(result).toEqual({
+      kept: [{ ...good, relevanceReason: 'unspecified', qualityChecks: undefined }],
+      rejected: [{ candidate: bad, reason: 'age-restricted' }],
+    })
   })
 
   it('rejects a Northalsted-style crawl and a vague-area-only location in one batch', async () => {
@@ -70,9 +73,44 @@ describe('filterFamilyRelevantCandidates', () => {
     expect(result).toEqual({
       kept: [],
       rejected: [
-        { title: crawl.title, reason: 'bar crawl' },
-        { title: vagueLocation.title, reason: 'vague location' },
+        { candidate: crawl, reason: 'bar crawl' },
+        { candidate: vagueLocation, reason: 'vague location' },
       ],
+    })
+  })
+
+  it('carries a reason and the three quality checks onto every kept candidate', async () => {
+    createMock.mockResolvedValue(
+      textResponse(
+        JSON.stringify([
+          {
+            keep: true,
+            reason: 'legitimate neighborhood festival',
+            titleQuality: { pass: true, reason: 'clear, complete title' },
+            descriptionQuality: { pass: false, reason: 'no description provided' },
+            locationQuality: { pass: true, reason: 'names a specific venue' },
+          },
+        ]),
+      ),
+    )
+    const { filterFamilyRelevantCandidates } = await import('./candidate-validation.js')
+    const only = candidate()
+
+    const result = await filterFamilyRelevantCandidates([only])
+
+    expect(result).toEqual({
+      kept: [
+        {
+          ...only,
+          relevanceReason: 'legitimate neighborhood festival',
+          qualityChecks: {
+            titleQuality: { pass: true, reason: 'clear, complete title' },
+            descriptionQuality: { pass: false, reason: 'no description provided' },
+            locationQuality: { pass: true, reason: 'names a specific venue' },
+          },
+        },
+      ],
+      rejected: [],
     })
   })
 

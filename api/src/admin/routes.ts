@@ -11,6 +11,15 @@ import { checkImageHealth } from '../events/image-health.js'
 import { findLowRecurringSeries } from '../events/recurring-series-health.js'
 import { getApprovedEventOccurrences } from '../events/recurring-series-query.js'
 import { processInboundEmail } from '../events/email-ingest.js'
+import { sendTestPipelineReviewEmail } from '../events/pipeline-review-email.js'
+import {
+  addRejectionAnyway,
+  agreeRejection,
+  approveEvent,
+  getPipelineReviewCandidates,
+  removeEvent,
+  retryEventImage,
+} from '../events/pipeline-review-service.js'
 import {
   getLatestEventSourcingRun,
   getSourcesLastCheckedAt,
@@ -273,5 +282,106 @@ export async function adminRoutes(app: FastifyInstance) {
     }
     const result = await processInboundEmail({ fromAddress: from_address, fromName: null, subject: subject ?? '(no subject)', text: body, html: null })
     return reply.send({ data: { added: result.added, skipped: result.skipped } })
+  })
+
+  // Pipeline Review (feedback #138): every candidate the sourcing pipeline
+  // has produced, kept or rejected, unreviewed-by-default — see
+  // pipeline-review-service.ts for why. include_reviewed=true also shows
+  // history.
+  app.get('/admin/events/pipeline-review', { preHandler: requireRole('admin') }, async (request, reply) => {
+    const { include_reviewed } = request.query as { include_reviewed?: string }
+    const { kept, rejected } = await getPipelineReviewCandidates({ includeReviewed: include_reviewed === 'true' })
+    return reply.send({
+      data: {
+        kept: kept.map((k) => ({
+          id: k.id,
+          title: k.title,
+          source_id: k.sourceId,
+          source_name: k.sourceName,
+          created_at: k.createdAt,
+          relevance_reason: k.relevanceReason,
+          quality_checks: k.qualityChecks,
+          image_trace: k.imageTrace,
+          reviewed_at: k.reviewedAt,
+          reviewed_by_name: k.reviewedByName,
+          review_note: k.reviewNote,
+        })),
+        rejected: rejected.map((r) => ({
+          id: r.id,
+          title: r.title,
+          source_id: r.sourceId,
+          source_name: r.sourceName,
+          rejection_type: r.rejectionType,
+          rejection_reason: r.rejectionReason,
+          duplicate_of_event_id: r.duplicateOfEventId,
+          duplicate_of_event_title: r.duplicateOfEventTitle,
+          created_at: r.createdAt,
+          reviewed_at: r.reviewedAt,
+          reviewed_by_name: r.reviewedByName,
+          review_action: r.reviewAction,
+          review_note: r.reviewNote,
+          added_as_event_id: r.addedAsEventId,
+        })),
+      },
+    })
+  })
+
+  app.post('/admin/events/:id/pipeline-review/approve', { preHandler: requireRole('admin') }, async (request, reply) => {
+    const { id } = request.params as { id: string }
+    const { note } = (request.body ?? {}) as { note?: string }
+    const error = await approveEvent(id, request.currentUser!.id, note)
+    if (error) return reply.code(404).send({ error: { message: 'Event not found' } })
+    return reply.send({ data: { approved: true } })
+  })
+
+  app.post('/admin/events/:id/pipeline-review/remove', { preHandler: requireRole('admin') }, async (request, reply) => {
+    const { id } = request.params as { id: string }
+    const { note } = (request.body ?? {}) as { note?: string }
+    const error = await removeEvent(id, request.currentUser!.id, note)
+    if (error) return reply.code(404).send({ error: { message: 'Event not found' } })
+    return reply.send({ data: { removed: true } })
+  })
+
+  // Re-runs the same real image search a member's Describe-It flow uses
+  // (findCandidateEventImage), scoring the logo tier too — deliberately does
+  // not mark the event reviewed, since an admin still needs to look at the
+  // new result before deciding Approve/Remove.
+  app.post('/admin/events/:id/pipeline-review/retry-image', { preHandler: requireRole('admin') }, async (request, reply) => {
+    const { id } = request.params as { id: string }
+    const error = await retryEventImage(id)
+    if (error === 'not_found') return reply.code(404).send({ error: { message: 'Event not found' } })
+    return reply.send({ data: { found: error !== 'no_image_found' } })
+  })
+
+  app.post('/admin/rejected-event-candidates/:id/agree', { preHandler: requireRole('admin') }, async (request, reply) => {
+    const { id } = request.params as { id: string }
+    const { note } = (request.body ?? {}) as { note?: string }
+    const error = await agreeRejection(id, request.currentUser!.id, note)
+    if (error) return reply.code(404).send({ error: { message: 'Rejected candidate not found' } })
+    return reply.send({ data: { agreed: true } })
+  })
+
+  // Rebuilds and re-inserts the original candidate via the same ingestEvents()
+  // path everything else uses — see pipeline-review-service.ts's
+  // addRejectionAnyway for why a 'deduped' outcome is a real, honest result
+  // rather than a silent no-op.
+  app.post('/admin/rejected-event-candidates/:id/add-anyway', { preHandler: requireRole('admin') }, async (request, reply) => {
+    const { id } = request.params as { id: string }
+    const { note } = (request.body ?? {}) as { note?: string }
+    const error = await addRejectionAnyway(id, request.currentUser!.id, note)
+    if (error === 'not_found') return reply.code(404).send({ error: { message: 'Rejected candidate not found' } })
+    return reply.send({ data: { added: error !== 'deduped', deduped: error === 'deduped' } })
+  })
+
+  // Dev tool (feedback #138): preview the weekly pipeline-review email
+  // without waiting for Wednesday — mirrors sendTestCampReminderEmail's
+  // shape exactly.
+  app.post('/admin/events/pipeline-review/test-send', { preHandler: requireRole('admin') }, async (request, reply) => {
+    const user = request.currentUser!
+    if (!user.email) {
+      return reply.code(400).send({ error: { message: 'Your account has no email on file' } })
+    }
+    await sendTestPipelineReviewEmail({ name: user.name, email: user.email })
+    return reply.send({ sent: true })
   })
 }

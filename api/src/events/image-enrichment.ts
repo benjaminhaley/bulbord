@@ -244,8 +244,20 @@ async function findImageCandidate(
   return { chosen: null, trace }
 }
 
-export async function enrichEventImage(eventId: string, options: ImageSearchOptions): Promise<ImageEnrichmentResult> {
-  const { chosen, trace } = await findImageCandidate(eventId, options)
+// `scoreLogos` defaults false, preserving the original background-enrichment
+// behavior every existing caller relies on (see findImageCandidate's own
+// header for why a silent background pass exempts the logo tier). Pipeline
+// Review's admin "retry image" action (feedback #138) is the one caller that
+// passes true — the same interactive, human-reviewed reasoning
+// findCandidateEventImage already established: an admin looking at a
+// specific event and being handed a mismatched org logo as "the photo" is
+// the same misleading outcome either path would produce.
+export async function enrichEventImage(
+  eventId: string,
+  options: ImageSearchOptions,
+  { scoreLogos = false }: { scoreLogos?: boolean } = {},
+): Promise<ImageEnrichmentResult> {
+  const { chosen, trace } = await findImageCandidate(eventId, options, { scoreLogos })
   if (!chosen) return { result: 'none', trace }
 
   // Non-null: uploadImage() always returns a real key, so imageUrl() (only

@@ -74,7 +74,7 @@ export async function extractCandidateEventsFromEmail(
   subject: string,
   bodyText: string,
   sourceUrl: string,
-): Promise<{ candidates: CandidateEvent[]; rejectedCandidates: { title: string; reason: string }[] }> {
+): Promise<{ candidates: CandidateEvent[]; rejectedCandidates: { candidate: CandidateEvent; reason: string }[] }> {
   const anthropic = getAnthropicClient()
   if (!anthropic) return { candidates: [], rejectedCandidates: [] }
 

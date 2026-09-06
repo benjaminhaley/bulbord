@@ -59,6 +59,11 @@ describe('extractCandidateEventsFromEmail', () => {
           locationName: 'Gallagher Way',
           sourceUrl: 'mailto:newsletter@example.org',
           status: 'approved',
+          // Same shared-mock caveat as resourcing.test.ts's equivalent case
+          // — the mocked response is reused for candidate-validation.ts's
+          // own second-pass call too, so it fails safely open.
+          relevanceReason: 'unspecified',
+          qualityChecks: undefined,
         },
       ],
       rejectedCandidates: [],

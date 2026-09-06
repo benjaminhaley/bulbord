@@ -1,8 +1,9 @@
 import { and, eq, isNull } from 'drizzle-orm'
 
 import { db } from '../db/client.js'
-import { events, eventsLog } from '../db/schema.js'
+import { events, eventsLog, rejectedEventCandidates } from '../db/schema.js'
 import { uploadPlaceholderImage } from '../uploads/placeholder.js'
+import type { CandidateQualityChecks } from './candidate-validation.js'
 import { findLikelyDuplicateEvent } from './duplicate-detection.js'
 import { enrichEventImages } from './image-enrichment.js'
 import { lookupMoviePoster } from './movie-poster-lookup.js'
@@ -30,6 +31,13 @@ export interface CandidateEvent {
   // where a real image was found and hand-checked another way.
   imageUrl?: string
   status: 'approved' | 'pending'
+  // Set by candidate-validation.ts's filterFamilyRelevantCandidates() on
+  // every candidate it keeps — carried through to the inserted event's own
+  // pipelineRelevanceReason/pipelineQualityChecks columns (Pipeline Review,
+  // feedback #138) purely for later admin review; neither field is read by
+  // ingestEvents() for any gating decision.
+  relevanceReason?: string
+  qualityChecks?: CandidateQualityChecks
 }
 
 export interface IngestOptions {
@@ -37,10 +45,12 @@ export interface IngestOptions {
   actor: string // e.g. 'claude:manual-sourcing', 'system:daily-job'
   // Candidates the caller's own second-pass relevance check
   // (candidate-validation.ts) already dropped BEFORE calling ingestEvents —
-  // passed through purely so this function's one events_log write covers
-  // the whole pipeline's reasoning for a run, not just what made it as far
-  // as ingestEvents. See the 2026-09-04 debuggability note below.
-  filteredOut?: { title: string; reason: string }[]
+  // passed through so this function's one events_log write covers the whole
+  // pipeline's reasoning for a run (see the 2026-09-04 debuggability note
+  // below), and so a rejected_event_candidates row can be persisted for each
+  // one (Pipeline Review, feedback #138) with enough data to reconstruct it
+  // later if an admin decides the rejection was wrong.
+  filteredOut?: { candidate: CandidateEvent; reason: string }[]
 }
 
 // Reusable by any trigger — a manual sourcing pass today, a future daily job,
@@ -55,7 +65,12 @@ export async function ingestEvents(candidates: CandidateEvent[], { sourceId, act
   // a counter, with the actual title and which of the two dedup checks
   // caught it gone the instant `continue` ran. Recorded here and logged
   // below in the same events_ingested row as everything else this run did.
-  const duplicateSkips: { title: string; reason: 'exact_match' | 'likely_duplicate' }[] = []
+  const duplicateSkips: {
+    candidate: CandidateEvent
+    title: string
+    reason: 'exact_match' | 'likely_duplicate'
+    duplicateOfEventId: string
+  }[] = []
 
   for (const candidate of candidates) {
     // Simplified once and reused for both the dedup lookup and the insert
@@ -77,7 +92,7 @@ export async function ingestEvents(candidates: CandidateEvent[], { sourceId, act
 
     if (existing.length > 0) {
       skipped++
-      duplicateSkips.push({ title, reason: 'exact_match' })
+      duplicateSkips.push({ candidate, title, reason: 'exact_match', duplicateOfEventId: existing[0].id })
       continue
     }
 
@@ -96,7 +111,7 @@ export async function ingestEvents(candidates: CandidateEvent[], { sourceId, act
     const likelyDuplicate = findLikelyDuplicateEvent({ title, address: candidate.address }, sameDayEvents)
     if (likelyDuplicate) {
       skipped++
-      duplicateSkips.push({ title, reason: 'likely_duplicate' })
+      duplicateSkips.push({ candidate, title, reason: 'likely_duplicate', duplicateOfEventId: likelyDuplicate.id })
       continue
     }
 
@@ -125,6 +140,10 @@ export async function ingestEvents(candidates: CandidateEvent[], { sourceId, act
         imageUrl: placeholder.imageUrl,
         thumbnailUrl: placeholder.thumbnailUrl,
         status: candidate.status,
+        // Pipeline Review (feedback #138) — set by candidate-validation.ts,
+        // read only by the admin review page; never gates anything here.
+        pipelineRelevanceReason: candidate.relevanceReason,
+        pipelineQualityChecks: candidate.qualityChecks,
       })
       .returning({ id: events.id })
     inserted++
@@ -140,6 +159,34 @@ export async function ingestEvents(candidates: CandidateEvent[], { sourceId, act
   }
 
   const { sourced, none, traces } = await enrichEventImages(toEnrich)
+
+  // Pipeline Review (feedback #138, 2026-09-06): persist every candidate
+  // that didn't become an events row — before this, a rejected candidate's
+  // full data (dates, address, everything needed to reconstruct it) was
+  // discarded the moment this function moved on, leaving only the
+  // {title, reason} pair below inside events_log. This is what makes an
+  // admin's later "add anyway" action on a wrongly-rejected candidate
+  // possible without re-running extraction.
+  const rejectedRows = [
+    ...filteredOut.map(({ candidate, reason }) => ({
+      eventSourceId: sourceId,
+      title: candidate.title,
+      candidateData: candidate,
+      rejectionType: 'relevance' as const,
+      rejectionReason: reason,
+    })),
+    ...duplicateSkips.map(({ candidate, title, reason, duplicateOfEventId }) => ({
+      eventSourceId: sourceId,
+      title,
+      candidateData: candidate,
+      rejectionType: 'duplicate' as const,
+      rejectionReason: reason === 'exact_match' ? 'Exact match of an already-ingested event' : 'Looks like an already-approved same-day event',
+      duplicateOfEventId,
+    })),
+  ]
+  if (rejectedRows.length > 0) {
+    await db.insert(rejectedEventCandidates).values(rejectedRows)
+  }
 
   await db.insert(eventsLog).values({
     actor,
@@ -158,9 +205,11 @@ export async function ingestEvents(candidates: CandidateEvent[], { sourceId, act
       // candidate are worth a human's attention, but every trace is kept
       // (not just the "interesting" ones) so a future "why did THIS image
       // get picked over the alternatives" question about an
-      // apparently-fine event can still be answered too.
-      filteredOut,
-      duplicateSkips,
+      // apparently-fine event can still be answered too. Kept as the
+      // lightweight {title, reason} shape it's always been — the full
+      // candidate data now lives in rejected_event_candidates instead.
+      filteredOut: filteredOut.map(({ candidate, reason }) => ({ title: candidate.title, reason })),
+      duplicateSkips: duplicateSkips.map(({ title, reason }) => ({ title, reason })),
       imageTraces: traces,
     },
   })

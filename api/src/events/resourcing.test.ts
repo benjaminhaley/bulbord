@@ -68,6 +68,13 @@ describe('extractCandidateEventsFromSource', () => {
         locationName: 'Music Box Theatre',
         sourceUrl: 'https://example.com/events',
         status: 'approved',
+        // The mocked model response is reused for both the extraction call
+        // and candidate-validation.ts's own second-pass call, so its shape
+        // doesn't match a real verdict — filterFamilyRelevantCandidates()
+        // still fails safely open ('unspecified' reason, no quality checks)
+        // rather than crashing or dropping the candidate.
+        relevanceReason: 'unspecified',
+        qualityChecks: undefined,
       },
     ])
     expect(result.contentHash).toMatch(/^[0-9a-f]{64}$/)

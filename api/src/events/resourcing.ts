@@ -73,7 +73,7 @@ export interface ExtractionResult {
   // caller can log them into ingestEvents()'s own events_ingested row
   // rather than them vanishing the moment filterFamilyRelevantCandidates
   // filters them out. See ingest.ts's IngestOptions.filteredOut.
-  rejectedCandidates: { title: string; reason: string }[]
+  rejectedCandidates: { candidate: CandidateEvent; reason: string }[]
   // The hash of the page text this result is based on, to persist on
   // event_sources so the *next* check can skip re-extracting unchanged
   // content — see the schema.ts doc comment on lastContentHash for why

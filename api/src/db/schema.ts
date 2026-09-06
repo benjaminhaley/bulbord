@@ -85,6 +85,25 @@ export const events = pgTable('events', {
   // "Other" (a real "nobody's looked at this yet" state, distinct from a
   // deliberate "Other" choice).
   topic: text('topic'),
+  // Pipeline Review (feedback #138, 2026-09-06): a post-hoc admin audit layer
+  // on top of the sourcing pipeline, which still publishes immediately (see
+  // the 2026-09-03 "goes straight to approved" decision above) — these
+  // columns don't gate anything, they just track whether an admin has looked
+  // at a sourced/emailed event and record the checks that ran when it was
+  // ingested. Same "presence of timestamp = reviewed" idiom as
+  // backloggedAt/inProgressAt on feedback. Null on every event that wasn't
+  // produced by ingestEvents() (a member's own self-service post, or
+  // anything predating this feature).
+  pipelineReviewedAt: timestamp('pipeline_reviewed_at', { withTimezone: true }),
+  pipelineReviewedByUserId: uuid('pipeline_reviewed_by_user_id').references(() => users.id),
+  pipelineReviewNote: text('pipeline_review_note'),
+  // Why the second-pass relevance check (candidate-validation.ts) judged
+  // this candidate worth keeping — populated alongside the existing
+  // reject-only reason that check has always produced.
+  pipelineRelevanceReason: text('pipeline_relevance_reason'),
+  // { titleQuality, descriptionQuality, locationQuality }, each
+  // { pass: boolean, reason: string } — see candidate-validation.ts.
+  pipelineQualityChecks: jsonb('pipeline_quality_checks'),
   ...timestamps,
 })
 
@@ -126,6 +145,36 @@ export const eventsLog = pgTable('events_log', {
   action: text('action').notNull(),
   metadata: jsonb('metadata'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+})
+
+// Pipeline Review (feedback #138, 2026-09-06): a candidate the sourcing
+// pipeline decided NOT to keep never becomes an `events` row, so it has
+// nowhere else to persist — before this table existed, a rejected
+// candidate's full data was thrown away the instant ingestEvents() moved on,
+// leaving only a {title, reason} pair inside an events_log metadata blob
+// with no way to recover it even if the rejection turns out to be wrong.
+// `candidateData` is the full CandidateEvent snapshot specifically so an
+// admin's "add anyway" action can reconstruct and insert it later without
+// re-running extraction.
+export const rejectedEventCandidates = pgTable('rejected_event_candidates', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  eventSourceId: uuid('event_source_id')
+    .notNull()
+    .references(() => eventSources.id),
+  title: text('title').notNull(),
+  candidateData: jsonb('candidate_data').notNull(),
+  rejectionType: text('rejection_type').notNull(), // 'relevance' | 'duplicate'
+  rejectionReason: text('rejection_reason').notNull(),
+  // Only set when rejectionType is 'duplicate' — the already-live event this
+  // candidate looked like a match for.
+  duplicateOfEventId: uuid('duplicate_of_event_id').references(() => events.id),
+  reviewedAt: timestamp('reviewed_at', { withTimezone: true }),
+  reviewedByUserId: uuid('reviewed_by_user_id').references(() => users.id),
+  reviewAction: text('review_action'), // 'agreed' | 'added_anyway'
+  reviewNote: text('review_note'),
+  // Set when reviewAction is 'added_anyway' — the resulting real event row.
+  addedAsEventId: uuid('added_as_event_id').references(() => events.id),
+  ...timestamps,
 })
 
 export const users = pgTable('users', {

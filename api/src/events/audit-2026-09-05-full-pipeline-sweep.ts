@@ -53,9 +53,9 @@ async function main() {
     const batch = rows.slice(i, i + BATCH_SIZE)
     const { rejected } = await filterFamilyRelevantCandidates(batch.map(toCandidate))
     for (const r of rejected) {
-      const match = batch.find((b) => b.title === r.title)
+      const match = batch.find((b) => b.title === r.candidate.title)
       totalRejected++
-      console.log(`FLAGGED: "${r.title}" (id: ${match?.id ?? 'unmatched'}) — ${r.reason}`)
+      console.log(`FLAGGED: "${r.candidate.title}" (id: ${match?.id ?? 'unmatched'}) — ${r.reason}`)
       console.log(`  address: ${match?.address ?? 'null'} | location_name: ${match?.locationName ?? 'null'}`)
     }
   }

@@ -9,6 +9,7 @@ import { DataFreshnessProvider } from '../admin/DataFreshnessContext'
 import { DevToolsPage } from '../admin/DevToolsPage'
 import { FriendsPreviewPage } from '../admin/FriendsPreviewPage'
 import { InvitePreviewPage } from '../admin/InvitePreviewPage'
+import { PipelineReviewPage } from '../admin/PipelineReviewPage'
 import { ProfileSetupPreviewPage } from '../admin/ProfileSetupPreviewPage'
 import { UsersPage } from '../admin/UsersPage'
 import { AuthProvider } from '../auth/AuthContext'
@@ -72,6 +73,7 @@ export function App() {
                   <AdminRoute exact path="/admin/profile-setup-preview" component={ProfileSetupPreviewPage} />
                   <AdminRoute exact path="/admin/friends-preview" component={FriendsPreviewPage} />
                   <AdminRoute exact path="/admin/analytics" component={AnalyticsPage} />
+                  <AdminRoute exact path="/admin/pipeline-review" component={PipelineReviewPage} />
                   <Redirect exact path="/" to="/events" />
                 </IonRouterOutlet>
                 <IonTabBar slot="bottom" id="main-tab-bar">
