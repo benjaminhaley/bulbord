@@ -23,7 +23,7 @@ import { useCallback, useEffect, useState } from 'react'
 
 import { formatRelativeDateTime } from '../format'
 import { EventBody } from '../events/EventBody'
-import { factLineStyle, headingContentGap, sectionDividerStyle } from '../theme/layout'
+import { factLineStyle, sectionDividerStyle } from '../theme/layout'
 import {
   approvePipelineEvent,
   approvePipelineRejectedCandidate,
@@ -111,8 +111,7 @@ function ChecksSection({ checks }: { checks: PipelineChecks | null }) {
   if (!checks) return <IonNote color="medium">No checks recorded (predates this feature)</IonNote>
   return (
     <>
-      <hr style={sectionDividerStyle} />
-      <p style={{ ...factLineStyle, ...headingContentGap, fontWeight: 600 }}>Checks</p>
+      <p style={{ ...factLineStyle, fontWeight: 600 }}>Checks</p>
       {ALL_CHECK_KEYS.map((key) => (
         <CheckLine key={key} label={CHECK_LABELS[key]} check={checks[key]} />
       ))}
@@ -370,21 +369,21 @@ export function PipelineReviewPage() {
               {kept.map((item) => (
                 <IonItem key={item.id} lines="full">
                   <IonLabel className="ion-text-wrap" style={{ marginTop: 8, marginBottom: 8 }}>
-                    <IonNote color="medium">
-                      {item.source_name ?? 'Unknown source'} · {formatRelativeDateTime(item.created_at)}
-                    </IonNote>
+                    {/* Title + EventBody is the entire "post" — everything a
+                        member would see on the real page (the toolbar's own
+                        title, in-body on this list since there's no per-item
+                        toolbar here), rendered through the exact same
+                        component the real detail page uses, completely
+                        uninterrupted. Ben, 2026-09-06 (second pass): "except
+                        for the checks and buttons, they should look just
+                        like they would on the final page" — every piece of
+                        review-only information (source, timestamp, held
+                        status, why it was kept, the checklist) now lives
+                        below a real divider, never mixed into the post
+                        itself the way an earlier version did. */}
                     <h2>
                       <a href={`/events/${item.id}`}>{item.title}</a>
-                      {item.status === 'pending' && (
-                        <span style={{ marginLeft: 6, fontSize: '0.75rem', color: 'var(--ion-color-danger)' }}>HELD FOR REVIEW</span>
-                      )}
                     </h2>
-                    {item.relevance_reason && <p style={factLineStyle}>Why relevant: {item.relevance_reason}</p>}
-                    {/* The post itself, rendered through the exact same
-                        component its real detail page uses (Ben, 2026-09-06:
-                        "use the same engine with just a couple options
-                        set"), with no slots — a completely uninterrupted
-                        preview of exactly what the live page shows. */}
                     <EventBody
                       event={{
                         image_url: item.image_url,
@@ -397,6 +396,14 @@ export function PipelineReviewPage() {
                         description: item.description,
                       }}
                     />
+                    <hr style={sectionDividerStyle} />
+                    <IonNote color="medium">
+                      {item.source_name ?? 'Unknown source'} · {formatRelativeDateTime(item.created_at)}
+                    </IonNote>
+                    {item.status === 'pending' && (
+                      <p style={{ ...factLineStyle, color: 'var(--ion-color-danger)', fontWeight: 600 }}>HELD FOR REVIEW</p>
+                    )}
+                    {item.relevance_reason && <p style={factLineStyle}>Why relevant: {item.relevance_reason}</p>}
                     <ChecksSection checks={item.checks} />
                     {item.reviewed_at ? (
                       <IonNote color="medium">
@@ -473,22 +480,12 @@ export function PipelineReviewPage() {
               {rejected.map((item) => (
                 <IonItem key={item.id} lines="full">
                   <IonLabel className="ion-text-wrap" style={{ marginTop: 8, marginBottom: 8 }}>
-                    <IonNote color="medium">
-                      {item.source_name ?? 'Unknown source'} · {formatRelativeDateTime(item.created_at)} · {item.rejection_type === 'duplicate' ? 'Duplicate' : 'Not relevant'}
-                    </IonNote>
+                    {/* Same title-then-EventBody "post" shape as a kept item
+                        above — a rejected candidate never had a real image
+                        search run (image_url is always null here), so
+                        EventBody simply shows no image, and the
+                        not-applicable image checks below say so honestly. */}
                     <h2>{item.title}</h2>
-                    <p style={factLineStyle}>{item.rejection_reason}</p>
-                    {item.duplicate_of_event_id && (
-                      <p style={factLineStyle}>
-                        Matched: <a href={`/events/${item.duplicate_of_event_id}`}>{item.duplicate_of_event_title ?? 'view event'}</a>
-                      </p>
-                    )}
-                    {/* Same EventBody engine as a kept item above, with no
-                        slots — image_url is always null here (a rejected
-                        candidate never gets a real image search), so
-                        EventBody simply renders no image, and the
-                        not-applicable image checks in ChecksSection below
-                        show that honestly rather than as a pass or fail. */}
                     <EventBody
                       event={{
                         image_url: null,
@@ -501,6 +498,16 @@ export function PipelineReviewPage() {
                         description: item.candidate_data.description,
                       }}
                     />
+                    <hr style={sectionDividerStyle} />
+                    <IonNote color="medium">
+                      {item.source_name ?? 'Unknown source'} · {formatRelativeDateTime(item.created_at)} · {item.rejection_type === 'duplicate' ? 'Duplicate' : 'Not relevant'}
+                    </IonNote>
+                    <p style={factLineStyle}>{item.rejection_reason}</p>
+                    {item.duplicate_of_event_id && (
+                      <p style={factLineStyle}>
+                        Matched: <a href={`/events/${item.duplicate_of_event_id}`}>{item.duplicate_of_event_title ?? 'view event'}</a>
+                      </p>
+                    )}
                     <ChecksSection checks={item.checks} />
                     {item.reviewed_at ? (
                       <IonNote color="medium">
