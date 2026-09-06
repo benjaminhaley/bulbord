@@ -11,7 +11,8 @@ import { userRoles, users } from '../db/schema.js'
 import { requireEnv } from '../env.js'
 import { sendEmail } from '../newsletter/mailer.js'
 import { createNotification } from '../notifications/service.js'
-import { getPipelineReviewCandidates, getPipelineReviewCandidatesSince } from './pipeline-review-service.js'
+import { getLatestEventSourcingRun } from './resourcing.js'
+import { getPipelineReviewCandidatesSince } from './pipeline-review-service.js'
 import { pipelineReviewSubject, renderPipelineReviewHtml } from './pipeline-review-template.js'
 
 async function getAdminRecipients(): Promise<{ id: string; name: string; email: string }[]> {
@@ -35,8 +36,8 @@ export async function sendPipelineReviewEmailForRun(runStartedAt: Date): Promise
 
   const webUrl = requireEnv('PUBLIC_WEB_URL')
   const runDate = new Date()
-  const html = renderPipelineReviewHtml({ runDate, kept, rejected, webUrl, mode: 'run' })
-  const subject = pipelineReviewSubject(runDate, kept.length, rejected.length, 'run')
+  const html = renderPipelineReviewHtml({ runDate, kept, rejected, webUrl })
+  const subject = pipelineReviewSubject(runDate, kept.length, rejected.length)
   const message = `${kept.length} event${kept.length === 1 ? '' : 's'} added, ${rejected.length} rejected — ready to review`
 
   await Promise.allSettled(
@@ -56,14 +57,23 @@ export async function sendPipelineReviewEmailForRun(runStartedAt: Date): Promise
 }
 
 // Admin dev tool (mirrors sendTestCampReminderEmail's shape exactly): sends
-// the exact same render, scoped to unreviewed candidates across all time
-// (not "since some run start"), to just the requesting admin's own address —
-// no state mutated, no notification created, so a preview can't be mistaken
+// the exact same render the real weekly send would, scoped to the most
+// recent actual sourcing run — not the whole all-time unreviewed backlog.
+// v1 of this preview intentionally showed everything still unreviewed
+// (158 pre-existing events), but Ben's first real look at that email read it
+// as "the pipeline just ran and found 158 duplicates" — a genuine, real-run
+// digest is what this tool is meant to preview, so it now reuses the exact
+// same getPipelineReviewCandidatesSince() scoping the real cron send uses,
+// anchored to getLatestEventSourcingRun()'s own startedAt. No state
+// mutated, no notification created, so a preview still can't be mistaken
 // for the real thing landing in the review page's own history.
 export async function sendTestPipelineReviewEmail(recipient: { name: string; email: string }): Promise<void> {
-  const { kept, rejected } = await getPipelineReviewCandidates()
+  const lastRun = await getLatestEventSourcingRun()
+  // No run has ever happened yet (a fresh install) — nothing to preview.
+  const since = lastRun?.report.startedAt ?? new Date()
+  const { kept, rejected } = await getPipelineReviewCandidatesSince(since)
   const webUrl = requireEnv('PUBLIC_WEB_URL')
-  const runDate = new Date()
-  const html = renderPipelineReviewHtml({ runDate, kept, rejected, webUrl, mode: 'backlog' })
-  await sendEmail(recipient.email, pipelineReviewSubject(runDate, kept.length, rejected.length, 'backlog', '[Test] '), html)
+  const runDate = lastRun?.ranAt ?? new Date()
+  const html = renderPipelineReviewHtml({ runDate, kept, rejected, webUrl })
+  await sendEmail(recipient.email, pipelineReviewSubject(runDate, kept.length, rejected.length, '[Test] '), html)
 }

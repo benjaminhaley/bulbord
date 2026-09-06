@@ -104,6 +104,10 @@ describe('resourceActiveEventSources', () => {
       totalSkipped: 3,
       lastCheckedAt: '2026-09-03T12:00:00.000Z',
     })
+    // startedAt is captured before any source is checked (not derived from
+    // when this summary row is written) — see pipelineEmail's test-send tool,
+    // the actual reason this exists.
+    expect(typeof (summaryInsert!.row.metadata as { startedAt: string }).startedAt).toBe('string')
   })
 
   it('records a per-source error without failing the whole run', async () => {
@@ -130,13 +134,14 @@ describe('getLatestEventSourcingRun', () => {
     expect(await getLatestEventSourcingRun()).toBeNull()
   })
 
-  it('parses the most recent event_sourcing_run row back into a summary', async () => {
+  it('parses the most recent event_sourcing_run row back into a summary, including its own startedAt', async () => {
     const ranAt = new Date('2026-09-01T11:00:00Z')
     latestLogRows = [
       {
         actor: 'system:event-sourcing-cron',
         createdAt: ranAt,
         metadata: {
+          startedAt: '2026-09-01T10:58:00.000Z',
           sourcesChecked: 2,
           totalAdded: 3,
           totalSkipped: 1,
@@ -152,7 +157,24 @@ describe('getLatestEventSourcingRun', () => {
     expect(summary).not.toBeNull()
     expect(summary!.actor).toBe('system:event-sourcing-cron')
     expect(summary!.ranAt).toEqual(ranAt)
+    expect(summary!.report.startedAt).toEqual(new Date('2026-09-01T10:58:00.000Z'))
     expect(summary!.report.totalAdded).toBe(3)
     expect(summary!.report.lastCheckedAt).toEqual(new Date('2026-09-01T11:00:01.000Z'))
+  })
+
+  it('falls back to the log row\'s own createdAt when an older row has no startedAt at all', async () => {
+    const ranAt = new Date('2026-09-01T11:00:00Z')
+    latestLogRows = [
+      {
+        actor: 'system:event-sourcing-cron',
+        createdAt: ranAt,
+        metadata: { sourcesChecked: 1, totalAdded: 0, totalSkipped: 0, lastCheckedAt: null, results: [] },
+      },
+    ]
+    const { getLatestEventSourcingRun } = await import('./resourcing.js')
+
+    const summary = await getLatestEventSourcingRun()
+
+    expect(summary!.report.startedAt).toEqual(ranAt)
   })
 })

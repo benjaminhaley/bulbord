@@ -173,6 +173,13 @@ interface SourceResourceResult {
 }
 
 export interface ResourceReport {
+  // Captured before any source is checked, not derived from when the
+  // summary log row is written (that happens after every source finishes) —
+  // this is what lets a caller (the test-send digest, sourcing-cron.ts's own
+  // real weekly send) scope "this run's output" correctly. See
+  // getLatestEventSourcingRun()'s own doc comment for why the log-row
+  // timestamp alone can't be used for that.
+  startedAt: Date
   sourcesChecked: number
   totalAdded: number
   totalSkipped: number
@@ -210,6 +217,7 @@ export interface ResourceSampleOptions {
 // manual ask (as feedback #12/#22/#24 were) rather than something an admin
 // button can trigger repeatedly in production.
 export async function resourceActiveEventSources(actor: string, sample: ResourceSampleOptions = {}): Promise<ResourceReport> {
+  const startedAt = new Date()
   const allSources = await db
     .select()
     .from(eventSources)
@@ -262,6 +270,7 @@ export async function resourceActiveEventSources(actor: string, sample: Resource
   await Promise.all(Array.from({ length: Math.min(RESOURCE_CONCURRENCY, sources.length) }, worker))
 
   const report: ResourceReport = {
+    startedAt,
     sourcesChecked: sources.length,
     totalAdded: results.reduce((sum, r) => sum + r.added, 0),
     totalSkipped: results.reduce((sum, r) => sum + r.skipped, 0),
@@ -290,7 +299,11 @@ export async function resourceActiveEventSources(actor: string, sample: Resource
   await db.insert(eventsLog).values({
     actor,
     action: 'event_sourcing_run',
-    metadata: { ...report, lastCheckedAt: report.lastCheckedAt ? new Date(report.lastCheckedAt).toISOString() : null },
+    metadata: {
+      ...report,
+      startedAt: startedAt.toISOString(),
+      lastCheckedAt: report.lastCheckedAt ? new Date(report.lastCheckedAt).toISOString() : null,
+    },
   })
 
   return report
@@ -315,10 +328,17 @@ export async function getLatestEventSourcingRun(): Promise<EventSourcingRunSumma
     .limit(1)
 
   if (!row) return null
-  const metadata = row.metadata as ResourceReport & { lastCheckedAt: string | null }
+  const metadata = row.metadata as Omit<ResourceReport, 'startedAt' | 'lastCheckedAt'> & { startedAt?: string; lastCheckedAt: string | null }
   return {
     actor: row.actor,
     ranAt: row.createdAt,
-    report: { ...metadata, lastCheckedAt: metadata.lastCheckedAt ? new Date(metadata.lastCheckedAt) : null },
+    report: {
+      ...metadata,
+      // A row written before this field existed has no startedAt at all —
+      // row.createdAt (when the summary was logged, just after the run
+      // finished) is a close-enough fallback rather than an Invalid Date.
+      startedAt: metadata.startedAt ? new Date(metadata.startedAt) : row.createdAt,
+      lastCheckedAt: metadata.lastCheckedAt ? new Date(metadata.lastCheckedAt) : null,
+    },
   }
 }
