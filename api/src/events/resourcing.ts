@@ -84,6 +84,12 @@ export interface ExtractionResult {
   // the next run retries properly rather than wrongly "remembering" a
   // failed attempt as if it were a real check of that content.
   contentHash: string | null
+  // The cleaned page text this batch was extracted from, threaded through
+  // to ingestEvents() as IngestOptions.sourceText — Pipeline Review v2's
+  // self-healing retry re-reads this for a better address/title/description
+  // instead of just re-guessing from the same already-extracted fields.
+  // `null` on the same early-exit paths as contentHash.
+  pageText: string | null
 }
 
 function hashPageText(pageText: string): string {
@@ -102,19 +108,19 @@ export async function extractCandidateEventsFromSource(
   previousContentHash: string | null = null,
 ): Promise<ExtractionResult> {
   const anthropic = getAnthropicClient()
-  if (!anthropic) return { candidates: [], rejectedCandidates: [], contentHash: null }
+  if (!anthropic) return { candidates: [], rejectedCandidates: [], contentHash: null, pageText: null }
 
   const response = await fetchWithTimeout(sourceUrl, FETCH_TIMEOUT_MS)
-  if (!response || !response.ok) return { candidates: [], rejectedCandidates: [], contentHash: null }
+  if (!response || !response.ok) return { candidates: [], rejectedCandidates: [], contentHash: null, pageText: null }
   const contentType = response.headers.get('content-type') ?? ''
-  if (!contentType.includes('html')) return { candidates: [], rejectedCandidates: [], contentHash: null }
+  if (!contentType.includes('html')) return { candidates: [], rejectedCandidates: [], contentHash: null, pageText: null }
 
   try {
     const html = await response.text()
     const $ = cheerio.load(html)
     $('script, style, nav, footer, noscript').remove()
     const pageText = $('body').text().replace(/\s+/g, ' ').trim().slice(0, MAX_PAGE_TEXT_CHARS)
-    if (!pageText) return { candidates: [], rejectedCandidates: [], contentHash: null }
+    if (!pageText) return { candidates: [], rejectedCandidates: [], contentHash: null, pageText: null }
 
     const contentHash = hashPageText(pageText)
     // The real fix for the 2026-09-03 duplicate-events incident: this
@@ -124,7 +130,7 @@ export async function extractCandidateEventsFromSource(
     // rather than a clean skip. Not calling the LLM at all when nothing
     // has changed is the only robust guarantee.
     if (previousContentHash && contentHash === previousContentHash) {
-      return { candidates: [], rejectedCandidates: [], contentHash }
+      return { candidates: [], rejectedCandidates: [], contentHash, pageText }
     }
 
     const message = await anthropic.messages.create({
@@ -140,21 +146,21 @@ export async function extractCandidateEventsFromSource(
       ],
     })
 
-    if (message.stop_reason === 'refusal') return { candidates: [], rejectedCandidates: [], contentHash: null }
+    if (message.stop_reason === 'refusal') return { candidates: [], rejectedCandidates: [], contentHash: null, pageText }
     const block = message.content.find((b) => b.type === 'text')
     const raw = block?.type === 'text' ? block.text.trim() : ''
-    if (!raw) return { candidates: [], rejectedCandidates: [], contentHash: null }
+    if (!raw) return { candidates: [], rejectedCandidates: [], contentHash: null, pageText }
 
     const parsed = JSON.parse(stripJsonCodeFence(raw))
-    if (!Array.isArray(parsed)) return { candidates: [], rejectedCandidates: [], contentHash: null }
+    if (!Array.isArray(parsed)) return { candidates: [], rejectedCandidates: [], contentHash: null, pageText }
 
     const rawCandidates = parsed
       .map((item) => toCandidateEvent(item as ExtractedEvent, sourceUrl))
       .filter((c): c is CandidateEvent => c !== null)
     const { kept: candidates, rejected: rejectedCandidates } = await filterFamilyRelevantCandidates(rawCandidates)
-    return { candidates, rejectedCandidates, contentHash }
+    return { candidates, rejectedCandidates, contentHash, pageText }
   } catch {
-    return { candidates: [], rejectedCandidates: [], contentHash: null }
+    return { candidates: [], rejectedCandidates: [], contentHash: null, pageText: null }
   }
 }
 
@@ -185,31 +191,57 @@ export async function getSourcesLastCheckedAt(): Promise<Date | null> {
   return row?.lastCheckedAt ?? null
 }
 
+export interface ResourceSampleOptions {
+  // Process only the first N active sources — feedback, 2026-09-06 ("run a
+  // sub-portion... maybe just use one source"): a fast, representative
+  // sample run for testing, rather than waiting on all ~23 active sources.
+  maxSources?: number
+  // Cap how many extracted candidates, across the whole run, actually get
+  // ingested — feedback, 2026-09-06 ("or just do the first five"). Once the
+  // budget is spent, remaining sources are skipped entirely (no extraction
+  // call either), so a sampled run stays genuinely fast, not just
+  // fast-to-insert.
+  maxCandidates?: number
+}
+
 // Re-runs the ingestion pipeline against every known active source (feedback
 // #41) — deliberately re-scrapes sources already in event_sources rather
 // than also discovering brand-new ones, which stays a separate, occasional
 // manual ask (as feedback #12/#22/#24 were) rather than something an admin
 // button can trigger repeatedly in production.
-export async function resourceActiveEventSources(actor: string): Promise<ResourceReport> {
-  const sources = await db
+export async function resourceActiveEventSources(actor: string, sample: ResourceSampleOptions = {}): Promise<ResourceReport> {
+  const allSources = await db
     .select()
     .from(eventSources)
     .where(and(eq(eventSources.isActive, true), isNull(eventSources.deletedAt)))
+  const sources = sample.maxSources ? allSources.slice(0, sample.maxSources) : allSources
 
   const results: SourceResourceResult[] = new Array(sources.length)
   let index = 0
+  let remainingCandidateBudget = sample.maxCandidates ?? Infinity
 
   async function worker() {
     while (index < sources.length) {
       const i = index++
       const source = sources[i]
+      if (remainingCandidateBudget <= 0) {
+        results[i] = { sourceId: source.id, name: source.name, added: 0, skipped: 0 }
+        continue
+      }
       try {
-        const { candidates, rejectedCandidates, contentHash } = await extractCandidateEventsFromSource(
+        const { candidates, rejectedCandidates, contentHash, pageText } = await extractCandidateEventsFromSource(
           source.url,
           source.notes,
           source.lastContentHash,
         )
-        const { inserted, skipped } = await ingestEvents(candidates, { sourceId: source.id, actor, filteredOut: rejectedCandidates })
+        const sampledCandidates = candidates.slice(0, remainingCandidateBudget)
+        remainingCandidateBudget -= sampledCandidates.length
+        const { inserted, skipped } = await ingestEvents(sampledCandidates, {
+          sourceId: source.id,
+          actor,
+          filteredOut: rejectedCandidates,
+          sourceText: pageText ?? undefined,
+        })
         await db
           .update(eventSources)
           .set({ lastCheckedAt: new Date(), ...(contentHash ? { lastContentHash: contentHash } : {}) })

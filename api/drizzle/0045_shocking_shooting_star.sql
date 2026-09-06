@@ -1,0 +1,1 @@
+ALTER TABLE "events" ADD COLUMN "pipeline_checks_passed" boolean;

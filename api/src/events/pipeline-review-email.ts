@@ -35,8 +35,8 @@ export async function sendPipelineReviewEmailForRun(runStartedAt: Date): Promise
 
   const webUrl = requireEnv('PUBLIC_WEB_URL')
   const runDate = new Date()
-  const html = renderPipelineReviewHtml({ runDate, kept, rejected, webUrl })
-  const subject = pipelineReviewSubject(runDate, kept.length, rejected.length)
+  const html = renderPipelineReviewHtml({ runDate, kept, rejected, webUrl, mode: 'run' })
+  const subject = pipelineReviewSubject(runDate, kept.length, rejected.length, 'run')
   const message = `${kept.length} event${kept.length === 1 ? '' : 's'} added, ${rejected.length} rejected — ready to review`
 
   await Promise.allSettled(
@@ -64,6 +64,6 @@ export async function sendTestPipelineReviewEmail(recipient: { name: string; ema
   const { kept, rejected } = await getPipelineReviewCandidates()
   const webUrl = requireEnv('PUBLIC_WEB_URL')
   const runDate = new Date()
-  const html = renderPipelineReviewHtml({ runDate, kept, rejected, webUrl })
-  await sendEmail(recipient.email, pipelineReviewSubject(runDate, kept.length, rejected.length, '[Test] '), html)
+  const html = renderPipelineReviewHtml({ runDate, kept, rejected, webUrl, mode: 'backlog' })
+  await sendEmail(recipient.email, pipelineReviewSubject(runDate, kept.length, rejected.length, 'backlog', '[Test] '), html)
 }

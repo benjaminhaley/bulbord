@@ -85,18 +85,22 @@ export const events = pgTable('events', {
   // "Other" (a real "nobody's looked at this yet" state, distinct from a
   // deliberate "Other" choice).
   topic: text('topic'),
-  // Pipeline Review (feedback #138, 2026-09-06): a post-hoc admin audit layer
-  // on top of the sourcing pipeline, which still publishes immediately (see
-  // the 2026-09-03 "goes straight to approved" decision above) — these
-  // columns don't gate anything, they just track whether an admin has looked
-  // at a sourced/emailed event and record the checks that ran when it was
-  // ingested. Same "presence of timestamp = reviewed" idiom as
-  // backloggedAt/inProgressAt on feedback. Null on every event that wasn't
-  // produced by ingestEvents() (a member's own self-service post, or
-  // anything predating this feature).
+  // Pipeline Review (feedback #138, 2026-09-06; extended 2026-09-06 v2 into a
+  // real gate after Ben's first live look): pipelineReviewedAt/By/Note track
+  // whether an admin has looked at a sourced/emailed event — same
+  // "presence of timestamp = reviewed" idiom as backloggedAt/inProgressAt on
+  // feedback. Null on every event that wasn't produced by ingestEvents() (a
+  // member's own self-service post, or anything predating this feature).
   pipelineReviewedAt: timestamp('pipeline_reviewed_at', { withTimezone: true }),
   pipelineReviewedByUserId: uuid('pipeline_reviewed_by_user_id').references(() => users.id),
   pipelineReviewNote: text('pipeline_review_note'),
+  // Whether every one of the 9 pipeline checks (see candidate-checks.ts)
+  // passed at ingestion time — the actual gate: ingestEvents() only inserts a
+  // sourced/emailed candidate as status 'approved' when this is true, else
+  // 'pending' (already fully invisible to members — every member-facing
+  // query filters status='approved'). Null means the event predates this
+  // column (never checked), not "failed" — don't treat null as false.
+  pipelineChecksPassed: boolean('pipeline_checks_passed'),
   // Why the second-pass relevance check (candidate-validation.ts) judged
   // this candidate worth keeping — populated alongside the existing
   // reject-only reason that check has always produced.

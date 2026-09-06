@@ -44,6 +44,7 @@ import {
   fetchEventSourcingStatus,
   fetchImageHealth,
   resourceEventSources,
+  resourceEventSourcesSample,
   sendTestCampReminderEmail,
   sendTestConnectionAlertEmail,
   sendTestNewsletterEmail,
@@ -86,6 +87,9 @@ export function DevToolsPage() {
   const [toast, setToast] = useState<string | null>(null)
   const [resourcing, setResourcing] = useState(false)
   const [report, setReport] = useState<LastEventSourcingRun | null>(null)
+  const [sampleMaxSources, setSampleMaxSources] = useState('1')
+  const [sampleMaxCandidates, setSampleMaxCandidates] = useState('5')
+  const [runningSample, setRunningSample] = useState(false)
   const [emailIngestOpen, setEmailIngestOpen] = useState(false)
   const [emailIngestFrom, setEmailIngestFrom] = useState('')
   const [emailIngestSubject, setEmailIngestSubject] = useState('')
@@ -214,6 +218,29 @@ export function DevToolsPage() {
     }
   }
 
+  // Feedback, 2026-09-06 ("run a sub-portion... one source, or just do the
+  // first five"): a fast, representative sample run for testing the whole
+  // flow (checks, gating, the review page, the digest email) without
+  // waiting on all ~23 active sources.
+  async function runSample() {
+    setRunningSample(true)
+    setReport(null)
+    try {
+      const result = await resourceEventSourcesSample({
+        maxSources: sampleMaxSources ? Number(sampleMaxSources) : undefined,
+        maxCandidates: sampleMaxCandidates ? Number(sampleMaxCandidates) : undefined,
+      })
+      setReport(result)
+      setLastCheckedAt(result.last_checked_at)
+      refreshFreshness().catch(() => {})
+      setToast(`Checked ${result.sources_checked} source(s), added ${result.total_added} event(s)`)
+    } catch (err) {
+      setToast(err instanceof Error ? err.message : 'Could not run sample')
+    } finally {
+      setRunningSample(false)
+    }
+  }
+
   async function runEmailIngestTest() {
     setTestingEmailIngest(true)
     try {
@@ -279,6 +306,39 @@ export function DevToolsPage() {
               )}
             </IonLabel>
             {resourcing && <IonSpinner slot="end" name="dots" />}
+          </IonItem>
+          {/* Feedback, 2026-09-06: a quick, representative sample instead of
+              a full run — for testing the pipeline end to end (checks,
+              gating, the review page, the real digest email) fast. The two
+              knobs compose: 1 source + 5 candidates is "just show me it
+              working," not "process everything." */}
+          <IonItem>
+            <IonLabel className="ion-text-wrap">
+              <h2>Run a quick sample</h2>
+              <p>Process only the first N sources and/or the first N candidates, for a fast test of the whole pipeline.</p>
+              <div style={{ display: 'flex', gap: 8, marginTop: 4, alignItems: 'center' }}>
+                <IonInput
+                  type="number"
+                  label="Max sources"
+                  labelPlacement="stacked"
+                  value={sampleMaxSources}
+                  style={{ maxWidth: 100 }}
+                  onIonInput={(e) => setSampleMaxSources(e.detail.value ?? '')}
+                />
+                <IonInput
+                  type="number"
+                  label="Max candidates"
+                  labelPlacement="stacked"
+                  value={sampleMaxCandidates}
+                  style={{ maxWidth: 100 }}
+                  onIonInput={(e) => setSampleMaxCandidates(e.detail.value ?? '')}
+                />
+                <IonButton size="small" disabled={runningSample} onClick={runSample}>
+                  Run
+                </IonButton>
+                {runningSample && <IonSpinner name="dots" />}
+              </div>
+            </IonLabel>
           </IonItem>
           {/* Feedback #138: a post-hoc audit of everything the sourcing
               pipeline kept or rejected, with the checks/reasons behind each,

@@ -272,29 +272,47 @@ export async function fetchAnalyticsSummary(filter?: AnalyticsActorFilter): Prom
   return body.data
 }
 
-// Pipeline Review (feedback #138): a post-hoc admin audit of the sourcing
-// pipeline — events still publish immediately, this is for looking back at
-// what the pipeline did and fixing what it got wrong. See
+// Pipeline Review (feedback #138; extended to a full checklist + real gate
+// 2026-09-06 v2): a candidate that fails a check is held back (`pending`,
+// invisible to members) until fixed or explicitly Approved — a clean
+// candidate still publishes immediately with zero human involvement. See
 // api/src/events/pipeline-review-service.ts for the full mechanism.
-interface PipelineQualityCheck {
+interface PipelineCheck {
   pass: boolean
   reason: string
+  attempts: number
 }
 
 // Stored as opaque JSONB and passed straight through — the inner keys are
-// camelCase (as written by candidate-validation.ts), unlike every other
-// field in this API's own snake_case convention.
-export interface PipelineQualityChecks {
-  titleQuality: PipelineQualityCheck
-  descriptionQuality: PipelineQualityCheck
-  locationQuality: PipelineQualityCheck
+// camelCase (as written by candidate-checks.ts), unlike every other field in
+// this API's own snake_case convention.
+export interface PipelineChecks {
+  titleQuality: PipelineCheck
+  descriptionQuality: PipelineCheck
+  locationLabelQuality: PipelineCheck
+  addressQuality: PipelineCheck
+  dateQuality: PipelineCheck
+  timeQuality: PipelineCheck
+  imageQuality: PipelineCheck
+  imageRelevance: PipelineCheck
+  duplicateCheck: PipelineCheck
 }
 
-interface PipelineImageTraceEntry {
-  url: string
-  outcome: 'shared_listing_page_skipped' | 'already_claimed' | 'download_failed' | 'low_quality' | 'rejected_relevance' | 'chosen'
-  reason?: string
-}
+// The named-check order the review page renders them in — every row always
+// shows an icon plus its own reason inline, never behind a hover tooltip
+// (Ben: "if something failed, you should have a clear reason why... so the
+// person reading it can debug").
+export const PIPELINE_CHECK_LABELS: { key: keyof PipelineChecks; label: string }[] = [
+  { key: 'titleQuality', label: 'Title' },
+  { key: 'descriptionQuality', label: 'Description' },
+  { key: 'locationLabelQuality', label: 'Location name' },
+  { key: 'addressQuality', label: 'Address' },
+  { key: 'dateQuality', label: 'Date' },
+  { key: 'timeQuality', label: 'Time' },
+  { key: 'imageQuality', label: 'Image quality' },
+  { key: 'imageRelevance', label: 'Image relevance' },
+  { key: 'duplicateCheck', label: 'Not a duplicate' },
+]
 
 export interface PipelineKeptCandidate {
   id: string
@@ -302,12 +320,30 @@ export interface PipelineKeptCandidate {
   source_id: string | null
   source_name: string | null
   created_at: string
+  status: 'approved' | 'pending'
+  image_url: string
+  thumbnail_url: string
+  start_date: string
+  start_time: string | null
+  all_day: boolean
+  address: string | null
+  location_name: string | null
+  description: string | null
   relevance_reason: string | null
-  quality_checks: PipelineQualityChecks | null
-  image_trace: PipelineImageTraceEntry[] | null
+  checks: PipelineChecks | null
+  pipeline_checks_passed: boolean | null
   reviewed_at: string | null
   reviewed_by_name: string | null
   review_note: string | null
+}
+
+interface PipelineRejectedCandidateData {
+  description: string | null
+  address: string | null
+  location_name: string | null
+  start_date: string
+  start_time: string | null
+  all_day: boolean
 }
 
 export interface PipelineRejectedCandidate {
@@ -315,6 +351,7 @@ export interface PipelineRejectedCandidate {
   title: string
   source_id: string
   source_name: string | null
+  candidate_data: PipelineRejectedCandidateData
   rejection_type: 'relevance' | 'duplicate'
   rejection_reason: string
   duplicate_of_event_id: string | null
@@ -322,9 +359,19 @@ export interface PipelineRejectedCandidate {
   created_at: string
   reviewed_at: string | null
   reviewed_by_name: string | null
-  review_action: 'agreed' | 'added_anyway' | null
+  review_action: 'rejected' | 'approved' | null
   review_note: string | null
   added_as_event_id: string | null
+}
+
+export interface PipelineEditableFields {
+  title?: string
+  description?: string
+  address?: string
+  location_name?: string
+  start_date?: string
+  start_time?: string | null
+  all_day?: boolean
 }
 
 async function throwOnError(response: Response, fallback: string): Promise<void> {
@@ -344,21 +391,27 @@ export async function fetchPipelineReview(
   return body.data
 }
 
-async function postPipelineAction(path: string, note?: string): Promise<void> {
+async function postPipelineAction(path: string, body?: object): Promise<void> {
   const response = await fetch(`${API_URL}${path}`, {
     method: 'POST',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
-    body: JSON.stringify({ note: note || undefined }),
+    body: JSON.stringify(body ?? {}),
   })
   await throwOnError(response, 'Failed to update')
 }
 
+// Three fundamental actions (Ben's own framing) — Approve/Reject change
+// publish state; Edit only ever corrects data and re-scores checks.
 export const approvePipelineEvent = (eventId: string, note?: string) =>
-  postPipelineAction(`/admin/events/${eventId}/pipeline-review/approve`, note)
+  postPipelineAction(`/admin/events/${eventId}/pipeline-review/approve`, { note: note || undefined })
 
-export const removePipelineEvent = (eventId: string, note?: string) =>
-  postPipelineAction(`/admin/events/${eventId}/pipeline-review/remove`, note)
+export const rejectPipelineEvent = (eventId: string, note?: string) =>
+  postPipelineAction(`/admin/events/${eventId}/pipeline-review/reject`, { note: note || undefined })
 
+export const editPipelineEvent = (eventId: string, fields: PipelineEditableFields) =>
+  postPipelineAction(`/admin/events/${eventId}/pipeline-review/edit`, fields)
+
+// Reached from within the Edit panel, not a fourth top-level button.
 export async function retryPipelineEventImage(eventId: string): Promise<{ found: boolean }> {
   const response = await fetch(`${API_URL}/admin/events/${eventId}/pipeline-review/retry-image`, {
     method: 'POST',
@@ -369,21 +422,25 @@ export async function retryPipelineEventImage(eventId: string): Promise<{ found:
   return body.data
 }
 
-export const agreePipelineRejection = (id: string, note?: string) => postPipelineAction(`/admin/rejected-event-candidates/${id}/agree`, note)
+export const rejectPipelineRejectedCandidate = (id: string, note?: string) =>
+  postPipelineAction(`/admin/rejected-event-candidates/${id}/reject`, { note: note || undefined })
 
-export async function addPipelineRejectionAnyway(id: string, note?: string): Promise<{ added: boolean; deduped: boolean }> {
-  const response = await fetch(`${API_URL}/admin/rejected-event-candidates/${id}/add-anyway`, {
+export const editPipelineRejectedCandidate = (id: string, fields: PipelineEditableFields) =>
+  postPipelineAction(`/admin/rejected-event-candidates/${id}/edit`, fields)
+
+export async function approvePipelineRejectedCandidate(id: string, note?: string): Promise<{ added: boolean; deduped: boolean }> {
+  const response = await fetch(`${API_URL}/admin/rejected-event-candidates/${id}/approve`, {
     method: 'POST',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
     body: JSON.stringify({ note: note || undefined }),
   })
-  await throwOnError(response, 'Failed to add anyway')
+  await throwOnError(response, 'Failed to approve')
   const body = (await response.json()) as { data: { added: boolean; deduped: boolean } }
   return body.data
 }
 
-// Dev tool (feedback #138) — sends the weekly pipeline-review digest to the
-// admin's own address on demand, same "preview without waiting" shape as
+// Dev tool (feedback #138) — sends the pipeline-review digest to the admin's
+// own address on demand, same "preview without waiting" shape as
 // sendTestCampReminderEmail above.
 export async function sendTestPipelineReviewEmail(): Promise<void> {
   const response = await fetch(`${API_URL}/admin/events/pipeline-review/test-send`, {
@@ -391,4 +448,23 @@ export async function sendTestPipelineReviewEmail(): Promise<void> {
     headers: authHeaders(),
   })
   await throwOnError(response, 'Failed to send test email')
+}
+
+// Feedback, 2026-09-06 ("run a sub-portion... one source, or just do the
+// first five"): a fast, representative sample run for testing, rather than
+// waiting on every active source.
+export interface SampleRunOptions {
+  maxSources?: number
+  maxCandidates?: number
+}
+
+export async function resourceEventSourcesSample(options: SampleRunOptions): Promise<LastEventSourcingRun> {
+  const response = await fetch(`${API_URL}/admin/events/resource`, {
+    method: 'POST',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ max_sources: options.maxSources, max_candidates: options.maxCandidates }),
+  })
+  await throwOnError(response, 'Failed to re-run sourcing')
+  const body = (await response.json()) as { data: LastEventSourcingRun }
+  return body.data
 }

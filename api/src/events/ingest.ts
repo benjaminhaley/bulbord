@@ -2,8 +2,9 @@ import { and, eq, isNull } from 'drizzle-orm'
 
 import { db } from '../db/client.js'
 import { events, eventsLog, rejectedEventCandidates } from '../db/schema.js'
+import { todayInChicago } from '../dates.js'
 import { uploadPlaceholderImage } from '../uploads/placeholder.js'
-import type { CandidateQualityChecks } from './candidate-validation.js'
+import { checkDateQuality, checkTimeQuality, buildDuplicateCheck, runTextChecksWithRetry, type PipelineChecks } from './candidate-checks.js'
 import { findLikelyDuplicateEvent } from './duplicate-detection.js'
 import { enrichEventImages } from './image-enrichment.js'
 import { lookupMoviePoster } from './movie-poster-lookup.js'
@@ -33,11 +34,12 @@ export interface CandidateEvent {
   status: 'approved' | 'pending'
   // Set by candidate-validation.ts's filterFamilyRelevantCandidates() on
   // every candidate it keeps — carried through to the inserted event's own
-  // pipelineRelevanceReason/pipelineQualityChecks columns (Pipeline Review,
-  // feedback #138) purely for later admin review; neither field is read by
-  // ingestEvents() for any gating decision.
+  // pipelineRelevanceReason column (Pipeline Review, feedback #138) purely
+  // for later admin review. Per-field quality checks (title/description/
+  // location/address/date/time/image/duplicate) are computed fresh inside
+  // ingestEvents() itself — see candidate-checks.ts — not carried on this
+  // type, since they depend on the real row (image) and real dedup result.
   relevanceReason?: string
-  qualityChecks?: CandidateQualityChecks
 }
 
 export interface IngestOptions {
@@ -51,14 +53,30 @@ export interface IngestOptions {
   // one (Pipeline Review, feedback #138) with enough data to reconstruct it
   // later if an admin decides the rejection was wrong.
   filteredOut?: { candidate: CandidateEvent; reason: string }[]
+  // The raw, cleaned page/email text every candidate in this batch was
+  // extracted from — threaded through so candidate-checks.ts's self-healing
+  // retry can re-read the real source for a better address/title/description
+  // instead of just re-guessing from the same already-extracted fields.
+  // Omitted by a caller with no such text (e.g. "add anyway" rebuilding from
+  // a stored candidateData snapshot) — the retry still runs, just without
+  // this extra context (fail-open, same posture as every other check here).
+  sourceText?: string
+  // Pipeline Review v2 (2026-09-06): a human explicitly approving a
+  // candidate (the review page's "Approve" action on a previously-rejected
+  // one) should actually publish it, not have the automated checklist hold
+  // it back again — checks still run and are still recorded for the record,
+  // they just don't gate the outcome for this one call. Never set by the
+  // normal resourcing.ts/email-ingest.ts path, where the checklist is the
+  // whole point.
+  forceApprove?: boolean
 }
 
 // Reusable by any trigger — a manual sourcing pass today, a future daily job,
 // or a future per-source scraper. Upserts on (title, start_date, source_url).
-export async function ingestEvents(candidates: CandidateEvent[], { sourceId, actor, filteredOut = [] }: IngestOptions) {
+export async function ingestEvents(candidates: CandidateEvent[], { sourceId, actor, filteredOut = [], sourceText, forceApprove = false }: IngestOptions) {
   let inserted = 0
   let skipped = 0
-  const toEnrich: { id: string; sourceUrl: string; imageUrl?: string | null; title: string; description?: string }[] = []
+  const toFinalize: { id: string; candidate: CandidateEvent; title: string; sourceUrl: string; description?: string }[] = []
   // Debuggability, added 2026-09-04 directly in response to Ben asking
   // whether this pipeline records enough to figure out after the fact why a
   // bad event/image got through — before this, a skip only ever incremented
@@ -123,6 +141,11 @@ export async function ingestEvents(candidates: CandidateEvent[], { sourceId, act
     // place if nothing does.
     const placeholder = await uploadPlaceholderImage(title, 'events')
 
+    // Pipeline Review v2 (2026-09-06): always inserted as 'pending' at this
+    // point, regardless of candidate.status — the checklist below (run once
+    // every candidate in this batch has a real row) decides the real final
+    // status. A member never sees a 'pending' row (every member-facing query
+    // filters status='approved'), so there's no visible flicker either way.
     const [row] = await db
       .insert(events)
       .values({
@@ -139,26 +162,69 @@ export async function ingestEvents(candidates: CandidateEvent[], { sourceId, act
         sourceId,
         imageUrl: placeholder.imageUrl,
         thumbnailUrl: placeholder.thumbnailUrl,
-        status: candidate.status,
-        // Pipeline Review (feedback #138) — set by candidate-validation.ts,
-        // read only by the admin review page; never gates anything here.
+        status: 'pending',
         pipelineRelevanceReason: candidate.relevanceReason,
-        pipelineQualityChecks: candidate.qualityChecks,
       })
       .returning({ id: events.id })
     inserted++
 
-    // A movie-night candidate's own source_url is usually one shared listing
-    // page (see movie-poster-lookup.ts) — prefer the film's real poster over
-    // whatever generic image that page yields, unless a candidate already
-    // supplies its own hand-verified imageUrl.
-    const movieMatch = candidate.imageUrl ? null : title.match(MOVIE_NIGHT_TITLE_PATTERN)
-    const imageUrl = candidate.imageUrl ?? (movieMatch ? await lookupMoviePoster(movieMatch[1]) : null)
-
-    toEnrich.push({ id: row.id, sourceUrl: candidate.sourceUrl, imageUrl, title, description: candidate.description })
+    toFinalize.push({ id: row.id, candidate: { ...candidate, title }, title, sourceUrl: candidate.sourceUrl, description: candidate.description })
   }
 
-  const { sourced, none, traces } = await enrichEventImages(toEnrich)
+  // Self-healing text checks (title/description/location label/address) —
+  // one batch call plus, for anything that fails, one bounded retry against
+  // the real source text (see candidate-checks.ts). Any corrected field
+  // values the retry found are applied to the row before it's finalized.
+  const textResults = await runTextChecksWithRetry(
+    toFinalize.map((f) => ({ title: f.title, description: f.candidate.description, address: f.candidate.address, locationName: f.candidate.locationName })),
+    sourceText,
+  )
+
+  // A movie-night candidate's own source_url is usually one shared listing
+  // page (see movie-poster-lookup.ts) — prefer the film's real poster over
+  // whatever generic image that page yields, unless a candidate already
+  // supplies its own hand-verified imageUrl.
+  const toEnrich = await Promise.all(
+    toFinalize.map(async (f, i) => {
+      const corrected = textResults[i].correctedFields
+      const description = corrected.description ?? f.description
+      const movieMatch = f.candidate.imageUrl ? null : f.title.match(MOVIE_NIGHT_TITLE_PATTERN)
+      const imageUrl = f.candidate.imageUrl ?? (movieMatch ? await lookupMoviePoster(movieMatch[1]) : null)
+      return { id: f.id, sourceUrl: f.sourceUrl, imageUrl, title: corrected.title ?? f.title, description }
+    }),
+  )
+  const { sourced, none, traces, checksByEventId } = await enrichEventImages(toEnrich)
+
+  const today = todayInChicago()
+  await Promise.all(
+    toFinalize.map(async (f, i) => {
+      const { checks: textChecks, correctedFields } = textResults[i]
+      const imageChecks = checksByEventId.get(f.id)
+      const checks: PipelineChecks = {
+        ...textChecks,
+        dateQuality: checkDateQuality(f.candidate.startDate, today),
+        timeQuality: checkTimeQuality(f.candidate.startTime, f.candidate.allDay),
+        imageQuality: imageChecks?.imageQuality ?? { pass: false, reason: 'Image check did not run', attempts: 1 },
+        imageRelevance: imageChecks?.imageRelevance ?? { pass: false, reason: 'Image check did not run', attempts: 1 },
+        duplicateCheck: buildDuplicateCheck(),
+      }
+      const pipelineChecksPassed = Object.values(checks).every((c) => c.pass)
+
+      await db
+        .update(events)
+        .set({
+          ...correctedFields.title !== undefined ? { title: correctedFields.title } : {},
+          ...correctedFields.description !== undefined ? { description: correctedFields.description } : {},
+          ...correctedFields.address !== undefined ? { address: correctedFields.address } : {},
+          ...correctedFields.locationName !== undefined ? { locationName: correctedFields.locationName } : {},
+          status: forceApprove || pipelineChecksPassed ? 'approved' : 'pending',
+          pipelineChecksPassed,
+          pipelineQualityChecks: checks,
+          updatedAt: new Date(),
+        })
+        .where(eq(events.id, f.id))
+    }),
+  )
 
   // Pipeline Review (feedback #138, 2026-09-06): persist every candidate
   // that didn't become an events row — before this, a rejected candidate's

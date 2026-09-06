@@ -116,7 +116,7 @@ describe('extractCandidateEventsFromSource', () => {
 
     const second = await extractCandidateEventsFromSource('https://example.com/events', null, first.contentHash)
 
-    expect(second).toEqual({ candidates: [], rejectedCandidates: [], contentHash: first.contentHash })
+    expect(second).toEqual({ candidates: [], rejectedCandidates: [], contentHash: first.contentHash, pageText: 'Family Movie Night, Aug 10, 6pm' })
     expect(createMock).toHaveBeenCalledTimes(2)
   })
 
@@ -165,7 +165,7 @@ describe('extractCandidateEventsFromSource', () => {
 
     const result = await extractCandidateEventsFromSource('https://example.com/events', null)
 
-    expect(result).toEqual({ candidates: [], rejectedCandidates: [], contentHash: null })
+    expect(result).toEqual({ candidates: [], rejectedCandidates: [], contentHash: null, pageText: null })
     expect(fetchWithTimeoutMock).not.toHaveBeenCalled()
   })
 
@@ -175,7 +175,7 @@ describe('extractCandidateEventsFromSource', () => {
 
     const result = await extractCandidateEventsFromSource('https://example.com/events', null)
 
-    expect(result).toEqual({ candidates: [], rejectedCandidates: [], contentHash: null })
+    expect(result).toEqual({ candidates: [], rejectedCandidates: [], contentHash: null, pageText: null })
     expect(createMock).not.toHaveBeenCalled()
   })
 
@@ -186,7 +186,7 @@ describe('extractCandidateEventsFromSource', () => {
 
     const result = await extractCandidateEventsFromSource('https://example.com/events', null)
 
-    expect(result).toEqual({ candidates: [], rejectedCandidates: [], contentHash: null })
+    expect(result).toEqual({ candidates: [], rejectedCandidates: [], contentHash: null, pageText: null })
   })
 
   it('returns nothing when the model refuses', async () => {
@@ -196,6 +196,6 @@ describe('extractCandidateEventsFromSource', () => {
 
     const result = await extractCandidateEventsFromSource('https://example.com/events', null)
 
-    expect(result).toEqual({ candidates: [], rejectedCandidates: [], contentHash: null })
+    expect(result).toEqual({ candidates: [], rejectedCandidates: [], contentHash: null, pageText: 'Event' })
   })
 })

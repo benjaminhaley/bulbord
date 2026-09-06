@@ -127,16 +127,31 @@ async function searchCommonsForQuery(query: string): Promise<string[]> {
 // (image-enrichment.ts) to download and quality-check itself, same as every
 // other candidate-list source in this pipeline — never trusted blindly. Tries
 // each of deriveImageSearchQueries()'s phrases (most specific first) in turn,
-// stopping at the first one that resolves to any real photo — see that
-// function's own header for why a single query attempt isn't reliable enough.
+// stopping at the first one that resolves to any real photo.
 export async function searchWebImage(title: string, description?: string | null): Promise<string[]> {
+  for await (const urls of searchWebImageQueryTiers(title, description)) {
+    if (urls.length > 0) return urls
+  }
+  return []
+}
+
+// Pipeline Review v2 (2026-09-06, "the algorithm should be searching
+// harder"): searchWebImage above stops at the first query phrase that
+// resolves to *any* real photo, even if every one of those photos then
+// fails the caller's own relevance scoring — the broader, more-generic
+// phrases (deriveImageSearchQueries returns 3, most-specific first) never
+// even get tried in that case. An async generator (not an eagerly-resolved
+// array) so a caller that finds a usable photo on the first tier never pays
+// for the network calls the later tiers would have needed — the whole point
+// of self-healing here is "try harder only when the easy path didn't work,"
+// not "always do the maximum amount of work."
+export async function* searchWebImageQueryTiers(title: string, description?: string | null): AsyncGenerator<string[]> {
   try {
     for (const query of await deriveImageSearchQueries(title, description)) {
-      const urls = await searchCommonsForQuery(query)
-      if (urls.length > 0) return urls
+      yield await searchCommonsForQuery(query)
     }
-    return []
   } catch {
-    return []
+    // Nothing more to yield — same fail-open posture as every other
+    // Claude-backed step in this pipeline.
   }
 }

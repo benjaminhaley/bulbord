@@ -316,6 +316,13 @@
       "when": 1788654865711,
       "tag": "0044_stiff_giant_man",
       "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "7",
+      "when": 1788713001885,
+      "tag": "0045_shocking_shooting_star",
+      "breakpoints": true
     }
   ]
 }

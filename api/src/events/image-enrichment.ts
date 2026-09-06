@@ -9,7 +9,8 @@ import { fetchExternalImage } from '../uploads/fetch-external-image.js'
 import { scoreImageRelevance } from '../uploads/image-relevance.js'
 import { isLowQualityImage } from '../uploads/image-quality.js'
 import { imageUrl, uploadImage } from '../uploads/storage.js'
-import { searchWebImage } from '../uploads/web-image-search.js'
+import { searchWebImageQueryTiers } from '../uploads/web-image-search.js'
+import type { CheckResult } from './candidate-checks.js'
 import { SEARCH_STAGE_DEADLINE_MS, withDeadline } from './extraction-shared.js'
 
 // A real, found incident (feedback #146/#150/#153, 2026-09-04): 8 different,
@@ -134,6 +135,8 @@ interface ImageCandidateTrace {
 export interface ImageEnrichmentResult {
   result: 'sourced' | 'none'
   trace: ImageCandidateTrace[]
+  imageQuality: CheckResult
+  imageRelevance: CheckResult
 }
 
 interface ImageSearchOptions {
@@ -233,15 +236,54 @@ async function findImageCandidate(
   if (fromContent) return { chosen: fromContent, trace }
 
   if (title) {
-    const webCandidates = (await searchWebImage(title, description)).map((url) => ({ url, isLogo: false }))
-    const fromWeb = await tryCandidates(webCandidates)
-    if (fromWeb) return { chosen: fromWeb, trace }
+    // Self-healing (Pipeline Review v2, 2026-09-06, "the algorithm should be
+    // searching harder"): try every query tier searchWebImageQueryTiers
+    // yields (most specific first), not just the first one that happened to
+    // resolve to *some* URL — a specific query's photos can all still fail
+    // quality/relevance, and the old single-call searchWebImage() never fell
+    // through to a broader phrase in that case. Stops at the first tier that
+    // actually produces a chosen image, not just a non-empty candidate list
+    // — the generator only fetches the next tier when this loop actually
+    // asks for it.
+    for await (const urls of searchWebImageQueryTiers(title, description)) {
+      const fromWeb = await tryCandidates(urls.map((url) => ({ url, isLogo: false })))
+      if (fromWeb) return { chosen: fromWeb, trace }
+    }
   }
 
   const fromLogo = await tryCandidates(logoCandidates)
   if (fromLogo) return { chosen: fromLogo, trace }
 
   return { chosen: null, trace }
+}
+
+// Pipeline Review v2 (2026-09-06): surfaces the search above's outcome as the
+// two named checks Ben asked for — did *any* candidate pass the plain size/
+// aspect-ratio gate (imageQuality), and did the one actually chosen (or, if
+// none was, any candidate at all) genuinely match the event (imageRelevance)?
+// A chosen image has, by definition, already passed both, so those cases are
+// trivial; the interesting case is "found nothing," where the trace tells
+// apart "nothing usable was even found" from "something usable existed but
+// didn't match" — two different debugging stories for an admin to act on.
+function deriveImageChecks(chosen: ChosenCandidate | null, trace: ImageCandidateTrace[]): { imageQuality: CheckResult; imageRelevance: CheckResult } {
+  if (chosen) {
+    return {
+      imageQuality: { pass: true, reason: 'The chosen image passed the size/aspect-ratio check', attempts: 1 },
+      imageRelevance: { pass: true, reason: 'The chosen image was scored as a real match for this event (or is a last-resort logo, which is not scored)', attempts: 1 },
+    }
+  }
+  const hadQualityCandidate = trace.some((t) => t.outcome === 'rejected_relevance')
+  const attemptedAny = trace.length > 0
+  return {
+    imageQuality: hadQualityCandidate
+      ? { pass: true, reason: 'At least one candidate image passed the size/aspect-ratio check', attempts: 1 }
+      : { pass: false, reason: attemptedAny ? 'No candidate image passed the size/aspect-ratio check' : 'No image candidates were found at all', attempts: 1 },
+    imageRelevance: {
+      pass: false,
+      reason: hadQualityCandidate ? 'No candidate image was judged to actually match this event' : 'No usable image was found to score for relevance',
+      attempts: 1,
+    },
+  }
 }
 
 // `scoreLogos` defaults false, preserving the original background-enrichment
@@ -258,7 +300,8 @@ export async function enrichEventImage(
   { scoreLogos = false }: { scoreLogos?: boolean } = {},
 ): Promise<ImageEnrichmentResult> {
   const { chosen, trace } = await findImageCandidate(eventId, options, { scoreLogos })
-  if (!chosen) return { result: 'none', trace }
+  const { imageQuality, imageRelevance } = deriveImageChecks(chosen, trace)
+  if (!chosen) return { result: 'none', trace, imageQuality, imageRelevance }
 
   // Non-null: uploadImage() always returns a real key, so imageUrl() (only
   // ever null for a falsy key) can't actually be null here.
@@ -272,7 +315,7 @@ export async function enrichEventImage(
     })
     .where(eq(events.id, eventId))
 
-  return { result: 'sourced', trace }
+  return { result: 'sourced', trace, imageQuality, imageRelevance }
 }
 
 // A real, uploaded (but not yet attached to any row) candidate image for an
@@ -315,17 +358,26 @@ export interface EventImageTrace {
 // per-candidate reasoning, not just the aggregate counts.
 export async function enrichEventImages(
   rows: { id: string; sourceUrl: string | null; imageUrl?: string | null; title?: string; description?: string | null }[],
-): Promise<{ sourced: number; none: number; traces: EventImageTrace[] }> {
+): Promise<{
+  sourced: number
+  none: number
+  traces: EventImageTrace[]
+  // Pipeline Review v2: the two named checks per event, keyed by id, so
+  // ingest.ts can fold them into the row's full checklist without a second
+  // pass over the same data.
+  checksByEventId: Map<string, { imageQuality: CheckResult; imageRelevance: CheckResult }>
+}> {
   let sourced = 0
   let none = 0
   let index = 0
   const traces: EventImageTrace[] = []
+  const checksByEventId = new Map<string, { imageQuality: CheckResult; imageRelevance: CheckResult }>()
 
   async function worker() {
     while (index < rows.length) {
       const row = rows[index++]
       try {
-        const { result, trace } = await enrichEventImage(row.id, {
+        const { result, trace, imageQuality, imageRelevance } = await enrichEventImage(row.id, {
           sourceUrl: row.sourceUrl,
           overrideImageUrl: row.imageUrl,
           title: row.title,
@@ -334,18 +386,24 @@ export async function enrichEventImages(
         if (result === 'sourced') sourced++
         else none++
         traces.push({ eventId: row.id, title: row.title, trace })
+        checksByEventId.set(row.id, { imageQuality, imageRelevance })
       } catch (err) {
         // Leave image_url null; the next ingest/backfill pass will retry it.
         none++
+        const reason = err instanceof Error ? err.message : 'unknown error'
         traces.push({
           eventId: row.id,
           title: row.title,
-          trace: [{ url: row.sourceUrl ?? '(none)', outcome: 'download_failed', reason: err instanceof Error ? err.message : 'unknown error' }],
+          trace: [{ url: row.sourceUrl ?? '(none)', outcome: 'download_failed', reason }],
+        })
+        checksByEventId.set(row.id, {
+          imageQuality: { pass: false, reason: `Image search errored: ${reason}`, attempts: 1 },
+          imageRelevance: { pass: false, reason: 'Not scored — the search itself errored', attempts: 1 },
         })
       }
     }
   }
 
   await Promise.all(Array.from({ length: Math.min(ENRICH_CONCURRENCY, rows.length) }, worker))
-  return { sourced, none, traces }
+  return { sourced, none, traces, checksByEventId }
 }

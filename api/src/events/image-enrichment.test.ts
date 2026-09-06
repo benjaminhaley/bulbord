@@ -21,7 +21,16 @@ vi.mock('../uploads/fetch-external-image.js', () => ({ fetchExternalImage: fetch
 vi.mock('../uploads/image-quality.js', () => ({ isLowQualityImage: isLowQualityImageMock }))
 vi.mock('../uploads/image-relevance.js', () => ({ scoreImageRelevance: scoreImageRelevanceMock }))
 vi.mock('../uploads/storage.js', () => ({ imageUrl: (key: string) => `/uploads/${key}`, uploadImage: uploadImageMock }))
-vi.mock('../uploads/web-image-search.js', () => ({ searchWebImage: searchWebImageMock }))
+// searchWebImageMock keeps its old shape (returns one flat url[] per call) —
+// wrapped here as a single-tier async generator so every existing
+// `.mockResolvedValue([...])` call site below still works unchanged, even
+// though image-enrichment.ts itself now consumes the multi-tier
+// searchWebImageQueryTiers generator (Pipeline Review v2, 2026-09-06).
+vi.mock('../uploads/web-image-search.js', () => ({
+  searchWebImageQueryTiers: async function* (title: string, description?: string | null) {
+    yield await searchWebImageMock(title, description)
+  },
+}))
 vi.mock('../db/client.js', () => ({
   db: {
     update: () => ({ set: setMock }),

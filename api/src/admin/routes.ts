@@ -13,12 +13,15 @@ import { getApprovedEventOccurrences } from '../events/recurring-series-query.js
 import { processInboundEmail } from '../events/email-ingest.js'
 import { sendTestPipelineReviewEmail } from '../events/pipeline-review-email.js'
 import {
-  addRejectionAnyway,
-  agreeRejection,
   approveEvent,
+  approveRejectedCandidate,
+  editKeptCandidate,
+  editRejectedCandidate,
   getPipelineReviewCandidates,
-  removeEvent,
-  retryEventImage,
+  rejectEvent,
+  rejectRejectedCandidate,
+  retryEventImageForKeptItem,
+  type EditableFields,
 } from '../events/pipeline-review-service.js'
 import {
   getLatestEventSourcingRun,
@@ -252,10 +255,14 @@ export async function adminRoutes(app: FastifyInstance) {
   // Dev tool (feedback #41): re-runs the ingestion pipeline against every
   // known active source on demand, instead of waiting for a manual sourcing
   // pass. Scoped to known sources only, not new-source discovery — see
-  // resourcing.ts.
+  // resourcing.ts. max_sources/max_candidates (feedback, 2026-09-06: "run a
+  // sub-portion... one source, or just do the first five") let this be a
+  // fast, representative sample run instead of processing all ~23 sources —
+  // useful for testing generally, not just this one demo.
   app.post('/admin/events/resource', { preHandler: requireRole('admin') }, async (request, reply) => {
+    const { max_sources, max_candidates } = (request.body ?? {}) as { max_sources?: number; max_candidates?: number }
     const actor = `admin:${request.currentUser!.id}`
-    const report = await resourceActiveEventSources(actor)
+    const report = await resourceActiveEventSources(actor, { maxSources: max_sources, maxCandidates: max_candidates })
     return reply.send({ data: { actor, ran_at: new Date(), ...serializeResourceReport(report) } })
   })
 
@@ -299,9 +306,18 @@ export async function adminRoutes(app: FastifyInstance) {
           source_id: k.sourceId,
           source_name: k.sourceName,
           created_at: k.createdAt,
+          status: k.status,
+          image_url: k.imageUrl,
+          thumbnail_url: k.thumbnailUrl,
+          start_date: k.startDate,
+          start_time: k.startTime,
+          all_day: k.allDay,
+          address: k.address,
+          location_name: k.locationName,
+          description: k.description,
           relevance_reason: k.relevanceReason,
-          quality_checks: k.qualityChecks,
-          image_trace: k.imageTrace,
+          checks: k.checks,
+          pipeline_checks_passed: k.pipelineChecksPassed,
           reviewed_at: k.reviewedAt,
           reviewed_by_name: k.reviewedByName,
           review_note: k.reviewNote,
@@ -311,6 +327,14 @@ export async function adminRoutes(app: FastifyInstance) {
           title: r.title,
           source_id: r.sourceId,
           source_name: r.sourceName,
+          candidate_data: {
+            description: r.candidateData.description ?? null,
+            address: r.candidateData.address ?? null,
+            location_name: r.candidateData.locationName ?? null,
+            start_date: r.candidateData.startDate,
+            start_time: r.candidateData.startTime ?? null,
+            all_day: r.candidateData.allDay,
+          },
           rejection_type: r.rejectionType,
           rejection_reason: r.rejectionReason,
           duplicate_of_event_id: r.duplicateOfEventId,
@@ -326,6 +350,22 @@ export async function adminRoutes(app: FastifyInstance) {
     })
   })
 
+  function parseEditableFields(body: unknown): EditableFields {
+    const b = (body ?? {}) as Record<string, unknown>
+    const fields: EditableFields = {}
+    if (typeof b.title === 'string') fields.title = b.title
+    if (typeof b.description === 'string') fields.description = b.description
+    if (typeof b.address === 'string') fields.address = b.address
+    if (typeof b.location_name === 'string') fields.locationName = b.location_name
+    if (typeof b.start_date === 'string') fields.startDate = b.start_date
+    if (typeof b.start_time === 'string' || b.start_time === null) fields.startTime = b.start_time as string | null
+    if (typeof b.all_day === 'boolean') fields.allDay = b.all_day
+    return fields
+  }
+
+  // Three fundamental actions (Ben's own framing): Approve, Reject, Edit —
+  // Edit never changes publish state by itself, only Approve/Reject do (see
+  // pipeline-review-service.ts's own header on each for why).
   app.post('/admin/events/:id/pipeline-review/approve', { preHandler: requireRole('admin') }, async (request, reply) => {
     const { id } = request.params as { id: string }
     const { note } = (request.body ?? {}) as { note?: string }
@@ -334,41 +374,55 @@ export async function adminRoutes(app: FastifyInstance) {
     return reply.send({ data: { approved: true } })
   })
 
-  app.post('/admin/events/:id/pipeline-review/remove', { preHandler: requireRole('admin') }, async (request, reply) => {
+  app.post('/admin/events/:id/pipeline-review/reject', { preHandler: requireRole('admin') }, async (request, reply) => {
     const { id } = request.params as { id: string }
     const { note } = (request.body ?? {}) as { note?: string }
-    const error = await removeEvent(id, request.currentUser!.id, note)
+    const error = await rejectEvent(id, request.currentUser!.id, note)
     if (error) return reply.code(404).send({ error: { message: 'Event not found' } })
-    return reply.send({ data: { removed: true } })
+    return reply.send({ data: { rejected: true } })
+  })
+
+  app.post('/admin/events/:id/pipeline-review/edit', { preHandler: requireRole('admin') }, async (request, reply) => {
+    const { id } = request.params as { id: string }
+    const error = await editKeptCandidate(id, parseEditableFields(request.body))
+    if (error) return reply.code(404).send({ error: { message: 'Event not found' } })
+    return reply.send({ data: { edited: true } })
   })
 
   // Re-runs the same real image search a member's Describe-It flow uses
-  // (findCandidateEventImage), scoring the logo tier too — deliberately does
-  // not mark the event reviewed, since an admin still needs to look at the
-  // new result before deciding Approve/Remove.
+  // (findCandidateEventImage), scoring the logo tier too — a sub-action
+  // reached from within the Edit panel on the review page, not a fourth
+  // top-level button.
   app.post('/admin/events/:id/pipeline-review/retry-image', { preHandler: requireRole('admin') }, async (request, reply) => {
     const { id } = request.params as { id: string }
-    const error = await retryEventImage(id)
+    const error = await retryEventImageForKeptItem(id)
     if (error === 'not_found') return reply.code(404).send({ error: { message: 'Event not found' } })
     return reply.send({ data: { found: error !== 'no_image_found' } })
   })
 
-  app.post('/admin/rejected-event-candidates/:id/agree', { preHandler: requireRole('admin') }, async (request, reply) => {
+  app.post('/admin/rejected-event-candidates/:id/reject', { preHandler: requireRole('admin') }, async (request, reply) => {
     const { id } = request.params as { id: string }
     const { note } = (request.body ?? {}) as { note?: string }
-    const error = await agreeRejection(id, request.currentUser!.id, note)
+    const error = await rejectRejectedCandidate(id, request.currentUser!.id, note)
     if (error) return reply.code(404).send({ error: { message: 'Rejected candidate not found' } })
-    return reply.send({ data: { agreed: true } })
+    return reply.send({ data: { rejected: true } })
   })
 
-  // Rebuilds and re-inserts the original candidate via the same ingestEvents()
-  // path everything else uses — see pipeline-review-service.ts's
-  // addRejectionAnyway for why a 'deduped' outcome is a real, honest result
-  // rather than a silent no-op.
-  app.post('/admin/rejected-event-candidates/:id/add-anyway', { preHandler: requireRole('admin') }, async (request, reply) => {
+  app.post('/admin/rejected-event-candidates/:id/edit', { preHandler: requireRole('admin') }, async (request, reply) => {
+    const { id } = request.params as { id: string }
+    const error = await editRejectedCandidate(id, parseEditableFields(request.body))
+    if (error) return reply.code(404).send({ error: { message: 'Rejected candidate not found' } })
+    return reply.send({ data: { edited: true } })
+  })
+
+  // Rebuilds and re-inserts the original (possibly admin-edited) candidate
+  // via the same ingestEvents() path everything else uses — see
+  // pipeline-review-service.ts's approveRejectedCandidate for why a
+  // 'deduped' outcome is a real, honest result rather than a silent no-op.
+  app.post('/admin/rejected-event-candidates/:id/approve', { preHandler: requireRole('admin') }, async (request, reply) => {
     const { id } = request.params as { id: string }
     const { note } = (request.body ?? {}) as { note?: string }
-    const error = await addRejectionAnyway(id, request.currentUser!.id, note)
+    const error = await approveRejectedCandidate(id, request.currentUser!.id, note)
     if (error === 'not_found') return reply.code(404).send({ error: { message: 'Rejected candidate not found' } })
     return reply.send({ data: { added: error !== 'deduped', deduped: error === 'deduped' } })
   })

@@ -9,10 +9,19 @@ const selectResults: Record<string, unknown>[][] = []
 // same-day events found) when nothing is queued, so existing tests that
 // never touch this queue keep passing unchanged.
 const sameDayResults: Record<string, unknown>[][] = []
+const updateCalls: Record<string, unknown>[] = []
 const uploadPlaceholderImageMock = vi.fn()
 const simplifyTitleMock = vi.fn()
 const lookupMoviePosterMock = vi.fn()
 const enrichEventImagesMock = vi.fn()
+const runTextChecksWithRetryMock = vi.fn()
+const PASSING_CHECK = { pass: true, reason: 'ok', attempts: 1 }
+const PASSING_TEXT_CHECKS = {
+  titleQuality: PASSING_CHECK,
+  descriptionQuality: PASSING_CHECK,
+  locationLabelQuality: PASSING_CHECK,
+  addressQuality: PASSING_CHECK,
+}
 
 vi.mock('../db/client.js', () => {
   const builder: Record<string, unknown> = {}
@@ -32,6 +41,12 @@ vi.mock('../db/client.js', () => {
         return { returning: () => Promise.resolve([{ id: `generated-${insertCalls.length}` }]) }
       },
     }),
+    update: () => ({
+      set: (values: Record<string, unknown>) => {
+        updateCalls.push(values)
+        return { where: () => Promise.resolve() }
+      },
+    }),
   })
   return { db: builder }
 })
@@ -39,10 +54,17 @@ vi.mock('../uploads/placeholder.js', () => ({ uploadPlaceholderImage: uploadPlac
 vi.mock('./title-normalization.js', () => ({ simplifyTitle: simplifyTitleMock }))
 vi.mock('./movie-poster-lookup.js', () => ({ lookupMoviePoster: lookupMoviePosterMock }))
 vi.mock('./image-enrichment.js', () => ({ enrichEventImages: enrichEventImagesMock }))
+// checkDateQuality/checkTimeQuality/buildDuplicateCheck are pure and safe to
+// use for real; only runTextChecksWithRetry makes a real (Claude-backed)
+// call, so only that one is mocked.
+vi.mock('./candidate-checks.js', async () => {
+  const actual = await vi.importActual<typeof import('./candidate-checks.js')>('./candidate-checks.js')
+  return { ...actual, runTextChecksWithRetry: runTextChecksWithRetryMock }
+})
 
 const CANDIDATE = {
   title: 'Back to School Clothing Swap',
-  startDate: '2026-08-22',
+  startDate: '2026-11-22', // a real near future date — checkDateQuality (real, unmocked) rejects a past or implausibly-far-future one
   allDay: true,
   sourceUrl: 'https://chipublib.bibliocommons.com/events/abc',
   status: 'pending' as const,
@@ -51,6 +73,7 @@ const CANDIDATE = {
 describe('ingestEvents', () => {
   beforeEach(() => {
     insertCalls.length = 0
+    updateCalls.length = 0
     selectResults.length = 0
     sameDayResults.length = 0
     uploadPlaceholderImageMock.mockReset().mockResolvedValue({
@@ -59,7 +82,8 @@ describe('ingestEvents', () => {
     })
     simplifyTitleMock.mockReset().mockImplementation(async ({ title }: { title: string }) => title)
     lookupMoviePosterMock.mockReset().mockResolvedValue(null)
-    enrichEventImagesMock.mockReset().mockResolvedValue({ sourced: 0, none: 1 })
+    enrichEventImagesMock.mockReset().mockResolvedValue({ sourced: 0, none: 1, traces: [], checksByEventId: new Map() })
+    runTextChecksWithRetryMock.mockReset().mockImplementation(async (items: unknown[]) => items.map(() => ({ checks: PASSING_TEXT_CHECKS, correctedFields: {} })))
   })
 
   it('generates and inserts a placeholder image up front, before any async enrichment runs', async () => {
@@ -149,5 +173,88 @@ describe('ingestEvents', () => {
     expect(enrichEventImagesMock).toHaveBeenCalledWith([
       expect.objectContaining({ id: 'generated-1', sourceUrl: CANDIDATE.sourceUrl }),
     ])
+  })
+
+  describe('Pipeline Review v2 gating', () => {
+    it('finalizes a fully-passing candidate as approved, with every check recorded', async () => {
+      selectResults.push([])
+      enrichEventImagesMock.mockResolvedValue({
+        sourced: 1,
+        none: 0,
+        traces: [],
+        checksByEventId: new Map([['generated-1', { imageQuality: PASSING_CHECK, imageRelevance: PASSING_CHECK }]]),
+      })
+      const { ingestEvents } = await import('./ingest.js')
+
+      await ingestEvents([CANDIDATE], { sourceId: 'source-1', actor: 'test' })
+
+      expect(updateCalls[0]).toEqual(
+        expect.objectContaining({
+          status: 'approved',
+          pipelineChecksPassed: true,
+          pipelineQualityChecks: expect.objectContaining({ duplicateCheck: expect.objectContaining({ pass: true }) }),
+        }),
+      )
+    })
+
+    it('holds a check-failing candidate back as pending instead of publishing it', async () => {
+      selectResults.push([])
+      runTextChecksWithRetryMock.mockResolvedValue([
+        { checks: { ...PASSING_TEXT_CHECKS, addressQuality: { pass: false, reason: 'Too vague', attempts: 2 } }, correctedFields: {} },
+      ])
+      enrichEventImagesMock.mockResolvedValue({
+        sourced: 1,
+        none: 0,
+        traces: [],
+        checksByEventId: new Map([['generated-1', { imageQuality: PASSING_CHECK, imageRelevance: PASSING_CHECK }]]),
+      })
+      const { ingestEvents } = await import('./ingest.js')
+
+      await ingestEvents([CANDIDATE], { sourceId: 'source-1', actor: 'test' })
+
+      expect(updateCalls[0]).toEqual(expect.objectContaining({ status: 'pending', pipelineChecksPassed: false }))
+    })
+
+    it('forceApprove publishes even a check-failing candidate, while still recording the real checks', async () => {
+      selectResults.push([])
+      runTextChecksWithRetryMock.mockResolvedValue([
+        { checks: { ...PASSING_TEXT_CHECKS, addressQuality: { pass: false, reason: 'Too vague', attempts: 2 } }, correctedFields: {} },
+      ])
+      enrichEventImagesMock.mockResolvedValue({
+        sourced: 1,
+        none: 0,
+        traces: [],
+        checksByEventId: new Map([['generated-1', { imageQuality: PASSING_CHECK, imageRelevance: PASSING_CHECK }]]),
+      })
+      const { ingestEvents } = await import('./ingest.js')
+
+      await ingestEvents([CANDIDATE], { sourceId: 'source-1', actor: 'test', forceApprove: true })
+
+      expect(updateCalls[0]).toEqual(
+        expect.objectContaining({
+          status: 'approved',
+          pipelineChecksPassed: false,
+          pipelineQualityChecks: expect.objectContaining({ addressQuality: expect.objectContaining({ pass: false }) }),
+        }),
+      )
+    })
+
+    it('applies a corrected field from a self-healing retry onto the finalized row', async () => {
+      selectResults.push([])
+      runTextChecksWithRetryMock.mockResolvedValue([
+        { checks: PASSING_TEXT_CHECKS, correctedFields: { address: '3252 N Broadway' } },
+      ])
+      enrichEventImagesMock.mockResolvedValue({
+        sourced: 1,
+        none: 0,
+        traces: [],
+        checksByEventId: new Map([['generated-1', { imageQuality: PASSING_CHECK, imageRelevance: PASSING_CHECK }]]),
+      })
+      const { ingestEvents } = await import('./ingest.js')
+
+      await ingestEvents([CANDIDATE], { sourceId: 'source-1', actor: 'test' })
+
+      expect(updateCalls[0]).toEqual(expect.objectContaining({ address: '3252 N Broadway' }))
+    })
   })
 })

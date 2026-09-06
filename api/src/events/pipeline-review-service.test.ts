@@ -3,13 +3,14 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 // Same db/client.js mocking shape as admin/memberDeletion.test.ts and
 // events/ingest.test.ts: select() queues consumed in call order (this file's
 // functions make more than one select per action in some cases — e.g.
-// addRejectionAnyway looks up the rejected row, then re-looks-up the newly
-// inserted event), update() records what was set, insert() is unused here
-// (ingestEvents itself is mocked below).
+// approveRejectedCandidate looks up the rejected row, then re-looks-up the
+// newly inserted event), update() records what was set, insert() is unused
+// here (ingestEvents itself is mocked below).
 const selectResults: Record<string, unknown>[][] = []
 const updateCalls: { table: unknown; set: Record<string, unknown> }[] = []
 const enrichEventImageMock = vi.fn()
 const ingestEventsMock = vi.fn()
+const scoreTextChecksMock = vi.fn()
 
 vi.mock('../db/client.js', () => {
   const builder: Record<string, unknown> = {}
@@ -28,7 +29,9 @@ vi.mock('../db/client.js', () => {
     update: (table: unknown) => ({
       set: (values: Record<string, unknown>) => {
         updateCalls.push({ table, set: values })
-        return { where: () => ({ returning: () => Promise.resolve(selectResults.shift() ?? [{ id: 'row-1' }]) }) }
+        return {
+          where: () => ({ returning: () => Promise.resolve(selectResults.shift() ?? [{ id: 'row-1' }]) }),
+        }
       },
     }),
   })
@@ -36,16 +39,29 @@ vi.mock('../db/client.js', () => {
 })
 vi.mock('./image-enrichment.js', () => ({ enrichEventImage: enrichEventImageMock }))
 vi.mock('./ingest.js', () => ({ ingestEvents: ingestEventsMock }))
+vi.mock('./candidate-checks.js', async () => {
+  const actual = await vi.importActual<typeof import('./candidate-checks.js')>('./candidate-checks.js')
+  return { ...actual, scoreTextChecks: scoreTextChecksMock }
+})
+
+const PASSING_CHECK = { pass: true, reason: 'ok', attempts: 1 }
+const PASSING_TEXT_CHECKS = {
+  titleQuality: PASSING_CHECK,
+  descriptionQuality: PASSING_CHECK,
+  locationLabelQuality: PASSING_CHECK,
+  addressQuality: PASSING_CHECK,
+}
 
 beforeEach(() => {
   selectResults.length = 0
   updateCalls.length = 0
   enrichEventImageMock.mockReset()
   ingestEventsMock.mockReset()
+  scoreTextChecksMock.mockReset().mockResolvedValue([PASSING_TEXT_CHECKS])
 })
 
 describe('approveEvent', () => {
-  it('marks the event reviewed with the admin id and an optional note', async () => {
+  it('publishes the event and marks it reviewed with the admin id and an optional note', async () => {
     selectResults.push([{ id: 'event-1' }])
     const { approveEvent } = await import('./pipeline-review-service.js')
 
@@ -53,7 +69,7 @@ describe('approveEvent', () => {
 
     expect(error).toBeNull()
     expect(updateCalls[0].set).toEqual(
-      expect.objectContaining({ pipelineReviewedByUserId: 'admin-1', pipelineReviewNote: 'looks fine' }),
+      expect.objectContaining({ status: 'approved', pipelineReviewedByUserId: 'admin-1', pipelineReviewNote: 'looks fine' }),
     )
   })
 
@@ -67,12 +83,12 @@ describe('approveEvent', () => {
   })
 })
 
-describe('removeEvent', () => {
+describe('rejectEvent', () => {
   it('soft-deletes the event and marks it reviewed in the same update', async () => {
     selectResults.push([{ id: 'event-1' }])
-    const { removeEvent } = await import('./pipeline-review-service.js')
+    const { rejectEvent } = await import('./pipeline-review-service.js')
 
-    const error = await removeEvent('event-1', 'admin-1', 'wrong location')
+    const error = await rejectEvent('event-1', 'admin-1', 'wrong location')
 
     expect(error).toBeNull()
     expect(updateCalls[0].set).toEqual(
@@ -85,13 +101,48 @@ describe('removeEvent', () => {
   })
 })
 
-describe('retryEventImage', () => {
-  it('re-searches with the logo tier scored, and does not mark the event reviewed', async () => {
-    selectResults.push([{ id: 'event-1', sourceUrl: 'https://example.com', title: 'Fall Festival', description: null }])
-    enrichEventImageMock.mockResolvedValue({ result: 'sourced', trace: [] })
-    const { retryEventImage } = await import('./pipeline-review-service.js')
+describe('editKeptCandidate', () => {
+  it('re-scores the text checks against the corrected fields and never changes status', async () => {
+    selectResults.push([
+      {
+        checks: { ...PASSING_TEXT_CHECKS, dateQuality: PASSING_CHECK, timeQuality: PASSING_CHECK, imageQuality: PASSING_CHECK, imageRelevance: PASSING_CHECK, duplicateCheck: PASSING_CHECK },
+        title: 'Old Title',
+        description: null,
+        address: 'Northalsted',
+        locationName: null,
+        startDate: '2026-10-10',
+        startTime: null,
+        allDay: true,
+      },
+    ])
+    scoreTextChecksMock.mockResolvedValue([{ ...PASSING_TEXT_CHECKS, addressQuality: { pass: true, reason: 'Now a real address', attempts: 1 } }])
+    const { editKeptCandidate } = await import('./pipeline-review-service.js')
 
-    const error = await retryEventImage('event-1')
+    const error = await editKeptCandidate('event-1', { address: '3252 N Broadway' })
+
+    expect(error).toBeNull()
+    expect(scoreTextChecksMock).toHaveBeenCalledWith([expect.objectContaining({ address: '3252 N Broadway' })])
+    expect(updateCalls[0].set).not.toHaveProperty('status')
+    expect(updateCalls[0].set).toEqual(expect.objectContaining({ address: '3252 N Broadway', pipelineChecksPassed: true }))
+  })
+
+  it("returns 'not_found' when the event doesn't exist", async () => {
+    selectResults.push([])
+    const { editKeptCandidate } = await import('./pipeline-review-service.js')
+
+    const error = await editKeptCandidate('missing', { title: 'New Title' })
+
+    expect(error).toBe('not_found')
+  })
+})
+
+describe('retryEventImageForKeptItem', () => {
+  it('re-searches with the logo tier scored, and does not mark the event reviewed', async () => {
+    selectResults.push([{ id: 'event-1', sourceUrl: 'https://example.com', title: 'Fall Festival', description: null, checks: null, status: 'pending' }])
+    enrichEventImageMock.mockResolvedValue({ result: 'sourced', trace: [], imageQuality: PASSING_CHECK, imageRelevance: PASSING_CHECK })
+    const { retryEventImageForKeptItem } = await import('./pipeline-review-service.js')
+
+    const error = await retryEventImageForKeptItem('event-1')
 
     expect(error).toBeNull()
     expect(enrichEventImageMock).toHaveBeenCalledWith(
@@ -99,43 +150,67 @@ describe('retryEventImage', () => {
       expect.objectContaining({ sourceUrl: 'https://example.com', title: 'Fall Festival' }),
       { scoreLogos: true },
     )
-    expect(updateCalls).toHaveLength(0)
+    expect(updateCalls[0].set).not.toHaveProperty('pipelineReviewedAt')
+  })
+
+  it('auto-publishes a pending item once every check now passes', async () => {
+    const priorChecks = { ...PASSING_TEXT_CHECKS, dateQuality: PASSING_CHECK, timeQuality: PASSING_CHECK, imageQuality: { pass: false, reason: 'none found', attempts: 1 }, imageRelevance: { pass: false, reason: 'none found', attempts: 1 }, duplicateCheck: PASSING_CHECK }
+    selectResults.push([{ id: 'event-1', sourceUrl: 'https://example.com', title: 'Fall Festival', description: null, checks: priorChecks, status: 'pending' }])
+    enrichEventImageMock.mockResolvedValue({ result: 'sourced', trace: [], imageQuality: PASSING_CHECK, imageRelevance: PASSING_CHECK })
+    const { retryEventImageForKeptItem } = await import('./pipeline-review-service.js')
+
+    await retryEventImageForKeptItem('event-1')
+
+    expect(updateCalls[0].set).toEqual(expect.objectContaining({ status: 'approved', pipelineChecksPassed: true }))
   })
 
   it("reports 'no_image_found' without treating it as an error", async () => {
-    selectResults.push([{ id: 'event-1', sourceUrl: null, title: 'Fall Festival', description: null }])
-    enrichEventImageMock.mockResolvedValue({ result: 'none', trace: [] })
-    const { retryEventImage } = await import('./pipeline-review-service.js')
+    selectResults.push([{ id: 'event-1', sourceUrl: null, title: 'Fall Festival', description: null, checks: null, status: 'pending' }])
+    enrichEventImageMock.mockResolvedValue({ result: 'none', trace: [], imageQuality: { pass: false, reason: 'none', attempts: 1 }, imageRelevance: { pass: false, reason: 'none', attempts: 1 } })
+    const { retryEventImageForKeptItem } = await import('./pipeline-review-service.js')
 
-    const error = await retryEventImage('event-1')
+    const error = await retryEventImageForKeptItem('event-1')
 
     expect(error).toBe('no_image_found')
   })
 
   it("returns 'not_found' when the event doesn't exist", async () => {
     selectResults.push([])
-    const { retryEventImage } = await import('./pipeline-review-service.js')
+    const { retryEventImageForKeptItem } = await import('./pipeline-review-service.js')
 
-    const error = await retryEventImage('missing')
+    const error = await retryEventImageForKeptItem('missing')
 
     expect(error).toBe('not_found')
     expect(enrichEventImageMock).not.toHaveBeenCalled()
   })
 })
 
-describe('agreeRejection', () => {
-  it('marks a rejected candidate reviewed with reviewAction "agreed"', async () => {
+describe('rejectRejectedCandidate', () => {
+  it('marks a rejected candidate reviewed with reviewAction "rejected"', async () => {
     selectResults.push([{ id: 'rejected-1' }])
-    const { agreeRejection } = await import('./pipeline-review-service.js')
+    const { rejectRejectedCandidate } = await import('./pipeline-review-service.js')
 
-    const error = await agreeRejection('rejected-1', 'admin-1')
+    const error = await rejectRejectedCandidate('rejected-1', 'admin-1')
 
     expect(error).toBeNull()
-    expect(updateCalls[0].set).toEqual(expect.objectContaining({ reviewAction: 'agreed' }))
+    expect(updateCalls[0].set).toEqual(expect.objectContaining({ reviewAction: 'rejected' }))
   })
 })
 
-describe('addRejectionAnyway', () => {
+describe('editRejectedCandidate', () => {
+  it('updates only the stored candidateData snapshot, without inserting anything', async () => {
+    selectResults.push([{ candidateData: { title: 'Old', startDate: '2026-10-10', allDay: true, sourceUrl: 'https://example.com', status: 'approved' } }])
+    const { editRejectedCandidate } = await import('./pipeline-review-service.js')
+
+    const error = await editRejectedCandidate('rejected-1', { address: '3252 N Broadway' })
+
+    expect(error).toBeNull()
+    expect(updateCalls[0].set.candidateData).toEqual(expect.objectContaining({ title: 'Old', address: '3252 N Broadway' }))
+    expect(ingestEventsMock).not.toHaveBeenCalled()
+  })
+})
+
+describe('approveRejectedCandidate', () => {
   const CANDIDATE = {
     title: 'Adults-only Wine Tasting',
     startDate: '2026-10-10',
@@ -144,18 +219,18 @@ describe('addRejectionAnyway', () => {
     status: 'approved' as const,
   }
 
-  it('rebuilds the candidate and inserts it via the real ingestEvents() path, then records the resulting event id', async () => {
+  it('rebuilds the candidate and force-publishes it via the real ingestEvents() path, then records the resulting event id', async () => {
     selectResults.push([{ id: 'rejected-1', eventSourceId: 'source-1', candidateData: CANDIDATE }])
     ingestEventsMock.mockResolvedValue({ inserted: 1, skipped: 0 })
     selectResults.push([{ id: 'new-event-1' }]) // the post-insert re-lookup
 
-    const { addRejectionAnyway } = await import('./pipeline-review-service.js')
-    const error = await addRejectionAnyway('rejected-1', 'admin-1', 'was a real festival after all')
+    const { approveRejectedCandidate } = await import('./pipeline-review-service.js')
+    const error = await approveRejectedCandidate('rejected-1', 'admin-1', 'was a real festival after all')
 
     expect(error).toBeNull()
-    expect(ingestEventsMock).toHaveBeenCalledWith([CANDIDATE], { sourceId: 'source-1', actor: 'admin-1' })
+    expect(ingestEventsMock).toHaveBeenCalledWith([CANDIDATE], { sourceId: 'source-1', actor: 'admin-1', forceApprove: true })
     expect(updateCalls[0].set).toEqual(
-      expect.objectContaining({ reviewAction: 'added_anyway', addedAsEventId: 'new-event-1', reviewNote: 'was a real festival after all' }),
+      expect.objectContaining({ reviewAction: 'approved', addedAsEventId: 'new-event-1', reviewNote: 'was a real festival after all' }),
     )
   })
 
@@ -163,8 +238,8 @@ describe('addRejectionAnyway', () => {
     selectResults.push([{ id: 'rejected-1', eventSourceId: 'source-1', candidateData: CANDIDATE }])
     ingestEventsMock.mockResolvedValue({ inserted: 0, skipped: 1 })
 
-    const { addRejectionAnyway } = await import('./pipeline-review-service.js')
-    const error = await addRejectionAnyway('rejected-1', 'admin-1')
+    const { approveRejectedCandidate } = await import('./pipeline-review-service.js')
+    const error = await approveRejectedCandidate('rejected-1', 'admin-1')
 
     expect(error).toBe('deduped')
     expect(updateCalls[0].set).toEqual(expect.objectContaining({ addedAsEventId: null }))
@@ -172,9 +247,9 @@ describe('addRejectionAnyway', () => {
 
   it("returns 'not_found' when the rejected candidate doesn't exist", async () => {
     selectResults.push([])
-    const { addRejectionAnyway } = await import('./pipeline-review-service.js')
+    const { approveRejectedCandidate } = await import('./pipeline-review-service.js')
 
-    const error = await addRejectionAnyway('missing', 'admin-1')
+    const error = await approveRejectedCandidate('missing', 'admin-1')
 
     expect(error).toBe('not_found')
     expect(ingestEventsMock).not.toHaveBeenCalled()

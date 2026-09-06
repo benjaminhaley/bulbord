@@ -79,37 +79,19 @@ describe('filterFamilyRelevantCandidates', () => {
     })
   })
 
-  it('carries a reason and the three quality checks onto every kept candidate', async () => {
-    createMock.mockResolvedValue(
-      textResponse(
-        JSON.stringify([
-          {
-            keep: true,
-            reason: 'legitimate neighborhood festival',
-            titleQuality: { pass: true, reason: 'clear, complete title' },
-            descriptionQuality: { pass: false, reason: 'no description provided' },
-            locationQuality: { pass: true, reason: 'names a specific venue' },
-          },
-        ]),
-      ),
-    )
+  // Pipeline Review v2 (2026-09-06): this call went back to being
+  // relevance-only — the per-field quality checks it briefly also produced
+  // moved to candidate-checks.ts, run only on candidates that survive dedup
+  // inside ingestEvents() (see that file's own header for why).
+  it('carries a reason onto every kept candidate, not just rejected ones', async () => {
+    createMock.mockResolvedValue(textResponse(JSON.stringify([{ keep: true, reason: 'legitimate neighborhood festival' }])))
     const { filterFamilyRelevantCandidates } = await import('./candidate-validation.js')
     const only = candidate()
 
     const result = await filterFamilyRelevantCandidates([only])
 
     expect(result).toEqual({
-      kept: [
-        {
-          ...only,
-          relevanceReason: 'legitimate neighborhood festival',
-          qualityChecks: {
-            titleQuality: { pass: true, reason: 'clear, complete title' },
-            descriptionQuality: { pass: false, reason: 'no description provided' },
-            locationQuality: { pass: true, reason: 'names a specific venue' },
-          },
-        },
-      ],
+      kept: [{ ...only, relevanceReason: 'legitimate neighborhood festival' }],
       rejected: [],
     })
   })

@@ -10,7 +10,19 @@ function escapeHtml(value: string): string {
 
 const MAX_EXAMPLES = 5
 
-export function pipelineReviewSubject(runDate: Date, kept: number, rejected: number, prefix = ''): string {
+// Pipeline Review v2 (2026-09-06): Ben's first real look at this email was
+// the test-send tool's backlog preview (every unreviewed event ever
+// sourced), but the subject/body claimed "the pipeline ran Saturday... 158
+// events added" — which made pre-existing events look freshly duplicated.
+// `mode` makes the two genuinely different things say what they actually
+// are: 'run' (the real weekly send, scoped to exactly one run's own output)
+// keeps the original "ran on {date}" framing; 'backlog' (the test-send
+// preview, which intentionally shows everything still unreviewed) says so
+// plainly instead.
+export type PipelineReviewEmailMode = 'run' | 'backlog'
+
+export function pipelineReviewSubject(runDate: Date, kept: number, rejected: number, mode: PipelineReviewEmailMode = 'run', prefix = ''): string {
+  if (mode === 'backlog') return `${prefix}Pipeline Review: ${kept} awaiting review, ${rejected} rejected`
   const dateLabel = runDate.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'America/Chicago' })
   return `${prefix}Pipeline Review: ${kept} added, ${rejected} rejected — ${dateLabel}`
 }
@@ -25,11 +37,19 @@ export function renderPipelineReviewHtml(options: {
   kept: KeptReviewItem[]
   rejected: RejectedReviewItem[]
   webUrl: string
+  mode?: PipelineReviewEmailMode
 }): string {
-  const { runDate, kept, rejected } = options
+  const { runDate, kept, rejected, mode = 'run' } = options
   const dateLabel = runDate.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric', timeZone: 'America/Chicago' })
   const relevanceRejected = rejected.filter((r) => r.rejectionType === 'relevance')
   const duplicateRejected = rejected.filter((r) => r.rejectionType === 'duplicate')
+  const heldBack = kept.filter((k) => k.status === 'pending').length
+
+  const introLine =
+    mode === 'backlog'
+      ? 'Preview: here is everything currently awaiting your review — not just one run\'s worth.'
+      : `The event-sourcing pipeline ran ${escapeHtml(dateLabel)}.`
+  const keptVerb = mode === 'backlog' ? 'awaiting review' : 'added'
 
   const keptExamples = exampleListHtml(
     kept.slice(0, MAX_EXAMPLES).map((k) => `<strong>${escapeHtml(k.title)}</strong>${k.relevanceReason ? ` — ${escapeHtml(k.relevanceReason)}` : ''}`),
@@ -54,12 +74,12 @@ export function renderPipelineReviewHtml(options: {
             </tr>
             <tr>
               <td style="padding:24px 24px 8px;">
-                <p style="color:#111111;font-size:16px;margin:0;">The event-sourcing pipeline ran ${escapeHtml(dateLabel)}.</p>
+                <p style="color:#111111;font-size:16px;margin:0;">${introLine}</p>
               </td>
             </tr>
             <tr>
               <td style="padding:8px 24px 0;">
-                <p style="color:#111111;font-size:15px;margin:0;"><strong>${kept.length}</strong> event${kept.length === 1 ? '' : 's'} added</p>
+                <p style="color:#111111;font-size:15px;margin:0;"><strong>${kept.length}</strong> event${kept.length === 1 ? '' : 's'} ${keptVerb}${heldBack > 0 ? ` (<strong>${heldBack}</strong> held back — a check failed)` : ''}</p>
                 ${keptExamples}
               </td>
             </tr>
