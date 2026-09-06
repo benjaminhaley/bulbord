@@ -62,6 +62,7 @@ const CHECK_DESCRIPTIONS: Record<keyof PipelineChecks, string> = {
 }
 
 const CHECK_LABELS = Object.fromEntries(PIPELINE_CHECK_LABELS.map(({ key, label }) => [key, label])) as Record<keyof PipelineChecks, string>
+const ALL_CHECK_KEYS = PIPELINE_CHECK_LABELS.map(({ key }) => key)
 
 // A passing check is compressed to just its name + checkmark — the specific
 // "why" for a pass is almost always the same generic sentence every time
@@ -93,18 +94,26 @@ function CheckLine({ label, check }: { label: string; check: { pass: boolean; re
   )
 }
 
-// Renders just the check line(s) for the given keys, directly beneath
-// whatever field they judge (Ben, 2026-09-06: "the checks just appear
-// beneath the relevant fields") — placed inside an EventBody slot for a
-// kept/rejected item's own event fields, or as a plain sibling for
-// title/duplicate (which aren't one of EventBody's own fields). checks is
-// null for an item that predates this system, in which case nothing renders
+// All 9 checks, grouped together in one place — Ben, 2026-09-06 (second
+// pass): "it doesn't look rendered like a normal post" — interleaving a
+// check line after every single field (the first version of this page)
+// broke up the post's own content so much it stopped reading as a post at
+// all, and a check literally named "Title" sitting right under the event's
+// own title read as confusingly duplicative. The post itself (EventBody,
+// called with no slots below) now renders exactly as it would on the real
+// site, completely uninterrupted; this renders the full checklist as its
+// own clearly separated section right after it, in the checklist's own
+// fixed order (see PIPELINE_CHECK_LABELS) — so every field's check is still
+// easy to find, just not literally inline with the field. checks is null
+// for an item that predates this system, in which case nothing renders
 // rather than a misleading placeholder.
-function Checks({ checks, keys }: { checks: PipelineChecks | null; keys: (keyof PipelineChecks)[] }) {
-  if (!checks) return null
+function ChecksSection({ checks }: { checks: PipelineChecks | null }) {
+  if (!checks) return <IonNote color="medium">No checks recorded (predates this feature)</IonNote>
   return (
     <>
-      {keys.map((key) => (
+      <hr style={sectionDividerStyle} />
+      <p style={{ ...factLineStyle, ...headingContentGap, fontWeight: 600 }}>Checks</p>
+      {ALL_CHECK_KEYS.map((key) => (
         <CheckLine key={key} label={CHECK_LABELS[key]} check={checks[key]} />
       ))}
     </>
@@ -361,12 +370,21 @@ export function PipelineReviewPage() {
               {kept.map((item) => (
                 <IonItem key={item.id} lines="full">
                   <IonLabel className="ion-text-wrap" style={{ marginTop: 8, marginBottom: 8 }}>
-                    {/* The event itself renders through the exact same
+                    <IonNote color="medium">
+                      {item.source_name ?? 'Unknown source'} · {formatRelativeDateTime(item.created_at)}
+                    </IonNote>
+                    <h2>
+                      <a href={`/events/${item.id}`}>{item.title}</a>
+                      {item.status === 'pending' && (
+                        <span style={{ marginLeft: 6, fontSize: '0.75rem', color: 'var(--ion-color-danger)' }}>HELD FOR REVIEW</span>
+                      )}
+                    </h2>
+                    {item.relevance_reason && <p style={factLineStyle}>Why relevant: {item.relevance_reason}</p>}
+                    {/* The post itself, rendered through the exact same
                         component its real detail page uses (Ben, 2026-09-06:
                         "use the same engine with just a couple options
-                        set") — EventBody, parameterized with slots that
-                        inject the check(s) judging each field directly
-                        beneath it, rather than a separate dumped list. */}
+                        set"), with no slots — a completely uninterrupted
+                        preview of exactly what the live page shows. */}
                     <EventBody
                       event={{
                         image_url: item.image_url,
@@ -378,30 +396,8 @@ export function PipelineReviewPage() {
                         address: item.address,
                         description: item.description,
                       }}
-                      slots={{
-                        afterImage: (
-                          <>
-                            <Checks checks={item.checks} keys={['imageQuality', 'imageRelevance']} />
-                            <IonNote color="medium">
-                              {item.source_name ?? 'Unknown source'} · {formatRelativeDateTime(item.created_at)}
-                            </IonNote>
-                            <h2 style={headingContentGap}>
-                              <a href={`/events/${item.id}`}>{item.title}</a>
-                              {item.status === 'pending' && (
-                                <span style={{ marginLeft: 6, fontSize: '0.75rem', color: 'var(--ion-color-danger)' }}>HELD FOR REVIEW</span>
-                              )}
-                            </h2>
-                            {item.relevance_reason && <p style={factLineStyle}>Why relevant: {item.relevance_reason}</p>}
-                            <Checks checks={item.checks} keys={['titleQuality', 'duplicateCheck']} />
-                          </>
-                        ),
-                        afterWhen: <Checks checks={item.checks} keys={['dateQuality', 'timeQuality']} />,
-                        afterLocationName: <Checks checks={item.checks} keys={['locationLabelQuality']} />,
-                        afterAddress: <Checks checks={item.checks} keys={['addressQuality']} />,
-                        afterDescription: <Checks checks={item.checks} keys={['descriptionQuality']} />,
-                      }}
                     />
-                    {!item.checks && <IonNote color="medium">No checks recorded (predates this feature)</IonNote>}
+                    <ChecksSection checks={item.checks} />
                     {item.reviewed_at ? (
                       <IonNote color="medium">
                         Reviewed by {item.reviewed_by_name ?? 'an admin'} {formatRelativeDateTime(item.reviewed_at)}
@@ -477,14 +473,22 @@ export function PipelineReviewPage() {
               {rejected.map((item) => (
                 <IonItem key={item.id} lines="full">
                   <IonLabel className="ion-text-wrap" style={{ marginTop: 8, marginBottom: 8 }}>
-                    {/* Same EventBody engine as a kept item above, plus the
-                        same full 9-check suite (Ben, 2026-09-06: "every
-                        event should have a full suite of checks... so I can
-                        see why they were rejected") — image_url is always
-                        null here (a rejected candidate never gets a real
-                        image search), so EventBody simply renders no image,
-                        and the not-applicable image checks show that
-                        honestly rather than as a pass or fail. */}
+                    <IonNote color="medium">
+                      {item.source_name ?? 'Unknown source'} · {formatRelativeDateTime(item.created_at)} · {item.rejection_type === 'duplicate' ? 'Duplicate' : 'Not relevant'}
+                    </IonNote>
+                    <h2>{item.title}</h2>
+                    <p style={factLineStyle}>{item.rejection_reason}</p>
+                    {item.duplicate_of_event_id && (
+                      <p style={factLineStyle}>
+                        Matched: <a href={`/events/${item.duplicate_of_event_id}`}>{item.duplicate_of_event_title ?? 'view event'}</a>
+                      </p>
+                    )}
+                    {/* Same EventBody engine as a kept item above, with no
+                        slots — image_url is always null here (a rejected
+                        candidate never gets a real image search), so
+                        EventBody simply renders no image, and the
+                        not-applicable image checks in ChecksSection below
+                        show that honestly rather than as a pass or fail. */}
                     <EventBody
                       event={{
                         image_url: null,
@@ -496,30 +500,8 @@ export function PipelineReviewPage() {
                         address: item.candidate_data.address,
                         description: item.candidate_data.description,
                       }}
-                      slots={{
-                        afterImage: (
-                          <>
-                            <Checks checks={item.checks} keys={['imageQuality', 'imageRelevance']} />
-                            <IonNote color="medium">
-                              {item.source_name ?? 'Unknown source'} · {formatRelativeDateTime(item.created_at)} · {item.rejection_type === 'duplicate' ? 'Duplicate' : 'Not relevant'}
-                            </IonNote>
-                            <h2 style={headingContentGap}>{item.title}</h2>
-                            <p style={factLineStyle}>{item.rejection_reason}</p>
-                            {item.duplicate_of_event_id && (
-                              <p style={factLineStyle}>
-                                Matched: <a href={`/events/${item.duplicate_of_event_id}`}>{item.duplicate_of_event_title ?? 'view event'}</a>
-                              </p>
-                            )}
-                            <Checks checks={item.checks} keys={['titleQuality', 'duplicateCheck']} />
-                          </>
-                        ),
-                        afterWhen: <Checks checks={item.checks} keys={['dateQuality', 'timeQuality']} />,
-                        afterLocationName: <Checks checks={item.checks} keys={['locationLabelQuality']} />,
-                        afterAddress: <Checks checks={item.checks} keys={['addressQuality']} />,
-                        afterDescription: <Checks checks={item.checks} keys={['descriptionQuality']} />,
-                      }}
                     />
-                    {!item.checks && <IonNote color="medium">No checks recorded (predates this feature)</IonNote>}
+                    <ChecksSection checks={item.checks} />
                     {item.reviewed_at ? (
                       <IonNote color="medium">
                         {item.review_action === 'approved' ? 'Approved' : 'Rejected'} by {item.reviewed_by_name ?? 'an admin'} {formatRelativeDateTime(item.reviewed_at)}
