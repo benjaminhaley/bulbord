@@ -22,8 +22,9 @@ import {
 import { useCallback, useEffect, useState } from 'react'
 
 import { API_URL } from '../config'
-import { formatRelativeDateTime } from '../format'
-import { sectionDividerStyle } from '../theme/layout'
+import { formatRelativeDateTime, mapUrl, shortAddress } from '../format'
+import { formatWhen } from '../events/format'
+import { factLineStyle, headingContentGap, sectionDividerStyle } from '../theme/layout'
 import {
   approvePipelineEvent,
   approvePipelineRejectedCandidate,
@@ -44,23 +45,32 @@ import {
 // Every check is always shown as an icon plus its own reason text, inline —
 // never a hover tooltip (Ben: "if something failed, you should have a clear
 // reason why... so the person reading it can debug" — a tooltip is also
-// unreachable on a touch device, which this app is built for).
-function ChecklistRows({ checks }: { checks: PipelineChecks | null }) {
-  if (!checks) {
-    return <IonNote color="medium">No checks recorded (predates this feature)</IonNote>
-  }
+// unreachable on a touch device, which this app is built for). Rendered one
+// at a time, directly beneath the field it judges (Ben, 2026-09-06: "the
+// checks just appear beneath the relevant fields") rather than as one
+// separate dumped list at the end — CheckField below is what places it.
+function CheckLine({ label, check }: { label: string; check: { pass: boolean; reason: string; attempts: number } }) {
   return (
-    <ul style={{ margin: '4px 0', padding: 0, listStyle: 'none', fontSize: '0.8125rem' }}>
-      {PIPELINE_CHECK_LABELS.map(({ key, label }) => {
-        const check = checks[key]
-        return (
-          <li key={key} style={{ margin: '2px 0', color: check.pass ? 'var(--ion-color-success)' : 'var(--ion-color-danger)' }}>
-            {check.pass ? '✓' : '✗'} <strong>{label}:</strong> {check.reason}
-            {check.attempts > 1 ? ` (after ${check.attempts} attempts)` : ''}
-          </li>
-        )
-      })}
-    </ul>
+    <p style={{ ...factLineStyle, fontSize: '0.8125rem', color: check.pass ? 'var(--ion-color-success)' : 'var(--ion-color-danger)' }}>
+      {check.pass ? '✓' : '✗'} <strong>{label}:</strong> {check.reason}
+      {check.attempts > 1 ? ` (after ${check.attempts} attempts)` : ''}
+    </p>
+  )
+}
+
+const CHECK_LABELS = Object.fromEntries(PIPELINE_CHECK_LABELS.map(({ key, label }) => [key, label])) as Record<keyof PipelineChecks, string>
+
+// A real production field (the same <p style={factLineStyle}> a live event's
+// own detail page renders) immediately followed by the one or more checks
+// that judge it — checks is null for an event that predates this system, in
+// which case the field renders with no check line at all rather than a
+// misleading placeholder.
+function CheckedField({ children, checks, keys }: { children: React.ReactNode; checks: PipelineChecks | null; keys: (keyof PipelineChecks)[] }) {
+  return (
+    <>
+      {children}
+      {checks && keys.map((key) => <CheckLine key={key} label={CHECK_LABELS[key]} check={checks[key]} />)}
+    </>
   )
 }
 
@@ -117,17 +127,6 @@ function HowThisWorks() {
       </IonItem>
     </IonList>
   )
-}
-
-function formatDateTime(date: string, time: string | null, allDay: boolean): string {
-  const dateLabel = new Date(`${date}T00:00:00`).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
-  if (allDay || !time) return dateLabel
-  const timeLabel = new Date(`${date}T${time}`).toLocaleTimeString('en-US', { hour: 'numeric', minute: time.endsWith(':00') ? undefined : '2-digit' })
-  return `${dateLabel}, ${timeLabel}`
-}
-
-function mapUrl(address: string | null): string | null {
-  return address ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}` : null
 }
 
 // The editable fields, shared by both a kept event and a rejected
@@ -196,6 +195,14 @@ function noteField(value: string, onChange: (v: string) => void) {
 // fails a check is held back until fixed or explicitly Approved — a clean
 // candidate still publishes immediately with zero human involvement.
 export function PipelineReviewPage() {
+  // Defaults to the latest run only (Ben, 2026-09-06: "each pipeline review
+  // should be fixed on just that pipeline") — 'all' is the escape hatch back
+  // to every unreviewed candidate across all time, for a missed week's
+  // leftovers. includeReviewed only has an effect in 'all' scope — the
+  // latest run always shows every item it produced regardless of review
+  // status, same static-snapshot posture as the digest email itself.
+  const [scope, setScope] = useState<'latest_run' | 'all'>('latest_run')
+  const [runStartedAt, setRunStartedAt] = useState<string | null>(null)
   const [includeReviewed, setIncludeReviewed] = useState(false)
   const [kept, setKept] = useState<PipelineKeptCandidate[]>([])
   const [rejected, setRejected] = useState<PipelineRejectedCandidate[]>([])
@@ -209,15 +216,16 @@ export function PipelineReviewPage() {
 
   const load = useCallback(() => {
     setLoading(true)
-    fetchPipelineReview(includeReviewed)
+    fetchPipelineReview(includeReviewed, scope)
       .then((data) => {
         setKept(data.kept)
         setRejected(data.rejected)
+        setRunStartedAt(data.runStartedAt)
         setError(null)
       })
       .catch((err) => setError(err instanceof Error ? err.message : 'Could not load pipeline review'))
       .finally(() => setLoading(false))
-  }, [includeReviewed])
+  }, [includeReviewed, scope])
 
   useEffect(() => {
     load()
@@ -263,9 +271,23 @@ export function PipelineReviewPage() {
         <HowThisWorks />
 
         <IonItem lines="none" style={{ '--padding-start': 0, marginTop: 16 } as React.CSSProperties}>
-          <IonLabel>Show already-reviewed items too</IonLabel>
-          <IonToggle checked={includeReviewed} onIonChange={(e) => setIncludeReviewed(e.detail.checked)} />
+          <IonLabel className="ion-text-wrap">
+            {scope === 'latest_run' ? (
+              <>Reviewing the latest run{runStartedAt ? ` — ${new Date(runStartedAt).toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}` : ''}</>
+            ) : (
+              'Reviewing every unreviewed candidate, all time'
+            )}
+          </IonLabel>
+          <IonButton slot="end" size="small" fill="clear" onClick={() => setScope(scope === 'latest_run' ? 'all' : 'latest_run')}>
+            {scope === 'latest_run' ? 'See previous runs' : 'Back to latest run'}
+          </IonButton>
         </IonItem>
+        {scope === 'all' && (
+          <IonItem lines="none" style={{ '--padding-start': 0 } as React.CSSProperties}>
+            <IonLabel>Show already-reviewed items too</IonLabel>
+            <IonToggle checked={includeReviewed} onIonChange={(e) => setIncludeReviewed(e.detail.checked)} />
+          </IonItem>
+        )}
         <IonItem lines="none" style={{ '--padding-start': 0 } as React.CSSProperties}>
           <IonButton size="small" disabled={sendingTest} onClick={sendTest}>
             Send yourself a test digest email
@@ -294,40 +316,57 @@ export function PipelineReviewPage() {
               )}
               {kept.map((item) => (
                 <IonItem key={item.id} lines="full">
-                  <IonLabel className="ion-text-wrap">
-                    <div style={{ display: 'flex', gap: 10, marginTop: 8 }}>
+                  <IonLabel className="ion-text-wrap" style={{ marginTop: 8, marginBottom: 8 }}>
+                    {/* The event itself renders exactly the way its real detail
+                        page does (same image treatment, same formatWhen/
+                        shortAddress/mapUrl functions, same factLineStyle
+                        rhythm — Ben, 2026-09-06: "should render just as it is
+                        in production") — each field is immediately followed by
+                        the check(s) that judge it, not a separate dumped list. */}
+                    <CheckedField checks={item.checks} keys={['imageQuality', 'imageRelevance']}>
                       <img
-                        src={`${API_URL}${item.thumbnail_url}`}
+                        src={`${API_URL}${item.image_url}`}
                         alt=""
-                        style={{ width: 64, height: 64, objectFit: 'cover', borderRadius: 8, flexShrink: 0 }}
+                        style={{ width: '100%', borderRadius: 12, marginBottom: 8 }}
                       />
-                      <div>
-                        <h2>
-                          <a href={`/events/${item.id}`}>{item.title}</a>
-                          {item.status === 'pending' && (
-                            <span style={{ marginLeft: 6, fontSize: '0.75rem', color: 'var(--ion-color-danger)' }}>HELD FOR REVIEW</span>
-                          )}
-                        </h2>
-                        <IonNote color="medium">
-                          {item.source_name ?? 'Unknown source'} · {formatRelativeDateTime(item.created_at)}
-                        </IonNote>
-                        <p style={{ margin: '2px 0', fontSize: '0.8125rem' }}>{formatDateTime(item.start_date, item.start_time, item.all_day)}</p>
-                        {(item.address || item.location_name) && (
-                          <p style={{ margin: '2px 0', fontSize: '0.8125rem' }}>
-                            {item.location_name}
-                            {item.location_name && item.address ? ' — ' : ''}
-                            {item.address && mapUrl(item.address) && (
-                              <a href={mapUrl(item.address)!} target="_blank" rel="noreferrer">
-                                {item.address}
-                              </a>
-                            )}
-                          </p>
-                        )}
-                        {item.description && <p style={{ margin: '2px 0', fontSize: '0.8125rem', color: 'var(--ion-color-medium)' }}>{item.description}</p>}
-                      </div>
-                    </div>
-                    {item.relevance_reason && <p style={{ margin: '6px 0 2px', fontSize: '0.8125rem' }}>Why relevant: {item.relevance_reason}</p>}
-                    <ChecklistRows checks={item.checks} />
+                    </CheckedField>
+                    <IonNote color="medium">
+                      {item.source_name ?? 'Unknown source'} · {formatRelativeDateTime(item.created_at)}
+                    </IonNote>
+                    <h2 style={headingContentGap}>
+                      <a href={`/events/${item.id}`}>{item.title}</a>
+                      {item.status === 'pending' && (
+                        <span style={{ marginLeft: 6, fontSize: '0.75rem', color: 'var(--ion-color-danger)' }}>HELD FOR REVIEW</span>
+                      )}
+                    </h2>
+                    <CheckedField checks={item.checks} keys={['titleQuality', 'duplicateCheck']}>
+                      {item.relevance_reason && <p style={factLineStyle}>Why relevant: {item.relevance_reason}</p>}
+                    </CheckedField>
+                    <CheckedField checks={item.checks} keys={['dateQuality', 'timeQuality']}>
+                      <p style={factLineStyle}>
+                        {formatWhen({ startDate: item.start_date, startTime: item.start_time, endTime: null, allDay: item.all_day }, undefined, 'detailed')}
+                      </p>
+                    </CheckedField>
+                    {item.location_name && (
+                      <CheckedField checks={item.checks} keys={['locationLabelQuality']}>
+                        <p style={factLineStyle}>{item.location_name}</p>
+                      </CheckedField>
+                    )}
+                    {item.address && (
+                      <CheckedField checks={item.checks} keys={['addressQuality']}>
+                        <p style={factLineStyle}>
+                          <a href={mapUrl(item.address)} target="_blank" rel="noreferrer">
+                            {shortAddress(item.address)}
+                          </a>
+                        </p>
+                      </CheckedField>
+                    )}
+                    {item.description && (
+                      <CheckedField checks={item.checks} keys={['descriptionQuality']}>
+                        <p style={factLineStyle}>{item.description}</p>
+                      </CheckedField>
+                    )}
+                    {!item.checks && <IonNote color="medium">No checks recorded (predates this feature)</IonNote>}
                     {item.reviewed_at ? (
                       <IonNote color="medium">
                         Reviewed by {item.reviewed_by_name ?? 'an admin'} {formatRelativeDateTime(item.reviewed_at)}

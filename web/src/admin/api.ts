@@ -380,15 +380,23 @@ async function throwOnError(response: Response, fallback: string): Promise<void>
   throw new Error(body?.error?.message ?? `${fallback}: ${response.status}`)
 }
 
+// scope defaults to 'latest_run' — exactly what the digest email itself
+// describes (Ben: "each pipeline review should be fixed on just that
+// pipeline"), via the same startedAt scoping the email uses. 'all' is the
+// escape hatch back to every unreviewed candidate across all time, for
+// looking at a missed week's leftovers.
 export async function fetchPipelineReview(
   includeReviewed: boolean,
-): Promise<{ kept: PipelineKeptCandidate[]; rejected: PipelineRejectedCandidate[] }> {
-  const response = await fetch(`${API_URL}/admin/events/pipeline-review?include_reviewed=${includeReviewed}`, {
+  scope: 'latest_run' | 'all' = 'latest_run',
+): Promise<{ runStartedAt: string | null; kept: PipelineKeptCandidate[]; rejected: PipelineRejectedCandidate[] }> {
+  const params = new URLSearchParams({ include_reviewed: String(includeReviewed) })
+  if (scope === 'all') params.set('scope', 'all')
+  const response = await fetch(`${API_URL}/admin/events/pipeline-review?${params}`, {
     headers: authHeaders(),
   })
   await throwOnError(response, 'Failed to load pipeline review')
-  const body = (await response.json()) as { data: { kept: PipelineKeptCandidate[]; rejected: PipelineRejectedCandidate[] } }
-  return body.data
+  const body = (await response.json()) as { data: { run_started_at: string | null; kept: PipelineKeptCandidate[]; rejected: PipelineRejectedCandidate[] } }
+  return { runStartedAt: body.data.run_started_at, kept: body.data.kept, rejected: body.data.rejected }
 }
 
 async function postPipelineAction(path: string, body?: object): Promise<void> {

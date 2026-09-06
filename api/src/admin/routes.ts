@@ -18,6 +18,7 @@ import {
   editKeptCandidate,
   editRejectedCandidate,
   getPipelineReviewCandidates,
+  getPipelineReviewCandidatesSince,
   rejectEvent,
   rejectRejectedCandidate,
   retryEventImageForKeptItem,
@@ -291,15 +292,39 @@ export async function adminRoutes(app: FastifyInstance) {
     return reply.send({ data: { added: result.added, skipped: result.skipped } })
   })
 
-  // Pipeline Review (feedback #138): every candidate the sourcing pipeline
-  // has produced, kept or rejected, unreviewed-by-default — see
-  // pipeline-review-service.ts for why. include_reviewed=true also shows
-  // history.
+  // Pipeline Review (feedback #138; scoped to one run 2026-09-06 v2 after
+  // Ben's second live look — "each pipeline review should be fixed on just
+  // that pipeline" reversed the original "unreviewed across all time"
+  // default): defaults to exactly the most recent sourcing run's own output
+  // (same getPipelineReviewCandidatesSince()/getLatestEventSourcingRun()
+  // scoping the digest email itself now uses — see pipeline-review-email.ts
+  // — so what an admin sees on this page always matches what the email they
+  // just got says). scope=all is the escape hatch back to the original
+  // unreviewed-across-all-time view (still respecting include_reviewed),
+  // for looking at a missed week's leftovers.
   app.get('/admin/events/pipeline-review', { preHandler: requireRole('admin') }, async (request, reply) => {
-    const { include_reviewed } = request.query as { include_reviewed?: string }
-    const { kept, rejected } = await getPipelineReviewCandidates({ includeReviewed: include_reviewed === 'true' })
+    const { include_reviewed, scope } = request.query as { include_reviewed?: string; scope?: string }
+    const includeReviewed = include_reviewed === 'true'
+
+    let kept, rejected
+    let runStartedAt: Date | null = null
+    if (scope === 'all') {
+      ;({ kept, rejected } = await getPipelineReviewCandidates({ includeReviewed }))
+    } else {
+      const lastRun = await getLatestEventSourcingRun()
+      if (lastRun) {
+        runStartedAt = lastRun.report.startedAt
+        ;({ kept, rejected } = await getPipelineReviewCandidatesSince(runStartedAt))
+      } else {
+        // No run has ever been logged — nothing to scope to yet, so fall
+        // back to the all-time view rather than showing an empty page.
+        ;({ kept, rejected } = await getPipelineReviewCandidates({ includeReviewed }))
+      }
+    }
+
     return reply.send({
       data: {
+        run_started_at: runStartedAt,
         kept: kept.map((k) => ({
           id: k.id,
           title: k.title,
