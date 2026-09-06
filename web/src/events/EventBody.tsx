@@ -28,6 +28,7 @@ export interface EventBodyFields {
 }
 
 export interface EventBodySlots {
+  afterTitle?: ReactNode
   afterImage?: ReactNode
   afterWhen?: ReactNode
   afterLocationName?: ReactNode
@@ -35,9 +36,33 @@ export interface EventBodySlots {
   afterDescription?: ReactNode
 }
 
-export function EventBody({ event, slots = {} }: { event: EventBodyFields; slots?: EventBodySlots }) {
+// A real member never sees this — EventDetailPage relies on the toolbar's
+// own IonTitle for the event name, which this file's header comment already
+// explains. `title`/`titleHref` exist only for a caller with no per-item
+// toolbar of its own (Pipeline Review's scrolling list of many events) and
+// are opt-in: omitted, this renders exactly as before. Styled to read as a
+// plain page title — not a hyperlink — even when titleHref makes it
+// clickable, so "the same component, one more option" doesn't visually
+// introduce something a real page never shows (Ben, 2026-09-06: "they
+// should look the same... use the same code paths and components").
+const TITLE_STYLE = { margin: '0 0 12px', fontSize: '1.25rem', fontWeight: 600, lineHeight: 1.3 } as const
+const PLAIN_LINK_STYLE = { color: 'inherit', textDecoration: 'none' } as const
+
+export function EventBody({
+  event,
+  title,
+  titleHref,
+  slots = {},
+}: {
+  event: EventBodyFields
+  title?: string
+  titleHref?: string
+  slots?: EventBodySlots
+}) {
   return (
     <>
+      {title && <h1 style={TITLE_STYLE}>{titleHref ? <a href={titleHref} style={PLAIN_LINK_STYLE}>{title}</a> : title}</h1>}
+      {slots.afterTitle}
       {event.image_url && <img src={`${API_URL}${event.image_url}`} alt="" style={{ width: '100%', borderRadius: 12, marginBottom: 16 }} />}
       {slots.afterImage}
       <p style={factLineStyle}>

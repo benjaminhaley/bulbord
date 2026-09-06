@@ -1,5 +1,8 @@
 import {
+  IonAccordion,
+  IonAccordionGroup,
   IonBackButton,
+  IonBadge,
   IonButton,
   IonButtons,
   IonContent,
@@ -309,6 +312,217 @@ export function PipelineReviewPage() {
     }
   }
 
+  // Ben, 2026-09-06 (third pass): "after I approve or reject, the item
+  // should move to a new collapsed category... one for approved and one for
+  // rejected... no longer in the main view." Bucketed by the admin's own
+  // review state (reviewed_at, review_action), not by the pipeline's own
+  // kept/rejected classification — a kept item the admin approves and a
+  // rejected candidate the admin approves-anyway both land in "Approved,"
+  // since that's the fact that actually matters once a human has acted. A
+  // kept item the admin rejects is soft-deleted by rejectEvent() and simply
+  // stops being returned by the API at all — already out of every list here
+  // with no bucketing needed, so "Rejected" only ever holds rejected
+  // candidates the admin agreed with (there's no kept-item equivalent to
+  // show).
+  const keptNeedsReview = kept.filter((k) => !k.reviewed_at)
+  const keptApproved = kept.filter((k) => k.reviewed_at)
+  const rejectedNeedsReview = rejected.filter((r) => !r.reviewed_at)
+  const rejectedApproved = rejected.filter((r) => r.reviewed_at && r.review_action === 'approved')
+  const rejectedRejectedList = rejected.filter((r) => r.reviewed_at && r.review_action === 'rejected')
+
+  function keptItemNode(item: PipelineKeptCandidate) {
+    return (
+      <IonItem key={item.id} lines="full">
+        <IonLabel className="ion-text-wrap" style={{ marginTop: 8, marginBottom: 8 }}>
+          {/* The post itself — title through description — renders through
+              the exact same component (and the same title treatment) the
+              real detail page uses, completely uninterrupted. Ben,
+              2026-09-06 (fourth pass): "they should actually use the same
+              code paths and components" — EventBody's title/titleHref
+              options (new this pass) are what make this the same component
+              rather than a parallel copy with its own hand-styled heading. */}
+          <EventBody
+            event={{
+              image_url: item.image_url,
+              start_date: item.start_date,
+              start_time: item.start_time,
+              end_time: null,
+              all_day: item.all_day,
+              location_name: item.location_name,
+              address: item.address,
+              description: item.description,
+            }}
+            title={item.title}
+            titleHref={`/events/${item.id}`}
+          />
+          <hr style={sectionDividerStyle} />
+          <IonNote color="medium">
+            {item.source_name ?? 'Unknown source'} · {formatRelativeDateTime(item.created_at)}
+          </IonNote>
+          {item.status === 'pending' && (
+            <p style={factLineStyle}>
+              <IonBadge color="danger">Held for review</IonBadge>
+            </p>
+          )}
+          {item.relevance_reason && <p style={factLineStyle}>Why relevant: {item.relevance_reason}</p>}
+          <ChecksSection checks={item.checks} />
+          {item.reviewed_at ? (
+            <IonNote color="medium">
+              Reviewed by {item.reviewed_by_name ?? 'an admin'} {formatRelativeDateTime(item.reviewed_at)}
+              {item.review_note ? ` — "${item.review_note}"` : ''}
+            </IonNote>
+          ) : editingId === item.id ? (
+            <EditPanel
+              initial={{
+                title: item.title,
+                description: item.description ?? '',
+                address: item.address ?? '',
+                locationName: item.location_name ?? '',
+                startDate: item.start_date,
+                startTime: item.start_time ?? '',
+                allDay: item.all_day,
+              }}
+              saving={busyId === item.id}
+              onCancel={() => setEditingId(null)}
+              onSave={(fields) => runAction(item.id, () => editPipelineEvent(item.id, fields), 'Saved')}
+            />
+          ) : (
+            <>
+              {noteField(notes[item.id] ?? '', (v) => setNotes((prev) => ({ ...prev, [item.id]: v })))}
+              <div style={{ marginTop: 6 }}>
+                <IonButton size="small" fill="outline" disabled={busyId === item.id} onClick={() => runAction(item.id, () => approvePipelineEvent(item.id, notes[item.id]), 'Approved')}>
+                  Approve
+                </IonButton>
+                <IonButton size="small" fill="outline" color="danger" disabled={busyId === item.id} onClick={() => runAction(item.id, () => rejectPipelineEvent(item.id, notes[item.id]), 'Rejected')}>
+                  Reject
+                </IonButton>
+                <IonButton size="small" fill="outline" disabled={busyId === item.id} onClick={() => setEditingId(item.id)}>
+                  Edit
+                </IonButton>
+                {editingId === item.id && (
+                  <IonButton
+                    size="small"
+                    fill="clear"
+                    disabled={busyId === item.id}
+                    onClick={async () => {
+                      setBusyId(item.id)
+                      try {
+                        const result = await retryPipelineEventImage(item.id)
+                        setToast(result.found ? 'Found a new image' : 'Still no usable image found')
+                        load()
+                      } catch (err) {
+                        setToast(err instanceof Error ? err.message : 'Could not retry image search')
+                      } finally {
+                        setBusyId(null)
+                      }
+                    }}
+                  >
+                    Retry image
+                  </IonButton>
+                )}
+              </div>
+            </>
+          )}
+        </IonLabel>
+        {busyId === item.id && <IonSpinner slot="end" name="dots" />}
+      </IonItem>
+    )
+  }
+
+  function rejectedItemNode(item: PipelineRejectedCandidate) {
+    return (
+      <IonItem key={item.id} lines="full">
+        <IonLabel className="ion-text-wrap" style={{ marginTop: 8, marginBottom: 8 }}>
+          {/* Same title-then-EventBody "post" shape as a kept item above — a
+              rejected candidate never had a real image search run
+              (image_url is always null here), so EventBody simply shows no
+              image, and the not-applicable image checks below say so
+              honestly. Linked to the real event only once it's actually
+              been added (Approve, below). */}
+          <EventBody
+            event={{
+              image_url: null,
+              start_date: item.candidate_data.start_date,
+              start_time: item.candidate_data.start_time,
+              end_time: null,
+              all_day: item.candidate_data.all_day,
+              location_name: item.candidate_data.location_name,
+              address: item.candidate_data.address,
+              description: item.candidate_data.description,
+            }}
+            title={item.title}
+            titleHref={item.added_as_event_id ? `/events/${item.added_as_event_id}` : undefined}
+          />
+          <hr style={sectionDividerStyle} />
+          <IonNote color="medium">
+            {item.source_name ?? 'Unknown source'} · {formatRelativeDateTime(item.created_at)} · {item.rejection_type === 'duplicate' ? 'Duplicate' : 'Not relevant'}
+          </IonNote>
+          <p style={factLineStyle}>{item.rejection_reason}</p>
+          {item.duplicate_of_event_id && (
+            <p style={factLineStyle}>
+              Matched: <a href={`/events/${item.duplicate_of_event_id}`}>{item.duplicate_of_event_title ?? 'view event'}</a>
+            </p>
+          )}
+          <ChecksSection checks={item.checks} />
+          {item.reviewed_at ? (
+            <IonNote color="medium">
+              {item.review_action === 'approved' ? 'Approved' : 'Rejected'} by {item.reviewed_by_name ?? 'an admin'} {formatRelativeDateTime(item.reviewed_at)}
+              {item.review_note ? ` — "${item.review_note}"` : ''}
+            </IonNote>
+          ) : editingId === item.id ? (
+            <EditPanel
+              initial={{
+                title: item.title,
+                description: item.candidate_data.description ?? '',
+                address: item.candidate_data.address ?? '',
+                locationName: item.candidate_data.location_name ?? '',
+                startDate: item.candidate_data.start_date,
+                startTime: item.candidate_data.start_time ?? '',
+                allDay: item.candidate_data.all_day,
+              }}
+              saving={busyId === item.id}
+              onCancel={() => setEditingId(null)}
+              onSave={(fields) => runAction(item.id, () => editPipelineRejectedCandidate(item.id, fields), 'Saved')}
+            />
+          ) : (
+            <>
+              {noteField(notes[item.id] ?? '', (v) => setNotes((prev) => ({ ...prev, [item.id]: v })))}
+              <div style={{ marginTop: 6 }}>
+                <IonButton
+                  size="small"
+                  fill="outline"
+                  disabled={busyId === item.id}
+                  onClick={async () => {
+                    setBusyId(item.id)
+                    try {
+                      const result = await approvePipelineRejectedCandidate(item.id, notes[item.id])
+                      setToast(result.deduped ? 'Already exists as another event — not added again' : 'Approved')
+                      setEditingId(null)
+                      load()
+                    } catch (err) {
+                      setToast(err instanceof Error ? err.message : 'Could not approve')
+                    } finally {
+                      setBusyId(null)
+                    }
+                  }}
+                >
+                  Approve
+                </IonButton>
+                <IonButton size="small" fill="outline" color="danger" disabled={busyId === item.id} onClick={() => runAction(item.id, () => rejectPipelineRejectedCandidate(item.id, notes[item.id]), 'Rejected')}>
+                  Reject
+                </IonButton>
+                <IonButton size="small" fill="outline" disabled={busyId === item.id} onClick={() => setEditingId(item.id)}>
+                  Edit
+                </IonButton>
+              </div>
+            </>
+          )}
+        </IonLabel>
+        {busyId === item.id && <IonSpinner slot="end" name="dots" />}
+      </IonItem>
+    )
+  }
+
   return (
     <IonPage>
       <IonHeader>
@@ -357,222 +571,55 @@ export function PipelineReviewPage() {
         {!loading && !error && (
           <>
             <hr style={sectionDividerStyle} />
-            <IonList inset>
-              <IonListHeader>
-                <IonLabel>Kept ({kept.length})</IonLabel>
-              </IonListHeader>
-              {kept.length === 0 && (
-                <IonItem lines="none">
-                  <IonLabel color="medium">Nothing to review</IonLabel>
+            <IonAccordionGroup multiple value={['needs-review']}>
+              <IonAccordion value="needs-review">
+                <IonItem slot="header">
+                  <IonLabel>Needs Review ({keptNeedsReview.length + rejectedNeedsReview.length})</IonLabel>
                 </IonItem>
-              )}
-              {kept.map((item) => (
-                <IonItem key={item.id} lines="full">
-                  <IonLabel className="ion-text-wrap" style={{ marginTop: 8, marginBottom: 8 }}>
-                    {/* Title + EventBody is the entire "post" — everything a
-                        member would see on the real page (the toolbar's own
-                        title, in-body on this list since there's no per-item
-                        toolbar here), rendered through the exact same
-                        component the real detail page uses, completely
-                        uninterrupted. Ben, 2026-09-06 (second pass): "except
-                        for the checks and buttons, they should look just
-                        like they would on the final page" — every piece of
-                        review-only information (source, timestamp, held
-                        status, why it was kept, the checklist) now lives
-                        below a real divider, never mixed into the post
-                        itself the way an earlier version did. */}
-                    <h2>
-                      <a href={`/events/${item.id}`}>{item.title}</a>
-                    </h2>
-                    <EventBody
-                      event={{
-                        image_url: item.image_url,
-                        start_date: item.start_date,
-                        start_time: item.start_time,
-                        end_time: null,
-                        all_day: item.all_day,
-                        location_name: item.location_name,
-                        address: item.address,
-                        description: item.description,
-                      }}
-                    />
-                    <hr style={sectionDividerStyle} />
-                    <IonNote color="medium">
-                      {item.source_name ?? 'Unknown source'} · {formatRelativeDateTime(item.created_at)}
-                    </IonNote>
-                    {item.status === 'pending' && (
-                      <p style={{ ...factLineStyle, color: 'var(--ion-color-danger)', fontWeight: 600 }}>HELD FOR REVIEW</p>
+                <div slot="content">
+                  <IonList>
+                    {keptNeedsReview.length === 0 && rejectedNeedsReview.length === 0 && (
+                      <IonItem lines="none">
+                        <IonLabel color="medium">Nothing to review</IonLabel>
+                      </IonItem>
                     )}
-                    {item.relevance_reason && <p style={factLineStyle}>Why relevant: {item.relevance_reason}</p>}
-                    <ChecksSection checks={item.checks} />
-                    {item.reviewed_at ? (
-                      <IonNote color="medium">
-                        Reviewed by {item.reviewed_by_name ?? 'an admin'} {formatRelativeDateTime(item.reviewed_at)}
-                        {item.review_note ? ` — "${item.review_note}"` : ''}
-                      </IonNote>
-                    ) : editingId === item.id ? (
-                      <EditPanel
-                        initial={{
-                          title: item.title,
-                          description: item.description ?? '',
-                          address: item.address ?? '',
-                          locationName: item.location_name ?? '',
-                          startDate: item.start_date,
-                          startTime: item.start_time ?? '',
-                          allDay: item.all_day,
-                        }}
-                        saving={busyId === item.id}
-                        onCancel={() => setEditingId(null)}
-                        onSave={(fields) => runAction(item.id, () => editPipelineEvent(item.id, fields), 'Saved')}
-                      />
-                    ) : (
-                      <>
-                        {noteField(notes[item.id] ?? '', (v) => setNotes((prev) => ({ ...prev, [item.id]: v })))}
-                        <div style={{ marginTop: 6 }}>
-                          <IonButton size="small" fill="outline" disabled={busyId === item.id} onClick={() => runAction(item.id, () => approvePipelineEvent(item.id, notes[item.id]), 'Approved')}>
-                            Approve
-                          </IonButton>
-                          <IonButton size="small" fill="outline" color="danger" disabled={busyId === item.id} onClick={() => runAction(item.id, () => rejectPipelineEvent(item.id, notes[item.id]), 'Rejected')}>
-                            Reject
-                          </IonButton>
-                          <IonButton size="small" fill="outline" disabled={busyId === item.id} onClick={() => setEditingId(item.id)}>
-                            Edit
-                          </IonButton>
-                          {editingId === item.id && (
-                            <IonButton
-                              size="small"
-                              fill="clear"
-                              disabled={busyId === item.id}
-                              onClick={async () => {
-                                setBusyId(item.id)
-                                try {
-                                  const result = await retryPipelineEventImage(item.id)
-                                  setToast(result.found ? 'Found a new image' : 'Still no usable image found')
-                                  load()
-                                } catch (err) {
-                                  setToast(err instanceof Error ? err.message : 'Could not retry image search')
-                                } finally {
-                                  setBusyId(null)
-                                }
-                              }}
-                            >
-                              Retry image
-                            </IonButton>
-                          )}
-                        </div>
-                      </>
-                    )}
-                  </IonLabel>
-                  {busyId === item.id && <IonSpinner slot="end" name="dots" />}
+                    {keptNeedsReview.map(keptItemNode)}
+                    {rejectedNeedsReview.map(rejectedItemNode)}
+                  </IonList>
+                </div>
+              </IonAccordion>
+              <IonAccordion value="approved">
+                <IonItem slot="header">
+                  <IonLabel>Approved ({keptApproved.length + rejectedApproved.length})</IonLabel>
                 </IonItem>
-              ))}
-            </IonList>
-
-            <IonList inset>
-              <IonListHeader>
-                <IonLabel>Rejected ({rejected.length})</IonLabel>
-              </IonListHeader>
-              {rejected.length === 0 && (
-                <IonItem lines="none">
-                  <IonLabel color="medium">Nothing rejected</IonLabel>
-                </IonItem>
-              )}
-              {rejected.map((item) => (
-                <IonItem key={item.id} lines="full">
-                  <IonLabel className="ion-text-wrap" style={{ marginTop: 8, marginBottom: 8 }}>
-                    {/* Same title-then-EventBody "post" shape as a kept item
-                        above — a rejected candidate never had a real image
-                        search run (image_url is always null here), so
-                        EventBody simply shows no image, and the
-                        not-applicable image checks below say so honestly. */}
-                    <h2>{item.title}</h2>
-                    <EventBody
-                      event={{
-                        image_url: null,
-                        start_date: item.candidate_data.start_date,
-                        start_time: item.candidate_data.start_time,
-                        end_time: null,
-                        all_day: item.candidate_data.all_day,
-                        location_name: item.candidate_data.location_name,
-                        address: item.candidate_data.address,
-                        description: item.candidate_data.description,
-                      }}
-                    />
-                    <hr style={sectionDividerStyle} />
-                    <IonNote color="medium">
-                      {item.source_name ?? 'Unknown source'} · {formatRelativeDateTime(item.created_at)} · {item.rejection_type === 'duplicate' ? 'Duplicate' : 'Not relevant'}
-                    </IonNote>
-                    <p style={factLineStyle}>{item.rejection_reason}</p>
-                    {item.duplicate_of_event_id && (
-                      <p style={factLineStyle}>
-                        Matched: <a href={`/events/${item.duplicate_of_event_id}`}>{item.duplicate_of_event_title ?? 'view event'}</a>
-                      </p>
+                <div slot="content">
+                  <IonList>
+                    {keptApproved.length === 0 && rejectedApproved.length === 0 && (
+                      <IonItem lines="none">
+                        <IonLabel color="medium">Nothing approved yet</IonLabel>
+                      </IonItem>
                     )}
-                    <ChecksSection checks={item.checks} />
-                    {item.reviewed_at ? (
-                      <IonNote color="medium">
-                        {item.review_action === 'approved' ? 'Approved' : 'Rejected'} by {item.reviewed_by_name ?? 'an admin'} {formatRelativeDateTime(item.reviewed_at)}
-                        {item.review_note ? ` — "${item.review_note}"` : ''}
-                        {item.added_as_event_id && (
-                          <>
-                            {' — '}
-                            <a href={`/events/${item.added_as_event_id}`}>view event</a>
-                          </>
-                        )}
-                      </IonNote>
-                    ) : editingId === item.id ? (
-                      <EditPanel
-                        initial={{
-                          title: item.title,
-                          description: item.candidate_data.description ?? '',
-                          address: item.candidate_data.address ?? '',
-                          locationName: item.candidate_data.location_name ?? '',
-                          startDate: item.candidate_data.start_date,
-                          startTime: item.candidate_data.start_time ?? '',
-                          allDay: item.candidate_data.all_day,
-                        }}
-                        saving={busyId === item.id}
-                        onCancel={() => setEditingId(null)}
-                        onSave={(fields) => runAction(item.id, () => editPipelineRejectedCandidate(item.id, fields), 'Saved')}
-                      />
-                    ) : (
-                      <>
-                        {noteField(notes[item.id] ?? '', (v) => setNotes((prev) => ({ ...prev, [item.id]: v })))}
-                        <div style={{ marginTop: 6 }}>
-                          <IonButton
-                            size="small"
-                            fill="outline"
-                            disabled={busyId === item.id}
-                            onClick={async () => {
-                              setBusyId(item.id)
-                              try {
-                                const result = await approvePipelineRejectedCandidate(item.id, notes[item.id])
-                                setToast(result.deduped ? 'Already exists as another event — not added again' : 'Approved')
-                                setEditingId(null)
-                                load()
-                              } catch (err) {
-                                setToast(err instanceof Error ? err.message : 'Could not approve')
-                              } finally {
-                                setBusyId(null)
-                              }
-                            }}
-                          >
-                            Approve
-                          </IonButton>
-                          <IonButton size="small" fill="outline" color="danger" disabled={busyId === item.id} onClick={() => runAction(item.id, () => rejectPipelineRejectedCandidate(item.id, notes[item.id]), 'Rejected')}>
-                            Reject
-                          </IonButton>
-                          <IonButton size="small" fill="outline" disabled={busyId === item.id} onClick={() => setEditingId(item.id)}>
-                            Edit
-                          </IonButton>
-                        </div>
-                      </>
-                    )}
-                  </IonLabel>
-                  {busyId === item.id && <IonSpinner slot="end" name="dots" />}
+                    {keptApproved.map(keptItemNode)}
+                    {rejectedApproved.map(rejectedItemNode)}
+                  </IonList>
+                </div>
+              </IonAccordion>
+              <IonAccordion value="rejected">
+                <IonItem slot="header">
+                  <IonLabel>Rejected ({rejectedRejectedList.length})</IonLabel>
                 </IonItem>
-              ))}
-            </IonList>
+                <div slot="content">
+                  <IonList>
+                    {rejectedRejectedList.length === 0 && (
+                      <IonItem lines="none">
+                        <IonLabel color="medium">Nothing rejected yet</IonLabel>
+                      </IonItem>
+                    )}
+                    {rejectedRejectedList.map(rejectedItemNode)}
+                  </IonList>
+                </div>
+              </IonAccordion>
+            </IonAccordionGroup>
           </>
         )}
       </IonContent>
