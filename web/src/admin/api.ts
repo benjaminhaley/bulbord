@@ -356,6 +356,13 @@ export interface PipelineRejectedCandidate {
   rejection_reason: string
   duplicate_of_event_id: string | null
   duplicate_of_event_title: string | null
+  // Every rejected candidate gets the same full 9-check suite a kept event
+  // does (Ben, 2026-09-06: "every event should have a full suite of
+  // checks... so I can see why they were rejected") — computed once at
+  // rejection time (see api/src/events/ingest.ts); null for a row that
+  // predates this. Image checks are always attempts:0 (not attempted) since
+  // a rejected candidate never gets a real image search.
+  checks: PipelineChecks | null
   created_at: string
   reviewed_at: string | null
   reviewed_by_name: string | null

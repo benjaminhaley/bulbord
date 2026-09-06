@@ -364,6 +364,7 @@ export async function adminRoutes(app: FastifyInstance) {
           rejection_reason: r.rejectionReason,
           duplicate_of_event_id: r.duplicateOfEventId,
           duplicate_of_event_title: r.duplicateOfEventTitle,
+          checks: r.checks,
           created_at: r.createdAt,
           reviewed_at: r.reviewedAt,
           reviewed_by_name: r.reviewedByName,

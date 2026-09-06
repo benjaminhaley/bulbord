@@ -169,6 +169,14 @@ export const rejectedEventCandidates = pgTable('rejected_event_candidates', {
   candidateData: jsonb('candidate_data').notNull(),
   rejectionType: text('rejection_type').notNull(), // 'relevance' | 'duplicate'
   rejectionReason: text('rejection_reason').notNull(),
+  // Pipeline Review v2 (2026-09-06, "every event should have a full suite
+  // of checks... so I can see why they were rejected"): the same 9-check
+  // PipelineChecks shape kept events get, computed once at rejection time
+  // (see ingest.ts) — text/date/time checks for real, duplicateCheck stating
+  // the actual rejection reason, and image checks marked not-attempted
+  // (attempts: 0) since a rejected candidate never gets a real image search.
+  // Nullable — a row rejected before this column existed has none.
+  checks: jsonb('checks'),
   // Only set when rejectionType is 'duplicate' — the already-live event this
   // candidate looked like a match for.
   duplicateOfEventId: uuid('duplicate_of_event_id').references(() => events.id),

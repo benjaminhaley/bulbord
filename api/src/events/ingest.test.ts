@@ -164,6 +164,38 @@ describe('ingestEvents', () => {
     expect(insertCalls[1]).toEqual(expect.objectContaining({ action: 'events_ingested' }))
   })
 
+  // Ben, 2026-09-06: "every event should have a full suite of checks... so I
+  // can see why they were rejected" — a rejected candidate never gets a real
+  // image search (no scoreTextChecks call either, since ANTHROPIC_API_KEY is
+  // unset in this test env, which exercises the fail-open default path), so
+  // this asserts the honest defaults rather than the LLM-scored ones.
+  it('gives every rejected candidate the full 9-check shape, with an honest duplicateCheck and not-attempted image checks', async () => {
+    selectResults.push([{ id: 'existing-event' }]) // duplicate found
+    const { ingestEvents } = await import('./ingest.js')
+
+    await ingestEvents([CANDIDATE], { sourceId: 'source-1', actor: 'test' })
+
+    const rejectedRow = (insertCalls[0] as unknown as Record<string, unknown>[])[0]
+    const checks = rejectedRow.checks as Record<string, { pass: boolean; reason: string; attempts: number }>
+    expect(checks.duplicateCheck).toEqual({ pass: false, reason: 'Exact match of an already-ingested event', attempts: 1 })
+    expect(checks.imageQuality.attempts).toBe(0)
+    expect(checks.imageRelevance.attempts).toBe(0)
+    expect(checks.dateQuality.pass).toBe(true)
+    expect(checks.timeQuality.pass).toBe(true)
+  })
+
+  it('gives a relevance-rejected candidate a passing duplicateCheck, since it was never actually checked for one', async () => {
+    selectResults.push([])
+    const rejected = { ...CANDIDATE, title: 'Adults-only Wine Tasting' }
+    const { ingestEvents } = await import('./ingest.js')
+
+    await ingestEvents([], { sourceId: 'source-1', actor: 'test', filteredOut: [{ candidate: rejected, reason: 'age-restricted' }] })
+
+    const rejectedRow = (insertCalls[0] as unknown as Record<string, unknown>[])[0]
+    const checks = rejectedRow.checks as Record<string, { pass: boolean; reason: string; attempts: number }>
+    expect(checks.duplicateCheck.pass).toBe(true)
+  })
+
   it('still hands the inserted row to enrichEventImages, which can upgrade the placeholder to a real photo', async () => {
     selectResults.push([])
     const { ingestEvents } = await import('./ingest.js')

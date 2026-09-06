@@ -4,7 +4,7 @@ import { db } from '../db/client.js'
 import { events, eventsLog, rejectedEventCandidates } from '../db/schema.js'
 import { todayInChicago } from '../dates.js'
 import { uploadPlaceholderImage } from '../uploads/placeholder.js'
-import { checkDateQuality, checkTimeQuality, buildDuplicateCheck, runTextChecksWithRetry, type PipelineChecks } from './candidate-checks.js'
+import { checkDateQuality, checkTimeQuality, buildDuplicateCheck, runTextChecksWithRetry, scoreTextChecks, type PipelineChecks } from './candidate-checks.js'
 import { findLikelyDuplicateEvent } from './duplicate-detection.js'
 import { enrichEventImages } from './image-enrichment.js'
 import { lookupMoviePoster } from './movie-poster-lookup.js'
@@ -233,23 +233,63 @@ export async function ingestEvents(candidates: CandidateEvent[], { sourceId, act
   // {title, reason} pair below inside events_log. This is what makes an
   // admin's later "add anyway" action on a wrongly-rejected candidate
   // possible without re-running extraction.
-  const rejectedRows = [
+  const allRejected = [
     ...filteredOut.map(({ candidate, reason }) => ({
-      eventSourceId: sourceId,
+      candidate,
       title: candidate.title,
-      candidateData: candidate,
       rejectionType: 'relevance' as const,
       rejectionReason: reason,
+      duplicateOfEventId: undefined as string | undefined,
     })),
     ...duplicateSkips.map(({ candidate, title, reason, duplicateOfEventId }) => ({
-      eventSourceId: sourceId,
+      candidate,
       title,
-      candidateData: candidate,
       rejectionType: 'duplicate' as const,
       rejectionReason: reason === 'exact_match' ? 'Exact match of an already-ingested event' : 'Looks like an already-approved same-day event',
-      duplicateOfEventId,
+      duplicateOfEventId: duplicateOfEventId as string | undefined,
     })),
   ]
+
+  // Ben, 2026-09-06: "every event should have a full suite of checks... so
+  // I can see why they were rejected" — one batch text-check call (no
+  // retry: a rejected candidate isn't going to be published, so there's no
+  // point trying to fix it, unlike toFinalize's runTextChecksWithRetry
+  // above), the same free date/time checks, an honest duplicateCheck that
+  // states the real rejection reason, and image checks marked
+  // not-attempted (attempts: 0 — a rejected candidate never gets a real
+  // image search, so pretending one ran would misrepresent the pipeline).
+  const rejectedTextResults =
+    allRejected.length > 0
+      ? await scoreTextChecks(allRejected.map((r) => ({ title: r.title, description: r.candidate.description, address: r.candidate.address, locationName: r.candidate.locationName })))
+      : null
+
+  const rejectedRows = allRejected.map((r, i) => {
+    const textChecks = rejectedTextResults?.[i]
+    const notAttempted = { pass: true, reason: 'Not attempted — rejected before an image search', attempts: 0 }
+    const checks: PipelineChecks = {
+      titleQuality: textChecks?.titleQuality ?? { pass: true, reason: 'Not checked', attempts: 1 },
+      descriptionQuality: textChecks?.descriptionQuality ?? { pass: true, reason: 'Not checked', attempts: 1 },
+      locationLabelQuality: textChecks?.locationLabelQuality ?? { pass: true, reason: 'Not checked', attempts: 1 },
+      addressQuality: textChecks?.addressQuality ?? { pass: true, reason: 'Not checked', attempts: 1 },
+      dateQuality: checkDateQuality(r.candidate.startDate, today),
+      timeQuality: checkTimeQuality(r.candidate.startTime, r.candidate.allDay),
+      imageQuality: notAttempted,
+      imageRelevance: notAttempted,
+      duplicateCheck:
+        r.rejectionType === 'duplicate'
+          ? { pass: false, reason: r.rejectionReason, attempts: 1 }
+          : { pass: true, reason: 'Not checked — rejected for relevance before reaching the duplicate check', attempts: 1 },
+    }
+    return {
+      eventSourceId: sourceId,
+      title: r.title,
+      candidateData: r.candidate,
+      rejectionType: r.rejectionType,
+      rejectionReason: r.rejectionReason,
+      duplicateOfEventId: r.duplicateOfEventId,
+      checks,
+    }
+  })
   if (rejectedRows.length > 0) {
     await db.insert(rejectedEventCandidates).values(rejectedRows)
   }

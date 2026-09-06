@@ -48,6 +48,7 @@ export interface RejectedReviewItem {
   rejectionReason: string
   duplicateOfEventId: string | null
   duplicateOfEventTitle: string | null
+  checks: PipelineChecks | null
   createdAt: Date
   reviewedAt: Date | null
   reviewedByName: string | null
@@ -138,6 +139,7 @@ async function loadRejectedItems(where: ReturnType<typeof rejectedCandidateWhere
       rejectionReason: rejectedEventCandidates.rejectionReason,
       duplicateOfEventId: rejectedEventCandidates.duplicateOfEventId,
       duplicateOfEventTitle: duplicateOfEvents.title,
+      checks: rejectedEventCandidates.checks,
       createdAt: rejectedEventCandidates.createdAt,
       reviewedAt: rejectedEventCandidates.reviewedAt,
       reviewedByName: users.name,
@@ -152,7 +154,7 @@ async function loadRejectedItems(where: ReturnType<typeof rejectedCandidateWhere
     .where(since ? and(where, gte(rejectedEventCandidates.createdAt, since)) : where)
     .orderBy(desc(rejectedEventCandidates.createdAt))
 
-  return rows.map((r) => ({ ...r, candidateData: r.candidateData as CandidateEvent }))
+  return rows.map((r) => ({ ...r, candidateData: r.candidateData as CandidateEvent, checks: r.checks as PipelineChecks | null }))
 }
 
 // Backs the admin review page — unreviewed-by-default across all time
@@ -311,14 +313,27 @@ export async function rejectRejectedCandidate(id: string, adminId: string, note?
 // changes publish state" rule as the kept-item version.
 export async function editRejectedCandidate(id: string, fields: EditableFields): Promise<PipelineReviewActionError | null> {
   const [row] = await db
-    .select({ candidateData: rejectedEventCandidates.candidateData })
+    .select({ candidateData: rejectedEventCandidates.candidateData, checks: rejectedEventCandidates.checks })
     .from(rejectedEventCandidates)
     .where(and(eq(rejectedEventCandidates.id, id), isNull(rejectedEventCandidates.deletedAt)))
     .limit(1)
   if (!row) return 'not_found'
 
   const candidate = { ...(row.candidateData as CandidateEvent), ...fields }
-  await db.update(rejectedEventCandidates).set({ candidateData: candidate, updatedAt: new Date() }).where(eq(rejectedEventCandidates.id, id))
+  const priorChecks = row.checks as PipelineChecks | null
+  const [textChecks] = (await scoreTextChecks([{ title: candidate.title, description: candidate.description, address: candidate.address, locationName: candidate.locationName }])) ?? []
+  const checks: PipelineChecks = {
+    titleQuality: textChecks?.titleQuality ?? priorChecks?.titleQuality ?? { pass: true, reason: 'Not re-scored', attempts: 1 },
+    descriptionQuality: textChecks?.descriptionQuality ?? priorChecks?.descriptionQuality ?? { pass: true, reason: 'Not re-scored', attempts: 1 },
+    locationLabelQuality: textChecks?.locationLabelQuality ?? priorChecks?.locationLabelQuality ?? { pass: true, reason: 'Not re-scored', attempts: 1 },
+    addressQuality: textChecks?.addressQuality ?? priorChecks?.addressQuality ?? { pass: true, reason: 'Not re-scored', attempts: 1 },
+    dateQuality: checkDateQuality(candidate.startDate, todayInChicago()),
+    timeQuality: checkTimeQuality(candidate.startTime ?? undefined, candidate.allDay),
+    imageQuality: priorChecks?.imageQuality ?? { pass: true, reason: 'Not attempted — rejected before an image search', attempts: 0 },
+    imageRelevance: priorChecks?.imageRelevance ?? { pass: true, reason: 'Not attempted — rejected before an image search', attempts: 0 },
+    duplicateCheck: priorChecks?.duplicateCheck ?? buildDuplicateCheck(),
+  }
+  await db.update(rejectedEventCandidates).set({ candidateData: candidate, checks, updatedAt: new Date() }).where(eq(rejectedEventCandidates.id, id))
   return null
 }
 

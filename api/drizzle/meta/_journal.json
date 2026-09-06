@@ -323,6 +323,13 @@
       "when": 1788713001885,
       "tag": "0045_shocking_shooting_star",
       "breakpoints": true
+    },
+    {
+      "idx": 46,
+      "version": "7",
+      "when": 1788724713727,
+      "tag": "0046_bumpy_gauntlet",
+      "breakpoints": true
     }
   ]
 }

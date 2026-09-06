@@ -16,14 +16,12 @@ import { useHistory, useParams } from 'react-router-dom'
 
 import { track } from '../analytics/api'
 import { AddToCalendarButton } from '../calendar/AddToCalendarButton'
-import { API_URL } from '../config'
-import { mapUrl, shortAddress } from '../format'
 import { factLineStyle, leadingButtonGap } from '../theme/layout'
 import { Avatar } from '../uploads/Avatar'
 import { deleteEvent, fetchEvent, updateEvent, type Event } from './api'
 import { CommentsSection } from './CommentsSection'
+import { EventBody } from './EventBody'
 import { EventForm } from './EventForm'
-import { formatWhen } from './format'
 import { InterestedBadge } from './InterestedBadge'
 import { useEventInterest } from './useEventInterest'
 
@@ -119,50 +117,35 @@ export function EventDetailPage() {
         )}
         {event && !editing && (
           <>
-            {event.image_url ? (
-              <img
-                src={`${API_URL}${event.image_url}`}
-                alt=""
-                style={{ width: '100%', borderRadius: 12, marginBottom: 16 }}
-              />
-            ) : (
-              event.submitted_by && (
-                <div style={{ display: 'flex', justifyContent: 'center', margin: '8px 0 16px' }}>
-                  <Avatar url={event.submitted_by.avatar_url} name={event.submitted_by.name} size={120} />
-                </div>
-              )
-            )}
             {/* No <h1>{event.title}</h1> here — the toolbar's IonTitle above
                 already shows the event's name and stays visible through the
                 whole scroll, so a second, large title directly below the
                 image was pure duplication (same fix already made on
                 CampDetailPage.tsx, 2026-08-05). */}
-            <p style={factLineStyle}>
-              {/* 'detailed' mode (feedback #78): a detail page is reached via
-                  its own URL/back-stack with no surrounding list context, so
-                  a relative word alone ("This Saturday") is shown alongside
-                  the actual date for clarity, unlike the list row above. */}
-              {formatWhen(
-                { startDate: event.start_date, startTime: event.start_time, endTime: event.end_time, allDay: event.all_day },
-                undefined,
-                'detailed',
-              )}
-            </p>
-            {event.submitted_by && (
-              <p style={{ ...factLineStyle, color: 'var(--ion-color-medium)' }}>Posted by {event.submitted_by.name}</p>
+            {!event.image_url && event.submitted_by && (
+              <div style={{ display: 'flex', justifyContent: 'center', margin: '8px 0 16px' }}>
+                <Avatar url={event.submitted_by.avatar_url} name={event.submitted_by.name} size={120} />
+              </div>
             )}
-            {event.interested_count > 0 && (
-              <InterestedBadge eventId={event.id} count={event.interested_count} people={event.interested_people} emphasized />
-            )}
-            {event.location_name && <p style={factLineStyle}>{event.location_name}</p>}
-            {event.address && (
-              <p style={factLineStyle}>
-                <a href={mapUrl(event.address)} target="_blank" rel="noreferrer">
-                  {shortAddress(event.address)}
-                </a>
-              </p>
-            )}
-            {event.description && <p style={factLineStyle}>{event.description}</p>}
+            {/* 'detailed' mode (feedback #78) and every field below it is
+                rendered by EventBody — the same shared component/functions
+                the admin Pipeline Review page uses (Ben, 2026-09-06: "use
+                the same engine with just a couple options set") — so this
+                page's own output is unchanged, just no longer a
+                hand-duplicated copy of the same JSX. */}
+            <EventBody
+              event={event}
+              slots={{
+                afterWhen: (
+                  <>
+                    {event.submitted_by && <p style={{ ...factLineStyle, color: 'var(--ion-color-medium)' }}>Posted by {event.submitted_by.name}</p>}
+                    {event.interested_count > 0 && (
+                      <InterestedBadge eventId={event.id} count={event.interested_count} people={event.interested_people} emphasized />
+                    )}
+                  </>
+                ),
+              }}
+            />
             {/* Feedback #76: lets a member add this event to their own
                 calendar (Google/Outlook/.ics — see AddToCalendarButton). */}
             <AddToCalendarButton

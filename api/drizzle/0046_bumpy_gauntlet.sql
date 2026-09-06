@@ -1,0 +1,1 @@
+ALTER TABLE "rejected_event_candidates" ADD COLUMN "checks" jsonb;

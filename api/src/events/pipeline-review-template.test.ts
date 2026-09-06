@@ -46,6 +46,7 @@ function rejected(overrides: Partial<RejectedReviewItem> = {}): RejectedReviewIt
     rejectionReason: 'age-restricted',
     duplicateOfEventId: null,
     duplicateOfEventTitle: null,
+    checks: null,
     createdAt: new Date('2026-09-09T12:00:00Z'),
     reviewedAt: null,
     reviewedByName: null,
