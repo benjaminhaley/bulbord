@@ -19,7 +19,6 @@ import {
   IonTextarea,
   IonTitle,
   IonToast,
-  IonToggle,
   IonToolbar,
 } from '@ionic/react'
 import { useCallback, useEffect, useState } from 'react'
@@ -253,12 +252,13 @@ export function PipelineReviewPage() {
   // Defaults to the latest run only (Ben, 2026-09-06: "each pipeline review
   // should be fixed on just that pipeline") — 'all' is the escape hatch back
   // to every unreviewed candidate across all time, for a missed week's
-  // leftovers. includeReviewed only has an effect in 'all' scope — the
-  // latest run always shows every item it produced regardless of review
-  // status, same static-snapshot posture as the digest email itself.
+  // leftovers. Always fetches reviewed items too (previously an opt-in
+  // toggle, off by default) — now that reviewed items get their own
+  // Approved/Rejected accordion sections rather than showing inline, hiding
+  // them from the fetch entirely would leave those sections silently empty
+  // by default, defeating their own purpose.
   const [scope, setScope] = useState<'latest_run' | 'all'>('latest_run')
   const [runStartedAt, setRunStartedAt] = useState<string | null>(null)
-  const [includeReviewed, setIncludeReviewed] = useState(false)
   const [kept, setKept] = useState<PipelineKeptCandidate[]>([])
   const [rejected, setRejected] = useState<PipelineRejectedCandidate[]>([])
   const [loading, setLoading] = useState(true)
@@ -271,7 +271,7 @@ export function PipelineReviewPage() {
 
   const load = useCallback(() => {
     setLoading(true)
-    fetchPipelineReview(includeReviewed, scope)
+    fetchPipelineReview(true, scope)
       .then((data) => {
         setKept(data.kept)
         setRejected(data.rejected)
@@ -280,7 +280,7 @@ export function PipelineReviewPage() {
       })
       .catch((err) => setError(err instanceof Error ? err.message : 'Could not load pipeline review'))
       .finally(() => setLoading(false))
-  }, [includeReviewed, scope])
+  }, [scope])
 
   useEffect(() => {
     load()
@@ -366,12 +366,19 @@ export function PipelineReviewPage() {
           )}
           {item.relevance_reason && <p style={factLineStyle}>Why relevant: {item.relevance_reason}</p>}
           <ChecksSection checks={item.checks} />
-          {item.reviewed_at ? (
+          {/* The "Reviewed by" note and the action buttons are no longer
+              mutually exclusive (Ben, 2026-09-06: "how do I change my
+              review for an existing one that was already reviewed?") — a
+              past review still shows here, but Approve/Reject/Edit stay
+              available underneath it so a decision can always be changed,
+              not just made once. */}
+          {item.reviewed_at && (
             <IonNote color="medium">
               Reviewed by {item.reviewed_by_name ?? 'an admin'} {formatRelativeDateTime(item.reviewed_at)}
               {item.review_note ? ` — "${item.review_note}"` : ''}
             </IonNote>
-          ) : editingId === item.id ? (
+          )}
+          {editingId === item.id ? (
             <EditPanel
               initial={{
                 title: item.title,
@@ -464,12 +471,18 @@ export function PipelineReviewPage() {
             </p>
           )}
           <ChecksSection checks={item.checks} />
-          {item.reviewed_at ? (
+          {/* Same "note stays, buttons stay too" fix as a kept item above —
+              re-clicking Approve here safely re-runs add-anyway (the real
+              dedup check inside ingestEvents() reports it as already
+              existing rather than creating a second copy), and re-clicking
+              Reject just re-records the decision. */}
+          {item.reviewed_at && (
             <IonNote color="medium">
               {item.review_action === 'approved' ? 'Approved' : 'Rejected'} by {item.reviewed_by_name ?? 'an admin'} {formatRelativeDateTime(item.reviewed_at)}
               {item.review_note ? ` — "${item.review_note}"` : ''}
             </IonNote>
-          ) : editingId === item.id ? (
+          )}
+          {editingId === item.id ? (
             <EditPanel
               initial={{
                 title: item.title,
@@ -548,12 +561,6 @@ export function PipelineReviewPage() {
             {scope === 'latest_run' ? 'See previous runs' : 'Back to latest run'}
           </IonButton>
         </IonItem>
-        {scope === 'all' && (
-          <IonItem lines="none" style={{ '--padding-start': 0 } as React.CSSProperties}>
-            <IonLabel>Show already-reviewed items too</IonLabel>
-            <IonToggle checked={includeReviewed} onIonChange={(e) => setIncludeReviewed(e.detail.checked)} />
-          </IonItem>
-        )}
         <IonItem lines="none" style={{ '--padding-start': 0 } as React.CSSProperties}>
           <IonButton size="small" disabled={sendingTest} onClick={sendTest}>
             Send yourself a test digest email
