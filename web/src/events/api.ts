@@ -517,6 +517,41 @@ export async function createEventSource(input: EventSourceInput): Promise<EventS
   return body.data
 }
 
+// Feedback #41: the remaining piece of "update the event listings" once
+// re-running ingestion (see resourceEventSources below) already existed —
+// managing the source list itself (fix a stale URL, correct notes, pause a
+// bad one) was previously only possible via direct DB access.
+export interface EventSourceUpdateInput {
+  name?: string
+  url?: string
+  type?: string
+  notes?: string | null
+  is_active?: boolean
+}
+
+export interface EventSourceUpdateResult {
+  id: string
+  name: string
+  url: string
+  type: string
+  notes: string | null
+  is_active: boolean
+}
+
+export async function updateEventSource(id: string, input: EventSourceUpdateInput): Promise<EventSourceUpdateResult> {
+  const response = await fetch(`${API_URL}/event-sources/${id}`, {
+    method: 'PATCH',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  })
+  if (!response.ok) {
+    const body = await response.json().catch(() => null)
+    throw new Error(body?.error?.message ?? `Failed to update event source: ${response.status}`)
+  }
+  const body = (await response.json()) as { data: EventSourceUpdateResult }
+  return body.data
+}
+
 export async function fetchEventComments(id: string): Promise<EventComment[]> {
   const response = await fetch(`${API_URL}/events/${id}/comments`, { headers: authHeaders() })
   if (!response.ok) {

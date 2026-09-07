@@ -13,7 +13,7 @@ import {
   IonTitle,
   IonToolbar,
 } from '@ionic/react'
-import { closeOutline } from 'ionicons/icons'
+import { checkmarkDoneOutline, closeOutline } from 'ionicons/icons'
 import { useEffect, useState } from 'react'
 import { useHistory } from 'react-router-dom'
 
@@ -43,7 +43,27 @@ export function describeFreshnessAlert(freshness: DataFreshness | null): string 
   if (lowCount > 0) {
     parts.push(`${lowCount} recurring listing${lowCount === 1 ? '' : 's'} running low on confirmed dates`)
   }
-  return parts.length > 0 ? parts.join(' — ') : null
+  // Feedback #140: "I don't get directed to anything actionable and I'm not
+  // even sure what I would do" — the alert used to just restate the raw
+  // freshness fact with no hint that tapping it goes anywhere specific.
+  // Paired with freshnessAlertTargetPath's deep link below, so tapping this
+  // now actually scrolls to the flagged content on Dev Tools instead of
+  // landing at the top of a long page.
+  return parts.length > 0 ? `${parts.join(' — ')} — tap for details` : null
+}
+
+// Which part of Dev Tools actually explains this alert — a running-low
+// series list is the more specific, more common case (see the "recurring
+// listings running low" section), so it wins when both conditions are
+// true; a bare `is_stale` with nothing running low points at the "Sourcing
+// & Data" section instead, since re-running sourcing from there is the
+// actual fix for staleness. Both anchors are real element ids DevToolsPage
+// scrolls to and briefly highlights on load (see its own hash-handling effect).
+export function freshnessAlertTargetPath(freshness: DataFreshness | null): string {
+  if (!freshness) return '/admin/dev-tools'
+  if (freshness.recurring_series_running_low.length > 0) return '/admin/dev-tools#recurring-series-health'
+  if (freshness.is_stale) return '/admin/dev-tools#sourcing-and-data'
+  return '/admin/dev-tools'
 }
 
 // Feedback #100: "click on my profile, you should be able to quickly see a
@@ -74,6 +94,7 @@ export function NotificationsPage() {
   const [items, setItems] = useState<NotificationItem[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [dismissingId, setDismissingId] = useState<string | null>(null)
+  const [markingAllRead, setMarkingAllRead] = useState(false)
 
   useEffect(() => {
     fetchNotifications()
@@ -90,7 +111,7 @@ export function NotificationsPage() {
                 id: FRESHNESS_ALERT_ID,
                 type: 'data_freshness',
                 message: freshnessAlert,
-                target_path: '/admin/dev-tools',
+                target_path: freshnessAlertTargetPath(freshness),
                 actor_name: null,
                 actor_avatar_url: null,
                 created_at: new Date().toISOString(),
@@ -130,6 +151,26 @@ export function NotificationsPage() {
     }
   }
 
+  // Feedback #140: "it should always be obvious which notifications have
+  // not been read yet... basically the standard model of notifications
+  // everywhere" — most inboxes (Gmail, Slack, etc.) offer a bulk clear
+  // alongside the per-row one, rather than requiring a tap on each row.
+  // There's no dedicated bulk endpoint for this — real unread counts here
+  // are small, so firing the existing per-id dismiss in parallel is simple
+  // and correct without adding server-side surface for a rare action.
+  const unreadRealItems = (items ?? []).filter((item) => !item.dismissed_at)
+  async function markAllRead() {
+    if (unreadRealItems.length === 0) return
+    setMarkingAllRead(true)
+    try {
+      await Promise.allSettled(unreadRealItems.map((item) => dismissNotification(item.id)))
+      setItems((prev) => prev?.map((item) => (item.dismissed_at ? item : { ...item, dismissed_at: new Date().toISOString() })) ?? prev)
+      await refresh()
+    } finally {
+      setMarkingAllRead(false)
+    }
+  }
+
   return (
     <IonPage>
       <IonHeader>
@@ -138,6 +179,13 @@ export function NotificationsPage() {
             <IonBackButton defaultHref="/events" />
           </IonButtons>
           <IonTitle>Notifications</IonTitle>
+          {unreadRealItems.length > 0 && (
+            <IonButtons slot="end">
+              <IonButton onClick={markAllRead} disabled={markingAllRead} aria-label="Mark all as read">
+                {markingAllRead ? <IonSpinner name="dots" /> : <IonIcon slot="icon-only" icon={checkmarkDoneOutline} />}
+              </IonButton>
+            </IonButtons>
+          )}
         </IonToolbar>
       </IonHeader>
       <IonContent fullscreen className="ion-padding">
@@ -152,12 +200,34 @@ export function NotificationsPage() {
           <IonList inset>
             {displayItems.map((item) => {
               const isFreshnessAlert = item.id === FRESHNESS_ALERT_ID
+              const isUnread = !item.dismissed_at
               return (
-                <IonItem key={item.id} button lines="full" detail={false} onClick={() => handleOpen(item)}>
+                <IonItem
+                  key={item.id}
+                  button
+                  lines="full"
+                  detail={false}
+                  onClick={() => handleOpen(item)}
+                  style={isUnread ? ({ '--background': 'var(--ion-color-light)' } as React.CSSProperties) : undefined}
+                >
                   <div style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1, padding: '10px 0' }}>
+                    {/* A background tint plus bold text alone is easy to miss
+                        (feedback #140: "not obvious which... have not been
+                        read yet") — a filled dot is the more unambiguous,
+                        familiar-from-every-other-app signal for "unread." */}
+                    <span
+                      aria-hidden="true"
+                      style={{
+                        width: 8,
+                        height: 8,
+                        borderRadius: '50%',
+                        background: isUnread ? 'var(--ion-color-primary)' : 'transparent',
+                        flexShrink: 0,
+                      }}
+                    />
                     <Avatar url={item.actor_avatar_url} name={item.actor_name ?? 'Bulbord'} size={36} />
                     <div>
-                      <p style={{ margin: 0, fontWeight: item.dismissed_at ? 400 : 600 }}>{item.message}</p>
+                      <p style={{ margin: 0, fontWeight: isUnread ? 600 : 400 }}>{item.message}</p>
                       <p style={{ ...secondaryTextStyle, margin: 0 }}>
                         {isFreshnessAlert ? 'Admin alert' : formatRelativeDateTime(item.created_at)}
                       </p>

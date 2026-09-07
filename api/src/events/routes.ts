@@ -30,8 +30,12 @@ import {
 
 // Matches eventSources.type's own comment in db/schema.ts — kept here rather
 // than a DB enum since new source shapes get added over time (see CLAUDE.md's
-// event_sources bullet).
-const EVENT_SOURCE_TYPES = ['generic_search', 'website', 'facebook_group', 'open_data']
+// event_sources bullet). 'email' included even though the manual Add Source
+// form (feedback #102) never offers it as a choice — findOrCreateEmailSource
+// (email-ingest.ts) creates rows with this type automatically per sender, so
+// PATCH /event-sources/:id (feedback #41) still needs to accept it as valid
+// when an admin edits one of those rows' name/notes without changing its type.
+const EVENT_SOURCE_TYPES = ['generic_search', 'website', 'facebook_group', 'open_data', 'email']
 
 // "Stale" flags a source the ingestion pipeline hasn't turned up anything new
 // from recently — a signal the source may have gone quiet or broken, not a
@@ -596,6 +600,74 @@ export async function eventsRoutes(app: FastifyInstance) {
     })
 
     return reply.code(201).send({ data: { id: created.id, name, url, type, event_count: 0 } })
+  })
+
+  // Feedback #41 ("update the event listings... look for new listings"):
+  // re-running ingestion and reporting what changed shipped long ago (see
+  // the "Re-run event sourcing" button and its persisted last-run report,
+  // both in Dev Tools) — this closes the one piece that was still only
+  // possible via direct DB access, managing the source list itself
+  // (rename, fix a stale URL, correct its notes, or pause/resume it without
+  // the destructive step of deleting it). Admin-only, same posture as
+  // creating one — a bad/junk source would otherwise silently feed the
+  // Claude-driven "re-run event sourcing" tool.
+  app.patch('/event-sources/:id', { preHandler: requireRole('admin') }, async (request, reply) => {
+    const { id } = request.params as { id: string }
+    const body = request.body as { name?: string; url?: string; type?: string; notes?: string | null; is_active?: boolean }
+
+    const updates: Partial<typeof eventSources.$inferInsert> = {}
+    if (body.name !== undefined) {
+      const name = body.name.trim()
+      if (!name) return reply.code(400).send({ error: { message: 'name cannot be blank' } })
+      updates.name = name
+    }
+    if (body.url !== undefined) {
+      const url = body.url.trim()
+      if (!url) return reply.code(400).send({ error: { message: 'url cannot be blank' } })
+      updates.url = url
+    }
+    if (body.type !== undefined) {
+      const type = body.type.trim()
+      if (!EVENT_SOURCE_TYPES.includes(type)) {
+        return reply.code(400).send({ error: { message: `type must be one of: ${EVENT_SOURCE_TYPES.join(', ')}` } })
+      }
+      updates.type = type
+    }
+    if (body.notes !== undefined) updates.notes = body.notes?.trim() || null
+    if (body.is_active !== undefined) updates.isActive = body.is_active
+
+    if (Object.keys(updates).length === 0) {
+      return reply.code(400).send({ error: { message: 'No fields to update' } })
+    }
+
+    const [existing] = await db
+      .select({ id: eventSources.id })
+      .from(eventSources)
+      .where(and(eq(eventSources.id, id), isNull(eventSources.deletedAt)))
+      .limit(1)
+    if (!existing) {
+      return reply.code(404).send({ error: { message: 'Source not found' } })
+    }
+
+    await db.update(eventSources).set({ ...updates, updatedAt: new Date() }).where(eq(eventSources.id, id))
+
+    await db.insert(eventsLog).values({
+      actor: request.currentUser!.id,
+      action: 'event_source_updated',
+      metadata: { sourceId: id, updates },
+    })
+
+    const [updated] = await db.select().from(eventSources).where(eq(eventSources.id, id)).limit(1)
+    return reply.send({
+      data: {
+        id: updated.id,
+        name: updated.name,
+        url: updated.url,
+        type: updated.type,
+        notes: updated.notes,
+        is_active: updated.isActive,
+      },
+    })
   })
 
   app.get('/event-sources/:id', { preHandler: requireAuth }, async (request, reply) => {

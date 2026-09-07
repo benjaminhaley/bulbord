@@ -35,6 +35,7 @@ import {
   timeOutline,
 } from 'ionicons/icons'
 import { useEffect, useState } from 'react'
+import { useLocation } from 'react-router-dom'
 
 import { formatDate, formatRelativeDateTime } from '../format'
 import { useAuth } from '../auth/AuthContext'
@@ -73,12 +74,21 @@ function runwayLabel(daysUntilLastOccurrence: number): string {
   return `due in ${daysUntilLastOccurrence} day${daysUntilLastOccurrence === 1 ? '' : 's'}`
 }
 
+// See the hash-handling effect in DevToolsPage below — a brief highlight on
+// whichever section a /notifications freshness-alert deep link pointed at.
+function highlightStyle(id: string, highlightId: string | null): React.CSSProperties | undefined {
+  if (id !== highlightId) return undefined
+  return { boxShadow: '0 0 0 3px var(--ion-color-primary)', borderRadius: 8, transition: 'box-shadow 0.3s ease' }
+}
+
 // Reachable only by tapping your own avatar a second time, on the Account
 // page (see AccountPage.tsx) — a deliberately low-visibility entry point
 // since only Ben (the sole admin) needs these tools (feedback #38).
 export function DevToolsPage() {
   const { user, refresh } = useAuth()
   const { freshness, refresh: refreshFreshness } = useDataFreshness()
+  const location = useLocation()
+  const [highlightId, setHighlightId] = useState<string | null>(null)
   const [sending, setSending] = useState(false)
   const [sendingCampReminderTest, setSendingCampReminderTest] = useState(false)
   const [sendingConnectionTest, setSendingConnectionTest] = useState(false)
@@ -124,6 +134,30 @@ export function DevToolsPage() {
     // image before a member notices it, not after.
     checkImages()
   }, [])
+
+  // Feedback #140: the freshness alert on /notifications now links here
+  // with a hash (see NotificationsPage.tsx's freshnessAlertTargetPath) —
+  // this scrolls to and briefly highlights whichever section actually
+  // explains the alert, instead of landing at the top of a long page with
+  // no hint what to look at. A short delay gives the freshness-dependent
+  // sections below (loaded from DataFreshnessProvider) a moment to render
+  // before scrollIntoView measures anything.
+  useEffect(() => {
+    const id = location.hash ? location.hash.slice(1) : null
+    if (!id) return
+    const scrollTimer = setTimeout(() => {
+      // 'center' (not 'start') so the highlighted ring is fully visible on
+      // every side rather than pinned flush against the top edge of the
+      // scroll container, where its top border would render off-screen.
+      document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    }, 300)
+    setHighlightId(id)
+    const clearTimer = setTimeout(() => setHighlightId(null), 2500)
+    return () => {
+      clearTimeout(scrollTimer)
+      clearTimeout(clearTimer)
+    }
+  }, [location.hash])
 
   useEffect(() => {
     // Feedback #131: the weekly cron writes the same summary a manual click
@@ -285,7 +319,7 @@ export function DevToolsPage() {
             </IonLabel>
           </IonItem>
         </IonList>
-        <IonList inset>
+        <IonList inset id="sourcing-and-data" style={highlightStyle('sourcing-and-data', highlightId)}>
           <IonListHeader>
             <IonLabel>Sourcing & Data</IonLabel>
           </IonListHeader>
@@ -557,7 +591,7 @@ export function DevToolsPage() {
             Nettelhorst French Market going silently stale with nothing to
             notice — see api/src/events/recurring-series-health.ts. */}
         {(freshness?.recurring_series_running_low.length ?? 0) > 0 && (
-          <IonList inset>
+          <IonList inset id="recurring-series-health" style={highlightStyle('recurring-series-health', highlightId)}>
             <IonListHeader>
               <IonLabel>Recurring listings running low</IonLabel>
             </IonListHeader>

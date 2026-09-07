@@ -118,24 +118,6 @@ function FeedbackListItem({
     onDeleted(item.id)
   }
 
-  if (editing) {
-    return (
-      <FeedbackForm
-        initialTitle={item.title}
-        initialDescription={item.description ?? ''}
-        initialImages={item.images}
-        submitLabel="Save"
-        errorMessage="Could not save changes"
-        onSubmit={async (title, description, images) => {
-          onUpdated(await updateFeedback(item.id, title, description, images))
-          setEditing(false)
-        }}
-        onCancel={() => setEditing(false)}
-        onImageClick={onImageClick}
-      />
-    )
-  }
-
   const canModerate = isAdmin && !item.completed_at
   const showMenu = item.can_edit || isAdmin
   type MenuButton = { text: string; icon?: string; role?: 'destructive' | 'cancel'; handler?: () => void }
@@ -160,23 +142,51 @@ function FeedbackListItem({
 
   return (
     <>
-      <IonItem lines="none">
-        <FeedbackItemBody item={item} onImageClick={onImageClick} />
-        {showMenu && (
-          <IonButton slot="end" fill="clear" onClick={() => setMenuOpen(true)} aria-label="Actions">
-            <IonIcon slot="icon-only" icon={ellipsisVerticalOutline} />
-          </IonButton>
-        )}
-      </IonItem>
-      {/* feedback #98: replaces the old admin-only completion note — any
-          member can reply on the item's own detail page, and this row is
-          the entry point to that thread. */}
-      <IonItem button lines="full" detail={false} onClick={() => history.push(`/feedback/${item.id}`)}>
-        <IonIcon icon={chatbubbleOutline} slot="start" color="medium" />
-        <IonLabel color="medium">
-          {item.comment_count > 0 ? `${item.comment_count} ${item.comment_count === 1 ? 'reply' : 'replies'}` : 'Add a reply'}
-        </IonLabel>
-      </IonItem>
+      {editing ? (
+        <FeedbackForm
+          initialTitle={item.title}
+          initialDescription={item.description ?? ''}
+          initialImages={item.images}
+          submitLabel="Save"
+          errorMessage="Could not save changes"
+          onSubmit={async (title, description, images) => {
+            onUpdated(await updateFeedback(item.id, title, description, images))
+            setEditing(false)
+          }}
+          onCancel={() => setEditing(false)}
+          onImageClick={onImageClick}
+        />
+      ) : (
+        <>
+          <IonItem lines="none">
+            <FeedbackItemBody item={item} onImageClick={onImageClick} />
+            {showMenu && (
+              <IonButton slot="end" fill="clear" onClick={() => setMenuOpen(true)} aria-label="Actions">
+                <IonIcon slot="icon-only" icon={ellipsisVerticalOutline} />
+              </IonButton>
+            )}
+          </IonItem>
+          {/* feedback #98: replaces the old admin-only completion note — any
+              member can reply on the item's own detail page, and this row is
+              the entry point to that thread. */}
+          <IonItem button lines="full" detail={false} onClick={() => history.push(`/feedback/${item.id}`)}>
+            <IonIcon icon={chatbubbleOutline} slot="start" color="medium" />
+            <IonLabel color="medium">
+              {item.comment_count > 0 ? `${item.comment_count} ${item.comment_count === 1 ? 'reply' : 'replies'}` : 'Add a reply'}
+            </IonLabel>
+          </IonItem>
+        </>
+      )}
+      {/* feedback #142: this used to live inside the `!editing` branch above
+          (as an early `if (editing) return <FeedbackForm .../>`) — Ionic
+          never got a chance to run its own dismiss lifecycle when that
+          branch unmounted the sheet mid-open, so `menuOpen` stayed stuck at
+          `true` in this component's own state. Saving then flipped back to
+          the non-editing branch, re-rendering `isOpen={true}` and popping
+          the menu open again with no user action. Kept mounted unconditionally
+          (matching FeedbackDetailPage.tsx's unaffected version of this same
+          pattern) so Ionic's real onDidDismiss always fires and this state
+          can never go stale. */}
       <IonActionSheet isOpen={menuOpen} onDidDismiss={() => setMenuOpen(false)} buttons={menuButtons} />
     </>
   )
