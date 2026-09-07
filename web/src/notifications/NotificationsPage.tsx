@@ -30,9 +30,10 @@ import { dismissNotification, fetchNotifications, type NotificationItem } from '
 // so the one red bell badge (see InstitutionBanner.tsx) always leads
 // somewhere that actually explains itself, the same way a real
 // notification does. Not a DB row (it's live computed state, not a
-// discrete past event), so it gets a synthetic id and skips the
-// dismiss-via-API path below — it simply stops appearing once the
-// underlying data is refreshed.
+// discrete past event), so it gets a synthetic id and skips the real
+// dismiss-via-API path below — dismissing it instead sets a client-side
+// signature (see freshnessSignature/FRESHNESS_DISMISS_KEY further down),
+// so it can still visibly go away like every other notification here.
 const FRESHNESS_ALERT_ID = 'data-freshness-alert'
 
 export function describeFreshnessAlert(freshness: DataFreshness | null): string | null {
@@ -66,6 +67,32 @@ export function freshnessAlertTargetPath(freshness: DataFreshness | null): strin
   return '/admin/dev-tools'
 }
 
+// Follow-up to feedback #140 (reported directly against the fix above: "I
+// clicked the alert and it didn't go away") — the original feedback #132
+// design deliberately never let this row be dismissed at all ("there's
+// nothing to persist or dismiss-via-API... it simply stops appearing once
+// the underlying data is refreshed"), which in practice meant it could
+// never go away by clicking it, only once someone actually fixed the
+// flagged sources/series — day(s) later at best, nothing like how every
+// other notification here behaves. There's still no real DB row to persist
+// a dismissal against, so this is a client-side (per-browser) "have I
+// already acknowledged *this specific* freshness problem" check instead: a
+// signature of exactly what's currently flagged is stored in localStorage
+// once dismissed, and the alert stays hidden only as long as the signature
+// doesn't change — a newly-stale source or a newly-flagged series produces
+// a different signature and surfaces as a fresh alert again, the same way
+// a real notification would for a new event.
+const FRESHNESS_DISMISS_KEY = 'bulbord_freshness_alert_dismissed_signature'
+
+export function freshnessSignature(freshness: DataFreshness | null): string | null {
+  if (!freshness) return null
+  const lowSeries = freshness.recurring_series_running_low
+    .map((s) => `${s.source_id ?? s.title}@${s.last_occurrence_date}`)
+    .sort()
+    .join(',')
+  return `${freshness.is_stale ? 'stale' : 'fresh'}|${lowSeries}`
+}
+
 // Feedback #100: "click on my profile, you should be able to quickly see a
 // set of notifications that when clicked become dismissed or there's a
 // little X where you can dismiss them when you click them, they should
@@ -95,6 +122,13 @@ export function NotificationsPage() {
   const [error, setError] = useState<string | null>(null)
   const [dismissingId, setDismissingId] = useState<string | null>(null)
   const [markingAllRead, setMarkingAllRead] = useState(false)
+  const [dismissedFreshnessSignature, setDismissedFreshnessSignature] = useState<string | null>(() => {
+    try {
+      return localStorage.getItem(FRESHNESS_DISMISS_KEY)
+    } catch {
+      return null
+    }
+  })
 
   useEffect(() => {
     fetchNotifications()
@@ -102,7 +136,9 @@ export function NotificationsPage() {
       .catch((err) => setError(err instanceof Error ? err.message : 'Could not load notifications'))
   }, [])
 
-  const freshnessAlert = isAdmin ? describeFreshnessAlert(freshness) : null
+  const freshnessSig = freshnessSignature(freshness)
+  const rawFreshnessAlert = isAdmin ? describeFreshnessAlert(freshness) : null
+  const freshnessAlert = rawFreshnessAlert && freshnessSig !== dismissedFreshnessSignature ? rawFreshnessAlert : null
   const displayItems: NotificationItem[] | null = items
     ? [
         ...(freshnessAlert
@@ -127,9 +163,24 @@ export function NotificationsPage() {
     setItems((prev) => prev?.filter((n) => n.id !== id) ?? prev)
   }
 
+  function dismissFreshnessAlert() {
+    if (!freshnessSig) return
+    try {
+      localStorage.setItem(FRESHNESS_DISMISS_KEY, freshnessSig)
+    } catch {
+      // best-effort — a private window or blocked storage just means this
+      // alert re-shows next visit instead of staying dismissed, same as
+      // any other per-browser preference in this app.
+    }
+    setDismissedFreshnessSignature(freshnessSig)
+  }
+
   async function handleOpen(item: NotificationItem) {
     history.push(item.target_path)
-    if (item.id === FRESHNESS_ALERT_ID) return
+    if (item.id === FRESHNESS_ALERT_ID) {
+      dismissFreshnessAlert()
+      return
+    }
     if (!item.dismissed_at) {
       removeLocally(item.id)
       dismissNotification(item.id)
@@ -139,6 +190,10 @@ export function NotificationsPage() {
   }
 
   async function handleDismiss(item: NotificationItem) {
+    if (item.id === FRESHNESS_ALERT_ID) {
+      dismissFreshnessAlert()
+      return
+    }
     setDismissingId(item.id)
     try {
       await dismissNotification(item.id)
@@ -159,11 +214,13 @@ export function NotificationsPage() {
   // are small, so firing the existing per-id dismiss in parallel is simple
   // and correct without adding server-side surface for a rare action.
   const unreadRealItems = (items ?? []).filter((item) => !item.dismissed_at)
+  const hasUnread = unreadRealItems.length > 0 || !!freshnessAlert
   async function markAllRead() {
-    if (unreadRealItems.length === 0) return
+    if (!hasUnread) return
     setMarkingAllRead(true)
     try {
       await Promise.allSettled(unreadRealItems.map((item) => dismissNotification(item.id)))
+      if (freshnessAlert) dismissFreshnessAlert()
       setItems((prev) => prev?.map((item) => (item.dismissed_at ? item : { ...item, dismissed_at: new Date().toISOString() })) ?? prev)
       await refresh()
     } finally {
@@ -179,7 +236,7 @@ export function NotificationsPage() {
             <IonBackButton defaultHref="/events" />
           </IonButtons>
           <IonTitle>Notifications</IonTitle>
-          {unreadRealItems.length > 0 && (
+          {hasUnread && (
             <IonButtons slot="end">
               <IonButton onClick={markAllRead} disabled={markingAllRead} aria-label="Mark all as read">
                 {markingAllRead ? <IonSpinner name="dots" /> : <IonIcon slot="icon-only" icon={checkmarkDoneOutline} />}
@@ -233,7 +290,7 @@ export function NotificationsPage() {
                       </p>
                     </div>
                   </div>
-                  {!item.dismissed_at && !isFreshnessAlert && (
+                  {!item.dismissed_at && (
                     <IonButton
                       slot="end"
                       fill="clear"

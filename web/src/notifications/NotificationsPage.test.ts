@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { type DataFreshness } from '../admin/api'
-import { describeFreshnessAlert, freshnessAlertTargetPath } from './NotificationsPage'
+import { describeFreshnessAlert, freshnessAlertTargetPath, freshnessSignature } from './NotificationsPage'
 
 function freshness(overrides: Partial<DataFreshness>): DataFreshness {
   return {
@@ -116,5 +116,56 @@ describe('freshnessAlertTargetPath', () => {
     expect(freshnessAlertTargetPath(freshness({ is_stale: true, recurring_series_running_low: [lowSeries] }))).toBe(
       '/admin/dev-tools#recurring-series-health',
     )
+  })
+})
+
+// Follow-up to feedback #140 ("I clicked the alert and it didn't go away")
+// — the alert has no real DB row to dismiss via API, so a stable signature
+// of exactly what's currently flagged is what NotificationsPage compares
+// against a stored "last dismissed" value to decide whether to still show it.
+describe('freshnessSignature', () => {
+  const series = (overrides: Partial<DataFreshness['recurring_series_running_low'][number]> = {}) => ({
+    title: 'Some Series',
+    source_id: 'src-1',
+    source_name: 'Some Source',
+    occurrence_count: 3,
+    last_occurrence_date: '2026-09-01',
+    typical_gap_days: 7,
+    days_until_last_occurrence: -2,
+    ...overrides,
+  })
+
+  it('returns null when freshness itself is null', () => {
+    expect(freshnessSignature(null)).toBeNull()
+  })
+
+  it('is stable for the exact same freshness content', () => {
+    const a = freshnessSignature(freshness({ is_stale: true, recurring_series_running_low: [series()] }))
+    const b = freshnessSignature(freshness({ is_stale: true, recurring_series_running_low: [series()] }))
+    expect(a).toBe(b)
+  })
+
+  it('is order-independent across multiple flagged series', () => {
+    const s1 = series({ source_id: 'src-1', title: 'A' })
+    const s2 = series({ source_id: 'src-2', title: 'B' })
+    const forward = freshnessSignature(freshness({ recurring_series_running_low: [s1, s2] }))
+    const reversed = freshnessSignature(freshness({ recurring_series_running_low: [s2, s1] }))
+    expect(forward).toBe(reversed)
+  })
+
+  it('changes when is_stale flips', () => {
+    const notStale = freshnessSignature(freshness({ is_stale: false }))
+    const stale = freshnessSignature(freshness({ is_stale: true }))
+    expect(notStale).not.toBe(stale)
+  })
+
+  it('changes when a series is added, removed, or its last occurrence date changes', () => {
+    const base = freshnessSignature(freshness({ recurring_series_running_low: [series()] }))
+    const added = freshnessSignature(freshness({ recurring_series_running_low: [series(), series({ source_id: 'src-2' })] }))
+    const removed = freshnessSignature(freshness({ recurring_series_running_low: [] }))
+    const changedDate = freshnessSignature(freshness({ recurring_series_running_low: [series({ last_occurrence_date: '2026-09-08' })] }))
+    expect(added).not.toBe(base)
+    expect(removed).not.toBe(base)
+    expect(changedDate).not.toBe(base)
   })
 })
