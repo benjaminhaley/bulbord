@@ -17,7 +17,6 @@ import { checkmarkDoneOutline, closeOutline } from 'ionicons/icons'
 import { useEffect, useState } from 'react'
 import { useHistory } from 'react-router-dom'
 
-import { type DataFreshness } from '../admin/api'
 import { useDataFreshness } from '../admin/DataFreshnessContext'
 import { useAuth } from '../auth/AuthContext'
 import { formatRelativeDateTime } from '../format'
@@ -31,67 +30,12 @@ import { dismissNotification, fetchNotifications, type NotificationItem } from '
 // somewhere that actually explains itself, the same way a real
 // notification does. Not a DB row (it's live computed state, not a
 // discrete past event), so it gets a synthetic id and skips the real
-// dismiss-via-API path below — dismissing it instead sets a client-side
-// signature (see freshnessSignature/FRESHNESS_DISMISS_KEY further down),
-// so it can still visibly go away like every other notification here.
+// dismiss-via-API path below — dismissing it instead goes through
+// DataFreshnessContext's `dismissAlert()` (see that file for why this has
+// to be the one shared place both this page and InstitutionBanner's bell
+// badge read from, after they drifted apart when only this page knew how
+// to dismiss it).
 const FRESHNESS_ALERT_ID = 'data-freshness-alert'
-
-export function describeFreshnessAlert(freshness: DataFreshness | null): string | null {
-  if (!freshness) return null
-  const lowCount = freshness.recurring_series_running_low.length
-  const parts: string[] = []
-  if (freshness.is_stale) parts.push('Events/camps data needs a refresh')
-  if (lowCount > 0) {
-    parts.push(`${lowCount} recurring listing${lowCount === 1 ? '' : 's'} running low on confirmed dates`)
-  }
-  // Feedback #140: "I don't get directed to anything actionable and I'm not
-  // even sure what I would do" — the alert used to just restate the raw
-  // freshness fact with no hint that tapping it goes anywhere specific.
-  // Paired with freshnessAlertTargetPath's deep link below, so tapping this
-  // now actually scrolls to the flagged content on Dev Tools instead of
-  // landing at the top of a long page.
-  return parts.length > 0 ? `${parts.join(' — ')} — tap for details` : null
-}
-
-// Which part of Dev Tools actually explains this alert — a running-low
-// series list is the more specific, more common case (see the "recurring
-// listings running low" section), so it wins when both conditions are
-// true; a bare `is_stale` with nothing running low points at the "Sourcing
-// & Data" section instead, since re-running sourcing from there is the
-// actual fix for staleness. Both anchors are real element ids DevToolsPage
-// scrolls to and briefly highlights on load (see its own hash-handling effect).
-export function freshnessAlertTargetPath(freshness: DataFreshness | null): string {
-  if (!freshness) return '/admin/dev-tools'
-  if (freshness.recurring_series_running_low.length > 0) return '/admin/dev-tools#recurring-series-health'
-  if (freshness.is_stale) return '/admin/dev-tools#sourcing-and-data'
-  return '/admin/dev-tools'
-}
-
-// Follow-up to feedback #140 (reported directly against the fix above: "I
-// clicked the alert and it didn't go away") — the original feedback #132
-// design deliberately never let this row be dismissed at all ("there's
-// nothing to persist or dismiss-via-API... it simply stops appearing once
-// the underlying data is refreshed"), which in practice meant it could
-// never go away by clicking it, only once someone actually fixed the
-// flagged sources/series — day(s) later at best, nothing like how every
-// other notification here behaves. There's still no real DB row to persist
-// a dismissal against, so this is a client-side (per-browser) "have I
-// already acknowledged *this specific* freshness problem" check instead: a
-// signature of exactly what's currently flagged is stored in localStorage
-// once dismissed, and the alert stays hidden only as long as the signature
-// doesn't change — a newly-stale source or a newly-flagged series produces
-// a different signature and surfaces as a fresh alert again, the same way
-// a real notification would for a new event.
-const FRESHNESS_DISMISS_KEY = 'bulbord_freshness_alert_dismissed_signature'
-
-export function freshnessSignature(freshness: DataFreshness | null): string | null {
-  if (!freshness) return null
-  const lowSeries = freshness.recurring_series_running_low
-    .map((s) => `${s.source_id ?? s.title}@${s.last_occurrence_date}`)
-    .sort()
-    .join(',')
-  return `${freshness.is_stale ? 'stale' : 'fresh'}|${lowSeries}`
-}
 
 // Feedback #100: "click on my profile, you should be able to quickly see a
 // set of notifications that when clicked become dismissed or there's a
@@ -116,19 +60,12 @@ export function NotificationsPage() {
   // documented refresh()/isLoading incident (see Connections in
   // CLAUDE.md) — this page only ever renders once `user` is already
   // loaded, so refresh() never touches the global spinner.
-  const { refresh, isAdmin } = useAuth()
-  const { freshness } = useDataFreshness()
+  const { refresh } = useAuth()
+  const { alertMessage: freshnessAlert, alertTargetPath: freshnessTargetPath, dismissAlert: dismissFreshnessAlert } = useDataFreshness()
   const [items, setItems] = useState<NotificationItem[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [dismissingId, setDismissingId] = useState<string | null>(null)
   const [markingAllRead, setMarkingAllRead] = useState(false)
-  const [dismissedFreshnessSignature, setDismissedFreshnessSignature] = useState<string | null>(() => {
-    try {
-      return localStorage.getItem(FRESHNESS_DISMISS_KEY)
-    } catch {
-      return null
-    }
-  })
 
   useEffect(() => {
     fetchNotifications()
@@ -136,9 +73,6 @@ export function NotificationsPage() {
       .catch((err) => setError(err instanceof Error ? err.message : 'Could not load notifications'))
   }, [])
 
-  const freshnessSig = freshnessSignature(freshness)
-  const rawFreshnessAlert = isAdmin ? describeFreshnessAlert(freshness) : null
-  const freshnessAlert = rawFreshnessAlert && freshnessSig !== dismissedFreshnessSignature ? rawFreshnessAlert : null
   const displayItems: NotificationItem[] | null = items
     ? [
         ...(freshnessAlert
@@ -147,7 +81,7 @@ export function NotificationsPage() {
                 id: FRESHNESS_ALERT_ID,
                 type: 'data_freshness',
                 message: freshnessAlert,
-                target_path: freshnessAlertTargetPath(freshness),
+                target_path: freshnessTargetPath,
                 actor_name: null,
                 actor_avatar_url: null,
                 created_at: new Date().toISOString(),
@@ -161,18 +95,6 @@ export function NotificationsPage() {
 
   function removeLocally(id: string) {
     setItems((prev) => prev?.filter((n) => n.id !== id) ?? prev)
-  }
-
-  function dismissFreshnessAlert() {
-    if (!freshnessSig) return
-    try {
-      localStorage.setItem(FRESHNESS_DISMISS_KEY, freshnessSig)
-    } catch {
-      // best-effort — a private window or blocked storage just means this
-      // alert re-shows next visit instead of staying dismissed, same as
-      // any other per-browser preference in this app.
-    }
-    setDismissedFreshnessSignature(freshnessSig)
   }
 
   async function handleOpen(item: NotificationItem) {

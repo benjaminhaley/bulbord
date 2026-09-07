@@ -30,20 +30,23 @@ const bannerButtonStyle = { ...unstyledButtonStyle, '--color': 'var(--banner-ink
 // position: absolute/inset: 0 layout (see index.css's tab-bar-disappearing
 // history) makes a truly global fixed banner risky to introduce.
 export function InstitutionBanner() {
-  const { user, isAdmin } = useAuth()
-  const { freshness } = useDataFreshness()
+  const { user } = useAuth()
+  const { alertMessage } = useDataFreshness()
   const history = useHistory()
   // Feedback #69/#119: a quiet nudge that events/camps data has gone stale,
   // or a recurring listing is running low on confirmed future occurrences —
-  // admin-only, since only Ben acts on it. Originally its own amber dot on
-  // the avatar (feedback #114 gave it a distinct color specifically so it
+  // admin-only, since only Ben acts on it (`alertMessage` is already scoped
+  // to admins by DataFreshnessContext itself). Originally its own amber dot
+  // on the avatar (feedback #114 gave it a distinct color specifically so it
   // wouldn't be confused with a real notification); feedback #132 reversed
   // that ("the one on my face should not be used any more... there should
   // not be a second way") — it now folds into the same red bell badge as
   // every other alert, and gets its own row in the Notifications list (see
   // NotificationsPage.tsx) rather than a separate indicator elsewhere.
-  const showStaleAlert =
-    isAdmin && ((freshness?.is_stale ?? false) || (freshness?.recurring_series_running_low?.length ?? 0) > 0)
+  // `alertMessage` (not raw `freshness`) already accounts for dismissal —
+  // see DataFreshnessContext's own header for why this badge and the
+  // Notifications list must never compute this independently again.
+  const showStaleAlert = !!alertMessage
   // Feedback #100: one unified badge for every notification type (friend
   // added, feedback reply, event/camp comment) — replaces the earlier three
   // separate mechanisms (a friend-activity dot, a numbered feedback-reply

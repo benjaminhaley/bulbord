@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
-import { type DataFreshness } from '../admin/api'
-import { describeFreshnessAlert, freshnessAlertTargetPath, freshnessSignature } from './NotificationsPage'
+import { type DataFreshness } from './api'
+import { describeFreshnessAlert, freshnessAlertTargetPath, freshnessSignature } from './freshnessAlert'
 
 function freshness(overrides: Partial<DataFreshness>): DataFreshness {
   return {
