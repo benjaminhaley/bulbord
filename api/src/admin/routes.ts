@@ -410,7 +410,7 @@ export async function adminRoutes(app: FastifyInstance) {
 
   app.post('/admin/events/:id/pipeline-review/edit', { preHandler: requireRole('admin') }, async (request, reply) => {
     const { id } = request.params as { id: string }
-    const error = await editKeptCandidate(id, parseEditableFields(request.body))
+    const error = await editKeptCandidate(id, parseEditableFields(request.body), request.currentUser!.id)
     if (error) return reply.code(404).send({ error: { message: 'Event not found' } })
     return reply.send({ data: { edited: true } })
   })
@@ -421,7 +421,7 @@ export async function adminRoutes(app: FastifyInstance) {
   // top-level button.
   app.post('/admin/events/:id/pipeline-review/retry-image', { preHandler: requireRole('admin') }, async (request, reply) => {
     const { id } = request.params as { id: string }
-    const error = await retryEventImageForKeptItem(id)
+    const error = await retryEventImageForKeptItem(id, request.currentUser!.id)
     if (error === 'not_found') return reply.code(404).send({ error: { message: 'Event not found' } })
     return reply.send({ data: { found: error !== 'no_image_found' } })
   })

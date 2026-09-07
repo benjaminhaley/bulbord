@@ -3,12 +3,13 @@ import type { FastifyInstance } from 'fastify'
 
 import { requireAuth, requireRole } from '../auth/plugin.js'
 import { db } from '../db/client.js'
-import { campComments, campInterests, campSources, camps, eventsLog, schoolBreaks, users } from '../db/schema.js'
+import { campComments, campInterests, campSources, camps, eventsLog, schoolBreaks, users, type CampOptionLine, type CampPrepLine } from '../db/schema.js'
 import { todayInChicago } from '../dates.js'
 import { uploadPlaceholderImage } from '../uploads/placeholder.js'
+import { applyCampEdit } from './edit.js'
 import { sortCamps } from './format.js'
 import { groupCampsByBreak, type SchoolBreakRow } from './grouping.js'
-import { canEditCamp } from './permissions.js'
+import { canDeleteCamp, canEditCamp } from './permissions.js'
 import { formatCampWhen, locationLabel } from './preview-when.js'
 
 type InterestStatus = 'interested' | 'dismissed'
@@ -109,9 +110,11 @@ function serializeCamp(c: HydratedCamp, currentUserId: string | null) {
     interest_status: c.interestStatus as InterestStatus | null,
     interested_count: c.interestedCount,
     interested_people: c.interestedPeople,
-    // Creator-only edit/delete, same posture as events' self-service posts —
-    // no admin override.
+    // can_edit: any logged-in member (feedback #141, 2026-09-07). can_delete:
+    // still creator-only, no admin override — see events/permissions.ts's
+    // canEditEvent/canDeleteEvent for the full reasoning.
     can_edit: currentUserId !== null && canEditCamp({ id: currentUserId }, c),
+    can_delete: currentUserId !== null && canDeleteCamp({ id: currentUserId }, c),
     submitted_by: c.submittedBy,
     source: c.source,
   }
@@ -343,11 +346,15 @@ export async function campsRoutes(app: FastifyInstance) {
       address?: string
       location_name?: string
       price_per_day?: number
+      price_is_estimated?: boolean
+      options?: CampOptionLine[]
       options_note?: string
       age_min?: number
       age_max?: number
       spots_available?: number
+      booking_status?: string
       booking_instructions?: string
+      prep_items?: CampPrepLine[]
       prep_note?: string
       source_url?: string
       image_url?: string
@@ -378,39 +385,45 @@ export async function campsRoutes(app: FastifyInstance) {
       return reply.code(400).send({ error: { message: 'end_date must be on or after start_date' } })
     }
 
-    // Same NOT NULL fallback as POST /camps above — clearing a photo on edit
-    // still leaves a real (generated) image behind, never null.
-    const image =
-      body.image_url && body.thumbnail_url
-        ? { imageUrl: body.image_url, thumbnailUrl: body.thumbnail_url }
-        : await uploadPlaceholderImage(title, 'camps')
-    await Promise.all([
-      db
-        .update(camps)
-        .set({
-          title,
-          description: body.description?.trim() || null,
-          startDate,
-          endDate,
-          startTime: body.start_time?.trim() || null,
-          endTime: body.end_time?.trim() || null,
-          address,
-          locationName: body.location_name?.trim() || null,
-          pricePerDay: body.price_per_day != null ? String(body.price_per_day) : null,
-          optionsNote: body.options_note?.trim() || null,
-          ageMin: body.age_min != null ? Math.trunc(body.age_min) : null,
-          ageMax: body.age_max != null ? Math.trunc(body.age_max) : null,
-          spotsAvailable: body.spots_available != null ? Math.trunc(body.spots_available) : null,
-          bookingInstructions: body.booking_instructions?.trim() || null,
-          prepNote: body.prep_note?.trim() || null,
-          sourceUrl: body.source_url?.trim() || null,
-          imageUrl: image.imageUrl,
-          thumbnailUrl: image.thumbnailUrl,
-          updatedAt: new Date(),
-        })
-        .where(eq(camps.id, id)),
-      db.insert(eventsLog).values({ actor: currentUser.id, action: 'camp_updated', metadata: { campId: id } }),
-    ])
+    // The shared write path (edit.ts) also used by the edit-history restore
+    // endpoint.
+    const editError = await applyCampEdit(
+      id,
+      {
+        title,
+        description: body.description?.trim() || null,
+        start_date: startDate,
+        end_date: endDate,
+        start_time: body.start_time?.trim() || null,
+        end_time: body.end_time?.trim() || null,
+        address,
+        location_name: body.location_name?.trim() || null,
+        price_per_day: body.price_per_day ?? null,
+        // Feedback #141 opened these up from seed-only to member-editable —
+        // absent from the request body (the still-simple member "post a new
+        // camp" flow) means "leave unset," matching the pre-#141 behavior.
+        price_is_estimated: body.price_is_estimated ?? false,
+        options: body.options ?? null,
+        options_note: body.options_note?.trim() || null,
+        age_min: body.age_min != null ? Math.trunc(body.age_min) : null,
+        age_max: body.age_max != null ? Math.trunc(body.age_max) : null,
+        spots_available: body.spots_available != null ? Math.trunc(body.spots_available) : null,
+        booking_status: body.booking_status?.trim() || null,
+        booking_instructions: body.booking_instructions?.trim() || null,
+        prep_items: body.prep_items ?? null,
+        prep_note: body.prep_note?.trim() || null,
+        source_url: body.source_url?.trim() || null,
+        image_url: body.image_url ?? null,
+        thumbnail_url: body.thumbnail_url ?? null,
+      },
+      currentUser.id,
+    )
+    // Only reachable via a race with a concurrent delete — see the
+    // identical comment on events/routes.ts's PATCH handler.
+    if (editError) {
+      return reply.code(404).send({ error: { message: 'Camp not found' } })
+    }
+    await db.insert(eventsLog).values({ actor: currentUser.id, action: 'camp_updated', metadata: { campId: id } })
 
     const row = (await loadCampDetail(id, currentUser.id))!
     return reply.send({ data: serializeCamp(row, currentUser.id) })
@@ -428,7 +441,7 @@ export async function campsRoutes(app: FastifyInstance) {
     if (!existing) {
       return reply.code(404).send({ error: { message: 'Camp not found' } })
     }
-    if (!canEditCamp(currentUser, existing)) {
+    if (!canDeleteCamp(currentUser, existing)) {
       return reply.code(403).send({ error: { message: 'Forbidden' } })
     }
 

@@ -80,7 +80,12 @@ export interface Camp {
   interest_status: InterestStatus | null
   interested_count: number
   interested_people: { name: string; avatar_url: string | null }[]
+  // Any logged-in member (feedback #141, 2026-09-07 — reverses the original
+  // creator-only rule, including for seeded/system camps).
   can_edit: boolean
+  // Still creator-only, no admin override — see events/api.ts's identical
+  // comment on Event.can_delete for the full reasoning.
+  can_delete: boolean
   submitted_by: { name: string; avatar_url: string | null } | null
   source: { id: string; name: string } | null
 }
@@ -112,6 +117,15 @@ export interface CampInput {
   source_url: string
   image_url: string | null
   thumbnail_url: string | null
+  // Feedback #141 (2026-09-07): opened from seed-only to member-editable —
+  // optional and never sent by CampForm.tsx's own "post a new camp" flow
+  // (which stays deliberately simple, per the comment above), only by the
+  // inline edit flow on an existing camp's detail page (CampDetailPage.tsx/
+  // CampBody.tsx).
+  price_is_estimated?: boolean
+  options?: CampOptionLine[] | null
+  booking_status?: string | null
+  prep_items?: CampPrepLine[] | null
 }
 
 export interface InterestedUser {

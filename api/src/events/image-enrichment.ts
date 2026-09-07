@@ -12,6 +12,8 @@ import { imageUrl, uploadImage } from '../uploads/storage.js'
 import { searchWebImageQueryTiers } from '../uploads/web-image-search.js'
 import type { CheckResult } from './candidate-checks.js'
 import { SEARCH_STAGE_DEADLINE_MS, withDeadline } from './extraction-shared.js'
+import { recordEdit } from '../edit-history/service.js'
+import { snapshotEventForHistory } from './serialize.js'
 
 // A real, found incident (feedback #146/#150/#153, 2026-09-04): 8 different,
 // unrelated events sourced from the same generic "upcoming events" listing
@@ -294,26 +296,76 @@ function deriveImageChecks(chosen: ChosenCandidate | null, trace: ImageCandidate
 // findCandidateEventImage already established: an admin looking at a
 // specific event and being handed a mismatched org logo as "the photo" is
 // the same misleading outcome either path would produce.
+//
+// `recordHistory` (feedback #141, 2026-09-07) defaults true — a post-creation
+// re-search (a member clearing their photo on edit, Pipeline Review's retry-
+// image) is a real, member-visible change to an already-live row, so it
+// belongs in the shared edit-history table. `actor` names who/what triggered
+// it: a plain user id for an admin's explicit retry-image click, or the
+// default 'system:image-enrichment' label for every autonomous trigger. The
+// *batch* enrichEventImages() below — used only during initial ingestion —
+// passes recordHistory: false, since a freshly-inserted row's placeholder→
+// real-photo transition happens before the row has ever been shown to
+// anyone; there's no prior *visible* state to diff against, so it isn't a
+// meaningful "edit."
 export async function enrichEventImage(
   eventId: string,
   options: ImageSearchOptions,
-  { scoreLogos = false }: { scoreLogos?: boolean } = {},
+  { scoreLogos = false, recordHistory = true, actor = 'system:image-enrichment' }: { scoreLogos?: boolean; recordHistory?: boolean; actor?: string } = {},
 ): Promise<ImageEnrichmentResult> {
   const { chosen, trace } = await findImageCandidate(eventId, options, { scoreLogos })
   const { imageQuality, imageRelevance } = deriveImageChecks(chosen, trace)
   if (!chosen) return { result: 'none', trace, imageQuality, imageRelevance }
 
+  // The full editable-field row, not just image_url/thumbnail_url — a
+  // history entry needs a *complete* before/after snapshot (so "view this
+  // old version" can render the whole listing, not just the two fields this
+  // particular write touches), even though only the image fields actually
+  // differ here.
+  const [before] = await db
+    .select({
+      title: events.title,
+      description: events.description,
+      startDate: events.startDate,
+      startTime: events.startTime,
+      endTime: events.endTime,
+      allDay: events.allDay,
+      locationName: events.locationName,
+      address: events.address,
+      sourceUrl: events.sourceUrl,
+      topic: events.topic,
+      imageUrl: events.imageUrl,
+      thumbnailUrl: events.thumbnailUrl,
+    })
+    .from(events)
+    .where(eq(events.id, eventId))
+    .limit(1)
+
   // Non-null: uploadImage() always returns a real key, so imageUrl() (only
   // ever null for a falsy key) can't actually be null here.
+  const newImageUrl = imageUrl(chosen.key)!
+  const newThumbnailUrl = imageUrl(chosen.thumbnailKey)!
   await db
     .update(events)
     .set({
-      imageUrl: imageUrl(chosen.key)!,
-      thumbnailUrl: imageUrl(chosen.thumbnailKey)!,
+      imageUrl: newImageUrl,
+      thumbnailUrl: newThumbnailUrl,
       sourceImageUrl: chosen.sourceImageUrl,
       updatedAt: new Date(),
     })
     .where(eq(events.id, eventId))
+
+  if (recordHistory && before) {
+    const isSystemActor = actor.startsWith('system:')
+    await recordEdit({
+      entityType: 'event',
+      entityId: eventId,
+      actorUserId: isSystemActor ? null : actor,
+      actorLabel: isSystemActor ? actor : null,
+      before: snapshotEventForHistory(before),
+      after: snapshotEventForHistory({ ...before, imageUrl: newImageUrl, thumbnailUrl: newThumbnailUrl }),
+    })
+  }
 
   return { result: 'sourced', trace, imageQuality, imageRelevance }
 }
@@ -377,12 +429,21 @@ export async function enrichEventImages(
     while (index < rows.length) {
       const row = rows[index++]
       try {
-        const { result, trace, imageQuality, imageRelevance } = await enrichEventImage(row.id, {
-          sourceUrl: row.sourceUrl,
-          overrideImageUrl: row.imageUrl,
-          title: row.title,
-          description: row.description,
-        })
+        const { result, trace, imageQuality, imageRelevance } = await enrichEventImage(
+          row.id,
+          {
+            sourceUrl: row.sourceUrl,
+            overrideImageUrl: row.imageUrl,
+            title: row.title,
+            description: row.description,
+          },
+          // recordHistory: false — this batch function is only ever called
+          // during initial ingestion (ingest.ts), before the row has ever
+          // been shown to anyone; a placeholder→real-photo transition here
+          // isn't a member-visible "edit" (see enrichEventImage's own
+          // header for the full reasoning).
+          { recordHistory: false },
+        )
         if (result === 'sourced') sourced++
         else none++
         traces.push({ eventId: row.id, title: row.title, trace })

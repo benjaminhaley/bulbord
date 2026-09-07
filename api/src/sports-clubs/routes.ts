@@ -3,10 +3,11 @@ import type { FastifyInstance } from 'fastify'
 
 import { requireAuth, requireRole } from '../auth/plugin.js'
 import { db } from '../db/client.js'
-import { eventsLog, sportsClubComments, sportsClubInterests, sportsClubOccurrences, sportsClubs, sportsClubSources, users } from '../db/schema.js'
+import { eventsLog, sportsClubComments, sportsClubInterests, sportsClubOccurrences, sportsClubs, sportsClubSources, users, type SportsClubOptionLine } from '../db/schema.js'
 import { todayInChicago } from '../dates.js'
 import { uploadPlaceholderImage } from '../uploads/placeholder.js'
-import { canEditSportsClub } from './permissions.js'
+import { applySportsClubEdit } from './edit.js'
+import { canDeleteSportsClub, canEditSportsClub } from './permissions.js'
 import { sortSportsClubs, type SportsClubSortInput } from './sorting.js'
 
 type InterestStatus = 'interested' | 'dismissed'
@@ -92,7 +93,11 @@ function serializeSportsClub(c: HydratedSportsClub, currentUserId: string | null
     interest_status: c.interestStatus as InterestStatus | null,
     interested_count: c.interestedCount,
     interested_people: c.interestedPeople,
+    // can_edit: any logged-in member (feedback #141, 2026-09-07). can_delete:
+    // still creator-only, no admin override — see events/permissions.ts's
+    // canEditEvent/canDeleteEvent for the full reasoning.
     can_edit: currentUserId !== null && canEditSportsClub({ id: currentUserId }, c),
+    can_delete: currentUserId !== null && canDeleteSportsClub({ id: currentUserId }, c),
     submitted_by: c.submittedBy,
     source: c.source,
     next_occurrence_date: c.nextOccurrenceDate,
@@ -301,7 +306,12 @@ export async function sportsClubsRoutes(app: FastifyInstance) {
 
   app.patch('/sports-clubs/:id', { preHandler: requireAuth }, async (request, reply) => {
     const { id } = request.params as { id: string }
-    const body = request.body as SportsClubBody
+    // A wider body than SportsClubBody (POST's own type) — feedback #141
+    // opened options/signup_status/price_per_week up from seed-only to
+    // member-editable for an *existing* listing, while the "post a new
+    // listing" flow (SportsClubForm.tsx → POST above) deliberately stays as
+    // simple as it's always been.
+    const body = request.body as SportsClubBody & { options?: SportsClubOptionLine[]; signup_status?: string; price_per_week?: number }
 
     const currentUser = request.currentUser!
     const [existing] = await db
@@ -321,20 +331,41 @@ export async function sportsClubsRoutes(app: FastifyInstance) {
       return reply.code(400).send({ error: { message: 'title, category, and address are required' } })
     }
 
-    // Same NOT NULL fallback as POST above — clearing a photo on edit still
-    // leaves a real (generated) image behind, never null.
-    const image =
-      body.image_url && body.thumbnail_url
-        ? { imageUrl: body.image_url, thumbnailUrl: body.thumbnail_url }
-        : await uploadPlaceholderImage(validated.title, 'sportsclubs')
-
-    await Promise.all([
-      db
-        .update(sportsClubs)
-        .set({ ...validated, ...sportsClubWriteValues(body, image), updatedAt: new Date() })
-        .where(eq(sportsClubs.id, id)),
-      db.insert(eventsLog).values({ actor: currentUser.id, action: 'sports_club_updated', metadata: { sportsClubId: id } }),
-    ])
+    // The shared write path (edit.ts) also used by the edit-history restore
+    // endpoint.
+    const editError = await applySportsClubEdit(
+      id,
+      {
+        title: validated.title,
+        description: body.description?.trim() || null,
+        category: validated.category,
+        schedule_type: body.schedule_type === 'ongoing' ? 'ongoing' : 'fixed_session',
+        first_date: body.first_date?.trim() || null,
+        last_date: body.last_date?.trim() || null,
+        cadence_note: body.cadence_note?.trim() || null,
+        age_min: body.age_min != null ? Math.trunc(body.age_min) : null,
+        age_max: body.age_max != null ? Math.trunc(body.age_max) : null,
+        price: body.price ?? null,
+        price_unit: body.price_unit?.trim() || null,
+        price_per_week: body.price_per_week ?? null,
+        price_note: body.price_note?.trim() || null,
+        options: body.options ?? null,
+        address: validated.address,
+        location_name: body.location_name?.trim() || null,
+        signup_status: body.signup_status?.trim() || null,
+        signup_instructions: body.signup_instructions?.trim() || null,
+        source_url: body.source_url?.trim() || null,
+        image_url: body.image_url ?? null,
+        thumbnail_url: body.thumbnail_url ?? null,
+      },
+      currentUser.id,
+    )
+    // Only reachable via a race with a concurrent delete — see the
+    // identical comment on events/routes.ts's PATCH handler.
+    if (editError) {
+      return reply.code(404).send({ error: { message: 'Sports club not found' } })
+    }
+    await db.insert(eventsLog).values({ actor: currentUser.id, action: 'sports_club_updated', metadata: { sportsClubId: id } })
 
     const row = (await loadSportsClubDetail(id, currentUser.id))!
     return reply.send({ data: serializeSportsClub(row, currentUser.id) })
@@ -352,7 +383,7 @@ export async function sportsClubsRoutes(app: FastifyInstance) {
     if (!existing) {
       return reply.code(404).send({ error: { message: 'Sports club not found' } })
     }
-    if (!canEditSportsClub(currentUser, existing)) {
+    if (!canDeleteSportsClub(currentUser, existing)) {
       return reply.code(403).send({ error: { message: 'Forbidden' } })
     }
 

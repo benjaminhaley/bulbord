@@ -11,6 +11,7 @@ const updateCalls: { table: unknown; set: Record<string, unknown> }[] = []
 const enrichEventImageMock = vi.fn()
 const ingestEventsMock = vi.fn()
 const scoreTextChecksMock = vi.fn()
+const recordEditMock = vi.fn()
 
 vi.mock('../db/client.js', () => {
   const builder: Record<string, unknown> = {}
@@ -39,6 +40,7 @@ vi.mock('../db/client.js', () => {
 })
 vi.mock('./image-enrichment.js', () => ({ enrichEventImage: enrichEventImageMock }))
 vi.mock('./ingest.js', () => ({ ingestEvents: ingestEventsMock }))
+vi.mock('../edit-history/service.js', () => ({ recordEdit: recordEditMock }))
 vi.mock('./candidate-checks.js', async () => {
   const actual = await vi.importActual<typeof import('./candidate-checks.js')>('./candidate-checks.js')
   return { ...actual, scoreTextChecks: scoreTextChecksMock }
@@ -58,6 +60,7 @@ beforeEach(() => {
   enrichEventImageMock.mockReset()
   ingestEventsMock.mockReset()
   scoreTextChecksMock.mockReset().mockResolvedValue([PASSING_TEXT_CHECKS])
+  recordEditMock.mockReset()
 })
 
 describe('approveEvent', () => {
@@ -118,7 +121,7 @@ describe('editKeptCandidate', () => {
     scoreTextChecksMock.mockResolvedValue([{ ...PASSING_TEXT_CHECKS, addressQuality: { pass: true, reason: 'Now a real address', attempts: 1 } }])
     const { editKeptCandidate } = await import('./pipeline-review-service.js')
 
-    const error = await editKeptCandidate('event-1', { address: '3252 N Broadway' })
+    const error = await editKeptCandidate('event-1', { address: '3252 N Broadway' }, 'admin-1')
 
     expect(error).toBeNull()
     expect(scoreTextChecksMock).toHaveBeenCalledWith([expect.objectContaining({ address: '3252 N Broadway' })])
@@ -130,9 +133,45 @@ describe('editKeptCandidate', () => {
     selectResults.push([])
     const { editKeptCandidate } = await import('./pipeline-review-service.js')
 
-    const error = await editKeptCandidate('missing', { title: 'New Title' })
+    const error = await editKeptCandidate('missing', { title: 'New Title' }, 'admin-1')
 
     expect(error).toBe('not_found')
+  })
+
+  // Feedback #141: an admin's Pipeline Review edit writes into the same
+  // shared edit-history table an ordinary member's PATCH does, attributed
+  // to the acting admin — not a second, parallel audit trail.
+  it('records the edit into the shared edit-history table, attributed to the admin', async () => {
+    selectResults.push([
+      {
+        checks: null,
+        title: 'Old Title',
+        description: null,
+        address: 'Northalsted',
+        locationName: null,
+        startDate: '2026-10-10',
+        startTime: null,
+        endTime: null,
+        allDay: true,
+        sourceUrl: null,
+        topic: null,
+        imageUrl: 'https://example.com/img.jpg',
+        thumbnailUrl: 'https://example.com/thumb.jpg',
+      },
+    ])
+    const { editKeptCandidate } = await import('./pipeline-review-service.js')
+
+    await editKeptCandidate('event-1', { address: '3252 N Broadway' }, 'admin-1')
+
+    expect(recordEditMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        entityType: 'event',
+        entityId: 'event-1',
+        actorUserId: 'admin-1',
+        before: expect.objectContaining({ address: 'Northalsted' }),
+        after: expect.objectContaining({ address: '3252 N Broadway' }),
+      }),
+    )
   })
 })
 
@@ -142,13 +181,13 @@ describe('retryEventImageForKeptItem', () => {
     enrichEventImageMock.mockResolvedValue({ result: 'sourced', trace: [], imageQuality: PASSING_CHECK, imageRelevance: PASSING_CHECK })
     const { retryEventImageForKeptItem } = await import('./pipeline-review-service.js')
 
-    const error = await retryEventImageForKeptItem('event-1')
+    const error = await retryEventImageForKeptItem('event-1', 'admin-1')
 
     expect(error).toBeNull()
     expect(enrichEventImageMock).toHaveBeenCalledWith(
       'event-1',
       expect.objectContaining({ sourceUrl: 'https://example.com', title: 'Fall Festival' }),
-      { scoreLogos: true },
+      { scoreLogos: true, actor: 'admin-1' },
     )
     expect(updateCalls[0].set).not.toHaveProperty('pipelineReviewedAt')
   })
@@ -159,7 +198,7 @@ describe('retryEventImageForKeptItem', () => {
     enrichEventImageMock.mockResolvedValue({ result: 'sourced', trace: [], imageQuality: PASSING_CHECK, imageRelevance: PASSING_CHECK })
     const { retryEventImageForKeptItem } = await import('./pipeline-review-service.js')
 
-    await retryEventImageForKeptItem('event-1')
+    await retryEventImageForKeptItem('event-1', 'admin-1')
 
     expect(updateCalls[0].set).toEqual(expect.objectContaining({ status: 'approved', pipelineChecksPassed: true }))
   })
@@ -169,7 +208,7 @@ describe('retryEventImageForKeptItem', () => {
     enrichEventImageMock.mockResolvedValue({ result: 'none', trace: [], imageQuality: { pass: false, reason: 'none', attempts: 1 }, imageRelevance: { pass: false, reason: 'none', attempts: 1 } })
     const { retryEventImageForKeptItem } = await import('./pipeline-review-service.js')
 
-    const error = await retryEventImageForKeptItem('event-1')
+    const error = await retryEventImageForKeptItem('event-1', 'admin-1')
 
     expect(error).toBe('no_image_found')
   })
@@ -178,7 +217,7 @@ describe('retryEventImageForKeptItem', () => {
     selectResults.push([])
     const { retryEventImageForKeptItem } = await import('./pipeline-review-service.js')
 
-    const error = await retryEventImageForKeptItem('missing')
+    const error = await retryEventImageForKeptItem('missing', 'admin-1')
 
     expect(error).toBe('not_found')
     expect(enrichEventImageMock).not.toHaveBeenCalled()

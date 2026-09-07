@@ -1,7 +1,7 @@
 import { sql, type SQLWrapper } from 'drizzle-orm'
 
 import { events, eventInterests, users } from '../db/schema.js'
-import { canEditEvent } from './permissions.js'
+import { canDeleteEvent, canEditEvent } from './permissions.js'
 
 export type InterestStatus = 'interested' | 'dismissed'
 
@@ -65,9 +65,14 @@ export function serializeEvent(
     interest_status: interestStatus,
     interested_count: interestedCount,
     interested_people: interestedPeople,
-    // Creator-only edit/delete (feedback #46) — no admin override, same
-    // posture as feedback-post edits (feedback #39).
+    // can_edit: any logged-in member (feedback #141, 2026-09-07 — reverses
+    // the original creator-only rule). can_delete: still creator-only, no
+    // admin override — deletion is materially more destructive than an
+    // edit (which is always visible/attributed/reversible via edit
+    // history) and #141 only asked for editability, not deletability — see
+    // permissions.ts's canEditEvent/canDeleteEvent for the full reasoning.
     can_edit: currentUserId !== null && canEditEvent({ id: currentUserId }, e),
+    can_delete: currentUserId !== null && canDeleteEvent({ id: currentUserId }, e),
     submitted_by: submittedBy,
   }
 }
@@ -82,6 +87,39 @@ export function serializeEvent(
 // more than one table — a caller with a single-table outer query would
 // silently get this wrong (see the event_count fix on GET /event-sources,
 // which hit exactly this and had to use a real join instead).
+// Feedback #141 (2026-09-07): the snapshot shape recorded into entity_edits'
+// before/after columns — restricted to edit-history/service.ts's
+// EDITABLE_FIELDS.event allow-list, in the same snake_case keys the rest of
+// this app's API responses use, so a snapshot can be handed to the frontend
+// (a history entry, a restore) with no remapping. Lives here — not in
+// events/edit.ts or events/image-enrichment.ts — specifically so both of
+// those can import it without creating a cycle between them (edit.ts calls
+// into image-enrichment.ts's enrichEventImage for its own fire-and-forget
+// re-search; image-enrichment.ts needs this same snapshot shape for its own
+// history recording, and can't import it back from edit.ts without that
+// import going in a circle).
+export type EventHistorySnapshotFields = Pick<
+  SerializableEvent,
+  'title' | 'description' | 'startDate' | 'startTime' | 'endTime' | 'allDay' | 'locationName' | 'address' | 'sourceUrl' | 'topic' | 'imageUrl' | 'thumbnailUrl'
+>
+
+export function snapshotEventForHistory(e: EventHistorySnapshotFields): Record<string, unknown> {
+  return {
+    title: e.title,
+    description: e.description,
+    start_date: e.startDate,
+    start_time: e.startTime,
+    end_time: e.endTime,
+    all_day: e.allDay,
+    location_name: e.locationName,
+    address: e.address,
+    source_url: e.sourceUrl,
+    topic: e.topic,
+    image_url: e.imageUrl,
+    thumbnail_url: e.thumbnailUrl,
+  }
+}
+
 export function interestedCountExpr(eventId: SQLWrapper) {
   return sql<number>`(select count(*)::int from ${eventInterests} where ${eventInterests.eventId} = ${eventId} and ${eventInterests.status} = 'interested' and ${eventInterests.deletedAt} is null)`
 }

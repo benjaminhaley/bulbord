@@ -33,6 +33,7 @@ function camp(overrides: Partial<Camp> = {}): Camp {
     interested_count: 0,
     interested_people: [],
     can_edit: false,
+    can_delete: false,
     submitted_by: null,
     source: null,
     ...overrides,

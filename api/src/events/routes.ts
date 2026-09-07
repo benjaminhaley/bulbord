@@ -14,7 +14,8 @@ import { formatWhen, locationLabel } from '../newsletter/format.js'
 import { uploadPlaceholderImage } from '../uploads/placeholder.js'
 import { buildEventFilterConditions, parseAfterTimeParam, parseBeforeTimeParam, parseTopicsParam } from './filters.js'
 import { getEventsForWeek } from './week-query.js'
-import { canEditEvent } from './permissions.js'
+import { canDeleteEvent, canEditEvent } from './permissions.js'
+import { applyEventEdit } from './edit.js'
 import { extractEventFieldsFromDescription, findEventDetailsFromDescription } from './description-extraction.js'
 import { enrichEventImage, findCandidateEventImage } from './image-enrichment.js'
 import { extractEventFieldsFromPhoto, findEventSource, type ExtractedEventFields } from './photo-extraction.js'
@@ -397,48 +398,40 @@ export async function eventsRoutes(app: FastifyInstance) {
     }
 
     const allDay = !!body.all_day
-    // Same NOT NULL fallback as POST /events above — clearing a photo on
-    // edit still leaves a real (generated) image behind, never null.
-    const image =
-      body.image_url && body.thumbnail_url
-        ? { imageUrl: body.image_url, thumbnailUrl: body.thumbnail_url }
-        : await uploadPlaceholderImage(title, 'events')
-    await Promise.all([
-      db
-        .update(events)
-        .set({
-          title,
-          description: body.description?.trim() || null,
-          startDate,
-          startTime: allDay ? null : body.start_time?.trim() || null,
-          endTime: allDay ? null : body.end_time?.trim() || null,
-          allDay,
-          address,
-          locationName: body.location_name?.trim() || null,
-          sourceUrl: body.source_url?.trim() || null,
-          imageUrl: image.imageUrl,
-          thumbnailUrl: image.thumbnailUrl,
-          topic: body.topic?.trim() || null,
-          updatedAt: new Date(),
-        })
-        .where(eq(events.id, id)),
-      db.insert(eventsLog).values({
-        actor: currentUser.id,
-        action: 'event_updated',
-        metadata: { eventId: id },
-      }),
-    ])
-
-    // Same fire-and-forget image search as POST /events above — clearing a
-    // photo on edit shouldn't leave the event permanently stuck on a
-    // placeholder any more than never having one in the first place should.
-    if (!(body.image_url && body.thumbnail_url)) {
-      void enrichEventImage(id, {
-        sourceUrl: body.source_url?.trim() || null,
+    // The shared write path (edit.ts) also used by the edit-history restore
+    // endpoint — computes the placeholder-image fallback, writes the row,
+    // records the edit-history entry, and re-triggers the same fire-and-
+    // forget image search a cleared photo has always gotten.
+    const editError = await applyEventEdit(
+      id,
+      {
         title,
         description: body.description?.trim() || null,
-      }).catch(() => {})
+        start_date: startDate,
+        start_time: allDay ? null : body.start_time?.trim() || null,
+        end_time: allDay ? null : body.end_time?.trim() || null,
+        all_day: allDay,
+        location_name: body.location_name?.trim() || null,
+        address,
+        source_url: body.source_url?.trim() || null,
+        topic: body.topic?.trim() || null,
+        image_url: body.image_url ?? null,
+        thumbnail_url: body.thumbnail_url ?? null,
+      },
+      currentUser.id,
+    )
+    // Only reachable via a race with a concurrent delete between the
+    // existence check above and this call — already-checked "not found"
+    // isn't expected in practice, but the shared write path can be called
+    // from elsewhere (the restore endpoint) with no prior check of its own.
+    if (editError) {
+      return reply.code(404).send({ error: { message: 'Event not found' } })
     }
+    await db.insert(eventsLog).values({
+      actor: currentUser.id,
+      action: 'event_updated',
+      metadata: { eventId: id },
+    })
 
     // Best-effort, non-blocking — same as POST /events above.
     const sourceUrl = body.source_url?.trim()
@@ -477,7 +470,7 @@ export async function eventsRoutes(app: FastifyInstance) {
     if (!existing) {
       return reply.code(404).send({ error: { message: 'Event not found' } })
     }
-    if (!canEditEvent(currentUser, existing)) {
+    if (!canDeleteEvent(currentUser, existing)) {
       return reply.code(403).send({ error: { message: 'Forbidden' } })
     }
 

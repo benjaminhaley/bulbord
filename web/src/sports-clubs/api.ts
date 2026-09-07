@@ -58,7 +58,12 @@ export interface SportsClub {
   interest_status: InterestStatus | null
   interested_count: number
   interested_people: { name: string; avatar_url: string | null }[]
+  // Any logged-in member (feedback #141, 2026-09-07 — reverses the original
+  // creator-only rule, including for seeded/system listings).
   can_edit: boolean
+  // Still creator-only, no admin override — see events/api.ts's identical
+  // comment on Event.can_delete for the full reasoning.
+  can_delete: boolean
   submitted_by: { name: string; avatar_url: string | null } | null
   source: { id: string; name: string } | null
   next_occurrence_date: string | null
@@ -98,6 +103,17 @@ export interface SportsClubInput {
   source_url: string
   image_url: string | null
   thumbnail_url: string | null
+  // Feedback #141 (2026-09-07): opened from seed-only to member-editable
+  // (options/signup_status), plus location_name/price_per_week (already
+  // real fields the backend has always accepted — see api/src/sports-clubs/
+  // routes.ts's SportsClubBody — just never sent by SportsClubForm.tsx's
+  // own "post a new listing" flow, which stays deliberately simple). All
+  // optional and only ever sent by the inline edit flow on an existing
+  // listing's detail page (SportsClubDetailPage.tsx/SportsClubBody.tsx).
+  location_name?: string
+  price_per_week?: number | null
+  options?: SportsClubOptionLine[] | null
+  signup_status?: string | null
 }
 
 export interface InterestedUser {

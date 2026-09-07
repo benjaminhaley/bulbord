@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm'
-import { boolean, date, integer, jsonb, numeric, pgTable, text, time, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core'
+import { boolean, date, index, integer, jsonb, numeric, pgTable, text, time, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core'
 
 const timestamps = {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
@@ -859,3 +859,33 @@ export const sportsClubComments = pgTable('sports_club_comments', {
   body: text('body').notNull(),
   ...timestamps,
 })
+
+// Feedback #141 (2026-09-07): a single, generic edit-history table shared by
+// events/camps/sports_clubs — "record what changed and by whom" has no
+// per-domain behavior to diverge on, the same reasoning notifications/
+// content-comment.ts already applies to stay shared despite these three
+// otherwise being fresh, non-shared clones (see CLAUDE.md). `entityType` is
+// the discriminator rather than three parallel tables. `before`/`after` are
+// snapshots restricted to each entity's own fixed "editable content fields"
+// allow-list (see edit-history/service.ts's EDITABLE_FIELDS) — not the whole
+// row, so an internal workflow column (status, pipelineReviewedAt) never
+// leaks into a member-visible diff. `actorUserId` null + `actorLabel` set
+// (e.g. 'system:image-enrichment') means an automated pipeline step made the
+// change with no human in the loop — mirrors events_log.actor's existing
+// plain-string 'system:...' convention, just split into a real FK when a
+// real user acted so the list/detail routes can join for name+avatar.
+export const entityEdits = pgTable(
+  'entity_edits',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    entityType: text('entity_type').notNull(), // 'event' | 'camp' | 'sports_club'
+    entityId: uuid('entity_id').notNull(),
+    actorUserId: uuid('actor_user_id').references(() => users.id),
+    actorLabel: text('actor_label'), // e.g. 'system:image-enrichment' — only set when actorUserId is null
+    before: jsonb('before').notNull(),
+    after: jsonb('after').notNull(),
+    changedFields: jsonb('changed_fields').notNull().$type<string[]>(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index('entity_edits_entity_idx').on(table.entityType, table.entityId, table.createdAt)],
+)

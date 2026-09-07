@@ -23,9 +23,13 @@ export interface Event {
   // (feedback #43 — icon-stack teaser needs a photo/initials per person, not
   // just names).
   interested_people: { name: string; avatar_url: string | null }[]
-  // True only for the member who submitted this event (feedback #46) — never
-  // true for system-sourced events, which have no submitter to match.
+  // Any logged-in member (feedback #141, 2026-09-07 — reverses the original
+  // creator-only rule, including for system-sourced events).
   can_edit: boolean
+  // Still creator-only, no admin override — deletion is materially more
+  // destructive than an edit (always visible/attributed/reversible via
+  // edit history), and #141 only asked for editability.
+  can_delete: boolean
   // Present only for member self-service posts (feedback #46); null for
   // system-sourced events, which have no submitter. Used to attribute the
   // post and as a placeholder image fallback when the event has no photo

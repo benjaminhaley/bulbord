@@ -9,5 +9,8 @@ export function useCampImageUpload(initial: UploadedImage | null = null) {
   const [image, setImage] = useState<UploadedImage | null>(initial)
   const { fileInputRef, uploading, attach } = useImageUpload('camps', setImage)
 
-  return { image, fileInputRef, uploading, attach, remove: () => setImage(null) }
+  // setImage exposed directly (feedback #141) so CampDetailPage's inline
+  // editor can (re)seed this hook with the camp's current photo each time
+  // edit mode starts — same shape as events/useEventImageUpload.ts.
+  return { image, fileInputRef, uploading, attach, remove: () => setImage(null), setImage }
 }

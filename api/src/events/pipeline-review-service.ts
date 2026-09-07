@@ -10,10 +10,12 @@ import { and, desc, eq, gte, isNull } from 'drizzle-orm'
 import { db } from '../db/client.js'
 import { events, eventSources, rejectedEventCandidates, users } from '../db/schema.js'
 import { todayInChicago } from '../dates.js'
+import { recordEdit } from '../edit-history/service.js'
 import { checkDateQuality, checkTimeQuality, buildDuplicateCheck, scoreTextChecks, type CheckResult, type PipelineChecks } from './candidate-checks.js'
 import type { CandidateEvent } from './ingest.js'
 import { ingestEvents } from './ingest.js'
 import { enrichEventImage } from './image-enrichment.js'
+import { snapshotEventForHistory } from './serialize.js'
 
 export interface KeptReviewItem {
   id: string
@@ -218,9 +220,31 @@ export type EditableFields = Partial<{ title: string; description: string; addre
 // the new values; the image checks and duplicateCheck carry over unchanged
 // from what's already stored (edit doesn't touch the image — see
 // retryEventImageForKeptItem for that).
-export async function editKeptCandidate(eventId: string, fields: EditableFields): Promise<PipelineReviewActionError | null> {
+//
+// `adminId` (feedback #141, 2026-09-07): unifies this admin action into the
+// same shared edit-history table an ordinary member's PATCH /events/:id
+// writes to — Ben's own "don't build a second, parallel history" ask. The
+// select below pulls the *full* editable-field set (not just the fields
+// this action can touch), so the recorded before/after is a complete
+// snapshot a future "view this old version" page can render whole, not just
+// the couple of fields Pipeline Review's own Edit panel happens to expose.
+export async function editKeptCandidate(eventId: string, fields: EditableFields, adminId: string): Promise<PipelineReviewActionError | null> {
   const [existing] = await db
-    .select({ checks: events.pipelineQualityChecks, title: events.title, description: events.description, address: events.address, locationName: events.locationName, startDate: events.startDate, startTime: events.startTime, allDay: events.allDay })
+    .select({
+      checks: events.pipelineQualityChecks,
+      title: events.title,
+      description: events.description,
+      address: events.address,
+      locationName: events.locationName,
+      startDate: events.startDate,
+      startTime: events.startTime,
+      endTime: events.endTime,
+      allDay: events.allDay,
+      sourceUrl: events.sourceUrl,
+      topic: events.topic,
+      imageUrl: events.imageUrl,
+      thumbnailUrl: events.thumbnailUrl,
+    })
     .from(events)
     .where(and(eq(events.id, eventId), isNull(events.deletedAt)))
     .limit(1)
@@ -244,6 +268,15 @@ export async function editKeptCandidate(eventId: string, fields: EditableFields)
   const pipelineChecksPassed = Object.values(checks).every((c) => c.pass)
 
   await db.update(events).set({ ...fields, pipelineQualityChecks: checks, pipelineChecksPassed, updatedAt: new Date() }).where(eq(events.id, eventId))
+
+  await recordEdit({
+    entityType: 'event',
+    entityId: eventId,
+    actorUserId: adminId,
+    before: snapshotEventForHistory(existing),
+    after: snapshotEventForHistory(merged),
+  })
+
   return null
 }
 
@@ -253,7 +286,12 @@ export async function editKeptCandidate(eventId: string, fields: EditableFields)
 // changes publish state by itself" rule editKeptCandidate follows, except
 // here the exception is deliberate: "fixed the last thing wrong with it"
 // should actually go live, not need a separate click.
-export async function retryEventImageForKeptItem(eventId: string): Promise<PipelineReviewActionError | 'no_image_found' | null> {
+//
+// `adminId` (feedback #141): passed through to enrichEventImage as the
+// history actor, so this shows up in the shared edit-history as the admin's
+// own action — not the generic 'system:image-enrichment' label an
+// unattended background re-search gets.
+export async function retryEventImageForKeptItem(eventId: string, adminId: string): Promise<PipelineReviewActionError | 'no_image_found' | null> {
   const [row] = await db
     .select({ id: events.id, sourceUrl: events.sourceUrl, title: events.title, description: events.description, checks: events.pipelineQualityChecks, status: events.status })
     .from(events)
@@ -274,7 +312,7 @@ export async function retryEventImageForKeptItem(eventId: string): Promise<Pipel
     ;({ result, imageQuality, imageRelevance } = await enrichEventImage(
       row.id,
       { sourceUrl: row.sourceUrl, title: row.title, description: row.description },
-      { scoreLogos: true },
+      { scoreLogos: true, actor: adminId },
     ))
   } catch (err) {
     const reason = err instanceof Error ? err.message : 'unknown error'

@@ -21,14 +21,20 @@ import { AddFriendsPage } from '../connections/AddFriendsPage'
 import { FriendsPage } from '../connections/FriendsPage'
 import { EventsPage } from '../events/EventsPage'
 import { EventDetailPage } from '../events/EventDetailPage'
+import { EventHistoryPage } from '../events/EventHistoryPage'
+import { EventHistoryVersionPage } from '../events/EventHistoryVersionPage'
 import { SourcesPage } from '../events/SourcesPage'
 import { SourceDetailPage } from '../events/SourceDetailPage'
 import { CampsPage } from '../camps/CampsPage'
 import { CampDetailPage } from '../camps/CampDetailPage'
+import { CampHistoryPage } from '../camps/CampHistoryPage'
+import { CampHistoryVersionPage } from '../camps/CampHistoryVersionPage'
 import { CampSourcesPage } from '../camps/CampSourcesPage'
 import { CampSourceDetailPage } from '../camps/CampSourceDetailPage'
 import { SportsClubsPage } from '../sports-clubs/SportsClubsPage'
 import { SportsClubDetailPage } from '../sports-clubs/SportsClubDetailPage'
+import { SportsClubHistoryPage } from '../sports-clubs/SportsClubHistoryPage'
+import { SportsClubHistoryVersionPage } from '../sports-clubs/SportsClubHistoryVersionPage'
 import { SportsClubSourcesPage } from '../sports-clubs/SportsClubSourcesPage'
 import { SportsClubSourceDetailPage } from '../sports-clubs/SportsClubSourceDetailPage'
 import { FeedbackDetailPage } from '../feedback/FeedbackDetailPage'
@@ -50,14 +56,20 @@ export function App() {
                   <AdminRoute exact path="/event-sources" component={SourcesPage} />
                   <AdminRoute exact path="/event-sources/:id" component={SourceDetailPage} />
                   <Route exact path="/events/:id" component={EventDetailPage} />
+                  <Route exact path="/events/:id/history" component={EventHistoryPage} />
+                  <Route exact path="/events/:id/history/:editId" component={EventHistoryVersionPage} />
                   <Route exact path="/camps" component={CampsPage} />
                   <AdminRoute exact path="/camp-sources" component={CampSourcesPage} />
                   <AdminRoute exact path="/camp-sources/:id" component={CampSourceDetailPage} />
                   <Route exact path="/camps/:id" component={CampDetailPage} />
+                  <Route exact path="/camps/:id/history" component={CampHistoryPage} />
+                  <Route exact path="/camps/:id/history/:editId" component={CampHistoryVersionPage} />
                   <Route exact path="/sports-clubs" component={SportsClubsPage} />
                   <AdminRoute exact path="/sports-club-sources" component={SportsClubSourcesPage} />
                   <AdminRoute exact path="/sports-club-sources/:id" component={SportsClubSourceDetailPage} />
                   <Route exact path="/sports-clubs/:id" component={SportsClubDetailPage} />
+                  <Route exact path="/sports-clubs/:id/history" component={SportsClubHistoryPage} />
+                  <Route exact path="/sports-clubs/:id/history/:editId" component={SportsClubHistoryVersionPage} />
                   <Route exact path="/feedback" component={FeedbackPage} />
                   <Route exact path="/feedback/:id" component={FeedbackDetailPage} />
                   <Route exact path="/account" component={AccountPage} />
