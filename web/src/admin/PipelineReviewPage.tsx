@@ -76,7 +76,23 @@ const ALL_CHECK_KEYS = PIPELINE_CHECK_LABELS.map(({ key }) => key)
 // module's "not applicable" sentinel (a rejected candidate's image checks,
 // which never actually ran a search) — shown neutrally, with its reason,
 // since neither a green check nor a red X would be honest there.
-function CheckLine({ label, check }: { label: string; check: { pass: boolean; reason: string; attempts: number } }) {
+// `check` is undefined for a row whose stored checks object predates a check
+// key that exists today (e.g. a checklist field added after the row was
+// scored) — rendered the same neutral "not applicable" way as attempts: 0,
+// rather than crashing on `.pass`/`.attempts` of undefined. A real
+// production incident (2026-09-09: a stale event-sourcing-cron deploy wrote
+// an old, smaller checks shape, then a newer web build's ChecksSection tried
+// to read a key that shape never had) blanked this entire page with no error
+// boundary to catch it — this guard is the systemic fix, on top of the
+// one-off data backfill for that specific incident.
+function CheckLine({ label, check }: { label: string; check?: { pass: boolean; reason: string; attempts: number } }) {
+  if (!check) {
+    return (
+      <p style={{ ...factLineStyle, fontSize: '0.8125rem', color: 'var(--ion-color-medium)' }}>
+        – <strong>{label}:</strong> Not recorded (this row predates this check)
+      </p>
+    )
+  }
   const notApplicable = check.attempts === 0
   const color = notApplicable ? 'var(--ion-color-medium)' : check.pass ? 'var(--ion-color-success)' : 'var(--ion-color-danger)'
   const icon = notApplicable ? '–' : check.pass ? '✓' : '✗'
