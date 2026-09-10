@@ -653,12 +653,10 @@
   // dead end (and gives a real world-record time to chase from the very
   // first play): a flawless "world record" and, way down at the bottom, a
   // deliberately obscure real pro — not a household name, but one a real
-  // soccer fan would recognize — as the low bar anyone can clear. Seeded
-  // once, only if nothing has been saved yet (see ensureSeedLeaderboard) —
-  // after that they're just two more real rows, beatable like any other.
+  // soccer fan would recognize — as the low bar anyone can clear.
   var SEED_LEADERBOARD = [
-    { name: 'Messi', finalMs: 8500, misses: 0, date: '2026-01-01T00:00:00.000Z' },
-    { name: 'Danny Ward', finalMs: 120000, misses: 9, date: '2026-01-01T00:00:00.000Z' },
+    { name: 'Messi', finalMs: 7800, misses: 0, date: '2026-01-01T00:00:00.000Z' },
+    { name: 'Danny Ward', finalMs: 180000, misses: 9, date: '2026-01-01T00:00:00.000Z' },
   ];
 
   var el = {
@@ -740,8 +738,28 @@
   function saveLastName(name) {
     try { localStorage.setItem(NAME_STORAGE_KEY, name); } catch (e) {}
   }
+  // Upserts by name rather than "only if the board is completely empty" —
+  // that original check was the actual bug (2026-09-10): anyone who'd
+  // already played and saved their own score before this feature shipped
+  // had a non-empty board, so the seed rows silently never got added and
+  // the leaderboard looked like it only had one person on it. This adds
+  // whichever seed rows are missing (by name) and re-syncs their time if a
+  // stale value from an earlier version of this file is still sitting in
+  // localStorage — real players' own rows are never touched.
   function ensureSeedLeaderboard() {
-    if (loadLeaderboard().length === 0) saveLeaderboard(SEED_LEADERBOARD.slice());
+    var board = loadLeaderboard();
+    var changed = false;
+    SEED_LEADERBOARD.forEach(function (seed) {
+      var idx = board.findIndex(function (e) { return e.name === seed.name; });
+      if (idx === -1) {
+        board.push({ name: seed.name, finalMs: seed.finalMs, misses: seed.misses, date: seed.date });
+        changed = true;
+      } else if (board[idx].finalMs !== seed.finalMs) {
+        board[idx] = { name: seed.name, finalMs: seed.finalMs, misses: seed.misses, date: seed.date };
+        changed = true;
+      }
+    });
+    if (changed) saveLeaderboard(board);
   }
 
   // ---------- helpers ----------
