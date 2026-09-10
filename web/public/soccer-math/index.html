@@ -95,11 +95,22 @@
   }
   header h1 {
     margin: 0;
-    /* Slightly reduced from the original 1.5rem — reserving real space
-       for the back button (48px, vs. the old absolutely-positioned
-       overlay that reserved none) narrowed the title column enough that
-       "⚽ Multiplication Shootout" wrapped to two lines at the old size. */
-    font-size: 1.42rem;
+    /* A few px of top margin, not align-items:center on the whole row —
+       centering the row vertically centers the entire title+subtitle
+       block as one unit, which (since that block is roughly as tall as
+       the back button) barely moves the title line itself and does
+       nothing to isolate it from the subtitle below. This nudges just
+       the title down to sit closer to the back button's own vertically-
+       centered icon, per direct feedback (2026-09-10, from a screenshot:
+       "move the title... down a little bit").
+       Also slightly reduced from the original 1.5rem — reserving real
+       space for the back button on both sides (48px each, for a title
+       that's genuinely centered in the full header width, not just
+       centered in whatever's left after one button) narrowed the title
+       column enough that "⚽ Multiplication Shootout" wrapped to two
+       lines at the old size. */
+    margin-top: 6px;
+    font-size: 1.26rem;
     font-weight: 900;
     color: var(--paper);
     text-shadow: 0 2px 0 rgba(0,0,0,0.25);
@@ -107,7 +118,11 @@
   }
   header .sub {
     color: rgba(255,255,255,0.85);
-    font-size: 0.85rem;
+    /* Reduced alongside the title, for the same reason — the narrower
+       centered column (reserving 48px on both sides now, for genuine
+       centering) left the subtitle wrapping with just "wins!" alone on
+       its own second line. */
+    font-size: 0.74rem;
     margin-top: 4px;
     font-weight: 600;
   }
@@ -743,6 +758,10 @@
         <h1>⚽ Multiplication Shootout</h1>
         <div class="sub" id="header-sub">Race the clock — 10 shots, best time wins!</div>
       </div>
+      <!-- Balances the back button's 48px so the title is genuinely
+           centered in the full header width, not just centered in
+           whatever's left after the button — feedback, 2026-09-10. -->
+      <div class="back-link" aria-hidden="true" style="visibility: hidden;"></div>
     </div>
   </header>
 
