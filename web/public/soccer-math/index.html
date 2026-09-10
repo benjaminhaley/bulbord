@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 <meta name="robots" content="noindex, nofollow" />
-<title>Penalty Shootout Math</title>
+<title>Multiplication Shootout</title>
 <style>
   :root {
     --pitch: #2e8b3d;
@@ -232,10 +232,44 @@
     font-weight: 900;
     font-size: 1.15rem;
     min-height: 1.5em;
-    margin-bottom: 6px;
+    margin-bottom: 2px;
   }
   .result-banner.good { color: var(--gold); text-shadow: 0 2px 0 rgba(0,0,0,0.35); }
   .result-banner.bad { color: #ffdad4; }
+
+  /* A miss costs real time, live — no arithmetic added after the fact (see
+     endRound below). This is the "you're in the penalty box" visual: a
+     referee's yellow card plus a real, visible 2-second countdown before
+     the next shot is allowed, during which the timer up in .score-strip
+     keeps running exactly as normal. */
+  .penalty-box {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    min-height: 30px;
+    margin-bottom: 6px;
+  }
+  .yellow-card {
+    display: inline-block;
+    font-size: 1.5rem;
+    transform: rotate(-8deg);
+    animation: card-show 0.35s ease-out;
+  }
+  @keyframes card-show {
+    0% { transform: scale(0.3) rotate(-8deg); opacity: 0; }
+    65% { transform: scale(1.2) rotate(-8deg); opacity: 1; }
+    100% { transform: scale(1) rotate(-8deg); }
+  }
+  .penalty-text {
+    font-weight: 900;
+    font-size: 0.88rem;
+    color: #fff7dd;
+    background: rgba(0,0,0,0.2);
+    padding: 5px 12px;
+    border-radius: 999px;
+  }
+  .penalty-text b { color: var(--gold); font-variant-numeric: tabular-nums; }
 
   .score-strip {
     display: flex;
@@ -246,7 +280,7 @@
     font-size: 0.85rem;
     margin-bottom: 8px;
   }
-  .score-strip b { font-size: 1.05rem; font-variant-numeric: tabular-nums; }
+  .score-strip b { font-size: 1.3rem; font-variant-numeric: tabular-nums; }
   #timer-val { color: var(--gold); }
 
   .question-card {
@@ -311,8 +345,6 @@
     padding: 5px 0;
   }
   .tally-row .val { font-variant-numeric: tabular-nums; font-weight: 900; color: var(--ink); }
-  .tally-row.penalty { color: var(--danger); min-height: 1.4em; }
-  .tally-row.penalty .val { color: var(--danger); }
   .tally-divider { border: none; border-top: 2px dashed #d3e0d7; margin: 6px 0; }
   .tally-row.final { font-size: 1.15rem; color: var(--ink); }
   .tally-row.final .val {
@@ -324,22 +356,6 @@
     0% { transform: scale(0.4); opacity: 0; }
     70% { transform: scale(1.15); opacity: 1; }
     100% { transform: scale(1); }
-  }
-
-  .penalty-chip {
-    display: inline-block;
-    background: var(--danger);
-    color: white;
-    font-weight: 900;
-    font-size: 0.72rem;
-    border-radius: 999px;
-    padding: 2px 8px;
-    margin-left: 6px;
-    animation: chip-in 0.35s ease-out;
-  }
-  @keyframes chip-in {
-    0% { transform: translateY(-6px) scale(0.5); opacity: 0; }
-    100% { transform: translateY(0) scale(1); opacity: 1; }
   }
 
   .new-best {
@@ -526,7 +542,7 @@
 <div id="app">
   <header>
     <a class="home-link" href="/" aria-label="Back to Bulbord">🏠</a>
-    <h1>⚽ Penalty Shootout Math</h1>
+    <h1>⚽ Multiplication Shootout</h1>
     <div class="sub" id="header-sub">Race the clock — 10 shots, best time wins!</div>
   </header>
 
@@ -535,7 +551,7 @@
     <section id="screen-start">
       <div class="card">
         <div class="ball-bounce">⚽</div>
-        <div class="start-tagline">Times tables 1–12, four choices, best time wins.</div>
+        <div class="start-tagline">Times tables 1–12, best time wins.</div>
         <div class="best-row" id="best-row"></div>
         <div id="record-row"></div>
 
@@ -549,13 +565,16 @@
       <div class="shot-tracker" id="shot-tracker"></div>
       <div class="score-strip">
         <div>⏱ <b id="timer-val">0.0s</b></div>
-        <div>Streak <b id="streak-val">0</b> <span id="streak-fire"></span></div>
       </div>
       <div class="goal-scene">
         <div class="goal-frame">🥅</div>
         <div class="ball-fly" id="ball-fly">⚽</div>
       </div>
       <div class="result-banner" id="result-banner">&nbsp;</div>
+      <div class="penalty-box hidden" id="penalty-box">
+        <span class="yellow-card" id="yellow-card">🟨</span>
+        <span class="penalty-text">Time-out: <b id="penalty-countdown">2</b>s</span>
+      </div>
       <div class="question-card">
         <div class="question-text" id="question-text">? × ?</div>
         <div class="choices" id="choices"></div>
@@ -570,12 +589,8 @@
 
         <div class="tally">
           <div class="tally-row">
-            <span>Race Time</span>
-            <span class="val" id="tally-race-time">0.0s</span>
-          </div>
-          <div class="tally-row penalty" id="tally-penalty-row">
-            <span id="tally-penalty-label">&nbsp;</span>
-            <span class="val" id="tally-penalty-total"></span>
+            <span>🟨 Misses</span>
+            <span class="val" id="tally-misses">0</span>
           </div>
           <hr class="tally-divider" />
           <div class="tally-row final">
@@ -625,11 +640,26 @@
 
   var SHOTS_PER_ROUND = 10;
   var MAX_TABLE = 12;
-  var MISS_PENALTY_MS = 2000;
+  // A miss costs time the natural way — the round simply pauses here for
+  // real, with the live timer still running, rather than a number added to
+  // the score afterward. This is the one source of truth for both the
+  // pause duration and the on-screen countdown.
+  var MISS_TIMEOUT_MS = 2000;
   var MAX_LEADERBOARD_ENTRIES = 100;
   var BEST_STORAGE_KEY = 'soccerMathBestTime_v1';
   var NAME_STORAGE_KEY = 'soccerMathLastName_v1';
   var LEADERBOARD_STORAGE_KEY = 'soccerMathLeaderboard_v1';
+  // A little fun on first load, so the leaderboard never reads as an empty
+  // dead end (and gives a real world-record time to chase from the very
+  // first play): a flawless "world record" and, way down at the bottom, a
+  // deliberately obscure real pro — not a household name, but one a real
+  // soccer fan would recognize — as the low bar anyone can clear. Seeded
+  // once, only if nothing has been saved yet (see ensureSeedLeaderboard) —
+  // after that they're just two more real rows, beatable like any other.
+  var SEED_LEADERBOARD = [
+    { name: 'Messi', finalMs: 8500, misses: 0, date: '2026-01-01T00:00:00.000Z' },
+    { name: 'Danny Ward', finalMs: 120000, misses: 9, date: '2026-01-01T00:00:00.000Z' },
+  ];
 
   var el = {
     screenStart: document.getElementById('screen-start'),
@@ -644,17 +674,16 @@
     backFromLeaderboardBtn: document.getElementById('back-from-leaderboard-btn'),
     shotTracker: document.getElementById('shot-tracker'),
     timerVal: document.getElementById('timer-val'),
-    streakVal: document.getElementById('streak-val'),
-    streakFire: document.getElementById('streak-fire'),
     ballFly: document.getElementById('ball-fly'),
     resultBanner: document.getElementById('result-banner'),
+    penaltyBox: document.getElementById('penalty-box'),
+    yellowCard: document.getElementById('yellow-card'),
+    penaltyCountdown: document.getElementById('penalty-countdown'),
     questionText: document.getElementById('question-text'),
     choices: document.getElementById('choices'),
     endTrophy: document.getElementById('end-trophy'),
     finalTitle: document.getElementById('final-title'),
-    tallyRaceTime: document.getElementById('tally-race-time'),
-    tallyPenaltyLabel: document.getElementById('tally-penalty-label'),
-    tallyPenaltyTotal: document.getElementById('tally-penalty-total'),
+    tallyMisses: document.getElementById('tally-misses'),
     tallyFinalScore: document.getElementById('tally-final-score'),
     newBestBadge: document.getElementById('new-best-badge'),
     rankReveal: document.getElementById('rank-reveal'),
@@ -670,7 +699,7 @@
   };
 
   var round = {
-    shots: [], index: 0, streak: 0, bestStreakThisRound: 0, misses: 0,
+    shots: [], index: 0, misses: 0,
     answering: false, startTime: 0, elapsedMs: 0,
   };
   var timerInterval = null;
@@ -679,11 +708,11 @@
   function loadBest() {
     try {
       var raw = localStorage.getItem(BEST_STORAGE_KEY);
-      if (!raw) return { bestTimeMs: null, bestStreak: 0 };
+      if (!raw) return { bestTimeMs: null };
       var parsed = JSON.parse(raw);
-      return { bestTimeMs: typeof parsed.bestTimeMs === 'number' ? parsed.bestTimeMs : null, bestStreak: parsed.bestStreak || 0 };
+      return { bestTimeMs: typeof parsed.bestTimeMs === 'number' ? parsed.bestTimeMs : null };
     } catch (e) {
-      return { bestTimeMs: null, bestStreak: 0 };
+      return { bestTimeMs: null };
     }
   }
   function saveBest(best) {
@@ -711,6 +740,9 @@
   function saveLastName(name) {
     try { localStorage.setItem(NAME_STORAGE_KEY, name); } catch (e) {}
   }
+  function ensureSeedLeaderboard() {
+    if (loadLeaderboard().length === 0) saveLeaderboard(SEED_LEADERBOARD.slice());
+  }
 
   // ---------- helpers ----------
   function formatTime(ms) {
@@ -728,19 +760,11 @@
   function renderBestRow(container) {
     var best = loadBest();
     container.innerHTML = '';
-    if (best.bestTimeMs == null && best.bestStreak === 0) return;
-    if (best.bestTimeMs != null) {
-      var p1 = document.createElement('div');
-      p1.className = 'pill';
-      p1.textContent = 'Your Best: ' + formatTime(best.bestTimeMs);
-      container.appendChild(p1);
-    }
-    if (best.bestStreak > 0) {
-      var p2 = document.createElement('div');
-      p2.className = 'pill';
-      p2.textContent = 'Streak: ' + best.bestStreak + ' 🔥';
-      container.appendChild(p2);
-    }
+    if (best.bestTimeMs == null) return;
+    var p1 = document.createElement('div');
+    p1.className = 'pill';
+    p1.textContent = 'Your Best: ' + formatTime(best.bestTimeMs);
+    container.appendChild(p1);
   }
 
   function renderRecordRow() {
@@ -795,10 +819,6 @@
     }
   }
 
-  function updateStreakFire() {
-    el.streakFire.textContent = round.streak >= 3 ? '🔥' : '';
-  }
-
   function showScreen(name) {
     el.screenStart.style.display = name === 'start' ? 'block' : 'none';
     el.screenGame.style.display = name === 'game' ? 'flex' : 'none';
@@ -819,14 +839,37 @@
     if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
   }
 
+  // ---------- miss penalty (yellow card + real countdown) ----------
+  var penaltyInterval = null;
+  function showMissPenalty() {
+    el.penaltyBox.classList.remove('hidden');
+    // Restart the card's pop-in animation on every miss, not just the first
+    // — re-triggering a CSS animation needs a reflow between removing and
+    // re-applying it, since just re-adding the same class is a no-op.
+    el.yellowCard.style.animation = 'none';
+    void el.yellowCard.offsetWidth;
+    el.yellowCard.style.animation = '';
+
+    var secondsLeft = MISS_TIMEOUT_MS / 1000;
+    el.penaltyCountdown.textContent = secondsLeft;
+    if (penaltyInterval) clearInterval(penaltyInterval);
+    penaltyInterval = setInterval(function () {
+      secondsLeft--;
+      if (secondsLeft > 0) el.penaltyCountdown.textContent = secondsLeft;
+      else clearInterval(penaltyInterval);
+    }, 1000);
+  }
+  function hidePenaltyBox() {
+    if (penaltyInterval) { clearInterval(penaltyInterval); penaltyInterval = null; }
+    el.penaltyBox.classList.add('hidden');
+  }
+
   // ---------- round flow ----------
   function startRound() {
     round = {
-      shots: buildShots(), index: 0, streak: 0, bestStreakThisRound: 0, misses: 0,
+      shots: buildShots(), index: 0, misses: 0,
       answering: false, startTime: 0, elapsedMs: 0,
     };
-    el.streakVal.textContent = '0';
-    updateStreakFire();
     el.headerSub.textContent = 'Score a goal for every right answer!';
     showScreen('game');
     startTimer();
@@ -839,6 +882,7 @@
     el.ballFly.className = 'ball-fly';
     el.resultBanner.textContent = ' ';
     el.resultBanner.className = 'result-banner';
+    hidePenaltyBox();
     el.questionText.textContent = shot.a + ' × ' + shot.b;
     renderShotTracker();
 
@@ -863,47 +907,46 @@
     var correct = val === shot.answer;
     shot.result = correct ? 'goal' : 'miss';
 
-    var isLastShot = round.index + 1 >= round.shots.length;
-    if (isLastShot) {
-      // Freeze elapsed time the instant the final answer lands, so the
-      // "SAVED!"/celebration delay below never counts toward the race time.
-      round.elapsedMs = performance.now() - round.startTime;
-      stopTimer();
-      el.timerVal.textContent = formatTime(round.elapsedMs);
-    }
-
     if (correct) {
-      round.streak++;
-      round.bestStreakThisRound = Math.max(round.bestStreakThisRound, round.streak);
       btn.classList.add('correct');
       el.ballFly.className = 'ball-fly shoot-good';
       el.resultBanner.textContent = pick(['GOAL!! ⚽', 'ONTARGET! 🎉', 'SCORCHER! 🔥', 'TOP CORNER! ⚽']);
       el.resultBanner.classList.add('good');
       launchConfetti();
     } else {
-      round.streak = 0;
       round.misses++;
       btn.classList.add('wrong');
       buttons.forEach(function (b) {
         if (parseInt(b.textContent, 10) === shot.answer) b.classList.add('correct');
       });
       el.ballFly.className = 'ball-fly shoot-bad';
-      el.resultBanner.textContent = 'SAVED! It was ' + shot.a + ' × ' + shot.b + ' = ' + shot.answer + ' (+2s)';
+      el.resultBanner.textContent = 'SAVED! It was ' + shot.a + ' × ' + shot.b + ' = ' + shot.answer;
       el.resultBanner.classList.add('bad');
+      // The penalty box, not a number tacked onto the score afterward, is
+      // what actually costs you time here — the live timer above keeps
+      // ticking through this whole pause, same as it does for every other
+      // question, so a miss's cost is just... real elapsed time.
+      showMissPenalty();
     }
 
-    el.streakVal.textContent = round.streak;
-    updateStreakFire();
     renderShotTracker();
 
     setTimeout(function () {
       round.index++;
       if (round.index >= round.shots.length) {
+        // The round is over the instant this final delay (celebration or
+        // timeout) actually elapses — no separate freeze-early special case
+        // for the last question anymore, since there's nothing left to
+        // protect the time from: every delay, including this one, is
+        // supposed to count.
+        round.elapsedMs = performance.now() - round.startTime;
+        stopTimer();
+        el.timerVal.textContent = formatTime(round.elapsedMs);
         endRound();
       } else {
         showQuestion();
       }
-    }, correct ? 950 : 1650);
+    }, correct ? 950 : MISS_TIMEOUT_MS);
   }
 
   function launchConfetti() {
@@ -948,11 +991,14 @@
     requestAnimationFrame(frame);
   }
 
+  // No penalty math happens here anymore — every miss already spent its
+  // 2 seconds live, during the round (see showMissPenalty/MISS_TIMEOUT_MS
+  // above), so `finalMs` is just the real elapsed time. This just counts up
+  // to it for the "cool graphic" effect and shows how many misses happened,
+  // as information, not arithmetic.
   function runTally(finalMs) {
     clearTallyTimers();
-    el.tallyRaceTime.textContent = '0.0s';
-    el.tallyPenaltyLabel.textContent = ' ';
-    el.tallyPenaltyTotal.textContent = '';
+    el.tallyMisses.textContent = round.misses + (round.misses > 0 ? ' 🟨' : '');
     el.tallyFinalScore.textContent = '0.0s';
     el.rankReveal.className = 'rank-reveal';
     el.rankReveal.textContent = '';
@@ -960,36 +1006,9 @@
     el.addedNote.className = 'added-note';
     el.endLeaderboardWrap.className = 'leaderboard-wrap';
 
-    animateCount(el.tallyRaceTime, round.elapsedMs, 650, function () {
-      if (round.misses === 0) {
-        proceedToFinal(finalMs);
-        return;
-      }
-      el.tallyPenaltyLabel.textContent = 'Misses (' + round.misses + ' × 2s)';
-      var shown = 0;
-      var runningMs = round.elapsedMs;
-      function addChip() {
-        shown++;
-        runningMs += MISS_PENALTY_MS;
-        var chip = document.createElement('span');
-        chip.className = 'penalty-chip';
-        chip.textContent = '+2.0s';
-        el.tallyPenaltyTotal.textContent = '';
-        el.tallyPenaltyTotal.appendChild(chip);
-        el.tallyPenaltyTotal.appendChild(document.createTextNode(' ' + formatTime(runningMs - round.elapsedMs)));
-        if (shown < round.misses) {
-          tallyTimers.push(setTimeout(addChip, 260));
-        } else {
-          tallyTimers.push(setTimeout(function () { proceedToFinal(finalMs); }, 400));
-        }
-      }
-      tallyTimers.push(setTimeout(addChip, 200));
+    animateCount(el.tallyFinalScore, finalMs, 650, function () {
+      tallyTimers.push(setTimeout(function () { revealRankAndLeaderboard(finalMs); }, 450));
     });
-  }
-
-  function proceedToFinal(finalMs) {
-    el.tallyFinalScore.textContent = formatTime(finalMs);
-    tallyTimers.push(setTimeout(function () { revealRankAndLeaderboard(finalMs); }, 450));
   }
 
   function revealRankAndLeaderboard(finalMs) {
@@ -1059,14 +1078,14 @@
   }
 
   function endRound() {
-    var finalMs = round.elapsedMs + round.misses * MISS_PENALTY_MS;
+    // finalMs is just the real elapsed time — every miss already cost its
+    // 2 seconds live, during the round (see showMissPenalty above), so
+    // there's nothing left to add here.
+    var finalMs = round.elapsedMs;
 
     var best = loadBest();
-    var isNewBest = best.bestTimeMs == null || finalMs < best.bestTimeMs || round.bestStreakThisRound > best.bestStreak;
-    saveBest({
-      bestTimeMs: best.bestTimeMs == null ? finalMs : Math.min(best.bestTimeMs, finalMs),
-      bestStreak: Math.max(best.bestStreak, round.bestStreakThisRound),
-    });
+    var isNewBest = best.bestTimeMs == null || finalMs < best.bestTimeMs;
+    saveBest({ bestTimeMs: best.bestTimeMs == null ? finalMs : Math.min(best.bestTimeMs, finalMs) });
 
     var title, trophy;
     if (round.misses === 0) { title = 'FLAWLESS SHOOTOUT! Not a single miss!'; trophy = '🏆'; }
@@ -1107,6 +1126,7 @@
     if (e.key === 'Enter') el.addToLeaderboardBtn.click();
   });
 
+  ensureSeedLeaderboard();
   renderBestRow(el.bestRow);
   renderRecordRow();
   showScreen('start');
