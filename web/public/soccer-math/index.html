@@ -21,7 +21,18 @@
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html, body {
     margin: 0;
-    height: 100%;
+    /* Deliberately NOT `height: 100%` — an explicit fixed height here (as
+       opposed to the default `auto`) stops the browser's normal
+       viewport-scroll propagation from ever seeing content taller than one
+       screen: document.documentElement.scrollHeight gets stuck reporting
+       exactly the viewport height regardless of how much #app actually
+       overflows it, so the page becomes completely unscrollable — not just
+       visually clipped, genuinely unreachable, confirmed directly
+       (2026-09-10: "I can't actually scroll to the bottom"). min-height
+       below (both here and on #app) already covers "fill the screen when
+       content is short"; height:auto is what lets it grow past that when
+       content is tall.
+    */
     background: linear-gradient(180deg, var(--pitch) 0%, var(--pitch-dark) 100%);
     font-family: -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
     color: var(--ink);
@@ -41,7 +52,16 @@
     display: flex;
     flex-direction: column;
     position: relative;
-    overflow: hidden;
+    /* Was `overflow: hidden` — with the end screen's tally + rank reveal +
+       name entry + leaderboard list + buttons often taller than one phone
+       viewport (especially with Safari's own chrome eating vertical space),
+       that silently clipped the bottom of the page with no way to reach it
+       at all, not even via the browser's own scroll (2026-09-10: "I can't
+       actually scroll to the bottom"). Only horizontal overflow needs
+       clipping (nothing here is meant to scroll sideways); vertical
+       overflow now just grows the page and the browser's normal scroll
+       reaches it, same as any ordinary web page. */
+    overflow-x: hidden;
   }
 
   /* Faint pitch markings behind everything */
@@ -75,21 +95,24 @@
     margin-top: 4px;
     font-weight: 600;
   }
-  /* Low-key way back into the real app (Bulbord's own React app lives at
-     "/" on whichever domain this was opened from) — this page has no other
-     navigation on purpose, per its own "no distractions" brief, so this is
-     the one deliberate exit. Placed in the header, not the busy question
-     card, so it can't be bumped mid-shootout. */
-  .home-link {
+  /* Matches the real app's own always-present top-left back button
+     (2026-09-10 feedback: "go back, which should appear in the top left
+     corner in this case") — goes to whatever page was open before this one
+     (a real Labs-page visit, most often) when there's genuine history to
+     return to, else falls back to the app root. */
+  .back-link {
     position: absolute;
     top: 14px;
-    right: 16px;
-    font-size: 1.3rem;
+    left: 16px;
+    font-size: 1.5rem;
     line-height: 1;
-    text-decoration: none;
-    opacity: 0.55;
+    background: none;
+    border: none;
+    color: rgba(255,255,255,0.85);
+    padding: 4px 8px;
+    cursor: pointer;
   }
-  .home-link:active { opacity: 0.85; }
+  .back-link:active { color: rgba(255,255,255,1); }
 
   main {
     position: relative;
@@ -282,19 +305,19 @@
   }
   .score-strip b { font-size: 1.3rem; font-variant-numeric: tabular-nums; }
   #timer-val { color: var(--gold); }
-  .restart-link {
+  .restart-btn {
     display: block;
-    margin: 0 auto 6px;
-    border: none;
-    background: none;
-    color: rgba(255,255,255,0.7);
-    font-weight: 700;
-    font-size: 0.78rem;
-    text-decoration: underline;
+    margin: 18px auto 4px;
+    border: 2px solid rgba(255,255,255,0.55);
+    background: rgba(0,0,0,0.15);
+    color: rgba(255,255,255,0.95);
+    font-weight: 800;
+    font-size: 1rem;
+    padding: 13px 26px;
+    border-radius: 14px;
     cursor: pointer;
-    padding: 4px 8px;
   }
-  .restart-link:active { color: rgba(255,255,255,0.95); }
+  .restart-btn:active { background: rgba(0,0,0,0.3); transform: translateY(1px); }
 
   .question-card {
     background: var(--paper);
@@ -428,6 +451,23 @@
     cursor: pointer;
   }
   .add-btn:active { transform: translateY(2px); box-shadow: none; }
+  .skip-link {
+    display: block;
+    margin: 6px auto 0;
+    border: none;
+    background: none;
+    color: #6b7a72;
+    font-weight: 700;
+    font-size: 0.8rem;
+    text-decoration: underline;
+    cursor: pointer;
+    padding: 4px;
+    opacity: 0;
+    max-height: 0;
+    overflow: hidden;
+    transition: opacity 0.4s ease, max-height 0.4s ease;
+  }
+  .skip-link.show { opacity: 1; max-height: 30px; }
   .added-note {
     margin-top: 10px;
     font-weight: 800;
@@ -554,7 +594,7 @@
 <body>
 <div id="app">
   <header>
-    <a class="home-link" href="/" aria-label="Back to Bulbord">🏠</a>
+    <button class="back-link" id="back-btn" type="button" aria-label="Back">←</button>
     <h1>⚽ Multiplication Shootout</h1>
     <div class="sub" id="header-sub">Race the clock — 10 shots, best time wins!</div>
   </header>
@@ -579,11 +619,6 @@
       <div class="score-strip">
         <div>⏱ <b id="timer-val">0.0s</b></div>
       </div>
-      <!-- For anyone racing for the top of the leaderboard: one early miss
-           can already ruin a shot at a personal best, so restarting has to
-           be available immediately, not just from a menu — feedback,
-           2026-09-10. -->
-      <button class="restart-link" id="restart-btn" type="button">↺ Start Over</button>
       <div class="goal-scene">
         <div class="goal-frame">🥅</div>
         <div class="ball-fly" id="ball-fly">⚽</div>
@@ -597,6 +632,14 @@
         <div class="question-text" id="question-text">? × ?</div>
         <div class="choices" id="choices"></div>
       </div>
+      <!-- For anyone racing for the top of the leaderboard: one early miss
+           can already ruin a shot at a personal best, so restarting has to
+           be available immediately, not just from a menu — feedback,
+           2026-09-10, enlarged and moved below the question card the same
+           day per direct follow-up ("put start over bigger make it at the
+           bottom") since a small text link up by the timer read as too easy
+           to miss/too easy to brush against by accident either way. -->
+      <button class="restart-btn" id="restart-btn" type="button">↺ Start Over</button>
     </section>
 
     <!-- END SCREEN -->
@@ -624,6 +667,7 @@
           <input id="name-input" type="text" maxlength="20" placeholder="Your name" autocomplete="off" />
           <button class="add-btn" id="add-to-leaderboard-btn" type="button">Add</button>
         </div>
+        <button class="skip-link" id="skip-name-btn" type="button">No thanks</button>
         <div class="added-note" id="added-note"></div>
 
         <div class="leaderboard-wrap" id="end-leaderboard-wrap">
@@ -703,6 +747,7 @@
     screenEnd: document.getElementById('screen-end'),
     screenLeaderboard: document.getElementById('screen-leaderboard'),
     headerSub: document.getElementById('header-sub'),
+    backBtn: document.getElementById('back-btn'),
     bestRow: document.getElementById('best-row'),
     recordRow: document.getElementById('record-row'),
     startBtn: document.getElementById('start-btn'),
@@ -727,6 +772,7 @@
     nameEntry: document.getElementById('name-entry'),
     nameInput: document.getElementById('name-input'),
     addToLeaderboardBtn: document.getElementById('add-to-leaderboard-btn'),
+    skipNameBtn: document.getElementById('skip-name-btn'),
     addedNote: document.getElementById('added-note'),
     endLeaderboardWrap: document.getElementById('end-leaderboard-wrap'),
     endLeaderboardList: document.getElementById('end-leaderboard-list'),
@@ -1111,6 +1157,7 @@
     el.rankReveal.className = 'rank-reveal';
     el.rankReveal.textContent = '';
     el.nameEntry.className = 'name-entry';
+    el.skipNameBtn.className = 'skip-link';
     el.addedNote.className = 'added-note';
     el.endLeaderboardWrap.className = 'leaderboard-wrap';
 
@@ -1129,6 +1176,7 @@
 
     el.nameInput.value = loadLastName();
     el.nameEntry.classList.add('show');
+    el.skipNameBtn.classList.add('show');
     renderLeaderboardList(el.endLeaderboardList, board, null);
     el.endLeaderboardWrap.classList.add('show');
   }
@@ -1173,6 +1221,7 @@
     });
 
     el.nameEntry.classList.remove('show');
+    el.skipNameBtn.classList.remove('show');
     el.addedNote.textContent = myIndex >= 0 ? 'Added! You’re #' + (myIndex + 1) + ' on the board 🎉' : 'Added to the leaderboard!';
     el.addedNote.classList.add('show');
 
@@ -1233,6 +1282,19 @@
   });
   el.nameInput.addEventListener('keydown', function (e) {
     if (e.key === 'Enter') el.addToLeaderboardBtn.click();
+  });
+  el.skipNameBtn.addEventListener('click', function () {
+    el.nameEntry.classList.remove('show');
+    el.skipNameBtn.classList.remove('show');
+  });
+  // Mirrors a real IonBackButton's own defaultHref fallback: go back to
+  // wherever this tab actually came from (the app's Labs page, most often)
+  // when there's real history to return to, otherwise this was opened
+  // directly (a bookmark, a shared link) and there's nothing to go back
+  // to, so land on the app root instead.
+  el.backBtn.addEventListener('click', function () {
+    if (window.history.length > 1) window.history.back();
+    else window.location.href = '/';
   });
 
   ensureSeedLeaderboard();
