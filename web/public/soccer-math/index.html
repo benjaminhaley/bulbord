@@ -282,6 +282,19 @@
   }
   .score-strip b { font-size: 1.3rem; font-variant-numeric: tabular-nums; }
   #timer-val { color: var(--gold); }
+  .restart-link {
+    display: block;
+    margin: 0 auto 6px;
+    border: none;
+    background: none;
+    color: rgba(255,255,255,0.7);
+    font-weight: 700;
+    font-size: 0.78rem;
+    text-decoration: underline;
+    cursor: pointer;
+    padding: 4px 8px;
+  }
+  .restart-link:active { color: rgba(255,255,255,0.95); }
 
   .question-card {
     background: var(--paper);
@@ -566,6 +579,11 @@
       <div class="score-strip">
         <div>⏱ <b id="timer-val">0.0s</b></div>
       </div>
+      <!-- For anyone racing for the top of the leaderboard: one early miss
+           can already ruin a shot at a personal best, so restarting has to
+           be available immediately, not just from a menu — feedback,
+           2026-09-10. -->
+      <button class="restart-link" id="restart-btn" type="button">↺ Start Over</button>
       <div class="goal-scene">
         <div class="goal-frame">🥅</div>
         <div class="ball-fly" id="ball-fly">⚽</div>
@@ -650,12 +668,32 @@
   var NAME_STORAGE_KEY = 'soccerMathLastName_v1';
   var LEADERBOARD_STORAGE_KEY = 'soccerMathLeaderboard_v1';
   // A little fun on first load, so the leaderboard never reads as an empty
-  // dead end (and gives a real world-record time to chase from the very
-  // first play): a flawless "world record" and, way down at the bottom, a
-  // deliberately obscure real pro — not a household name, but one a real
-  // soccer fan would recognize — as the low bar anyone can clear.
+  // dead end (and gives a real field to place yourself in from the very
+  // first play): 20 real professional footballers, Messi on top and a
+  // handful of other genuine superstars right behind him, tapering down
+  // through well-known starters to a few deliberately obscure pros (real,
+  // but names only an actual soccer fan would recognize) at the bottom —
+  // the times are just for fun, not a real comment on anyone's ability.
   var SEED_LEADERBOARD = [
     { name: 'Messi', finalMs: 7800, misses: 0, date: '2026-01-01T00:00:00.000Z' },
+    { name: 'Cristiano Ronaldo', finalMs: 9100, misses: 0, date: '2026-01-01T00:00:00.000Z' },
+    { name: 'Kylian Mbappé', finalMs: 10400, misses: 0, date: '2026-01-01T00:00:00.000Z' },
+    { name: 'Erling Haaland', finalMs: 11600, misses: 0, date: '2026-01-01T00:00:00.000Z' },
+    { name: 'Kevin De Bruyne', finalMs: 13200, misses: 0, date: '2026-01-01T00:00:00.000Z' },
+    { name: 'Neymar Jr', finalMs: 14500, misses: 1, date: '2026-01-01T00:00:00.000Z' },
+    { name: 'Mohamed Salah', finalMs: 16800, misses: 1, date: '2026-01-01T00:00:00.000Z' },
+    { name: 'Jude Bellingham', finalMs: 19300, misses: 1, date: '2026-01-01T00:00:00.000Z' },
+    { name: 'Vinícius Júnior', finalMs: 22700, misses: 1, date: '2026-01-01T00:00:00.000Z' },
+    { name: 'Harry Kane', finalMs: 26100, misses: 2, date: '2026-01-01T00:00:00.000Z' },
+    { name: 'Toni Kroos', finalMs: 30500, misses: 2, date: '2026-01-01T00:00:00.000Z' },
+    { name: 'Luka Modrić', finalMs: 35000, misses: 2, date: '2026-01-01T00:00:00.000Z' },
+    { name: 'Antoine Griezmann', finalMs: 41200, misses: 3, date: '2026-01-01T00:00:00.000Z' },
+    { name: 'Bukayo Saka', finalMs: 48900, misses: 3, date: '2026-01-01T00:00:00.000Z' },
+    { name: 'Declan Rice', finalMs: 58300, misses: 4, date: '2026-01-01T00:00:00.000Z' },
+    { name: 'Virgil van Dijk', finalMs: 72000, misses: 5, date: '2026-01-01T00:00:00.000Z' },
+    { name: 'Thibaut Courtois', finalMs: 95000, misses: 6, date: '2026-01-01T00:00:00.000Z' },
+    { name: 'Jordan Pickford', finalMs: 125000, misses: 7, date: '2026-01-01T00:00:00.000Z' },
+    { name: 'Norberto Neto', finalMs: 160000, misses: 8, date: '2026-01-01T00:00:00.000Z' },
     { name: 'Danny Ward', finalMs: 180000, misses: 9, date: '2026-01-01T00:00:00.000Z' },
   ];
 
@@ -668,6 +706,7 @@
     bestRow: document.getElementById('best-row'),
     recordRow: document.getElementById('record-row'),
     startBtn: document.getElementById('start-btn'),
+    restartBtn: document.getElementById('restart-btn'),
     viewLeaderboardBtn: document.getElementById('view-leaderboard-btn'),
     backFromLeaderboardBtn: document.getElementById('back-from-leaderboard-btn'),
     shotTracker: document.getElementById('shot-tracker'),
@@ -883,9 +922,17 @@
   }
 
   // ---------- round flow ----------
+  // Bumped on every startRound() (including a mid-game "Start Over") and
+  // captured by every in-flight setTimeout below — a stale timeout from an
+  // abandoned round checks this before touching `round` at all, so
+  // restarting mid-shootout can never let an old round's delayed callback
+  // corrupt the new one's state (advancing its index, ending it early, etc).
+  var currentRoundToken = 0;
+
   function startRound() {
+    currentRoundToken++;
     round = {
-      shots: buildShots(), index: 0, misses: 0,
+      shots: buildShots(), index: 0, misses: 0, token: currentRoundToken,
       answering: false, startTime: 0, elapsedMs: 0,
     };
     el.headerSub.textContent = 'Score a goal for every right answer!';
@@ -916,55 +963,71 @@
     });
   }
 
+  // A wrong guess never reveals the right answer — it just costs a real
+  // 2-second time-out (see showMissPenalty), then hands the SAME question
+  // back for another guess, with only the choice(s) already tried crossed
+  // off. This repeats for as many wrong guesses as it takes; only a correct
+  // answer ever advances to the next shot. `startedForToken` guards every
+  // deferred callback against a mid-round "Start Over" — see
+  // currentRoundToken above.
   function handleAnswer(val, btn, shot) {
     if (!round.answering) return;
     round.answering = false;
+    var startedForToken = round.token;
     var buttons = el.choices.querySelectorAll('.choice-btn');
     buttons.forEach(function (b) { b.disabled = true; });
 
     var correct = val === shot.answer;
-    shot.result = correct ? 'goal' : 'miss';
 
     if (correct) {
+      shot.result = 'goal';
       btn.classList.add('correct');
       el.ballFly.className = 'ball-fly shoot-good';
       el.resultBanner.textContent = pick(['GOAL!! ⚽', 'ONTARGET! 🎉', 'SCORCHER! 🔥', 'TOP CORNER! ⚽']);
       el.resultBanner.classList.add('good');
       launchConfetti();
-    } else {
-      round.misses++;
-      btn.classList.add('wrong');
-      buttons.forEach(function (b) {
-        if (parseInt(b.textContent, 10) === shot.answer) b.classList.add('correct');
-      });
-      el.ballFly.className = 'ball-fly shoot-bad';
-      el.resultBanner.textContent = 'SAVED! It was ' + shot.a + ' × ' + shot.b + ' = ' + shot.answer;
-      el.resultBanner.classList.add('bad');
-      // The penalty box, not a number tacked onto the score afterward, is
-      // what actually costs you time here — the live timer above keeps
-      // ticking through this whole pause, same as it does for every other
-      // question, so a miss's cost is just... real elapsed time.
-      showMissPenalty();
+      renderShotTracker();
+
+      setTimeout(function () {
+        if (round.token !== startedForToken) return;
+        round.index++;
+        if (round.index >= round.shots.length) {
+          // The round is over the instant this final delay actually
+          // elapses — every delay, including this one, is supposed to
+          // count toward the real time.
+          round.elapsedMs = performance.now() - round.startTime;
+          stopTimer();
+          el.timerVal.textContent = formatTime(round.elapsedMs);
+          endRound();
+        } else {
+          showQuestion();
+        }
+      }, 950);
+      return;
     }
 
-    renderShotTracker();
+    // Wrong: the picked choice is eliminated (stays disabled/marked so a
+    // retry can't just re-click the same known-wrong answer) but nothing
+    // says which of the rest is actually right — that's for them to work
+    // out, same as a real missed penalty kick doesn't come with a hint.
+    round.misses++;
+    btn.classList.add('wrong');
+    el.ballFly.className = 'ball-fly shoot-bad';
+    el.resultBanner.textContent = pick(['SAVED! Take another shot ⚽', 'BLOCKED! Try again 🧤', 'OFF TARGET — go again ⚽']);
+    el.resultBanner.classList.add('bad');
+    showMissPenalty();
 
     setTimeout(function () {
-      round.index++;
-      if (round.index >= round.shots.length) {
-        // The round is over the instant this final delay (celebration or
-        // timeout) actually elapses — no separate freeze-early special case
-        // for the last question anymore, since there's nothing left to
-        // protect the time from: every delay, including this one, is
-        // supposed to count.
-        round.elapsedMs = performance.now() - round.startTime;
-        stopTimer();
-        el.timerVal.textContent = formatTime(round.elapsedMs);
-        endRound();
-      } else {
-        showQuestion();
-      }
-    }, correct ? 950 : MISS_TIMEOUT_MS);
+      if (round.token !== startedForToken) return;
+      hidePenaltyBox();
+      el.ballFly.className = 'ball-fly';
+      el.resultBanner.textContent = ' ';
+      el.resultBanner.className = 'result-banner';
+      round.answering = true;
+      buttons.forEach(function (b) {
+        if (!b.classList.contains('wrong')) b.disabled = false;
+      });
+    }, MISS_TIMEOUT_MS);
   }
 
   function launchConfetti() {
@@ -1123,6 +1186,7 @@
 
   // ---------- wiring ----------
   el.startBtn.addEventListener('click', startRound);
+  el.restartBtn.addEventListener('click', startRound);
   el.playAgainBtn.addEventListener('click', function () {
     clearTallyTimers();
     startRound();
