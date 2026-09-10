@@ -740,6 +740,7 @@
     answering: false, startTime: 0, elapsedMs: 0,
   };
   var timerInterval = null;
+  var ballFlyResetTimeout = null;
 
   // ---------- storage ----------
   function loadBest() {
@@ -931,6 +932,8 @@
 
   function startRound() {
     currentRoundToken++;
+    if (ballFlyResetTimeout) { clearTimeout(ballFlyResetTimeout); ballFlyResetTimeout = null; }
+    el.ballFly.className = 'ball-fly';
     round = {
       shots: buildShots(), index: 0, misses: 0, token: currentRoundToken,
       answering: false, startTime: 0, elapsedMs: 0,
@@ -941,10 +944,18 @@
     showQuestion();
   }
 
+  // The celebration ball-fly animation is deliberately NOT reset here (it
+  // used to be) — the next question now loads instantly on a correct
+  // answer (see handleAnswer), and resetting the ball's class the moment
+  // this runs would cut that CSS transition off before it's even visible.
+  // celebrateGoal() below owns the ball's whole lifecycle independently,
+  // including its own reset, so a fast answerer can chain goal after goal
+  // with each celebration playing all the way through on its own schedule
+  // (and confetti — see launchConfetti — already stacks the same way,
+  // since every call appends its own independent, self-removing overlay).
   function showQuestion() {
     var shot = round.shots[round.index];
     round.answering = true;
-    el.ballFly.className = 'ball-fly';
     el.resultBanner.textContent = ' ';
     el.resultBanner.className = 'result-banner';
     hidePenaltyBox();
@@ -980,29 +991,27 @@
     var correct = val === shot.answer;
 
     if (correct) {
+      // Advances immediately — no artificial pause here. A fast answerer
+      // shouldn't be capped by how long a celebration animation takes to
+      // play; celebrateGoal()/launchConfetti() run entirely on their own
+      // independent timers and keep playing (and stacking, for confetti)
+      // regardless of how quickly the next question replaces this one.
       shot.result = 'goal';
-      btn.classList.add('correct');
-      el.ballFly.className = 'ball-fly shoot-good';
+      celebrateGoal();
       el.resultBanner.textContent = pick(['GOAL!! ⚽', 'ONTARGET! 🎉', 'SCORCHER! 🔥', 'TOP CORNER! ⚽']);
       el.resultBanner.classList.add('good');
       launchConfetti();
       renderShotTracker();
 
-      setTimeout(function () {
-        if (round.token !== startedForToken) return;
-        round.index++;
-        if (round.index >= round.shots.length) {
-          // The round is over the instant this final delay actually
-          // elapses — every delay, including this one, is supposed to
-          // count toward the real time.
-          round.elapsedMs = performance.now() - round.startTime;
-          stopTimer();
-          el.timerVal.textContent = formatTime(round.elapsedMs);
-          endRound();
-        } else {
-          showQuestion();
-        }
-      }, 950);
+      round.index++;
+      if (round.index >= round.shots.length) {
+        round.elapsedMs = performance.now() - round.startTime;
+        stopTimer();
+        el.timerVal.textContent = formatTime(round.elapsedMs);
+        endRound();
+      } else {
+        showQuestion();
+      }
       return;
     }
 
@@ -1028,6 +1037,24 @@
         if (!b.classList.contains('wrong')) b.disabled = false;
       });
     }, MISS_TIMEOUT_MS);
+  }
+
+  // Fires the ball-into-goal celebration and cleans itself up on its own
+  // fixed schedule (matching the CSS transition's own 0.5s), independent
+  // of however fast the next question loads. Force-restarts the CSS
+  // transition (reset to the base class + a reflow before re-adding
+  // shoot-good) so answering two goals in a row inside that ~550ms window
+  // still replays the animation from the start rather than a no-op class
+  // re-add being ignored.
+  function celebrateGoal() {
+    if (ballFlyResetTimeout) clearTimeout(ballFlyResetTimeout);
+    el.ballFly.className = 'ball-fly';
+    void el.ballFly.offsetWidth;
+    el.ballFly.className = 'ball-fly shoot-good';
+    ballFlyResetTimeout = setTimeout(function () {
+      ballFlyResetTimeout = null;
+      el.ballFly.className = 'ball-fly';
+    }, 550);
   }
 
   function launchConfetti() {
