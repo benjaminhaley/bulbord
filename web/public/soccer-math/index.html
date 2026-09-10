@@ -1,0 +1,698 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="robots" content="noindex, nofollow" />
+<title>Penalty Shootout Math</title>
+<style>
+  :root {
+    --pitch: #2e8b3d;
+    --pitch-dark: #256e31;
+    --line: rgba(255,255,255,0.85);
+    --gold: #ffd23f;
+    --ink: #0b2e13;
+    --paper: #ffffff;
+    --danger: #e0473a;
+    --shadow: 0 6px 0 rgba(0,0,0,0.18);
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    margin: 0;
+    height: 100%;
+    background: linear-gradient(180deg, var(--pitch) 0%, var(--pitch-dark) 100%);
+    font-family: -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    color: var(--ink);
+    overscroll-behavior: none;
+    user-select: none;
+  }
+  body {
+    display: flex;
+    justify-content: center;
+    min-height: 100vh;
+    padding: env(safe-area-inset-top, 0) 0 env(safe-area-inset-bottom, 0);
+  }
+  #app {
+    width: 100%;
+    max-width: 460px;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    overflow: hidden;
+  }
+
+  /* Faint pitch markings behind everything */
+  #app::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background-image:
+      radial-gradient(circle at 50% 42%, transparent 0 58px, var(--line) 58px 60px, transparent 60px),
+      repeating-linear-gradient(90deg, rgba(255,255,255,0.05) 0 40px, rgba(255,255,255,0.09) 40px 80px);
+    opacity: 0.5;
+  }
+
+  header {
+    position: relative;
+    padding: 18px 20px 10px;
+    text-align: center;
+  }
+  header h1 {
+    margin: 0;
+    font-size: 1.5rem;
+    font-weight: 900;
+    color: var(--paper);
+    text-shadow: 0 2px 0 rgba(0,0,0,0.25);
+    letter-spacing: 0.02em;
+  }
+  header .sub {
+    color: rgba(255,255,255,0.85);
+    font-size: 0.85rem;
+    margin-top: 4px;
+    font-weight: 600;
+  }
+
+  main {
+    position: relative;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: 8px 20px 28px;
+  }
+
+  .card {
+    background: var(--paper);
+    border-radius: 20px;
+    box-shadow: var(--shadow);
+    padding: 20px;
+  }
+
+  /* ---------- Start screen ---------- */
+  #screen-start .card { text-align: center; }
+  .ball-bounce {
+    font-size: 3rem;
+    display: inline-block;
+    animation: bounce 1.4s ease-in-out infinite;
+    margin-bottom: 4px;
+  }
+  @keyframes bounce {
+    0%, 100% { transform: translateY(0) scaleX(1); }
+    45% { transform: translateY(-26px) scaleX(1); }
+    50% { transform: translateY(-28px) scaleX(1.08); }
+    75% { transform: translateY(0) scaleX(1.1); }
+    80% { transform: translateY(0) scaleX(0.94); }
+  }
+  .best-row {
+    display: flex;
+    gap: 10px;
+    justify-content: center;
+    margin: 10px 0 4px;
+    flex-wrap: wrap;
+  }
+  .pill {
+    background: #eefbf0;
+    border: 2px solid #cdeed3;
+    border-radius: 999px;
+    padding: 6px 14px;
+    font-weight: 800;
+    font-size: 0.82rem;
+    color: #1b6b2c;
+  }
+  .section-label {
+    margin: 18px 0 8px;
+    font-weight: 800;
+    font-size: 0.95rem;
+    color: var(--ink);
+  }
+  .table-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+  }
+  .table-btn {
+    border: none;
+    border-radius: 12px;
+    padding: 12px 0;
+    font-size: 1.05rem;
+    font-weight: 800;
+    background: #eef2f6;
+    color: #4a5568;
+    cursor: pointer;
+  }
+  .table-btn.on {
+    background: var(--pitch);
+    color: white;
+    box-shadow: 0 3px 0 var(--pitch-dark);
+  }
+  .quick-row {
+    display: flex;
+    gap: 8px;
+    margin-top: 10px;
+  }
+  .quick-btn {
+    flex: 1;
+    border: 2px solid #dfe6ec;
+    background: white;
+    border-radius: 10px;
+    padding: 9px 0;
+    font-weight: 700;
+    font-size: 0.82rem;
+    color: #4a5568;
+    cursor: pointer;
+  }
+  .start-btn {
+    margin-top: 20px;
+    width: 100%;
+    border: none;
+    border-radius: 16px;
+    padding: 16px 0;
+    font-size: 1.15rem;
+    font-weight: 900;
+    color: white;
+    background: var(--danger);
+    box-shadow: 0 5px 0 #a5271d;
+    cursor: pointer;
+  }
+  .start-btn:active { transform: translateY(3px); box-shadow: 0 2px 0 #a5271d; }
+  .start-btn:disabled { opacity: 0.45; box-shadow: none; }
+
+  /* ---------- Game screen ---------- */
+  #screen-game { display: none; flex-direction: column; flex: 1; }
+
+  .shot-tracker {
+    display: flex;
+    justify-content: center;
+    gap: 6px;
+    margin-bottom: 14px;
+    flex-wrap: wrap;
+  }
+  .shot-dot {
+    width: 20px; height: 20px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.35);
+    font-size: 13px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .shot-dot.goal { background: var(--gold); }
+  .shot-dot.miss { background: var(--danger); }
+  .shot-dot.current { box-shadow: 0 0 0 3px rgba(255,255,255,0.7); }
+
+  .goal-scene {
+    position: relative;
+    height: 108px;
+    margin: 4px auto 10px;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+  }
+  .goal-frame {
+    font-size: 4.4rem;
+    line-height: 1;
+  }
+  .ball-fly {
+    position: absolute;
+    left: 50%;
+    bottom: 6px;
+    font-size: 2rem;
+    transform: translateX(-50%);
+    transition: transform 0.5s cubic-bezier(.2,.7,.3,1), opacity 0.4s;
+  }
+  .ball-fly.shoot-good { transform: translate(-50%, -66px) scale(0.7); }
+  .ball-fly.shoot-bad { transform: translate(calc(-50% + 70px), -14px) rotate(160deg); opacity: 0.7; }
+
+  .result-banner {
+    text-align: center;
+    font-weight: 900;
+    font-size: 1.15rem;
+    min-height: 1.5em;
+    margin-bottom: 6px;
+  }
+  .result-banner.good { color: var(--gold); text-shadow: 0 2px 0 rgba(0,0,0,0.35); }
+  .result-banner.bad { color: #ffdad4; }
+
+  .score-strip {
+    display: flex;
+    justify-content: center;
+    gap: 18px;
+    color: rgba(255,255,255,0.92);
+    font-weight: 700;
+    font-size: 0.85rem;
+    margin-bottom: 8px;
+  }
+  .score-strip b { font-size: 1rem; }
+
+  .question-card {
+    background: var(--paper);
+    border-radius: 20px;
+    box-shadow: var(--shadow);
+    padding: 22px 20px 20px;
+    text-align: center;
+  }
+  .question-text {
+    font-size: 2.2rem;
+    font-weight: 900;
+    color: var(--ink);
+    letter-spacing: 0.02em;
+  }
+  .choices {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-top: 18px;
+  }
+  .choice-btn {
+    border: none;
+    border-radius: 14px;
+    padding: 16px 0;
+    font-size: 1.35rem;
+    font-weight: 800;
+    background: #eef2f6;
+    color: var(--ink);
+    box-shadow: 0 4px 0 #c9d2db;
+    cursor: pointer;
+  }
+  .choice-btn:active:not(:disabled) { transform: translateY(3px); box-shadow: none; }
+  .choice-btn:disabled { cursor: default; }
+  .choice-btn.correct { background: #d6f5dc; color: #1b6b2c; box-shadow: 0 4px 0 #9edcac; }
+  .choice-btn.wrong { background: #fbdad6; color: #9a2c22; box-shadow: 0 4px 0 #f0aea5; }
+
+  /* ---------- End screen ---------- */
+  #screen-end { display: none; }
+  #screen-end .card { text-align: center; }
+  .trophy { font-size: 3.4rem; margin-bottom: 4px; }
+  .final-score {
+    font-size: 2.4rem;
+    font-weight: 900;
+    margin: 2px 0 2px;
+  }
+  .final-title {
+    font-weight: 800;
+    font-size: 1.05rem;
+    color: #2f6b3f;
+    margin-bottom: 10px;
+  }
+  .new-best {
+    display: inline-block;
+    background: var(--gold);
+    color: #6b4c00;
+    font-weight: 900;
+    font-size: 0.78rem;
+    padding: 4px 10px;
+    border-radius: 999px;
+    margin-bottom: 6px;
+  }
+  .end-buttons { display: flex; gap: 10px; margin-top: 18px; }
+  .end-buttons button {
+    flex: 1;
+    border: none;
+    border-radius: 14px;
+    padding: 14px 0;
+    font-weight: 800;
+    font-size: 0.95rem;
+    cursor: pointer;
+  }
+  #play-again-btn { background: var(--pitch); color: white; box-shadow: 0 4px 0 var(--pitch-dark); }
+  #change-teams-btn { background: #eef2f6; color: #4a5568; box-shadow: 0 4px 0 #c9d2db; }
+  .end-buttons button:active { transform: translateY(3px); box-shadow: none; }
+
+  .hidden { display: none !important; }
+
+  /* confetti burst */
+  .confetti {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    overflow: hidden;
+    z-index: 5;
+  }
+  .confetti span {
+    position: absolute;
+    top: -10px;
+    font-size: 1.4rem;
+    animation: fall linear forwards;
+  }
+  @keyframes fall {
+    to { transform: translateY(110vh) rotate(360deg); opacity: 0.2; }
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <h1>⚽ Penalty Shootout Math</h1>
+    <div class="sub" id="header-sub">Pick your times tables, then take your shots!</div>
+  </header>
+
+  <main>
+    <!-- START SCREEN -->
+    <section id="screen-start">
+      <div class="card">
+        <div class="ball-bounce">⚽</div>
+        <div class="best-row" id="best-row"></div>
+
+        <div class="section-label">Choose your teams (times tables)</div>
+        <div class="table-grid" id="table-grid"></div>
+        <div class="quick-row">
+          <button class="quick-btn" id="select-all-btn" type="button">Mixed Match (All)</button>
+          <button class="quick-btn" id="select-none-btn" type="button">Clear</button>
+        </div>
+
+        <button class="start-btn" id="start-btn" type="button">Kick Off — 10 Shots</button>
+      </div>
+    </section>
+
+    <!-- GAME SCREEN -->
+    <section id="screen-game">
+      <div class="shot-tracker" id="shot-tracker"></div>
+      <div class="score-strip">
+        <div>Score <b id="score-val">0</b></div>
+        <div>Streak <b id="streak-val">0</b> <span id="streak-fire"></span></div>
+      </div>
+      <div class="goal-scene">
+        <div class="goal-frame">🥅</div>
+        <div class="ball-fly" id="ball-fly">⚽</div>
+      </div>
+      <div class="result-banner" id="result-banner">&nbsp;</div>
+      <div class="question-card">
+        <div class="question-text" id="question-text">? × ?</div>
+        <div class="choices" id="choices"></div>
+      </div>
+    </section>
+
+    <!-- END SCREEN -->
+    <section id="screen-end">
+      <div class="card">
+        <div class="trophy" id="end-trophy">🏆</div>
+        <div class="new-best hidden" id="new-best-badge">NEW BEST!</div>
+        <div class="final-score" id="final-score">0/10</div>
+        <div class="final-title" id="final-title">Great game!</div>
+        <div class="best-row" id="end-best-row"></div>
+        <div class="end-buttons">
+          <button id="play-again-btn" type="button">Play Again</button>
+          <button id="change-teams-btn" type="button">Change Teams</button>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  var SHOTS_PER_ROUND = 10;
+  var MAX_TABLE = 12;
+  var STORAGE_KEY = 'soccerMathBest_v1';
+
+  var el = {
+    screenStart: document.getElementById('screen-start'),
+    screenGame: document.getElementById('screen-game'),
+    screenEnd: document.getElementById('screen-end'),
+    headerSub: document.getElementById('header-sub'),
+    bestRow: document.getElementById('best-row'),
+    tableGrid: document.getElementById('table-grid'),
+    selectAllBtn: document.getElementById('select-all-btn'),
+    selectNoneBtn: document.getElementById('select-none-btn'),
+    startBtn: document.getElementById('start-btn'),
+    shotTracker: document.getElementById('shot-tracker'),
+    scoreVal: document.getElementById('score-val'),
+    streakVal: document.getElementById('streak-val'),
+    streakFire: document.getElementById('streak-fire'),
+    ballFly: document.getElementById('ball-fly'),
+    resultBanner: document.getElementById('result-banner'),
+    questionText: document.getElementById('question-text'),
+    choices: document.getElementById('choices'),
+    endTrophy: document.getElementById('end-trophy'),
+    newBestBadge: document.getElementById('new-best-badge'),
+    finalScore: document.getElementById('final-score'),
+    finalTitle: document.getElementById('final-title'),
+    endBestRow: document.getElementById('end-best-row'),
+    playAgainBtn: document.getElementById('play-again-btn'),
+    changeTeamsBtn: document.getElementById('change-teams-btn'),
+  };
+
+  var selectedTables = new Set();
+  for (var t = 1; t <= MAX_TABLE; t++) selectedTables.add(t);
+
+  var round = { shots: [], index: 0, score: 0, streak: 0, bestStreakThisRound: 0, answering: false };
+
+  function loadBest() {
+    try {
+      var raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return { bestScore: 0, bestStreak: 0 };
+      var parsed = JSON.parse(raw);
+      return { bestScore: parsed.bestScore || 0, bestStreak: parsed.bestStreak || 0 };
+    } catch (e) {
+      return { bestScore: 0, bestStreak: 0 };
+    }
+  }
+  function saveBest(best) {
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(best)); } catch (e) {}
+  }
+
+  function renderBestRow(container) {
+    var best = loadBest();
+    container.innerHTML = '';
+    if (best.bestScore === 0 && best.bestStreak === 0) return;
+    var p1 = document.createElement('div');
+    p1.className = 'pill';
+    p1.textContent = 'Best: ' + best.bestScore + '/' + SHOTS_PER_ROUND + ' ⚽';
+    var p2 = document.createElement('div');
+    p2.className = 'pill';
+    p2.textContent = 'Streak: ' + best.bestStreak + ' 🔥';
+    container.appendChild(p1);
+    container.appendChild(p2);
+  }
+
+  function buildTableGrid() {
+    el.tableGrid.innerHTML = '';
+    for (var n = 1; n <= MAX_TABLE; n++) {
+      (function (num) {
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'table-btn' + (selectedTables.has(num) ? ' on' : '');
+        btn.textContent = num;
+        btn.setAttribute('aria-pressed', selectedTables.has(num) ? 'true' : 'false');
+        btn.addEventListener('click', function () {
+          if (selectedTables.has(num)) selectedTables.delete(num);
+          else selectedTables.add(num);
+          buildTableGrid();
+          updateStartBtn();
+        });
+        el.tableGrid.appendChild(btn);
+      })(n);
+    }
+  }
+
+  function updateStartBtn() {
+    el.startBtn.disabled = selectedTables.size === 0;
+  }
+
+  el.selectAllBtn.addEventListener('click', function () {
+    selectedTables = new Set();
+    for (var n = 1; n <= MAX_TABLE; n++) selectedTables.add(n);
+    buildTableGrid();
+    updateStartBtn();
+  });
+  el.selectNoneBtn.addEventListener('click', function () {
+    selectedTables = new Set();
+    buildTableGrid();
+    updateStartBtn();
+  });
+
+  function randInt(min, max) {
+    return Math.floor(Math.random() * (max - min + 1)) + min;
+  }
+  function pick(arr) { return arr[randInt(0, arr.length - 1)]; }
+
+  function buildShots() {
+    var tables = Array.from(selectedTables);
+    var shots = [];
+    for (var i = 0; i < SHOTS_PER_ROUND; i++) {
+      var a = pick(tables);
+      var b = randInt(1, MAX_TABLE);
+      if (Math.random() < 0.5) { var tmp = a; a = b; b = tmp; }
+      shots.push({ a: a, b: b, answer: a * b, result: null });
+    }
+    return shots;
+  }
+
+  function buildChoices(correct) {
+    var options = new Set([correct]);
+    var attempts = 0;
+    while (options.size < 4 && attempts < 40) {
+      attempts++;
+      var delta = pick([-3, -2, -1, 1, 2, 3, 4, -4]);
+      var candidate = correct + delta * randInt(1, MAX_TABLE);
+      if (candidate < 0) candidate = correct + Math.abs(delta);
+      if (candidate !== correct && candidate >= 0) options.add(candidate);
+    }
+    while (options.size < 4) options.add(correct + options.size + 1);
+    var arr = Array.from(options);
+    for (var i = arr.length - 1; i > 0; i--) {
+      var j = randInt(0, i);
+      var tmp = arr[i]; arr[i] = arr[j]; arr[j] = tmp;
+    }
+    return arr;
+  }
+
+  function renderShotTracker() {
+    el.shotTracker.innerHTML = '';
+    for (var i = 0; i < round.shots.length; i++) {
+      var dot = document.createElement('div');
+      var r = round.shots[i].result;
+      dot.className = 'shot-dot' + (r === 'goal' ? ' goal' : r === 'miss' ? ' miss' : '') + (i === round.index ? ' current' : '');
+      dot.textContent = r === 'goal' ? '✓' : r === 'miss' ? '✕' : '';
+      el.shotTracker.appendChild(dot);
+    }
+  }
+
+  function updateStreakFire() {
+    el.streakFire.textContent = round.streak >= 3 ? '🔥' : '';
+  }
+
+  function showScreen(name) {
+    el.screenStart.style.display = name === 'start' ? 'block' : 'none';
+    el.screenGame.style.display = name === 'game' ? 'flex' : 'none';
+    el.screenEnd.style.display = name === 'end' ? 'block' : 'none';
+  }
+
+  function startRound() {
+    round = { shots: buildShots(), index: 0, score: 0, streak: 0, bestStreakThisRound: 0, answering: false };
+    el.scoreVal.textContent = '0';
+    el.streakVal.textContent = '0';
+    updateStreakFire();
+    el.headerSub.textContent = 'Score a goal for every right answer!';
+    showScreen('game');
+    showQuestion();
+  }
+
+  function showQuestion() {
+    var shot = round.shots[round.index];
+    round.answering = true;
+    el.ballFly.className = 'ball-fly';
+    el.resultBanner.textContent = ' ';
+    el.resultBanner.className = 'result-banner';
+    el.questionText.textContent = shot.a + ' × ' + shot.b;
+    renderShotTracker();
+
+    var choices = buildChoices(shot.answer);
+    el.choices.innerHTML = '';
+    choices.forEach(function (val) {
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'choice-btn';
+      btn.textContent = val;
+      btn.addEventListener('click', function () { handleAnswer(val, btn, shot); });
+      el.choices.appendChild(btn);
+    });
+  }
+
+  function handleAnswer(val, btn, shot) {
+    if (!round.answering) return;
+    round.answering = false;
+    var buttons = el.choices.querySelectorAll('.choice-btn');
+    buttons.forEach(function (b) { b.disabled = true; });
+
+    var correct = val === shot.answer;
+    shot.result = correct ? 'goal' : 'miss';
+
+    if (correct) {
+      round.score++;
+      round.streak++;
+      round.bestStreakThisRound = Math.max(round.bestStreakThisRound, round.streak);
+      btn.classList.add('correct');
+      el.ballFly.className = 'ball-fly shoot-good';
+      el.resultBanner.textContent = pick(['GOAL!! ⚽', 'ONTARGET! 🎉', 'SCORCHER! 🔥', 'TOP CORNER! ⚽']);
+      el.resultBanner.classList.add('good');
+      launchConfetti();
+    } else {
+      round.streak = 0;
+      btn.classList.add('wrong');
+      buttons.forEach(function (b) {
+        if (parseInt(b.textContent, 10) === shot.answer) b.classList.add('correct');
+      });
+      el.ballFly.className = 'ball-fly shoot-bad';
+      el.resultBanner.textContent = 'SAVED! It was ' + shot.a + ' × ' + shot.b + ' = ' + shot.answer;
+      el.resultBanner.classList.add('bad');
+    }
+
+    el.scoreVal.textContent = round.score;
+    el.streakVal.textContent = round.streak;
+    updateStreakFire();
+    renderShotTracker();
+
+    setTimeout(function () {
+      round.index++;
+      if (round.index >= round.shots.length) {
+        endRound();
+      } else {
+        showQuestion();
+      }
+    }, correct ? 950 : 1650);
+  }
+
+  function launchConfetti() {
+    var wrap = document.createElement('div');
+    wrap.className = 'confetti';
+    var pieces = ['⚽', '🎉', '⭐', '🏆'];
+    for (var i = 0; i < 10; i++) {
+      var s = document.createElement('span');
+      s.textContent = pick(pieces);
+      s.style.left = randInt(4, 96) + '%';
+      s.style.animationDuration = (0.9 + Math.random() * 0.6) + 's';
+      s.style.animationDelay = (Math.random() * 0.15) + 's';
+      wrap.appendChild(s);
+    }
+    document.body.appendChild(wrap);
+    setTimeout(function () { wrap.remove(); }, 1800);
+  }
+
+  function endRound() {
+    var best = loadBest();
+    var isNewBest = round.score > best.bestScore || (round.score === best.bestScore && round.bestStreakThisRound > best.bestStreak);
+    var newBest = {
+      bestScore: Math.max(best.bestScore, round.score),
+      bestStreak: Math.max(best.bestStreak, round.bestStreakThisRound),
+    };
+    saveBest(newBest);
+
+    el.finalScore.textContent = round.score + '/' + SHOTS_PER_ROUND;
+    el.newBestBadge.classList.toggle('hidden', !isNewBest);
+
+    var title, trophy;
+    if (round.score === SHOTS_PER_ROUND) { title = 'HAT TRICK LEGEND! Perfect round!'; trophy = '🏆'; }
+    else if (round.score >= 8) { title = 'Great game — top scorer!'; trophy = '⭐'; }
+    else if (round.score >= 5) { title = 'Nice hustle out there!'; trophy = '⚽'; }
+    else { title = 'Keep practicing — you’ll get there!'; trophy = '👟'; }
+    el.finalTitle.textContent = title;
+    el.endTrophy.textContent = trophy;
+
+    renderBestRow(el.endBestRow);
+    showScreen('end');
+    if (round.score === SHOTS_PER_ROUND) launchConfetti();
+  }
+
+  el.startBtn.addEventListener('click', function () {
+    if (selectedTables.size === 0) return;
+    startRound();
+  });
+  el.playAgainBtn.addEventListener('click', startRound);
+  el.changeTeamsBtn.addEventListener('click', function () {
+    renderBestRow(el.bestRow);
+    showScreen('start');
+  });
+
+  buildTableGrid();
+  updateStartBtn();
+  renderBestRow(el.bestRow);
+  showScreen('start');
+})();
+</script>
+</body>
+</html>
