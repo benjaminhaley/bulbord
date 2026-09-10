@@ -342,8 +342,53 @@
   .choice-btn.wrong { background: #fbdad6; color: #9a2c22; box-shadow: 0 4px 0 #f0aea5; }
 
   /* ---------- End screen: tally card ---------- */
-  #screen-end { display: none; }
+  /* Fixed below the header (top set in JS to the header's real measured
+     height — see showScreen) rather than living in the normal page flow,
+     so Play Again/Home can be pinned in their own footer that's always on
+     screen; .end-scroll is the part that actually scrolls when content
+     (mainly a long leaderboard) runs past the available height. */
+  #screen-end {
+    display: none;
+    position: fixed;
+    /* Matches #app's own centered max-width:460px column (body's
+       justify-content:center) instead of spanning the full viewport width
+       — otherwise this would stretch edge-to-edge on a wide desktop
+       browser while every other screen stays in the centered phone-width
+       column. */
+    left: 50%;
+    transform: translateX(-50%);
+    width: 100%;
+    max-width: 460px;
+    bottom: 0;
+    flex-direction: column;
+    z-index: 5;
+  }
   #screen-end .card { text-align: center; }
+  .end-scroll {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    padding: 8px 20px 16px;
+  }
+  .end-footer {
+    flex-shrink: 0;
+    display: flex;
+    gap: 10px;
+    padding: 12px 20px calc(12px + env(safe-area-inset-bottom, 0));
+    background: var(--pitch-dark);
+    box-shadow: 0 -4px 12px rgba(0,0,0,0.2);
+  }
+  .end-footer button {
+    flex: 1;
+    border: none;
+    border-radius: 14px;
+    padding: 14px 0;
+    font-weight: 800;
+    font-size: 0.95rem;
+    cursor: pointer;
+  }
+  .end-footer button:active { transform: translateY(2px); }
   .trophy { font-size: 3rem; margin-bottom: 2px; }
   .final-title {
     font-weight: 800;
@@ -368,7 +413,6 @@
     padding: 5px 0;
   }
   .tally-row .val { font-variant-numeric: tabular-nums; font-weight: 900; color: var(--ink); }
-  .tally-divider { border: none; border-top: 2px dashed #d3e0d7; margin: 6px 0; }
   .tally-row.final { font-size: 1.15rem; color: var(--ink); }
   .tally-row.final .val {
     font-size: 1.7rem;
@@ -438,23 +482,6 @@
     cursor: pointer;
   }
   .add-btn:active { transform: translateY(2px); box-shadow: none; }
-  .skip-link {
-    display: block;
-    margin: 6px auto 0;
-    border: none;
-    background: none;
-    color: #6b7a72;
-    font-weight: 700;
-    font-size: 0.8rem;
-    text-decoration: underline;
-    cursor: pointer;
-    padding: 4px;
-    opacity: 0;
-    max-height: 0;
-    overflow: hidden;
-    transition: opacity 0.4s ease, max-height 0.4s ease;
-  }
-  .skip-link.show { opacity: 1; max-height: 30px; }
   .added-note {
     margin-top: 10px;
     font-weight: 800;
@@ -523,19 +550,8 @@
   }
   .lb-empty { text-align: center; color: #7a8a80; font-weight: 700; font-size: 0.85rem; padding: 18px 4px; }
 
-  .end-buttons { display: flex; gap: 10px; margin-top: 18px; }
-  .end-buttons button {
-    flex: 1;
-    border: none;
-    border-radius: 14px;
-    padding: 14px 0;
-    font-weight: 800;
-    font-size: 0.95rem;
-    cursor: pointer;
-  }
-  #play-again-btn { background: var(--pitch); color: white; box-shadow: 0 4px 0 var(--pitch-dark); }
-  #home-btn { background: #eef2f6; color: #4a5568; box-shadow: 0 4px 0 #c9d2db; }
-  .end-buttons button:active { transform: translateY(3px); box-shadow: none; }
+  #play-again-btn { background: var(--pitch); color: white; }
+  #home-btn { background: #eef2f6; color: #4a5568; }
 
   /* ---------- Leaderboard-only screen ---------- */
   #screen-leaderboard { display: none; }
@@ -576,6 +592,94 @@
   @keyframes fall {
     to { transform: translateY(110vh) rotate(360deg); opacity: 0.2; }
   }
+
+  /* ---------- Share (persistent FAB + modal, mirrors the real app) ---------- */
+  .share-fab {
+    position: fixed;
+    right: 18px;
+    bottom: calc(18px + env(safe-area-inset-bottom, 0));
+    width: 52px;
+    height: 52px;
+    border-radius: 50%;
+    border: none;
+    background: var(--paper);
+    box-shadow: 0 3px 10px rgba(0,0,0,0.3);
+    font-size: 1.3rem;
+    line-height: 1;
+    cursor: pointer;
+    z-index: 30;
+  }
+  .share-fab:active { transform: scale(0.94); }
+  .share-modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.5);
+    display: flex;
+    align-items: flex-end;
+    z-index: 40;
+  }
+  .share-modal {
+    background: var(--paper);
+    width: 100%;
+    max-width: 460px;
+    margin: 0 auto;
+    border-radius: 20px 20px 0 0;
+    padding-bottom: env(safe-area-inset-bottom, 0);
+    max-height: 85vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .share-modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 18px;
+    border-bottom: 1px solid #eef2f6;
+    font-weight: 800;
+    font-size: 1.05rem;
+    color: var(--ink);
+  }
+  .share-modal-close {
+    border: none;
+    background: none;
+    font-size: 1.1rem;
+    color: #7a8a80;
+    cursor: pointer;
+    padding: 4px 8px;
+  }
+  .share-modal-body {
+    padding: 22px 24px;
+    text-align: center;
+    overflow-y: auto;
+  }
+  .share-qr {
+    width: 220px;
+    height: 220px;
+    display: block;
+    margin: 0 auto 16px;
+    border-radius: 12px;
+    background: #f4f8f5;
+  }
+  .share-instruction {
+    font-weight: 600;
+    color: #3a4a4a;
+    margin: 0 0 4px;
+  }
+  .share-or { color: #90a099; font-weight: 700; margin: 14px 0 10px; }
+  .share-native-btn {
+    display: block;
+    width: 100%;
+    border: 2px solid #dfe6ec;
+    background: none;
+    color: var(--ink);
+    font-weight: 800;
+    font-size: 0.95rem;
+    padding: 13px 0;
+    border-radius: 14px;
+    cursor: pointer;
+  }
+  .share-native-btn:active { background: #f4f8f5; }
 </style>
 </head>
 <body>
@@ -621,43 +725,40 @@
       </div>
     </section>
 
-    <!-- END SCREEN -->
+    <!-- END SCREEN — a fixed layout (not part of the normal page scroll):
+         a scrollable content area between the header and a footer that's
+         always on screen, per direct feedback (2026-09-10) that Play
+         Again/Home needed to stay reachable without scrolling, and that
+         the leaderboard content should be what scrolls, not the whole
+         page. -->
     <section id="screen-end">
-      <div class="card">
-        <div class="trophy" id="end-trophy">🏆</div>
-        <div class="final-title" id="final-title">Great game!</div>
-
-        <div class="tally">
-          <div class="tally-row">
-            <span>🟨 Misses</span>
-            <span class="val" id="tally-misses">0</span>
+      <div class="end-scroll" id="end-scroll">
+        <div class="card">
+          <div class="tally">
+            <div class="tally-row final">
+              <span>🏁 FINAL SCORE</span>
+              <span class="val" id="tally-final-score">0.0s</span>
+            </div>
           </div>
-          <hr class="tally-divider" />
-          <div class="tally-row final">
-            <span>🏁 FINAL SCORE</span>
-            <span class="val" id="tally-final-score">0.0s</span>
+          <div class="new-best hidden" id="new-best-badge">NEW PERSONAL BEST!</div>
+
+          <div class="rank-reveal" id="rank-reveal"></div>
+
+          <div class="name-entry" id="name-entry">
+            <input id="name-input" type="text" maxlength="20" placeholder="Your name" autocomplete="off" />
+            <button class="add-btn" id="add-to-leaderboard-btn" type="button">Add</button>
+          </div>
+          <div class="added-note" id="added-note"></div>
+
+          <div class="leaderboard-wrap" id="end-leaderboard-wrap">
+            <div class="leaderboard-title">🏆 Leaderboard</div>
+            <div class="leaderboard-list" id="end-leaderboard-list"></div>
           </div>
         </div>
-        <div class="new-best hidden" id="new-best-badge">NEW PERSONAL BEST!</div>
-
-        <div class="rank-reveal" id="rank-reveal"></div>
-
-        <div class="name-entry" id="name-entry">
-          <input id="name-input" type="text" maxlength="20" placeholder="Your name" autocomplete="off" />
-          <button class="add-btn" id="add-to-leaderboard-btn" type="button">Add</button>
-        </div>
-        <button class="skip-link" id="skip-name-btn" type="button">No thanks</button>
-        <div class="added-note" id="added-note"></div>
-
-        <div class="leaderboard-wrap" id="end-leaderboard-wrap">
-          <div class="leaderboard-title">🏆 Leaderboard</div>
-          <div class="leaderboard-list" id="end-leaderboard-list"></div>
-        </div>
-
-        <div class="end-buttons">
-          <button id="play-again-btn" type="button">Play Again</button>
-          <button id="home-btn" type="button">Home</button>
-        </div>
+      </div>
+      <div class="end-footer">
+        <button id="play-again-btn" type="button">Play Again</button>
+        <button id="home-btn" type="button">Home</button>
       </div>
     </section>
 
@@ -675,6 +776,35 @@
   </main>
 </div>
 
+<!-- Persistent share entry point (2026-09-10: "the standard abilities to
+     share the app which should always persist even in this view") —
+     mirrors the real app's own ShareButton (web/src/sharing/ShareButton.tsx):
+     a QR code for this page plus the native share sheet where supported.
+     Sits outside #app since, like the real ShareButton, it must stay
+     visible across every screen this page shows, not just one. -->
+<button class="share-fab" id="share-fab-btn" type="button" aria-label="Share this page">📤</button>
+<div class="share-modal-overlay hidden" id="share-modal-overlay">
+  <div class="share-modal">
+    <div class="share-modal-header">
+      <span>Share</span>
+      <button class="share-modal-close" id="share-modal-close-btn" type="button" aria-label="Close">✕</button>
+    </div>
+    <div class="share-modal-body">
+      <img id="share-qr-img" class="share-qr" alt="" />
+      <!-- No raw https:// URL as visible text (same convention as the real
+           ShareButton) — it lives in the QR encoding and the native share
+           sheet's own payload only. -->
+      <p class="share-instruction">Have your friend scan this QR code to play Multiplication Shootout</p>
+      <div class="share-or hidden" id="share-or-divider">— or —</div>
+      <button class="share-native-btn hidden" id="share-native-btn" type="button">📨 Share via Text, Email, etc.</button>
+    </div>
+  </div>
+</div>
+
+<!-- A real, self-hosted build of the same `qrcode` npm package the main
+     app uses (see scripts/build-soccer-math-qr-bundle.mjs) — not a
+     third-party CDN, not a hand-rolled encoder. -->
+<script src="/soccer-math/qrcode.bundle.js"></script>
 <script>
 (function () {
   'use strict';
@@ -741,22 +871,25 @@
     penaltyCountdown: document.getElementById('penalty-countdown'),
     questionText: document.getElementById('question-text'),
     choices: document.getElementById('choices'),
-    endTrophy: document.getElementById('end-trophy'),
-    finalTitle: document.getElementById('final-title'),
-    tallyMisses: document.getElementById('tally-misses'),
     tallyFinalScore: document.getElementById('tally-final-score'),
     newBestBadge: document.getElementById('new-best-badge'),
     rankReveal: document.getElementById('rank-reveal'),
     nameEntry: document.getElementById('name-entry'),
     nameInput: document.getElementById('name-input'),
     addToLeaderboardBtn: document.getElementById('add-to-leaderboard-btn'),
-    skipNameBtn: document.getElementById('skip-name-btn'),
     addedNote: document.getElementById('added-note'),
+    endScroll: document.getElementById('end-scroll'),
     endLeaderboardWrap: document.getElementById('end-leaderboard-wrap'),
     endLeaderboardList: document.getElementById('end-leaderboard-list'),
     standaloneLeaderboardList: document.getElementById('standalone-leaderboard-list'),
     playAgainBtn: document.getElementById('play-again-btn'),
     homeBtn: document.getElementById('home-btn'),
+    shareFabBtn: document.getElementById('share-fab-btn'),
+    shareModalOverlay: document.getElementById('share-modal-overlay'),
+    shareModalCloseBtn: document.getElementById('share-modal-close-btn'),
+    shareQrImg: document.getElementById('share-qr-img'),
+    shareOrDivider: document.getElementById('share-or-divider'),
+    shareNativeBtn: document.getElementById('share-native-btn'),
   };
 
   var round = {
@@ -904,8 +1037,28 @@
   function showScreen(name) {
     el.screenStart.style.display = name === 'start' ? 'block' : 'none';
     el.screenGame.style.display = name === 'game' ? 'flex' : 'none';
-    el.screenEnd.style.display = name === 'end' ? 'block' : 'none';
+    el.screenEnd.style.display = name === 'end' ? 'flex' : 'none';
     el.screenLeaderboard.style.display = name === 'leaderboard' ? 'block' : 'none';
+    if (name === 'end') {
+      // #screen-end is a fixed-position overlay (so Play Again/Home can be
+      // pinned in their own always-visible footer — see its CSS) rather
+      // than living in the normal page flow, so it needs its own top
+      // offset to sit below the header instead of covering it. Measured
+      // live rather than hardcoded since the header's real height can
+      // shift slightly (e.g. text wrapping at a narrow width).
+      var header = document.querySelector('header');
+      el.screenEnd.style.top = header.getBoundingClientRect().height + 'px';
+      // The share FAB's default bottom-right spot sits right where the end
+      // screen's own pinned footer (Play Again/Home) now lives — found by
+      // actually looking at a screenshot, not just reasoning about it.
+      // Lift it clear of the footer specifically on this screen; every
+      // other screen has no footer to collide with, so it uses its normal
+      // CSS position there.
+      var footer = document.querySelector('.end-footer');
+      el.shareFabBtn.style.bottom = (footer.getBoundingClientRect().height + 18) + 'px';
+    } else {
+      el.shareFabBtn.style.bottom = '';
+    }
   }
 
   // ---------- timer ----------
@@ -1126,16 +1279,14 @@
   // No penalty math happens here anymore — every miss already spent its
   // 2 seconds live, during the round (see showMissPenalty/MISS_TIMEOUT_MS
   // above), so `finalMs` is just the real elapsed time. This just counts up
-  // to it for the "cool graphic" effect and shows how many misses happened,
-  // as information, not arithmetic.
+  // to it for the "cool graphic" effect.
   function runTally(finalMs) {
     clearTallyTimers();
-    el.tallyMisses.textContent = round.misses + (round.misses > 0 ? ' 🟨' : '');
+    if (el.endScroll) el.endScroll.scrollTop = 0;
     el.tallyFinalScore.textContent = '0.0s';
     el.rankReveal.className = 'rank-reveal';
     el.rankReveal.textContent = '';
     el.nameEntry.className = 'name-entry';
-    el.skipNameBtn.className = 'skip-link';
     el.addedNote.className = 'added-note';
     el.endLeaderboardWrap.className = 'leaderboard-wrap';
 
@@ -1154,7 +1305,6 @@
 
     el.nameInput.value = loadLastName();
     el.nameEntry.classList.add('show');
-    el.skipNameBtn.classList.add('show');
     renderLeaderboardList(el.endLeaderboardList, board, null);
     el.endLeaderboardWrap.classList.add('show');
   }
@@ -1199,7 +1349,6 @@
     });
 
     el.nameEntry.classList.remove('show');
-    el.skipNameBtn.classList.remove('show');
     el.addedNote.textContent = myIndex >= 0 ? 'Added! You’re #' + (myIndex + 1) + ' on the board 🎉' : 'Added to the leaderboard!';
     el.addedNote.classList.add('show');
 
@@ -1222,13 +1371,6 @@
     var isNewBest = best.bestTimeMs == null || finalMs < best.bestTimeMs;
     saveBest({ bestTimeMs: best.bestTimeMs == null ? finalMs : Math.min(best.bestTimeMs, finalMs) });
 
-    var title, trophy;
-    if (round.misses === 0) { title = 'FLAWLESS SHOOTOUT! Not a single miss!'; trophy = '🏆'; }
-    else if (round.misses <= 2) { title = 'Great game — sharp shooting!'; trophy = '⭐'; }
-    else if (round.misses <= 5) { title = 'Nice hustle out there!'; trophy = '⚽'; }
-    else { title = 'Keep practicing — you’ll get there!'; trophy = '👟'; }
-    el.finalTitle.textContent = title;
-    el.endTrophy.textContent = trophy;
     el.newBestBadge.classList.toggle('hidden', !isNewBest);
 
     showScreen('end');
@@ -1260,10 +1402,6 @@
   el.nameInput.addEventListener('keydown', function (e) {
     if (e.key === 'Enter') el.addToLeaderboardBtn.click();
   });
-  el.skipNameBtn.addEventListener('click', function () {
-    el.nameEntry.classList.remove('show');
-    el.skipNameBtn.classList.remove('show');
-  });
   // Mirrors a real IonBackButton's own defaultHref fallback: go back to
   // wherever this tab actually came from (the app's Labs page, most often)
   // when there's real history to return to, otherwise this was opened
@@ -1272,6 +1410,43 @@
   el.backBtn.addEventListener('click', function () {
     if (window.history.length > 1) window.history.back();
     else window.location.href = '/';
+  });
+
+  // ---------- share (persistent FAB + modal) ----------
+  // The URL is always this same static page, regardless of which in-page
+  // "screen" is currently showing (there's no per-screen routing here) —
+  // so the QR only ever needs generating once per page load, not
+  // regenerated on every open the way the real ShareButton's per-route QR
+  // is.
+  var shareQrGenerated = false;
+  function openShareModal() {
+    el.shareModalOverlay.classList.remove('hidden');
+    if (!shareQrGenerated && window.BulbordQRCode) {
+      shareQrGenerated = true;
+      var shareUrl = window.location.origin + window.location.pathname;
+      window.BulbordQRCode.toDataURL(shareUrl, { width: 320, margin: 1 })
+        .then(function (dataUrl) {
+          el.shareQrImg.src = dataUrl;
+          el.shareQrImg.alt = 'QR code for ' + shareUrl;
+        })
+        .catch(function () { shareQrGenerated = false; });
+    }
+    if (typeof navigator.share === 'function') {
+      el.shareOrDivider.classList.remove('hidden');
+      el.shareNativeBtn.classList.remove('hidden');
+    }
+  }
+  function closeShareModal() {
+    el.shareModalOverlay.classList.add('hidden');
+  }
+  el.shareFabBtn.addEventListener('click', openShareModal);
+  el.shareModalCloseBtn.addEventListener('click', closeShareModal);
+  el.shareModalOverlay.addEventListener('click', function (e) {
+    if (e.target === el.shareModalOverlay) closeShareModal();
+  });
+  el.shareNativeBtn.addEventListener('click', function () {
+    var shareUrl = window.location.origin + window.location.pathname;
+    navigator.share({ url: shareUrl }).catch(function () {});
   });
 
   ensureSeedLeaderboard();
