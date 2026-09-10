@@ -17,6 +17,7 @@ import { AboutPage } from '../auth/AboutPage'
 import { AccountPage } from '../auth/AccountPage'
 import { EditProfilePage } from '../auth/EditProfilePage'
 import { JoinGate } from '../auth/JoinGate'
+import { LabsPage } from '../labs/LabsPage'
 import { AddFriendsPage } from '../connections/AddFriendsPage'
 import { FriendsPage } from '../connections/FriendsPage'
 import { EventsPage } from '../events/EventsPage'
@@ -76,6 +77,7 @@ export function App() {
                   <Route exact path="/account/edit" component={EditProfilePage} />
                   <Route exact path="/account/notification-settings" component={NotificationSettingsPage} />
                   <Route exact path="/about" component={AboutPage} />
+                  <Route exact path="/labs" component={LabsPage} />
                   <Route exact path="/friends" component={FriendsPage} />
                   <Route exact path="/friends/add" component={AddFriendsPage} />
                   <Route exact path="/notifications" component={NotificationsPage} />

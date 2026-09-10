@@ -75,6 +75,21 @@
     margin-top: 4px;
     font-weight: 600;
   }
+  /* Low-key way back into the real app (Bulbord's own React app lives at
+     "/" on whichever domain this was opened from) — this page has no other
+     navigation on purpose, per its own "no distractions" brief, so this is
+     the one deliberate exit. Placed in the header, not the busy question
+     card, so it can't be bumped mid-shootout. */
+  .home-link {
+    position: absolute;
+    top: 14px;
+    right: 16px;
+    font-size: 1.3rem;
+    line-height: 1;
+    text-decoration: none;
+    opacity: 0.55;
+  }
+  .home-link:active { opacity: 0.85; }
 
   main {
     position: relative;
@@ -107,6 +122,12 @@
     75% { transform: translateY(0) scaleX(1.1); }
     80% { transform: translateY(0) scaleX(0.94); }
   }
+  .start-tagline {
+    font-weight: 700;
+    color: #3a4a55;
+    font-size: 0.92rem;
+    margin: 2px 0 4px;
+  }
   .best-row {
     display: flex;
     gap: 10px;
@@ -122,48 +143,18 @@
     font-weight: 800;
     font-size: 0.82rem;
     color: #1b6b2c;
+    white-space: nowrap;
   }
-  .section-label {
-    margin: 18px 0 8px;
+  .record-pill {
+    display: inline-block;
+    background: #fff7dd;
+    border: 2px solid #ffe79c;
+    border-radius: 999px;
+    padding: 7px 16px;
     font-weight: 800;
-    font-size: 0.95rem;
-    color: var(--ink);
-  }
-  .table-grid {
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 8px;
-  }
-  .table-btn {
-    border: none;
-    border-radius: 12px;
-    padding: 12px 0;
-    font-size: 1.05rem;
-    font-weight: 800;
-    background: #eef2f6;
-    color: #4a5568;
-    cursor: pointer;
-  }
-  .table-btn.on {
-    background: var(--pitch);
-    color: white;
-    box-shadow: 0 3px 0 var(--pitch-dark);
-  }
-  .quick-row {
-    display: flex;
-    gap: 8px;
-    margin-top: 10px;
-  }
-  .quick-btn {
-    flex: 1;
-    border: 2px solid #dfe6ec;
-    background: white;
-    border-radius: 10px;
-    padding: 9px 0;
-    font-weight: 700;
     font-size: 0.82rem;
-    color: #4a5568;
-    cursor: pointer;
+    color: #8a6400;
+    margin: 12px 0 4px;
   }
   .start-btn {
     margin-top: 20px;
@@ -179,7 +170,18 @@
     cursor: pointer;
   }
   .start-btn:active { transform: translateY(3px); box-shadow: 0 2px 0 #a5271d; }
-  .start-btn:disabled { opacity: 0.45; box-shadow: none; }
+  .link-btn {
+    display: block;
+    margin: 14px auto 0;
+    border: none;
+    background: none;
+    color: #2f6b3f;
+    font-weight: 800;
+    font-size: 0.88rem;
+    text-decoration: underline;
+    cursor: pointer;
+    padding: 6px;
+  }
 
   /* ---------- Game screen ---------- */
   #screen-game { display: none; flex-direction: column; flex: 1; }
@@ -244,7 +246,8 @@
     font-size: 0.85rem;
     margin-bottom: 8px;
   }
-  .score-strip b { font-size: 1rem; }
+  .score-strip b { font-size: 1.05rem; font-variant-numeric: tabular-nums; }
+  #timer-val { color: var(--gold); }
 
   .question-card {
     background: var(--paper);
@@ -281,21 +284,64 @@
   .choice-btn.correct { background: #d6f5dc; color: #1b6b2c; box-shadow: 0 4px 0 #9edcac; }
   .choice-btn.wrong { background: #fbdad6; color: #9a2c22; box-shadow: 0 4px 0 #f0aea5; }
 
-  /* ---------- End screen ---------- */
+  /* ---------- End screen: tally card ---------- */
   #screen-end { display: none; }
   #screen-end .card { text-align: center; }
-  .trophy { font-size: 3.4rem; margin-bottom: 4px; }
-  .final-score {
-    font-size: 2.4rem;
-    font-weight: 900;
-    margin: 2px 0 2px;
-  }
+  .trophy { font-size: 3rem; margin-bottom: 2px; }
   .final-title {
     font-weight: 800;
-    font-size: 1.05rem;
+    font-size: 1.02rem;
     color: #2f6b3f;
-    margin-bottom: 10px;
+    margin-bottom: 12px;
   }
+
+  .tally {
+    background: #f4f8f5;
+    border-radius: 14px;
+    padding: 14px 16px;
+    margin-bottom: 4px;
+  }
+  .tally-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-weight: 700;
+    font-size: 0.95rem;
+    color: #45564c;
+    padding: 5px 0;
+  }
+  .tally-row .val { font-variant-numeric: tabular-nums; font-weight: 900; color: var(--ink); }
+  .tally-row.penalty { color: var(--danger); min-height: 1.4em; }
+  .tally-row.penalty .val { color: var(--danger); }
+  .tally-divider { border: none; border-top: 2px dashed #d3e0d7; margin: 6px 0; }
+  .tally-row.final { font-size: 1.15rem; color: var(--ink); }
+  .tally-row.final .val {
+    font-size: 1.7rem;
+    color: var(--pitch-dark);
+    animation: pop-in 0.4s ease-out;
+  }
+  @keyframes pop-in {
+    0% { transform: scale(0.4); opacity: 0; }
+    70% { transform: scale(1.15); opacity: 1; }
+    100% { transform: scale(1); }
+  }
+
+  .penalty-chip {
+    display: inline-block;
+    background: var(--danger);
+    color: white;
+    font-weight: 900;
+    font-size: 0.72rem;
+    border-radius: 999px;
+    padding: 2px 8px;
+    margin-left: 6px;
+    animation: chip-in 0.35s ease-out;
+  }
+  @keyframes chip-in {
+    0% { transform: translateY(-6px) scale(0.5); opacity: 0; }
+    100% { transform: translateY(0) scale(1); opacity: 1; }
+  }
+
   .new-best {
     display: inline-block;
     background: var(--gold);
@@ -304,8 +350,123 @@
     font-size: 0.78rem;
     padding: 4px 10px;
     border-radius: 999px;
-    margin-bottom: 6px;
+    margin: 8px 0 2px;
   }
+
+  .rank-reveal {
+    margin-top: 14px;
+    font-weight: 800;
+    font-size: 1rem;
+    color: var(--ink);
+    opacity: 0;
+    transition: opacity 0.5s ease, transform 0.5s ease;
+    transform: translateY(6px);
+  }
+  .rank-reveal.show { opacity: 1; transform: translateY(0); }
+  .rank-reveal .big { font-size: 1.4rem; color: var(--danger); }
+
+  /* ---------- Name entry ---------- */
+  .name-entry {
+    display: flex;
+    gap: 8px;
+    margin-top: 12px;
+    opacity: 0;
+    max-height: 0;
+    overflow: hidden;
+    transition: opacity 0.4s ease, max-height 0.4s ease;
+  }
+  .name-entry.show { opacity: 1; max-height: 60px; }
+  .name-entry input {
+    flex: 1;
+    border: 2px solid #dfe6ec;
+    border-radius: 12px;
+    padding: 10px 12px;
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: var(--ink);
+    min-width: 0;
+  }
+  .name-entry input:focus { outline: none; border-color: var(--pitch); }
+  .add-btn {
+    border: none;
+    border-radius: 12px;
+    padding: 0 16px;
+    font-weight: 800;
+    font-size: 0.85rem;
+    background: var(--pitch);
+    color: white;
+    box-shadow: 0 3px 0 var(--pitch-dark);
+    cursor: pointer;
+  }
+  .add-btn:active { transform: translateY(2px); box-shadow: none; }
+  .added-note {
+    margin-top: 10px;
+    font-weight: 800;
+    font-size: 0.85rem;
+    color: #1b6b2c;
+    opacity: 0;
+    max-height: 0;
+    overflow: hidden;
+    transition: opacity 0.4s ease, max-height 0.4s ease;
+  }
+  .added-note.show { opacity: 1; max-height: 30px; }
+
+  /* ---------- Leaderboard ---------- */
+  .leaderboard-wrap {
+    margin-top: 16px;
+    opacity: 0;
+    max-height: 0;
+    overflow: hidden;
+    transition: opacity 0.5s ease, max-height 0.5s ease;
+  }
+  .leaderboard-wrap.show { opacity: 1; max-height: 320px; }
+  .leaderboard-title {
+    font-weight: 900;
+    font-size: 0.95rem;
+    color: var(--ink);
+    margin-bottom: 8px;
+    text-align: left;
+  }
+  .leaderboard-list {
+    max-height: 260px;
+    overflow-y: auto;
+    scroll-behavior: smooth;
+    border-radius: 12px;
+    background: #f4f8f5;
+    padding: 6px;
+    -webkit-overflow-scrolling: touch;
+  }
+  .lb-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 8px;
+    border-radius: 10px;
+    font-weight: 700;
+    font-size: 0.9rem;
+    color: #3a4a4a;
+  }
+  .lb-row + .lb-row { margin-top: 2px; }
+  .lb-rank { width: 28px; text-align: center; font-weight: 900; flex-shrink: 0; }
+  .lb-name {
+    flex: 1;
+    text-align: left;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .lb-time { font-variant-numeric: tabular-nums; font-weight: 900; color: var(--ink); flex-shrink: 0; }
+  .lb-row.me {
+    background: #fff7dd;
+    box-shadow: 0 0 0 2px var(--gold) inset;
+  }
+  .lb-row.pulse { animation: lb-pulse 1s ease-in-out 3; }
+  @keyframes lb-pulse {
+    0%, 100% { background: #fff7dd; }
+    50% { background: #ffe79c; }
+  }
+  .lb-empty { text-align: center; color: #7a8a80; font-weight: 700; font-size: 0.85rem; padding: 18px 4px; }
+
   .end-buttons { display: flex; gap: 10px; margin-top: 18px; }
   .end-buttons button {
     flex: 1;
@@ -317,8 +478,28 @@
     cursor: pointer;
   }
   #play-again-btn { background: var(--pitch); color: white; box-shadow: 0 4px 0 var(--pitch-dark); }
-  #change-teams-btn { background: #eef2f6; color: #4a5568; box-shadow: 0 4px 0 #c9d2db; }
+  #home-btn { background: #eef2f6; color: #4a5568; box-shadow: 0 4px 0 #c9d2db; }
   .end-buttons button:active { transform: translateY(3px); box-shadow: none; }
+
+  /* ---------- Leaderboard-only screen ---------- */
+  #screen-leaderboard { display: none; }
+  #screen-leaderboard .card { text-align: center; }
+  #screen-leaderboard .leaderboard-wrap { opacity: 1; max-height: none; margin-top: 4px; }
+  #screen-leaderboard .leaderboard-list { max-height: 380px; }
+  #back-from-leaderboard-btn {
+    width: 100%;
+    margin-top: 16px;
+    border: none;
+    border-radius: 14px;
+    padding: 14px 0;
+    font-weight: 800;
+    font-size: 0.95rem;
+    background: #eef2f6;
+    color: #4a5568;
+    box-shadow: 0 4px 0 #c9d2db;
+    cursor: pointer;
+  }
+  #back-from-leaderboard-btn:active { transform: translateY(3px); box-shadow: none; }
 
   .hidden { display: none !important; }
 
@@ -344,8 +525,9 @@
 <body>
 <div id="app">
   <header>
+    <a class="home-link" href="/" aria-label="Back to Bulbord">🏠</a>
     <h1>⚽ Penalty Shootout Math</h1>
-    <div class="sub" id="header-sub">Pick your times tables, then take your shots!</div>
+    <div class="sub" id="header-sub">Race the clock — 10 shots, best time wins!</div>
   </header>
 
   <main>
@@ -353,16 +535,12 @@
     <section id="screen-start">
       <div class="card">
         <div class="ball-bounce">⚽</div>
+        <div class="start-tagline">Times tables 1–12, four choices, best time wins.</div>
         <div class="best-row" id="best-row"></div>
+        <div id="record-row"></div>
 
-        <div class="section-label">Choose your teams (times tables)</div>
-        <div class="table-grid" id="table-grid"></div>
-        <div class="quick-row">
-          <button class="quick-btn" id="select-all-btn" type="button">Mixed Match (All)</button>
-          <button class="quick-btn" id="select-none-btn" type="button">Clear</button>
-        </div>
-
-        <button class="start-btn" id="start-btn" type="button">Kick Off — 10 Shots</button>
+        <button class="start-btn" id="start-btn" type="button">⏱ Start Shootout</button>
+        <button class="link-btn" id="view-leaderboard-btn" type="button">🏆 View Leaderboard</button>
       </div>
     </section>
 
@@ -370,7 +548,7 @@
     <section id="screen-game">
       <div class="shot-tracker" id="shot-tracker"></div>
       <div class="score-strip">
-        <div>Score <b id="score-val">0</b></div>
+        <div>⏱ <b id="timer-val">0.0s</b></div>
         <div>Streak <b id="streak-val">0</b> <span id="streak-fire"></span></div>
       </div>
       <div class="goal-scene">
@@ -388,14 +566,54 @@
     <section id="screen-end">
       <div class="card">
         <div class="trophy" id="end-trophy">🏆</div>
-        <div class="new-best hidden" id="new-best-badge">NEW BEST!</div>
-        <div class="final-score" id="final-score">0/10</div>
         <div class="final-title" id="final-title">Great game!</div>
-        <div class="best-row" id="end-best-row"></div>
+
+        <div class="tally">
+          <div class="tally-row">
+            <span>Race Time</span>
+            <span class="val" id="tally-race-time">0.0s</span>
+          </div>
+          <div class="tally-row penalty" id="tally-penalty-row">
+            <span id="tally-penalty-label">&nbsp;</span>
+            <span class="val" id="tally-penalty-total"></span>
+          </div>
+          <hr class="tally-divider" />
+          <div class="tally-row final">
+            <span>🏁 FINAL SCORE</span>
+            <span class="val" id="tally-final-score">0.0s</span>
+          </div>
+        </div>
+        <div class="new-best hidden" id="new-best-badge">NEW PERSONAL BEST!</div>
+
+        <div class="rank-reveal" id="rank-reveal"></div>
+
+        <div class="name-entry" id="name-entry">
+          <input id="name-input" type="text" maxlength="20" placeholder="Your name" autocomplete="off" />
+          <button class="add-btn" id="add-to-leaderboard-btn" type="button">Add</button>
+        </div>
+        <div class="added-note" id="added-note"></div>
+
+        <div class="leaderboard-wrap" id="end-leaderboard-wrap">
+          <div class="leaderboard-title">🏆 Leaderboard</div>
+          <div class="leaderboard-list" id="end-leaderboard-list"></div>
+        </div>
+
         <div class="end-buttons">
           <button id="play-again-btn" type="button">Play Again</button>
-          <button id="change-teams-btn" type="button">Change Teams</button>
+          <button id="home-btn" type="button">Home</button>
         </div>
+      </div>
+    </section>
+
+    <!-- LEADERBOARD-ONLY SCREEN -->
+    <section id="screen-leaderboard">
+      <div class="card">
+        <div class="trophy">🏆</div>
+        <div class="final-title">Leaderboard</div>
+        <div class="leaderboard-wrap">
+          <div class="leaderboard-list" id="standalone-leaderboard-list"></div>
+        </div>
+        <button id="back-from-leaderboard-btn" type="button">Back</button>
       </div>
     </section>
   </main>
@@ -407,20 +625,25 @@
 
   var SHOTS_PER_ROUND = 10;
   var MAX_TABLE = 12;
-  var STORAGE_KEY = 'soccerMathBest_v1';
+  var MISS_PENALTY_MS = 2000;
+  var MAX_LEADERBOARD_ENTRIES = 100;
+  var BEST_STORAGE_KEY = 'soccerMathBestTime_v1';
+  var NAME_STORAGE_KEY = 'soccerMathLastName_v1';
+  var LEADERBOARD_STORAGE_KEY = 'soccerMathLeaderboard_v1';
 
   var el = {
     screenStart: document.getElementById('screen-start'),
     screenGame: document.getElementById('screen-game'),
     screenEnd: document.getElementById('screen-end'),
+    screenLeaderboard: document.getElementById('screen-leaderboard'),
     headerSub: document.getElementById('header-sub'),
     bestRow: document.getElementById('best-row'),
-    tableGrid: document.getElementById('table-grid'),
-    selectAllBtn: document.getElementById('select-all-btn'),
-    selectNoneBtn: document.getElementById('select-none-btn'),
+    recordRow: document.getElementById('record-row'),
     startBtn: document.getElementById('start-btn'),
+    viewLeaderboardBtn: document.getElementById('view-leaderboard-btn'),
+    backFromLeaderboardBtn: document.getElementById('back-from-leaderboard-btn'),
     shotTracker: document.getElementById('shot-tracker'),
-    scoreVal: document.getElementById('score-val'),
+    timerVal: document.getElementById('timer-val'),
     streakVal: document.getElementById('streak-val'),
     streakFire: document.getElementById('streak-fire'),
     ballFly: document.getElementById('ball-fly'),
@@ -428,95 +651,115 @@
     questionText: document.getElementById('question-text'),
     choices: document.getElementById('choices'),
     endTrophy: document.getElementById('end-trophy'),
-    newBestBadge: document.getElementById('new-best-badge'),
-    finalScore: document.getElementById('final-score'),
     finalTitle: document.getElementById('final-title'),
-    endBestRow: document.getElementById('end-best-row'),
+    tallyRaceTime: document.getElementById('tally-race-time'),
+    tallyPenaltyLabel: document.getElementById('tally-penalty-label'),
+    tallyPenaltyTotal: document.getElementById('tally-penalty-total'),
+    tallyFinalScore: document.getElementById('tally-final-score'),
+    newBestBadge: document.getElementById('new-best-badge'),
+    rankReveal: document.getElementById('rank-reveal'),
+    nameEntry: document.getElementById('name-entry'),
+    nameInput: document.getElementById('name-input'),
+    addToLeaderboardBtn: document.getElementById('add-to-leaderboard-btn'),
+    addedNote: document.getElementById('added-note'),
+    endLeaderboardWrap: document.getElementById('end-leaderboard-wrap'),
+    endLeaderboardList: document.getElementById('end-leaderboard-list'),
+    standaloneLeaderboardList: document.getElementById('standalone-leaderboard-list'),
     playAgainBtn: document.getElementById('play-again-btn'),
-    changeTeamsBtn: document.getElementById('change-teams-btn'),
+    homeBtn: document.getElementById('home-btn'),
   };
 
-  var selectedTables = new Set();
-  for (var t = 1; t <= MAX_TABLE; t++) selectedTables.add(t);
+  var round = {
+    shots: [], index: 0, streak: 0, bestStreakThisRound: 0, misses: 0,
+    answering: false, startTime: 0, elapsedMs: 0,
+  };
+  var timerInterval = null;
 
-  var round = { shots: [], index: 0, score: 0, streak: 0, bestStreakThisRound: 0, answering: false };
-
+  // ---------- storage ----------
   function loadBest() {
     try {
-      var raw = localStorage.getItem(STORAGE_KEY);
-      if (!raw) return { bestScore: 0, bestStreak: 0 };
+      var raw = localStorage.getItem(BEST_STORAGE_KEY);
+      if (!raw) return { bestTimeMs: null, bestStreak: 0 };
       var parsed = JSON.parse(raw);
-      return { bestScore: parsed.bestScore || 0, bestStreak: parsed.bestStreak || 0 };
+      return { bestTimeMs: typeof parsed.bestTimeMs === 'number' ? parsed.bestTimeMs : null, bestStreak: parsed.bestStreak || 0 };
     } catch (e) {
-      return { bestScore: 0, bestStreak: 0 };
+      return { bestTimeMs: null, bestStreak: 0 };
     }
   }
   function saveBest(best) {
-    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(best)); } catch (e) {}
+    try { localStorage.setItem(BEST_STORAGE_KEY, JSON.stringify(best)); } catch (e) {}
   }
-
-  function renderBestRow(container) {
-    var best = loadBest();
-    container.innerHTML = '';
-    if (best.bestScore === 0 && best.bestStreak === 0) return;
-    var p1 = document.createElement('div');
-    p1.className = 'pill';
-    p1.textContent = 'Best: ' + best.bestScore + '/' + SHOTS_PER_ROUND + ' ⚽';
-    var p2 = document.createElement('div');
-    p2.className = 'pill';
-    p2.textContent = 'Streak: ' + best.bestStreak + ' 🔥';
-    container.appendChild(p1);
-    container.appendChild(p2);
-  }
-
-  function buildTableGrid() {
-    el.tableGrid.innerHTML = '';
-    for (var n = 1; n <= MAX_TABLE; n++) {
-      (function (num) {
-        var btn = document.createElement('button');
-        btn.type = 'button';
-        btn.className = 'table-btn' + (selectedTables.has(num) ? ' on' : '');
-        btn.textContent = num;
-        btn.setAttribute('aria-pressed', selectedTables.has(num) ? 'true' : 'false');
-        btn.addEventListener('click', function () {
-          if (selectedTables.has(num)) selectedTables.delete(num);
-          else selectedTables.add(num);
-          buildTableGrid();
-          updateStartBtn();
-        });
-        el.tableGrid.appendChild(btn);
-      })(n);
+  function loadLeaderboard() {
+    try {
+      var raw = localStorage.getItem(LEADERBOARD_STORAGE_KEY);
+      if (!raw) return [];
+      var parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (e) {
+      return [];
     }
   }
-
-  function updateStartBtn() {
-    el.startBtn.disabled = selectedTables.size === 0;
+  function saveLeaderboard(entries) {
+    entries.sort(function (a, b) { return a.finalMs - b.finalMs; });
+    if (entries.length > MAX_LEADERBOARD_ENTRIES) entries = entries.slice(0, MAX_LEADERBOARD_ENTRIES);
+    try { localStorage.setItem(LEADERBOARD_STORAGE_KEY, JSON.stringify(entries)); } catch (e) {}
+    return entries;
+  }
+  function loadLastName() {
+    try { return localStorage.getItem(NAME_STORAGE_KEY) || ''; } catch (e) { return ''; }
+  }
+  function saveLastName(name) {
+    try { localStorage.setItem(NAME_STORAGE_KEY, name); } catch (e) {}
   }
 
-  el.selectAllBtn.addEventListener('click', function () {
-    selectedTables = new Set();
-    for (var n = 1; n <= MAX_TABLE; n++) selectedTables.add(n);
-    buildTableGrid();
-    updateStartBtn();
-  });
-  el.selectNoneBtn.addEventListener('click', function () {
-    selectedTables = new Set();
-    buildTableGrid();
-    updateStartBtn();
-  });
-
+  // ---------- helpers ----------
+  function formatTime(ms) {
+    var totalSeconds = ms / 1000;
+    if (totalSeconds < 60) return totalSeconds.toFixed(1) + 's';
+    var minutes = Math.floor(totalSeconds / 60);
+    var seconds = totalSeconds - minutes * 60;
+    return minutes + ':' + (seconds < 10 ? '0' : '') + seconds.toFixed(1);
+  }
   function randInt(min, max) {
     return Math.floor(Math.random() * (max - min + 1)) + min;
   }
   function pick(arr) { return arr[randInt(0, arr.length - 1)]; }
 
+  function renderBestRow(container) {
+    var best = loadBest();
+    container.innerHTML = '';
+    if (best.bestTimeMs == null && best.bestStreak === 0) return;
+    if (best.bestTimeMs != null) {
+      var p1 = document.createElement('div');
+      p1.className = 'pill';
+      p1.textContent = 'Your Best: ' + formatTime(best.bestTimeMs);
+      container.appendChild(p1);
+    }
+    if (best.bestStreak > 0) {
+      var p2 = document.createElement('div');
+      p2.className = 'pill';
+      p2.textContent = 'Streak: ' + best.bestStreak + ' 🔥';
+      container.appendChild(p2);
+    }
+  }
+
+  function renderRecordRow() {
+    var board = loadLeaderboard();
+    el.recordRow.innerHTML = '';
+    if (board.length === 0) return;
+    var top = board[0];
+    var span = document.createElement('div');
+    span.className = 'record-pill';
+    span.textContent = '🏆 Record: ' + formatTime(top.finalMs) + ' — ' + top.name;
+    el.recordRow.appendChild(span);
+  }
+
+  // ---------- question generation ----------
   function buildShots() {
-    var tables = Array.from(selectedTables);
     var shots = [];
     for (var i = 0; i < SHOTS_PER_ROUND; i++) {
-      var a = pick(tables);
+      var a = randInt(1, MAX_TABLE);
       var b = randInt(1, MAX_TABLE);
-      if (Math.random() < 0.5) { var tmp = a; a = b; b = tmp; }
       shots.push({ a: a, b: b, answer: a * b, result: null });
     }
     return shots;
@@ -560,15 +803,33 @@
     el.screenStart.style.display = name === 'start' ? 'block' : 'none';
     el.screenGame.style.display = name === 'game' ? 'flex' : 'none';
     el.screenEnd.style.display = name === 'end' ? 'block' : 'none';
+    el.screenLeaderboard.style.display = name === 'leaderboard' ? 'block' : 'none';
   }
 
+  // ---------- timer ----------
+  function startTimer() {
+    round.startTime = performance.now();
+    el.timerVal.textContent = '0.0s';
+    if (timerInterval) clearInterval(timerInterval);
+    timerInterval = setInterval(function () {
+      el.timerVal.textContent = formatTime(performance.now() - round.startTime);
+    }, 100);
+  }
+  function stopTimer() {
+    if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
+  }
+
+  // ---------- round flow ----------
   function startRound() {
-    round = { shots: buildShots(), index: 0, score: 0, streak: 0, bestStreakThisRound: 0, answering: false };
-    el.scoreVal.textContent = '0';
+    round = {
+      shots: buildShots(), index: 0, streak: 0, bestStreakThisRound: 0, misses: 0,
+      answering: false, startTime: 0, elapsedMs: 0,
+    };
     el.streakVal.textContent = '0';
     updateStreakFire();
     el.headerSub.textContent = 'Score a goal for every right answer!';
     showScreen('game');
+    startTimer();
     showQuestion();
   }
 
@@ -576,7 +837,7 @@
     var shot = round.shots[round.index];
     round.answering = true;
     el.ballFly.className = 'ball-fly';
-    el.resultBanner.textContent = ' ';
+    el.resultBanner.textContent = ' ';
     el.resultBanner.className = 'result-banner';
     el.questionText.textContent = shot.a + ' × ' + shot.b;
     renderShotTracker();
@@ -602,8 +863,16 @@
     var correct = val === shot.answer;
     shot.result = correct ? 'goal' : 'miss';
 
+    var isLastShot = round.index + 1 >= round.shots.length;
+    if (isLastShot) {
+      // Freeze elapsed time the instant the final answer lands, so the
+      // "SAVED!"/celebration delay below never counts toward the race time.
+      round.elapsedMs = performance.now() - round.startTime;
+      stopTimer();
+      el.timerVal.textContent = formatTime(round.elapsedMs);
+    }
+
     if (correct) {
-      round.score++;
       round.streak++;
       round.bestStreakThisRound = Math.max(round.bestStreakThisRound, round.streak);
       btn.classList.add('correct');
@@ -613,16 +882,16 @@
       launchConfetti();
     } else {
       round.streak = 0;
+      round.misses++;
       btn.classList.add('wrong');
       buttons.forEach(function (b) {
         if (parseInt(b.textContent, 10) === shot.answer) b.classList.add('correct');
       });
       el.ballFly.className = 'ball-fly shoot-bad';
-      el.resultBanner.textContent = 'SAVED! It was ' + shot.a + ' × ' + shot.b + ' = ' + shot.answer;
+      el.resultBanner.textContent = 'SAVED! It was ' + shot.a + ' × ' + shot.b + ' = ' + shot.answer + ' (+2s)';
       el.resultBanner.classList.add('bad');
     }
 
-    el.scoreVal.textContent = round.score;
     el.streakVal.textContent = round.streak;
     updateStreakFire();
     renderShotTracker();
@@ -653,44 +922,193 @@
     setTimeout(function () { wrap.remove(); }, 1800);
   }
 
-  function endRound() {
-    var best = loadBest();
-    var isNewBest = round.score > best.bestScore || (round.score === best.bestScore && round.bestStreakThisRound > best.bestStreak);
-    var newBest = {
-      bestScore: Math.max(best.bestScore, round.score),
-      bestStreak: Math.max(best.bestStreak, round.bestStreakThisRound),
-    };
-    saveBest(newBest);
+  // ---------- end-of-round tally + leaderboard reveal ----------
+  var tallyTimers = [];
+  function clearTallyTimers() {
+    tallyTimers.forEach(function (id) { clearTimeout(id); });
+    tallyTimers = [];
+  }
 
-    el.finalScore.textContent = round.score + '/' + SHOTS_PER_ROUND;
-    el.newBestBadge.classList.toggle('hidden', !isNewBest);
+  // Animates a number counting up from 0 to `target` (ms) over `duration`ms,
+  // using an ease-out curve so it starts fast and settles — the "totaling
+  // it up" effect. Calls onDone once it lands exactly on target.
+  function animateCount(targetEl, targetMs, duration, onDone) {
+    var start = performance.now();
+    function frame(now) {
+      var t = Math.min(1, (now - start) / duration);
+      var eased = 1 - Math.pow(1 - t, 3);
+      targetEl.textContent = formatTime(targetMs * eased);
+      if (t < 1) {
+        requestAnimationFrame(frame);
+      } else {
+        targetEl.textContent = formatTime(targetMs);
+        if (onDone) onDone();
+      }
+    }
+    requestAnimationFrame(frame);
+  }
+
+  function runTally(finalMs) {
+    clearTallyTimers();
+    el.tallyRaceTime.textContent = '0.0s';
+    el.tallyPenaltyLabel.textContent = ' ';
+    el.tallyPenaltyTotal.textContent = '';
+    el.tallyFinalScore.textContent = '0.0s';
+    el.rankReveal.className = 'rank-reveal';
+    el.rankReveal.textContent = '';
+    el.nameEntry.className = 'name-entry';
+    el.addedNote.className = 'added-note';
+    el.endLeaderboardWrap.className = 'leaderboard-wrap';
+
+    animateCount(el.tallyRaceTime, round.elapsedMs, 650, function () {
+      if (round.misses === 0) {
+        proceedToFinal(finalMs);
+        return;
+      }
+      el.tallyPenaltyLabel.textContent = 'Misses (' + round.misses + ' × 2s)';
+      var shown = 0;
+      var runningMs = round.elapsedMs;
+      function addChip() {
+        shown++;
+        runningMs += MISS_PENALTY_MS;
+        var chip = document.createElement('span');
+        chip.className = 'penalty-chip';
+        chip.textContent = '+2.0s';
+        el.tallyPenaltyTotal.textContent = '';
+        el.tallyPenaltyTotal.appendChild(chip);
+        el.tallyPenaltyTotal.appendChild(document.createTextNode(' ' + formatTime(runningMs - round.elapsedMs)));
+        if (shown < round.misses) {
+          tallyTimers.push(setTimeout(addChip, 260));
+        } else {
+          tallyTimers.push(setTimeout(function () { proceedToFinal(finalMs); }, 400));
+        }
+      }
+      tallyTimers.push(setTimeout(addChip, 200));
+    });
+  }
+
+  function proceedToFinal(finalMs) {
+    el.tallyFinalScore.textContent = formatTime(finalMs);
+    tallyTimers.push(setTimeout(function () { revealRankAndLeaderboard(finalMs); }, 450));
+  }
+
+  function revealRankAndLeaderboard(finalMs) {
+    var board = loadLeaderboard();
+    var previewRank = board.filter(function (e) { return e.finalMs <= finalMs; }).length + 1;
+    el.rankReveal.innerHTML = board.length === 0
+      ? 'Be the first on the <span class="big">Leaderboard!</span>'
+      : 'That would rank <span class="big">#' + previewRank + '</span> of ' + (board.length + 1) + '!';
+    el.rankReveal.classList.add('show');
+
+    el.nameInput.value = loadLastName();
+    el.nameEntry.classList.add('show');
+    renderLeaderboardList(el.endLeaderboardList, board, null);
+    el.endLeaderboardWrap.classList.add('show');
+  }
+
+  function renderLeaderboardList(container, entries, highlightIndex) {
+    container.innerHTML = '';
+    if (entries.length === 0) {
+      var empty = document.createElement('div');
+      empty.className = 'lb-empty';
+      empty.textContent = 'No times yet — be the first to post one!';
+      container.appendChild(empty);
+      return;
+    }
+    entries.forEach(function (entry, i) {
+      var row = document.createElement('div');
+      row.className = 'lb-row' + (i === highlightIndex ? ' me pulse' : '');
+      var rank = document.createElement('div');
+      rank.className = 'lb-rank';
+      rank.textContent = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : '#' + (i + 1);
+      var name = document.createElement('div');
+      name.className = 'lb-name';
+      name.textContent = entry.name;
+      var time = document.createElement('div');
+      time.className = 'lb-time';
+      time.textContent = formatTime(entry.finalMs);
+      row.appendChild(rank);
+      row.appendChild(name);
+      row.appendChild(time);
+      if (i === highlightIndex) row.id = 'lb-me-row';
+      container.appendChild(row);
+    });
+  }
+
+  function addCurrentScoreToLeaderboard(finalMs) {
+    var name = (el.nameInput.value || '').trim() || 'Player';
+    saveLastName(name);
+    var board = loadLeaderboard();
+    board.push({ name: name, finalMs: finalMs, misses: round.misses, date: new Date().toISOString() });
+    board = saveLeaderboard(board);
+    var myIndex = board.findIndex(function (e) {
+      return e.name === name && e.finalMs === finalMs && e.misses === round.misses;
+    });
+
+    el.nameEntry.classList.remove('show');
+    el.addedNote.textContent = myIndex >= 0 ? 'Added! You’re #' + (myIndex + 1) + ' on the board 🎉' : 'Added to the leaderboard!';
+    el.addedNote.classList.add('show');
+
+    renderLeaderboardList(el.endLeaderboardList, board, myIndex);
+    if (myIndex >= 0) {
+      setTimeout(function () {
+        var row = document.getElementById('lb-me-row');
+        if (row) row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 150);
+    }
+  }
+
+  function endRound() {
+    var finalMs = round.elapsedMs + round.misses * MISS_PENALTY_MS;
+
+    var best = loadBest();
+    var isNewBest = best.bestTimeMs == null || finalMs < best.bestTimeMs || round.bestStreakThisRound > best.bestStreak;
+    saveBest({
+      bestTimeMs: best.bestTimeMs == null ? finalMs : Math.min(best.bestTimeMs, finalMs),
+      bestStreak: Math.max(best.bestStreak, round.bestStreakThisRound),
+    });
 
     var title, trophy;
-    if (round.score === SHOTS_PER_ROUND) { title = 'HAT TRICK LEGEND! Perfect round!'; trophy = '🏆'; }
-    else if (round.score >= 8) { title = 'Great game — top scorer!'; trophy = '⭐'; }
-    else if (round.score >= 5) { title = 'Nice hustle out there!'; trophy = '⚽'; }
+    if (round.misses === 0) { title = 'FLAWLESS SHOOTOUT! Not a single miss!'; trophy = '🏆'; }
+    else if (round.misses <= 2) { title = 'Great game — sharp shooting!'; trophy = '⭐'; }
+    else if (round.misses <= 5) { title = 'Nice hustle out there!'; trophy = '⚽'; }
     else { title = 'Keep practicing — you’ll get there!'; trophy = '👟'; }
     el.finalTitle.textContent = title;
     el.endTrophy.textContent = trophy;
+    el.newBestBadge.classList.toggle('hidden', !isNewBest);
 
-    renderBestRow(el.endBestRow);
     showScreen('end');
-    if (round.score === SHOTS_PER_ROUND) launchConfetti();
+    runTally(finalMs);
+    if (round.misses === 0) launchConfetti();
+
+    el.addToLeaderboardBtn.onclick = function () { addCurrentScoreToLeaderboard(finalMs); };
   }
 
-  el.startBtn.addEventListener('click', function () {
-    if (selectedTables.size === 0) return;
+  // ---------- wiring ----------
+  el.startBtn.addEventListener('click', startRound);
+  el.playAgainBtn.addEventListener('click', function () {
+    clearTallyTimers();
     startRound();
   });
-  el.playAgainBtn.addEventListener('click', startRound);
-  el.changeTeamsBtn.addEventListener('click', function () {
+  el.homeBtn.addEventListener('click', function () {
+    clearTallyTimers();
     renderBestRow(el.bestRow);
+    renderRecordRow();
     showScreen('start');
   });
+  el.viewLeaderboardBtn.addEventListener('click', function () {
+    renderLeaderboardList(el.standaloneLeaderboardList, loadLeaderboard(), null);
+    showScreen('leaderboard');
+  });
+  el.backFromLeaderboardBtn.addEventListener('click', function () {
+    showScreen('start');
+  });
+  el.nameInput.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') el.addToLeaderboardBtn.click();
+  });
 
-  buildTableGrid();
-  updateStartBtn();
   renderBestRow(el.bestRow);
+  renderRecordRow();
   showScreen('start');
 })();
 </script>

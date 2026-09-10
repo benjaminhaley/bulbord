@@ -1,5 +1,5 @@
 import { IonBackButton, IonButton, IonButtons, IonContent, IonHeader, IonIcon, IonItem, IonLabel, IonList, IonPage, IonTitle, IonToolbar } from '@ionic/react'
-import { createOutline, informationCircleOutline, notificationsOutline, peopleOutline, shieldCheckmarkOutline } from 'ionicons/icons'
+import { createOutline, flaskOutline, informationCircleOutline, notificationsOutline, peopleOutline, shieldCheckmarkOutline } from 'ionicons/icons'
 
 import { Avatar } from '../uploads/Avatar'
 import { useAuth } from './AuthContext'
@@ -55,6 +55,17 @@ export function AccountPage() {
             <IonItem button routerLink="/about" lines="none">
               <IonIcon slot="start" icon={informationCircleOutline} />
               <IonLabel>About</IonLabel>
+            </IonItem>
+            {/* Deliberately unlabeled-as-such in the tab bar/nav — reachable
+                only by a member who happens to open Account and notice this
+                row, same low-visibility posture as the Administrator row
+                above. Currently just Soccer Math (see LabsPage.tsx), a
+                buried, standalone multiplication-practice game that lives
+                outside the SPA entirely (web/public/soccer-math/) so a kid
+                can open it with no login. */}
+            <IonItem button routerLink="/labs" lines="none">
+              <IonIcon slot="start" icon={flaskOutline} />
+              <IonLabel>Labs</IonLabel>
             </IonItem>
             <IonItem lines="none">
               <IonButton fill="outline" color="medium" onClick={logout}>
