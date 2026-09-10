@@ -277,27 +277,46 @@
   .shot-dot.miss { background: var(--danger); }
   .shot-dot.current { box-shadow: 0 0 0 3px rgba(255,255,255,0.7); }
 
+  /* Both children are explicitly positioned (not flex/align-items:flex-end
+     for the goal, which left no room below it) so there's real space
+     below the goal frame for the ball to start from and travel up INTO
+     the net — see the ball-fly comment below for why this replaced the
+     original layout. */
   .goal-scene {
     position: relative;
-    height: 108px;
+    width: 100%;
+    height: 140px;
     margin: 4px auto 10px;
-    display: flex;
-    align-items: flex-end;
-    justify-content: center;
   }
   .goal-frame {
+    position: absolute;
+    left: 50%;
+    bottom: 32px;
+    transform: translateX(-50%);
     font-size: 4.4rem;
     line-height: 1;
   }
+  /* Feedback, 2026-09-10: "the ball moves like from the goal to somewhere
+     behind it" — confirmed by screenshotting the actual rendered
+     animation end-state: the ball's rest position used to sit INSIDE the
+     goal frame's own box, so a correct answer visibly flew it UP AND OUT
+     above the crossbar, ending completely outside/above the goal — the
+     exact opposite of "scoring." The ball now starts here, below and in
+     front of the goal frame (like it's on the ground about to be
+     struck), and shoot-good below carries it UP into the goal frame's
+     own box instead of past it. */
   .ball-fly {
     position: absolute;
     left: 50%;
-    bottom: 6px;
+    bottom: 0;
     font-size: 2rem;
     transform: translateX(-50%);
     transition: transform 0.5s cubic-bezier(.2,.7,.3,1), opacity 0.4s;
   }
-  .ball-fly.shoot-good { transform: translate(-50%, -66px) scale(0.7); }
+  /* Lands around bottom:64px — comfortably inside the goal frame's own
+     32px-102px box (measured), not above/past its 102px top edge like
+     the old -66px did. */
+  .ball-fly.shoot-good { transform: translate(-50%, -64px) scale(0.72); }
   .ball-fly.shoot-bad { transform: translate(calc(-50% + 70px), -14px) rotate(160deg); opacity: 0.7; }
 
   .result-banner {
