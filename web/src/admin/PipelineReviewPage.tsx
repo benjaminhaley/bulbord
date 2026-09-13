@@ -140,7 +140,7 @@ function CheckLine({
   if (!check.pass && duplicateOf) {
     return (
       <p style={style}>
-        {icon} <strong>{label}:</strong> Duplicate of <a href={`/events/${duplicateOf.id}`}>{duplicateOf.title}</a>
+        {icon} <strong>Duplicate of:</strong> <a href={`/events/${duplicateOf.id}`}>{duplicateOf.title}</a>
       </p>
     )
   }
@@ -380,11 +380,24 @@ export function PipelineReviewPage() {
   // with no bucketing needed, so "Rejected" only ever holds rejected
   // candidates the admin agreed with (there's no kept-item equivalent to
   // show).
+  // Duplicates get their own section entirely (feedback, 2026-09-13: "they
+  // don't need to be reviewed... I do want them to be present and I
+  // definitely wanna know the count") — a real duplicate rejection is
+  // already a correct, no-action-needed outcome (see duplicate-detection.ts),
+  // unlike a relevance rejection, which is a judgment call worth an admin's
+  // actual attention. Pulled out ahead of the Needs Review/Approved/Rejected
+  // split below (regardless of reviewed state — a duplicate the admin
+  // happened to Reject/Approve-anyway still belongs here, not scattered into
+  // those other sections) so it doesn't crowd the buckets that do need a
+  // human decision.
+  const duplicateCandidates = rejected.filter((r) => r.rejection_type === 'duplicate')
+  const nonDuplicateRejected = rejected.filter((r) => r.rejection_type !== 'duplicate')
+
   const keptNeedsReview = kept.filter((k) => !k.reviewed_at)
   const keptApproved = kept.filter((k) => k.reviewed_at)
-  const rejectedNeedsReview = rejected.filter((r) => !r.reviewed_at)
-  const rejectedApproved = rejected.filter((r) => r.reviewed_at && r.review_action === 'approved')
-  const rejectedRejectedList = rejected.filter((r) => r.reviewed_at && r.review_action === 'rejected')
+  const rejectedNeedsReview = nonDuplicateRejected.filter((r) => !r.reviewed_at)
+  const rejectedApproved = nonDuplicateRejected.filter((r) => r.reviewed_at && r.review_action === 'approved')
+  const rejectedRejectedList = nonDuplicateRejected.filter((r) => r.reviewed_at && r.review_action === 'rejected')
 
   function keptItemNode(item: PipelineKeptCandidate) {
     return (
@@ -738,6 +751,25 @@ export function PipelineReviewPage() {
                       </IonItem>
                     )}
                     {rejectedRejectedList.map(rejectedItemNode)}
+                  </IonList>
+                </div>
+              </IonAccordion>
+              {/* Collapsed by default, unlike Needs Review — a real
+                  duplicate is already a correct outcome, nothing here is
+                  waiting on a decision, this is just for an occasional
+                  glance (Ben, 2026-09-13). */}
+              <IonAccordion value="duplicates">
+                <IonItem slot="header">
+                  <IonLabel>Duplicates ({duplicateCandidates.length})</IonLabel>
+                </IonItem>
+                <div slot="content">
+                  <IonList>
+                    {duplicateCandidates.length === 0 && (
+                      <IonItem lines="none">
+                        <IonLabel color="medium">No duplicates found</IonLabel>
+                      </IonItem>
+                    )}
+                    {duplicateCandidates.map(rejectedItemNode)}
                   </IonList>
                 </div>
               </IonAccordion>
