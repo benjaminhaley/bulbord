@@ -13,6 +13,7 @@ const ingestEventsMock = vi.fn()
 const scoreTextChecksMock = vi.fn()
 const runTextChecksWithRetryMock = vi.fn()
 const recordEditMock = vi.fn()
+const fetchPageTextMock = vi.fn()
 
 vi.mock('../db/client.js', () => {
   const builder: Record<string, unknown> = {}
@@ -41,6 +42,7 @@ vi.mock('../db/client.js', () => {
 })
 vi.mock('./image-enrichment.js', () => ({ enrichEventImage: enrichEventImageMock }))
 vi.mock('./ingest.js', () => ({ ingestEvents: ingestEventsMock }))
+vi.mock('./resourcing.js', () => ({ fetchPageText: fetchPageTextMock }))
 vi.mock('../edit-history/service.js', () => ({ recordEdit: recordEditMock }))
 vi.mock('./candidate-checks.js', async () => {
   const actual = await vi.importActual<typeof import('./candidate-checks.js')>('./candidate-checks.js')
@@ -63,6 +65,7 @@ beforeEach(() => {
   scoreTextChecksMock.mockReset().mockResolvedValue([PASSING_TEXT_CHECKS])
   runTextChecksWithRetryMock.mockReset().mockResolvedValue([{ checks: PASSING_TEXT_CHECKS, correctedFields: {} }])
   recordEditMock.mockReset()
+  fetchPageTextMock.mockReset().mockResolvedValue('the real page text')
 })
 
 describe('approveEvent', () => {
@@ -332,6 +335,66 @@ describe('retryPipelineChecks', () => {
 
     expect(result).toBe('not_found')
   })
+
+  // Feedback, 2026-09-13: a retry given no source text produced a reason
+  // reading "no original source text is available to me" — which, despite
+  // only ever meaning "this recheck call wasn't given the page text," read
+  // as if the event itself had no real source. Fetching a fresh copy of the
+  // event's own real source page here is the actual fix.
+  it("re-fetches the event's own source page and passes the real text into the retry", async () => {
+    selectResults.push([
+      {
+        title: 'Old Title',
+        description: null,
+        address: 'Northalsted',
+        locationName: null,
+        startDate: '2026-10-10',
+        startTime: null,
+        endTime: null,
+        allDay: true,
+        sourceUrl: 'https://northalsted.example/events',
+        topic: null,
+        imageUrl: 'https://example.com/img.jpg',
+        thumbnailUrl: 'https://example.com/thumb.jpg',
+        checks: priorChecksAllPassing,
+        status: 'approved',
+      },
+    ])
+    fetchPageTextMock.mockResolvedValue('The festival happens at 3252 N Broadway.')
+    const { retryPipelineChecks } = await import('./pipeline-review-service.js')
+
+    await retryPipelineChecks('event-1', 'admin-1')
+
+    expect(fetchPageTextMock).toHaveBeenCalledWith('https://northalsted.example/events')
+    expect(runTextChecksWithRetryMock).toHaveBeenCalledWith(expect.anything(), 'The festival happens at 3252 N Broadway.')
+  })
+
+  it('skips the re-fetch entirely for an event with no source_url (a member self-service post)', async () => {
+    selectResults.push([
+      {
+        title: 'Old Title',
+        description: null,
+        address: 'Northalsted',
+        locationName: null,
+        startDate: '2026-10-10',
+        startTime: null,
+        endTime: null,
+        allDay: true,
+        sourceUrl: null,
+        topic: null,
+        imageUrl: 'https://example.com/img.jpg',
+        thumbnailUrl: 'https://example.com/thumb.jpg',
+        checks: priorChecksAllPassing,
+        status: 'approved',
+      },
+    ])
+    const { retryPipelineChecks } = await import('./pipeline-review-service.js')
+
+    await retryPipelineChecks('event-1', 'admin-1')
+
+    expect(fetchPageTextMock).not.toHaveBeenCalled()
+    expect(runTextChecksWithRetryMock).toHaveBeenCalledWith(expect.anything(), undefined)
+  })
 })
 
 describe('retryRejectedCandidateChecks', () => {
@@ -384,6 +447,24 @@ describe('retryRejectedCandidateChecks', () => {
     const result = await retryRejectedCandidateChecks('missing')
 
     expect(result).toBe('not_found')
+  })
+
+  it("re-fetches the candidate's own source page and passes the real text into the retry", async () => {
+    selectResults.push([
+      {
+        candidateData: { title: 'Fall Fest', startDate: '2026-10-10', allDay: true, sourceUrl: 'https://northalsted.example/events', status: 'approved', address: 'Northalsted' },
+        checks: null,
+        rejectionType: 'relevance',
+        rejectionReason: 'age-restricted',
+      },
+    ])
+    fetchPageTextMock.mockResolvedValue('The festival happens at 3252 N Broadway.')
+    const { retryRejectedCandidateChecks } = await import('./pipeline-review-service.js')
+
+    await retryRejectedCandidateChecks('rejected-1')
+
+    expect(fetchPageTextMock).toHaveBeenCalledWith('https://northalsted.example/events')
+    expect(runTextChecksWithRetryMock).toHaveBeenCalledWith(expect.anything(), 'The festival happens at 3252 N Broadway.')
   })
 })
 

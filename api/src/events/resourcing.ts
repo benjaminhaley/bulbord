@@ -96,6 +96,31 @@ function hashPageText(pageText: string): string {
   return createHash('sha256').update(pageText).digest('hex')
 }
 
+// Fetches a page and reduces it to the same cleaned, bounded visible-text
+// shape extractCandidateEventsFromSource extracts from it — pulled out so a
+// caller who just needs fresh source text (not a fresh extraction pass), like
+// Pipeline Review's own Retry action re-reading an already-ingested event's
+// source_url for a better address, doesn't have to duplicate this fetch +
+// cheerio-strip logic. Returns null on any failure (unreachable page,
+// non-HTML response, empty body) — same best-effort posture as everything
+// else in this file.
+export async function fetchPageText(sourceUrl: string): Promise<string | null> {
+  const response = await fetchWithTimeout(sourceUrl, FETCH_TIMEOUT_MS)
+  if (!response || !response.ok) return null
+  const contentType = response.headers.get('content-type') ?? ''
+  if (!contentType.includes('html')) return null
+
+  try {
+    const html = await response.text()
+    const $ = cheerio.load(html)
+    $('script, style, nav, footer, noscript').remove()
+    const pageText = $('body').text().replace(/\s+/g, ' ').trim().slice(0, MAX_PAGE_TEXT_CHARS)
+    return pageText || null
+  } catch {
+    return null
+  }
+}
+
 // Fetches a known source's page and asks Claude to pull out any real,
 // upcoming, dated events from its visible text. Best-effort like
 // image-enrichment.ts/title-normalization.ts: any failure (unreachable page,
@@ -110,18 +135,10 @@ export async function extractCandidateEventsFromSource(
   const anthropic = getAnthropicClient()
   if (!anthropic) return { candidates: [], rejectedCandidates: [], contentHash: null, pageText: null }
 
-  const response = await fetchWithTimeout(sourceUrl, FETCH_TIMEOUT_MS)
-  if (!response || !response.ok) return { candidates: [], rejectedCandidates: [], contentHash: null, pageText: null }
-  const contentType = response.headers.get('content-type') ?? ''
-  if (!contentType.includes('html')) return { candidates: [], rejectedCandidates: [], contentHash: null, pageText: null }
+  const pageText = await fetchPageText(sourceUrl)
+  if (!pageText) return { candidates: [], rejectedCandidates: [], contentHash: null, pageText: null }
 
   try {
-    const html = await response.text()
-    const $ = cheerio.load(html)
-    $('script, style, nav, footer, noscript').remove()
-    const pageText = $('body').text().replace(/\s+/g, ' ').trim().slice(0, MAX_PAGE_TEXT_CHARS)
-    if (!pageText) return { candidates: [], rejectedCandidates: [], contentHash: null, pageText: null }
-
     const contentHash = hashPageText(pageText)
     // The real fix for the 2026-09-03 duplicate-events incident: this
     // model has no temperature/top_p knob, so re-running extraction over

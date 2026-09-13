@@ -15,6 +15,7 @@ import { checkDateQuality, checkTimeQuality, buildDuplicateCheck, runTextChecksW
 import type { CandidateEvent } from './ingest.js'
 import { ingestEvents } from './ingest.js'
 import { enrichEventImage } from './image-enrichment.js'
+import { fetchPageText } from './resourcing.js'
 import { snapshotEventForHistory } from './serialize.js'
 
 export interface KeptReviewItem {
@@ -373,9 +374,18 @@ export async function retryPipelineChecks(eventId: string, adminId: string): Pro
 
   const priorChecks = existing.checks as PipelineChecks | null
 
-  const [{ checks: textChecks, correctedFields }] = await runTextChecksWithRetry([
-    { title: existing.title, description: existing.description ?? undefined, address: existing.address ?? undefined, locationName: existing.locationName ?? undefined },
-  ])
+  // A live re-fetch of the event's own source page (feedback, 2026-09-13:
+  // a retry with no source text produced a reason reading "no original
+  // source text is available to me," which — despite meaning only "this
+  // particular recheck call wasn't given the page text" — read as if the
+  // event had no real source at all, which it does). Re-fetching here
+  // gives the retry the same real page content the original ingestion had,
+  // rather than a bare "null" it has to explain away in its own reason.
+  const sourceText = existing.sourceUrl ? (await fetchPageText(existing.sourceUrl)) ?? undefined : undefined
+  const [{ checks: textChecks, correctedFields }] = await runTextChecksWithRetry(
+    [{ title: existing.title, description: existing.description ?? undefined, address: existing.address ?? undefined, locationName: existing.locationName ?? undefined }],
+    sourceText,
+  )
   const merged = { ...existing, ...correctedFields }
 
   // Only re-search the image when it's actually one of the checks currently
@@ -456,9 +466,15 @@ export async function retryRejectedCandidateChecks(id: string): Promise<Pipeline
   const candidate = row.candidateData as CandidateEvent
   const priorChecks = row.checks as PipelineChecks | null
 
-  const [{ checks: textChecks, correctedFields }] = await runTextChecksWithRetry([
-    { title: candidate.title, description: candidate.description, address: candidate.address, locationName: candidate.locationName },
-  ])
+  // Same live re-fetch as retryPipelineChecks above, and for the same
+  // reason — a real candidateData.sourceUrl exists on nearly every rejected
+  // candidate, so this retry can (and should) read the real page rather
+  // than leave its own reason implying the candidate has no source at all.
+  const sourceText = candidate.sourceUrl ? (await fetchPageText(candidate.sourceUrl)) ?? undefined : undefined
+  const [{ checks: textChecks, correctedFields }] = await runTextChecksWithRetry(
+    [{ title: candidate.title, description: candidate.description, address: candidate.address, locationName: candidate.locationName }],
+    sourceText,
+  )
   const merged: CandidateEvent = { ...candidate, ...correctedFields }
 
   const notAttempted = priorChecks?.imageQuality ?? { pass: true, reason: 'Not attempted — rejected before an image search', attempts: 0 }
