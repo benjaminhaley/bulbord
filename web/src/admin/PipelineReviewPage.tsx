@@ -99,7 +99,26 @@ function hasRetryableFailure(checks: PipelineChecks | null): boolean {
 // to read a key that shape never had) blanked this entire page with no error
 // boundary to catch it — this guard is the systemic fix, on top of the
 // one-off data backfill for that specific incident.
-function CheckLine({ label, check }: { label: string; check?: { pass: boolean; reason: string; attempts: number } }) {
+// `duplicateOf` (feedback, 2026-09-13: "the error text does not link to the
+// duplicate event as it should... the text should read [a] duplicate of the
+// title as a link") — only ever passed for the duplicateCheck row of a
+// rejected candidate (a kept event's own duplicateCheck never fails, see
+// buildDuplicateCheck), and only actually used when that row is genuinely
+// failing: the plain stored reason ("Exact match of an already-ingested
+// event") is replaced with a real "Duplicate of <linked title>" sentence so
+// the link lives directly in the checklist's own error text, rather than a
+// separate adjacent line repeating the same fact (this superseded the
+// review page's original standalone "Matched: <link>" line, which is now
+// gone — see rejectedItemNode).
+function CheckLine({
+  label,
+  check,
+  duplicateOf,
+}: {
+  label: string
+  check?: { pass: boolean; reason: string; attempts: number }
+  duplicateOf?: { id: string; title: string }
+}) {
   if (!check) {
     return (
       <p style={{ ...factLineStyle, fontSize: '0.8125rem', color: 'var(--ion-color-medium)' }}>
@@ -115,6 +134,13 @@ function CheckLine({ label, check }: { label: string; check?: { pass: boolean; r
     return (
       <p style={style}>
         {icon} <strong>{label}</strong>
+      </p>
+    )
+  }
+  if (!check.pass && duplicateOf) {
+    return (
+      <p style={style}>
+        {icon} <strong>{label}:</strong> Duplicate of <a href={`/events/${duplicateOf.id}`}>{duplicateOf.title}</a>
       </p>
     )
   }
@@ -139,13 +165,13 @@ function CheckLine({ label, check }: { label: string; check?: { pass: boolean; r
 // easy to find, just not literally inline with the field. checks is null
 // for an item that predates this system, in which case nothing renders
 // rather than a misleading placeholder.
-function ChecksSection({ checks }: { checks: PipelineChecks | null }) {
+function ChecksSection({ checks, duplicateOf }: { checks: PipelineChecks | null; duplicateOf?: { id: string; title: string } }) {
   if (!checks) return <IonNote color="medium">No checks recorded (predates this feature)</IonNote>
   return (
     <>
       <p style={{ ...factLineStyle, fontWeight: 600 }}>Checks</p>
       {ALL_CHECK_KEYS.map((key) => (
-        <CheckLine key={key} label={CHECK_LABELS[key]} check={checks[key]} />
+        <CheckLine key={key} label={CHECK_LABELS[key]} check={checks[key]} duplicateOf={key === 'duplicateCheck' ? duplicateOf : undefined} />
       ))}
     </>
   )
@@ -524,13 +550,17 @@ export function PipelineReviewPage() {
           <IonNote color="medium">
             {item.source_name ?? 'Unknown source'} · {formatRelativeDateTime(item.created_at)} · {item.rejection_type === 'duplicate' ? 'Duplicate' : 'Not relevant'}
           </IonNote>
-          <p style={factLineStyle}>{item.rejection_reason}</p>
-          {item.duplicate_of_event_id && (
-            <p style={factLineStyle}>
-              Matched: <a href={`/events/${item.duplicate_of_event_id}`}>{item.duplicate_of_event_title ?? 'view event'}</a>
-            </p>
-          )}
-          <ChecksSection checks={item.checks} />
+          {/* A duplicate rejection's own reason no longer needs restating
+              here (feedback, 2026-09-13) — the Checks section's own
+              duplicateCheck row below now carries the same fact, as a real
+              link, directly in its own error text. A relevance rejection
+              still shows its plain reason, since that check line only ever
+              says "Not checked" for those (see ingest.ts). */}
+          {item.rejection_type !== 'duplicate' && <p style={factLineStyle}>{item.rejection_reason}</p>}
+          <ChecksSection
+            checks={item.checks}
+            duplicateOf={item.duplicate_of_event_id ? { id: item.duplicate_of_event_id, title: item.duplicate_of_event_title ?? 'view the matching event' } : undefined}
+          />
           {/* Same "note stays, buttons stay too" fix as a kept item above —
               re-clicking Approve here safely re-runs add-anyway (the real
               dedup check inside ingestEvents() reports it as already
