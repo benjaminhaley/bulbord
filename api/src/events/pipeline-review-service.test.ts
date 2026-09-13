@@ -354,7 +354,9 @@ describe('retryRejectedCandidateChecks', () => {
     expect(result).toEqual({ allPassing: true })
     expect(updateCalls[0].set.candidateData).toEqual(expect.objectContaining({ address: '3252 N Broadway' }))
     // The duplicate/relevance verdict itself is never re-run.
-    expect(updateCalls[0].set.checks.duplicateCheck.reason).toBe('Not checked — rejected for relevance before reaching the duplicate check')
+    expect(updateCalls[0].set.checks).toEqual(
+      expect.objectContaining({ duplicateCheck: expect.objectContaining({ reason: 'Not checked — rejected for relevance before reaching the duplicate check' }) }),
+    )
   })
 
   it('carries a real duplicate rejection reason through unchanged', async () => {
@@ -370,7 +372,9 @@ describe('retryRejectedCandidateChecks', () => {
 
     await retryRejectedCandidateChecks('rejected-1')
 
-    expect(updateCalls[0].set.checks.duplicateCheck).toEqual({ pass: false, reason: 'Exact match of an already-ingested event', attempts: 1 })
+    expect(updateCalls[0].set.checks).toEqual(
+      expect.objectContaining({ duplicateCheck: { pass: false, reason: 'Exact match of an already-ingested event', attempts: 1 } }),
+    )
   })
 
   it("returns 'not_found' when the candidate doesn't exist", async () => {
