@@ -22,6 +22,8 @@ import {
   rejectEvent,
   rejectRejectedCandidate,
   retryEventImageForKeptItem,
+  retryPipelineChecks,
+  retryRejectedCandidateChecks,
   type EditableFields,
 } from '../events/pipeline-review-service.js'
 import {
@@ -426,6 +428,20 @@ export async function adminRoutes(app: FastifyInstance) {
     return reply.send({ data: { found: error !== 'no_image_found' } })
   })
 
+  // A general "just try again" action, visible directly on the review page
+  // rather than only reachable via Edit (Ben, 2026-09-13: "several events...
+  // should have just caused them to be rerun and tried again") — reruns the
+  // same self-healing pipeline a fresh ingestion already gets (a bounded
+  // text-check retry, and a fresh image search only if the image checks are
+  // the ones currently failing) rather than requiring the admin to manually
+  // retype a field first.
+  app.post('/admin/events/:id/pipeline-review/retry', { preHandler: requireRole('admin') }, async (request, reply) => {
+    const { id } = request.params as { id: string }
+    const result = await retryPipelineChecks(id, request.currentUser!.id)
+    if (result === 'not_found') return reply.code(404).send({ error: { message: 'Event not found' } })
+    return reply.send({ data: { all_passing: result.allPassing } })
+  })
+
   app.post('/admin/rejected-event-candidates/:id/reject', { preHandler: requireRole('admin') }, async (request, reply) => {
     const { id } = request.params as { id: string }
     const { note } = (request.body ?? {}) as { note?: string }
@@ -439,6 +455,16 @@ export async function adminRoutes(app: FastifyInstance) {
     const error = await editRejectedCandidate(id, parseEditableFields(request.body))
     if (error) return reply.code(404).send({ error: { message: 'Rejected candidate not found' } })
     return reply.send({ data: { edited: true } })
+  })
+
+  // Same "just try again" ask as the kept-item route above, applied to a
+  // rejected candidate's own checklist — never touches the rejection
+  // verdict itself (relevance/duplicate), only the text-quality checks.
+  app.post('/admin/rejected-event-candidates/:id/retry', { preHandler: requireRole('admin') }, async (request, reply) => {
+    const { id } = request.params as { id: string }
+    const result = await retryRejectedCandidateChecks(id)
+    if (result === 'not_found') return reply.code(404).send({ error: { message: 'Rejected candidate not found' } })
+    return reply.send({ data: { all_passing: result.allPassing } })
   })
 
   // Rebuilds and re-inserts the original (possibly admin-edited) candidate

@@ -112,6 +112,37 @@ describe('renderPipelineReviewHtml', () => {
     expect(html).toContain('a &amp; b')
   })
 
+  it('links a duplicate rejection straight to the event it matched', () => {
+    const html = renderPipelineReviewHtml({
+      runDate: new Date('2026-09-09T12:00:00Z'),
+      kept: [],
+      rejected: [
+        rejected({
+          title: 'Fall Fest Redux',
+          rejectionType: 'duplicate',
+          rejectionReason: 'Exact match of an already-ingested event',
+          duplicateOfEventId: 'event-42',
+          duplicateOfEventTitle: 'Fall Festival',
+        }),
+      ],
+      webUrl: 'https://nettelhorst.bulbord.com',
+    })
+
+    expect(html).toContain('href="https://nettelhorst.bulbord.com/events/event-42"')
+    expect(html).toContain('>Fall Festival<')
+  })
+
+  it('falls back to the plain rejection reason when a duplicate has no matched event id', () => {
+    const html = renderPipelineReviewHtml({
+      runDate: new Date('2026-09-09T12:00:00Z'),
+      kept: [],
+      rejected: [rejected({ rejectionType: 'duplicate', rejectionReason: 'Exact match', duplicateOfEventId: null })],
+      webUrl: 'https://nettelhorst.bulbord.com',
+    })
+
+    expect(html).toContain('<li style="margin-bottom:4px;"><strong>Adults-only Wine Tasting</strong> — Exact match</li>')
+  })
+
   it('renders a plain "0 events added" / "0 candidates rejected" summary when nothing happened', () => {
     const html = renderPipelineReviewHtml({
       runDate: new Date('2026-09-09T12:00:00Z'),

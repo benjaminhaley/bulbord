@@ -11,6 +11,7 @@ const updateCalls: { table: unknown; set: Record<string, unknown> }[] = []
 const enrichEventImageMock = vi.fn()
 const ingestEventsMock = vi.fn()
 const scoreTextChecksMock = vi.fn()
+const runTextChecksWithRetryMock = vi.fn()
 const recordEditMock = vi.fn()
 
 vi.mock('../db/client.js', () => {
@@ -43,7 +44,7 @@ vi.mock('./ingest.js', () => ({ ingestEvents: ingestEventsMock }))
 vi.mock('../edit-history/service.js', () => ({ recordEdit: recordEditMock }))
 vi.mock('./candidate-checks.js', async () => {
   const actual = await vi.importActual<typeof import('./candidate-checks.js')>('./candidate-checks.js')
-  return { ...actual, scoreTextChecks: scoreTextChecksMock }
+  return { ...actual, scoreTextChecks: scoreTextChecksMock, runTextChecksWithRetry: runTextChecksWithRetryMock }
 })
 
 const PASSING_CHECK = { pass: true, reason: 'ok', attempts: 1 }
@@ -60,6 +61,7 @@ beforeEach(() => {
   enrichEventImageMock.mockReset()
   ingestEventsMock.mockReset()
   scoreTextChecksMock.mockReset().mockResolvedValue([PASSING_TEXT_CHECKS])
+  runTextChecksWithRetryMock.mockReset().mockResolvedValue([{ checks: PASSING_TEXT_CHECKS, correctedFields: {} }])
   recordEditMock.mockReset()
 })
 
@@ -221,6 +223,163 @@ describe('retryEventImageForKeptItem', () => {
 
     expect(error).toBe('not_found')
     expect(enrichEventImageMock).not.toHaveBeenCalled()
+  })
+})
+
+describe('retryPipelineChecks', () => {
+  const priorChecksAllPassing = { ...PASSING_TEXT_CHECKS, dateQuality: PASSING_CHECK, timeQuality: PASSING_CHECK, imageQuality: PASSING_CHECK, imageRelevance: PASSING_CHECK, duplicateCheck: PASSING_CHECK }
+
+  it('re-runs the bounded text-check retry and applies any corrected field it finds', async () => {
+    selectResults.push([
+      {
+        title: 'Old Title',
+        description: null,
+        address: 'Northalsted',
+        locationName: null,
+        startDate: '2026-10-10',
+        startTime: null,
+        endTime: null,
+        allDay: true,
+        sourceUrl: 'https://example.com',
+        topic: null,
+        imageUrl: 'https://example.com/img.jpg',
+        thumbnailUrl: 'https://example.com/thumb.jpg',
+        checks: priorChecksAllPassing,
+        status: 'approved',
+      },
+    ])
+    runTextChecksWithRetryMock.mockResolvedValue([
+      { checks: { ...PASSING_TEXT_CHECKS, addressQuality: { pass: true, reason: 'found a real address', attempts: 2 } }, correctedFields: { address: '3252 N Broadway' } },
+    ])
+    const { retryPipelineChecks } = await import('./pipeline-review-service.js')
+
+    const result = await retryPipelineChecks('event-1', 'admin-1')
+
+    expect(result).toEqual({ allPassing: true })
+    expect(updateCalls[0].set).toEqual(expect.objectContaining({ address: '3252 N Broadway', pipelineChecksPassed: true }))
+    // A clean image check has nothing to gain from a fresh search — not
+    // worth burning a real network fetch + vision call on.
+    expect(enrichEventImageMock).not.toHaveBeenCalled()
+    expect(recordEditMock).toHaveBeenCalledWith(expect.objectContaining({ before: expect.objectContaining({ address: 'Northalsted' }), after: expect.objectContaining({ address: '3252 N Broadway' }) }))
+  })
+
+  it('re-searches the image only when the image checks are the ones currently failing, and auto-publishes once everything passes', async () => {
+    const priorChecks = { ...priorChecksAllPassing, imageQuality: { pass: false, reason: 'object missing', attempts: 1 }, imageRelevance: { pass: false, reason: 'object missing', attempts: 1 } }
+    selectResults.push([
+      {
+        title: 'Live Music',
+        description: 'A music series',
+        address: null,
+        locationName: 'Space Park',
+        startDate: '2026-10-10',
+        startTime: null,
+        endTime: null,
+        allDay: true,
+        sourceUrl: 'https://example.com',
+        topic: null,
+        imageUrl: 'https://example.com/broken.jpg',
+        thumbnailUrl: 'https://example.com/broken-thumb.jpg',
+        checks: priorChecks,
+        status: 'pending',
+      },
+    ])
+    enrichEventImageMock.mockResolvedValue({ result: 'sourced', trace: [], imageQuality: PASSING_CHECK, imageRelevance: PASSING_CHECK })
+    const { retryPipelineChecks } = await import('./pipeline-review-service.js')
+
+    const result = await retryPipelineChecks('event-1', 'admin-1')
+
+    expect(enrichEventImageMock).toHaveBeenCalledWith('event-1', expect.objectContaining({ sourceUrl: 'https://example.com', title: 'Live Music' }), { scoreLogos: true, actor: 'admin-1' })
+    expect(result).toEqual({ allPassing: true })
+    expect(updateCalls[0].set).toEqual(expect.objectContaining({ status: 'approved', pipelineChecksPassed: true }))
+    // No text field was corrected — nothing worth a history entry beyond
+    // what enrichEventImage already records for the image itself.
+    expect(recordEditMock).not.toHaveBeenCalled()
+  })
+
+  it('reports still-failing checks honestly without touching status', async () => {
+    selectResults.push([
+      {
+        title: 'Live Music',
+        description: null,
+        address: null,
+        locationName: 'Space Park',
+        startDate: '2026-10-10',
+        startTime: null,
+        endTime: null,
+        allDay: true,
+        sourceUrl: 'https://example.com',
+        topic: null,
+        imageUrl: 'https://example.com/broken.jpg',
+        thumbnailUrl: 'https://example.com/broken-thumb.jpg',
+        checks: priorChecksAllPassing,
+        status: 'pending',
+      },
+    ])
+    runTextChecksWithRetryMock.mockResolvedValue([{ checks: { ...PASSING_TEXT_CHECKS, titleQuality: { pass: false, reason: 'still too generic', attempts: 2 } }, correctedFields: {} }])
+    const { retryPipelineChecks } = await import('./pipeline-review-service.js')
+
+    const result = await retryPipelineChecks('event-1', 'admin-1')
+
+    expect(result).toEqual({ allPassing: false })
+    expect(updateCalls[0].set).toEqual(expect.objectContaining({ status: 'pending', pipelineChecksPassed: false }))
+  })
+
+  it("returns 'not_found' when the event doesn't exist", async () => {
+    selectResults.push([])
+    const { retryPipelineChecks } = await import('./pipeline-review-service.js')
+
+    const result = await retryPipelineChecks('missing', 'admin-1')
+
+    expect(result).toBe('not_found')
+  })
+})
+
+describe('retryRejectedCandidateChecks', () => {
+  it('applies a corrected field to the stored candidateData without touching the rejection verdict', async () => {
+    selectResults.push([
+      {
+        candidateData: { title: 'Fall Fest', startDate: '2026-10-10', allDay: true, sourceUrl: 'https://example.com', status: 'approved', address: 'Northalsted' },
+        checks: { titleQuality: PASSING_CHECK, descriptionQuality: PASSING_CHECK, locationLabelQuality: PASSING_CHECK, addressQuality: { pass: false, reason: 'too vague', attempts: 1 }, dateQuality: PASSING_CHECK, timeQuality: PASSING_CHECK, imageQuality: { pass: true, reason: 'not attempted', attempts: 0 }, imageRelevance: { pass: true, reason: 'not attempted', attempts: 0 }, duplicateCheck: { pass: true, reason: 'Not checked — rejected for relevance before reaching the duplicate check', attempts: 1 } },
+        rejectionType: 'relevance',
+        rejectionReason: 'age-restricted',
+      },
+    ])
+    runTextChecksWithRetryMock.mockResolvedValue([
+      { checks: { ...PASSING_TEXT_CHECKS, addressQuality: { pass: true, reason: 'found a real address', attempts: 2 } }, correctedFields: { address: '3252 N Broadway' } },
+    ])
+    const { retryRejectedCandidateChecks } = await import('./pipeline-review-service.js')
+
+    const result = await retryRejectedCandidateChecks('rejected-1')
+
+    expect(result).toEqual({ allPassing: true })
+    expect(updateCalls[0].set.candidateData).toEqual(expect.objectContaining({ address: '3252 N Broadway' }))
+    // The duplicate/relevance verdict itself is never re-run.
+    expect(updateCalls[0].set.checks.duplicateCheck.reason).toBe('Not checked — rejected for relevance before reaching the duplicate check')
+  })
+
+  it('carries a real duplicate rejection reason through unchanged', async () => {
+    selectResults.push([
+      {
+        candidateData: { title: 'Fall Fest Redux', startDate: '2026-10-10', allDay: true, sourceUrl: 'https://example.com', status: 'approved' },
+        checks: null,
+        rejectionType: 'duplicate',
+        rejectionReason: 'Exact match of an already-ingested event',
+      },
+    ])
+    const { retryRejectedCandidateChecks } = await import('./pipeline-review-service.js')
+
+    await retryRejectedCandidateChecks('rejected-1')
+
+    expect(updateCalls[0].set.checks.duplicateCheck).toEqual({ pass: false, reason: 'Exact match of an already-ingested event', attempts: 1 })
+  })
+
+  it("returns 'not_found' when the candidate doesn't exist", async () => {
+    selectResults.push([])
+    const { retryRejectedCandidateChecks } = await import('./pipeline-review-service.js')
+
+    const result = await retryRejectedCandidateChecks('missing')
+
+    expect(result).toBe('not_found')
   })
 })
 

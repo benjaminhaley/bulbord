@@ -36,7 +36,7 @@ export function renderPipelineReviewHtml(options: {
   rejected: RejectedReviewItem[]
   webUrl: string
 }): string {
-  const { runDate, kept, rejected } = options
+  const { runDate, kept, rejected, webUrl } = options
   const dateLabel = runDate.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric', timeZone: 'America/Chicago' })
   const relevanceRejected = rejected.filter((r) => r.rejectionType === 'relevance')
   const duplicateRejected = rejected.filter((r) => r.rejectionType === 'duplicate')
@@ -47,10 +47,20 @@ export function renderPipelineReviewHtml(options: {
   const keptExamples = exampleListHtml(
     kept.slice(0, MAX_EXAMPLES).map((k) => `<strong>${escapeHtml(k.title)}</strong>${k.relevanceReason ? ` — ${escapeHtml(k.relevanceReason)}` : ''}`),
   )
+  // A duplicate rejection links straight to the event it matched (Ben,
+  // 2026-09-13: "if an exact duplicate is found, link to the duplicate in
+  // the error message... makes it easy to verify") — the same link the
+  // review page's own "Matched:" line already shows, so the email doesn't
+  // require a click through to the app just to check whether a flagged
+  // duplicate is a real one.
   const rejectedExamples = exampleListHtml(
-    [...relevanceRejected, ...duplicateRejected]
-      .slice(0, MAX_EXAMPLES)
-      .map((r) => `<strong>${escapeHtml(r.title)}</strong> — ${escapeHtml(r.rejectionReason)}`),
+    [...relevanceRejected, ...duplicateRejected].slice(0, MAX_EXAMPLES).map((r) => {
+      const duplicateLink =
+        r.rejectionType === 'duplicate' && r.duplicateOfEventId
+          ? ` — <a href="${webUrl}/events/${r.duplicateOfEventId}" style="color:#1a56db;">${escapeHtml(r.duplicateOfEventTitle ?? 'view the matching event')}</a>`
+          : ''
+      return `<strong>${escapeHtml(r.title)}</strong> — ${escapeHtml(r.rejectionReason)}${duplicateLink}`
+    }),
   )
 
   return `<!doctype html>

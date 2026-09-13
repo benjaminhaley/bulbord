@@ -11,7 +11,7 @@ import { db } from '../db/client.js'
 import { events, eventSources, rejectedEventCandidates, users } from '../db/schema.js'
 import { todayInChicago } from '../dates.js'
 import { recordEdit } from '../edit-history/service.js'
-import { checkDateQuality, checkTimeQuality, buildDuplicateCheck, scoreTextChecks, type CheckResult, type PipelineChecks } from './candidate-checks.js'
+import { checkDateQuality, checkTimeQuality, buildDuplicateCheck, runTextChecksWithRetry, scoreTextChecks, type CheckResult, type PipelineChecks } from './candidate-checks.js'
 import type { CandidateEvent } from './ingest.js'
 import { ingestEvents } from './ingest.js'
 import { enrichEventImage } from './image-enrichment.js'
@@ -332,6 +332,153 @@ export async function retryEventImageForKeptItem(eventId: string, adminId: strin
   }).where(eq(events.id, eventId))
 
   return result === 'sourced' ? null : 'no_image_found'
+}
+
+// A general "just try again" action (feedback, 2026-09-13: "several events...
+// should have just caused them to be rerun and tried again" — Ben, looking at
+// items whose recorded failures had never actually gone through a real retry
+// at all, e.g. two events a one-off incident-remediation script recomputed
+// via a bare scoreTextChecks() call, bypassing the self-healing retry path
+// entirely — see fix-2026-09-09-stale-cron-review-run.ts). Distinct from Edit
+// (which requires the admin to type a correction themselves) and from Retry
+// image (image-only, and previously reachable only from inside Edit) — this
+// reruns the exact same bounded, self-healing pieces a fresh ingestion
+// already gets: runTextChecksWithRetry for the text fields, and a real image
+// re-search (scoring the logo tier, same as retryEventImageForKeptItem) only
+// when the image checks are the ones currently failing, so a clean check
+// isn't re-searched for no reason. Same "fixed the last thing wrong with it
+// should actually go live" auto-publish rule as retryEventImageForKeptItem.
+export async function retryPipelineChecks(eventId: string, adminId: string): Promise<PipelineReviewActionError | { allPassing: boolean }> {
+  const [existing] = await db
+    .select({
+      title: events.title,
+      description: events.description,
+      address: events.address,
+      locationName: events.locationName,
+      startDate: events.startDate,
+      startTime: events.startTime,
+      endTime: events.endTime,
+      allDay: events.allDay,
+      sourceUrl: events.sourceUrl,
+      topic: events.topic,
+      imageUrl: events.imageUrl,
+      thumbnailUrl: events.thumbnailUrl,
+      checks: events.pipelineQualityChecks,
+      status: events.status,
+    })
+    .from(events)
+    .where(and(eq(events.id, eventId), isNull(events.deletedAt)))
+    .limit(1)
+  if (!existing) return 'not_found'
+
+  const priorChecks = existing.checks as PipelineChecks | null
+
+  const [{ checks: textChecks, correctedFields }] = await runTextChecksWithRetry([
+    { title: existing.title, description: existing.description ?? undefined, address: existing.address ?? undefined, locationName: existing.locationName ?? undefined },
+  ])
+  const merged = { ...existing, ...correctedFields }
+
+  // Only re-search the image when it's actually one of the checks currently
+  // failing — a passing image has nothing to gain from a fresh search, and
+  // re-running it anyway would just burn a real network fetch + vision call
+  // for no reason.
+  const imageWasFailing = priorChecks ? !priorChecks.imageQuality.pass || !priorChecks.imageRelevance.pass : false
+  let imageQuality = priorChecks?.imageQuality ?? { pass: true, reason: 'Not attempted', attempts: 1 }
+  let imageRelevance = priorChecks?.imageRelevance ?? { pass: true, reason: 'Not attempted', attempts: 1 }
+  if (imageWasFailing) {
+    // enrichEventImage() doesn't fail open on its own — see
+    // retryEventImageForKeptItem's own comment on why this call site needs
+    // the same wrapping a fresh ingest's batch enrichEventImages() gets for
+    // free.
+    try {
+      ;({ imageQuality, imageRelevance } = await enrichEventImage(
+        eventId,
+        { sourceUrl: existing.sourceUrl, title: merged.title, description: merged.description ?? null },
+        { scoreLogos: true, actor: adminId },
+      ))
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : 'unknown error'
+      imageQuality = { pass: false, reason: `Image search errored: ${reason}`, attempts: (priorChecks?.imageQuality.attempts ?? 1) + 1 }
+      imageRelevance = { pass: false, reason: 'Not scored — the search itself errored', attempts: (priorChecks?.imageRelevance.attempts ?? 1) + 1 }
+    }
+  }
+
+  const checks: PipelineChecks = {
+    ...textChecks,
+    dateQuality: checkDateQuality(merged.startDate, todayInChicago()),
+    timeQuality: checkTimeQuality(merged.startTime ?? undefined, merged.allDay),
+    imageQuality,
+    imageRelevance,
+    duplicateCheck: priorChecks?.duplicateCheck ?? buildDuplicateCheck(),
+  }
+  const pipelineChecksPassed = Object.values(checks).every((c) => c.pass)
+
+  await db.update(events).set({
+    ...correctedFields,
+    pipelineQualityChecks: checks,
+    pipelineChecksPassed,
+    status: pipelineChecksPassed && existing.status === 'pending' ? 'approved' : existing.status,
+    updatedAt: new Date(),
+  }).where(eq(events.id, eventId))
+
+  // Only worth a history entry when a text field actually changed — the
+  // image side (if retried) already records its own entry inside
+  // enrichEventImage, and a retry that found nothing new shouldn't leave a
+  // no-op row behind (recordEdit already no-ops on an unchanged diff, but
+  // there's no reason to even build the snapshot when nothing was corrected).
+  if (Object.keys(correctedFields).length > 0) {
+    await recordEdit({
+      entityType: 'event',
+      entityId: eventId,
+      actorUserId: adminId,
+      before: snapshotEventForHistory(existing),
+      after: snapshotEventForHistory(merged),
+    })
+  }
+
+  return { allPassing: pipelineChecksPassed }
+}
+
+// The rejected-candidate equivalent — reruns the text-check retry against
+// the stored candidateData snapshot and applies any correction it finds,
+// same as above, but touches nothing else: a rejected candidate's
+// duplicateCheck/relevance verdict is a judgment this retry can't overturn
+// (it isn't re-run), and it never had a real image search to retry (see
+// candidateData's own imageQuality/imageRelevance, always attempts: 0).
+export async function retryRejectedCandidateChecks(id: string): Promise<PipelineReviewActionError | { allPassing: boolean }> {
+  const [row] = await db
+    .select({ candidateData: rejectedEventCandidates.candidateData, checks: rejectedEventCandidates.checks, rejectionType: rejectedEventCandidates.rejectionType, rejectionReason: rejectedEventCandidates.rejectionReason })
+    .from(rejectedEventCandidates)
+    .where(and(eq(rejectedEventCandidates.id, id), isNull(rejectedEventCandidates.deletedAt)))
+    .limit(1)
+  if (!row) return 'not_found'
+
+  const candidate = row.candidateData as CandidateEvent
+  const priorChecks = row.checks as PipelineChecks | null
+
+  const [{ checks: textChecks, correctedFields }] = await runTextChecksWithRetry([
+    { title: candidate.title, description: candidate.description, address: candidate.address, locationName: candidate.locationName },
+  ])
+  const merged: CandidateEvent = { ...candidate, ...correctedFields }
+
+  const notAttempted = priorChecks?.imageQuality ?? { pass: true, reason: 'Not attempted — rejected before an image search', attempts: 0 }
+  const notAttemptedRelevance = priorChecks?.imageRelevance ?? { pass: true, reason: 'Not attempted — rejected before an image search', attempts: 0 }
+  const checks: PipelineChecks = {
+    ...textChecks,
+    dateQuality: checkDateQuality(merged.startDate, todayInChicago()),
+    timeQuality: checkTimeQuality(merged.startTime, merged.allDay),
+    imageQuality: notAttempted,
+    imageRelevance: notAttemptedRelevance,
+    duplicateCheck:
+      priorChecks?.duplicateCheck ??
+      (row.rejectionType === 'duplicate'
+        ? { pass: false, reason: row.rejectionReason, attempts: 1 }
+        : { pass: true, reason: 'Not checked — rejected for relevance before reaching the duplicate check', attempts: 1 }),
+  }
+
+  await db.update(rejectedEventCandidates).set({ candidateData: merged, checks, updatedAt: new Date() }).where(eq(rejectedEventCandidates.id, id))
+
+  return { allPassing: Object.values(checks).every((c) => c.pass) }
 }
 
 export async function rejectRejectedCandidate(id: string, adminId: string, note?: string | null): Promise<PipelineReviewActionError | null> {

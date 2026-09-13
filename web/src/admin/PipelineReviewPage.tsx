@@ -35,7 +35,9 @@ import {
   PIPELINE_CHECK_LABELS,
   rejectPipelineEvent,
   rejectPipelineRejectedCandidate,
+  retryPipelineEventChecks,
   retryPipelineEventImage,
+  retryPipelineRejectedCandidateChecks,
   sendTestPipelineReviewEmail,
   type PipelineChecks,
   type PipelineEditableFields,
@@ -65,6 +67,18 @@ const CHECK_DESCRIPTIONS: Record<keyof PipelineChecks, string> = {
 
 const CHECK_LABELS = Object.fromEntries(PIPELINE_CHECK_LABELS.map(({ key, label }) => [key, label])) as Record<keyof PipelineChecks, string>
 const ALL_CHECK_KEYS = PIPELINE_CHECK_LABELS.map(({ key }) => key)
+
+// A rejected candidate has no single pipeline_checks_passed flag (unlike a
+// kept event) — only its text/date/time checks are retryable at all (its
+// duplicateCheck/relevance verdict is a judgment Retry can't overturn, and
+// it never had a real image search — see retryRejectedCandidateChecks'
+// own doc comment), so this is what actually decides whether Retry has
+// anything to offer for one of these rows.
+const RETRYABLE_REJECTED_KEYS = ['titleQuality', 'descriptionQuality', 'locationLabelQuality', 'addressQuality', 'dateQuality', 'timeQuality'] as const
+function hasRetryableFailure(checks: PipelineChecks | null): boolean {
+  if (!checks) return false
+  return RETRYABLE_REJECTED_KEYS.some((key) => !checks[key]?.pass)
+}
 
 // A passing check is compressed to just its name + checkmark — the specific
 // "why" for a pass is almost always the same generic sentence every time
@@ -422,6 +436,36 @@ export function PipelineReviewPage() {
                 <IonButton size="small" fill="outline" disabled={busyId === item.id} onClick={() => setEditingId(item.id)}>
                   Edit
                 </IonButton>
+                {/* A general "just try again" action (Ben, 2026-09-13:
+                    "several events... should have just caused them to be
+                    rerun and tried again") — visible directly whenever
+                    there's something failing, not tucked inside Edit the
+                    way the narrower Retry image sub-action still is.
+                    Reruns the same bounded self-healing pipeline a fresh
+                    ingestion already gets: a text-check retry, plus a
+                    fresh image search if the image checks are the ones
+                    currently failing. */}
+                {item.pipeline_checks_passed === false && (
+                  <IonButton
+                    size="small"
+                    fill="outline"
+                    disabled={busyId === item.id}
+                    onClick={async () => {
+                      setBusyId(item.id)
+                      try {
+                        const result = await retryPipelineEventChecks(item.id)
+                        setToast(result.allPassing ? 'Retried — now passing' : 'Retried — some issues remain')
+                        load()
+                      } catch (err) {
+                        setToast(err instanceof Error ? err.message : 'Could not retry')
+                      } finally {
+                        setBusyId(null)
+                      }
+                    }}
+                  >
+                    Retry
+                  </IonButton>
+                )}
                 {editingId === item.id && (
                   <IonButton
                     size="small"
@@ -543,6 +587,31 @@ export function PipelineReviewPage() {
                 <IonButton size="small" fill="outline" disabled={busyId === item.id} onClick={() => setEditingId(item.id)}>
                   Edit
                 </IonButton>
+                {/* Same "just try again" ask as a kept item's own Retry
+                    button — only fixes the text/date/time checklist here,
+                    never the rejection verdict itself (see
+                    hasRetryableFailure's own comment). */}
+                {hasRetryableFailure(item.checks) && (
+                  <IonButton
+                    size="small"
+                    fill="outline"
+                    disabled={busyId === item.id}
+                    onClick={async () => {
+                      setBusyId(item.id)
+                      try {
+                        const result = await retryPipelineRejectedCandidateChecks(item.id)
+                        setToast(result.allPassing ? 'Retried — now passing' : 'Retried — some issues remain')
+                        load()
+                      } catch (err) {
+                        setToast(err instanceof Error ? err.message : 'Could not retry')
+                      } finally {
+                        setBusyId(null)
+                      }
+                    }}
+                  >
+                    Retry
+                  </IonButton>
+                )}
               </div>
             </>
           )}
