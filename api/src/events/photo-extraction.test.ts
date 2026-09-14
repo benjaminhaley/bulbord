@@ -19,6 +19,14 @@ vi.mock('./retry-strategies.js', () => ({
   recordRetryNote: vi.fn(),
 }))
 
+// Real QR decoding/page-fetching (feedback #165 follow-up, 2026-09-14) — see
+// qr-decode.ts's own header for why the vision model can't be trusted to do
+// this itself. Defaults to "nothing found," same as most real photos.
+const decodeQrCodeMock = vi.fn()
+const fetchPageTextMock = vi.fn()
+vi.mock('../uploads/qr-decode.js', () => ({ decodeQrCode: decodeQrCodeMock }))
+vi.mock('./resourcing.js', () => ({ fetchPageText: fetchPageTextMock }))
+
 function textResponse(text: string, stopReason = 'end_turn') {
   return { stop_reason: stopReason, content: [{ type: 'text', text }] }
 }
@@ -43,6 +51,8 @@ describe('extractEventFieldsFromPhoto', () => {
     createMock.mockReset()
     getImageObjectMock.mockReset()
     getRetryStrategiesPromptBlockMock.mockReset().mockResolvedValue('')
+    decodeQrCodeMock.mockReset().mockResolvedValue(null)
+    fetchPageTextMock.mockReset().mockResolvedValue(null)
     vi.resetModules()
   })
 
@@ -70,6 +80,76 @@ describe('extractEventFieldsFromPhoto', () => {
       }),
       expect.anything(),
     )
+  })
+
+  // feedback #165 follow-up (2026-09-14): a real decoded QR code, not a
+  // vision-model guess — see qr-decode.ts's own header.
+  it('decodes a QR code and passes its URL + page text to the model, on a first attempt too', async () => {
+    getImageObjectMock.mockResolvedValue(imageObject())
+    decodeQrCodeMock.mockResolvedValue('https://briarplace.example/yard-sale')
+    fetchPageTextMock.mockResolvedValue('Yard sale and block party, 600 block of Briar Place, October 3.')
+    createMock.mockResolvedValue(textResponse(JSON.stringify({ found: true, title: 'Yard Sale', start_date: '2026-10-03', all_day: true })))
+    const { extractEventFieldsFromPhoto } = await import('./photo-extraction.js')
+
+    await extractEventFieldsFromPhoto('/uploads/events/flyer.jpeg')
+
+    expect(fetchPageTextMock).toHaveBeenCalledWith('https://briarplace.example/yard-sale')
+    expect(createMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        messages: [
+          expect.objectContaining({
+            content: [
+              expect.anything(),
+              expect.objectContaining({
+                type: 'text',
+                text: expect.stringContaining('https://briarplace.example/yard-sale'),
+              }),
+            ],
+          }),
+        ],
+      }),
+      expect.anything(),
+    )
+    const [, textBlock] = createMock.mock.calls[0][0].messages[0].content
+    const parsed = JSON.parse(textBlock.text)
+    expect(parsed.qr_code_url).toBe('https://briarplace.example/yard-sale')
+    expect(parsed.qr_code_page_text).toContain('600 block of Briar Place')
+  })
+
+  it('fills source_url from the decoded QR code when the model does not already return one', async () => {
+    getImageObjectMock.mockResolvedValue(imageObject())
+    decodeQrCodeMock.mockResolvedValue('https://briarplace.example/yard-sale')
+    createMock.mockResolvedValue(textResponse(JSON.stringify({ found: true, title: 'Yard Sale', start_date: '2026-10-03', all_day: true })))
+    const { extractEventFieldsFromPhoto } = await import('./photo-extraction.js')
+
+    const result = await extractEventFieldsFromPhoto('/uploads/events/flyer.jpeg')
+
+    expect(result?.source_url).toBe('https://briarplace.example/yard-sale')
+  })
+
+  it('does not overwrite a source_url the model already found on its own', async () => {
+    getImageObjectMock.mockResolvedValue(imageObject())
+    decodeQrCodeMock.mockResolvedValue('https://qr-target.example/x')
+    createMock.mockResolvedValue(
+      textResponse(JSON.stringify({ found: true, title: 'Yard Sale', start_date: '2026-10-03', all_day: true, source_url: 'https://printed-url.example' })),
+    )
+    const { extractEventFieldsFromPhoto } = await import('./photo-extraction.js')
+
+    const result = await extractEventFieldsFromPhoto('/uploads/events/flyer.jpeg')
+
+    expect(result?.source_url).toBe('https://printed-url.example')
+  })
+
+  it('ignores a decoded QR payload that is not a real http(s) URL', async () => {
+    getImageObjectMock.mockResolvedValue(imageObject())
+    decodeQrCodeMock.mockResolvedValue('WIFI:S:MyNetwork;T:WPA;P:secret;;')
+    createMock.mockResolvedValue(textResponse(JSON.stringify({ found: true, title: 'Yard Sale', start_date: '2026-10-03', all_day: true })))
+    const { extractEventFieldsFromPhoto } = await import('./photo-extraction.js')
+
+    const result = await extractEventFieldsFromPhoto('/uploads/events/flyer.jpeg')
+
+    expect(fetchPageTextMock).not.toHaveBeenCalled()
+    expect(result?.source_url).toBeUndefined()
   })
 
   it('does not fetch the strategies library on a first, non-retry attempt', async () => {

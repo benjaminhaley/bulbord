@@ -1,6 +1,8 @@
 import { getAnthropicClient, stripJsonCodeFence } from '../claude.js'
 import { todayInChicago } from '../dates.js'
+import { decodeQrCode } from '../uploads/qr-decode.js'
 import { getImageObject } from '../uploads/storage.js'
+import { fetchPageText } from './resourcing.js'
 import { getRetryStrategiesPromptBlock } from './retry-strategies.js'
 import {
   CALL_MAX_RETRIES,
@@ -24,10 +26,11 @@ Rules:
 - If the poster gives a time *range* (e.g. "11am-3pm", "doors at 6, show ends 9"), set end_time to the range's own end, also 24-hour HH:MM. Omit end_time when only a single start time is given — never guess an end time that isn't actually printed.
 - description: a short one-to-two sentence plain-language summary of what the event actually is — don't just copy the poster's own headline text back verbatim. Mention notable pricing/ticket details here if the poster has them.
 - location_name is an optional human-friendly venue/place name — keep it short and quickly recognizable (e.g. "Hawthorne School", not the full formal name printed on the poster like "Hawthorne Scholastic Academy Turf"); drop sub-venue specifics (a field name, a room number) that don't help someone recognize the place at a glance. address is an optional street address, only if one is actually printed on the poster — don't guess a street address from a venue name you merely recognize, even a well-known one (that's what the source-search stage is for).
-- source_url: only if a website/URL is legibly printed on the poster itself (e.g. "more info at hsapta.org") — the poster's own stated URL, never a guess. Omit if none is printed; a QR code with no visible URL text doesn't count, since it can't be read from a photo.
+- source_url: only if a website/URL is legibly printed on the poster itself (e.g. "more info at hsapta.org") — the poster's own stated URL, never a guess. If a "qr_code_url" field is given below, that's the real, already-decoded destination the poster's own QR code points to (not a guess — it was read with a real decoder, not by you) — use it as source_url whenever nothing better is printed as plain text.
+- If a "qr_code_page_text" field is given, that's the real page the QR code linked to — treat it as an authoritative source for any field, same trust level as text printed on the poster itself (e.g. a full address or exact time that didn't fit on the poster but is on that page).
 - topic: pick the single best match from this fixed list if one clearly applies, otherwise omit the field entirely: ${JSON.stringify(TOPIC_OPTIONS)}
 - If you can't confidently read a real, dated, upcoming event from this image at all (a blurry photo, no event-like content), respond with exactly {"found": false} and nothing else — never invent one.
-- If a "retry_instructions" field is given, this is a second attempt after a person looked at your first result and found it lacking — follow it closely and look extra carefully at whatever it points you to (e.g. "read the QR code in the photo": really try to decode it directly from the image, not just note that one exists).
+- If a "retry_instructions" field is given, this is a second attempt after a person looked at your first result and found it lacking — follow it closely. Don't attempt to decode a QR code yourself from the raw image pixels even if asked to — that's unreliable; a "qr_code_url"/"qr_code_page_text" field (see above) is the real result of an actual decoder already having tried, and its absence means no QR code was found or it didn't decode, not that you should guess at it.
 
 Respond with ONLY a JSON object, no markdown fences, no explanation, one of:
 {"found": true, "title": string, "description"?: string, "start_date": string, "start_time"?: string, "end_time"?: string, "all_day": boolean, "address"?: string, "location_name"?: string, "source_url"?: string, "topic"?: string}
@@ -149,6 +152,17 @@ async function extractEventFieldsFromPhotoInner(imageUrl: string, note?: string)
     const buffer = await bufferFromStream(object.body)
     const strategiesBlock = note ? await getRetryStrategiesPromptBlock() : ''
 
+    // Real QR-code decoding (feedback #165 follow-up, 2026-09-14) — run on
+    // every extraction, not just a retry, since it's cheap/local/reliable
+    // (no LLM call) and a printed QR code is exactly the kind of thing that
+    // should just work on the first attempt, not need to be specifically
+    // asked for. See qr-decode.ts's own header for why this replaced an
+    // earlier attempt that just told the vision model to "try harder"
+    // reading the pixels directly — verified live that it can't.
+    const qrUrl = await decodeQrCode(buffer)
+    const validQrUrl = qrUrl && isHttpUrl(qrUrl) ? qrUrl : null
+    const qrPageText = validQrUrl ? await fetchPageText(validQrUrl) : null
+
     const message = await anthropic.messages.create(
       {
         model: 'claude-opus-5',
@@ -162,9 +176,12 @@ async function extractEventFieldsFromPhotoInner(imageUrl: string, note?: string)
               { type: 'image', source: { type: 'base64', media_type: mediaType, data: buffer.toString('base64') } },
               {
                 type: 'text',
-                text: JSON.stringify(
-                  note ? { today: todayInChicago(), retry_instructions: note } : { today: todayInChicago() },
-                ),
+                text: JSON.stringify({
+                  today: todayInChicago(),
+                  ...(note ? { retry_instructions: note } : {}),
+                  ...(validQrUrl ? { qr_code_url: validQrUrl } : {}),
+                  ...(qrPageText ? { qr_code_page_text: qrPageText.slice(0, 8000) } : {}),
+                }),
               },
             ],
           },
@@ -178,7 +195,12 @@ async function extractEventFieldsFromPhotoInner(imageUrl: string, note?: string)
     const raw = block?.type === 'text' ? block.text.trim() : ''
     if (!raw) return null
 
-    return toExtractedFields(JSON.parse(stripJsonCodeFence(raw)) as RawExtractedFields)
+    const fields = toExtractedFields(JSON.parse(stripJsonCodeFence(raw)) as RawExtractedFields)
+    // Deterministic fallback, not model-dependent — a real decoded URL
+    // is always correct, so use it directly whenever the model didn't
+    // already echo it back as source_url itself.
+    if (fields && !fields.source_url && validQrUrl) fields.source_url = validQrUrl
+    return fields
   } catch {
     return null
   }
