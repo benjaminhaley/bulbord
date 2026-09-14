@@ -608,7 +608,12 @@
     white-space: nowrap;
   }
   .lb-time { font-variant-numeric: tabular-nums; font-weight: 900; color: var(--ink); flex-shrink: 0; }
-  .lb-actions { display: flex; gap: 2px; flex-shrink: 0; margin-left: 2px; }
+  /* A fixed `width` (not min-width) — not just present on every row but
+     exactly the same size whether populated with real buttons or left
+     empty (see renderLeaderboardList's own comment on why every row's
+     .lb-actions must reserve identical space, populated or not, for the
+     .lb-time column above it to actually line up). */
+  .lb-actions { display: flex; justify-content: flex-end; gap: 2px; flex-shrink: 0; margin-left: 2px; width: 56px; }
   .lb-action-btn {
     border: none; background: transparent; cursor: pointer;
     font-size: 0.95rem; line-height: 1; padding: 4px 5px; border-radius: 8px;
@@ -934,6 +939,17 @@
   var BEST_STORAGE_KEY = 'soccerMathBestTime_v1';
   var NAME_STORAGE_KEY = 'soccerMathLastName_v1';
   var LEADERBOARD_STORAGE_KEY = 'soccerMathLeaderboard_v1';
+  // A stable per-device identity (feedback #162 follow-up, 2026-09-14: Ben's
+  // own device ended up with two separate leaderboard rows "from the same
+  // single account" because ownership was keyed on the typed display NAME —
+  // which not only let a rename/re-add sequence produce more than one row
+  // for the same real person, but could silently collide with one of the 20
+  // hardcoded seed pros if you happened to type the same name as one of
+  // them. playerId is the real, name-independent identity: generated once
+  // per device, stamped on every entry you add, and never touched by
+  // renaming. "Your own entry" now means "the one row with your playerId,"
+  // not "the one row with your current name."
+  var PLAYER_ID_STORAGE_KEY = 'soccerMathPlayerId_v1';
   // A little fun on first load, so the leaderboard never reads as an empty
   // dead end (and gives a real field to place yourself in from the very
   // first play): 20 real professional footballers, Messi on top and a
@@ -1005,6 +1021,12 @@
     shareNativeBtn: document.getElementById('share-native-btn'),
   };
 
+  // Set once, at init (see the bottom of this script) — after
+  // ensureSeedLeaderboard() has had a chance to fix up any legacy seed rows
+  // first, since ensurePlayerIdentity's own one-time claim logic needs to
+  // tell a real leftover row apart from an unmigrated seed row.
+  var MY_PLAYER_ID = null;
+
   var round = {
     shots: [], index: 0, misses: 0,
     answering: false, startTime: 0, elapsedMs: 0,
@@ -1048,19 +1070,39 @@
   function saveLastName(name) {
     try { localStorage.setItem(NAME_STORAGE_KEY, name); } catch (e) {}
   }
+  function loadPlayerId() {
+    try { return localStorage.getItem(PLAYER_ID_STORAGE_KEY) || ''; } catch (e) { return ''; }
+  }
+  function savePlayerId(id) {
+    try { localStorage.setItem(PLAYER_ID_STORAGE_KEY, id); } catch (e) {}
+  }
+  function generatePlayerId() {
+    if (window.crypto && typeof window.crypto.randomUUID === 'function') return window.crypto.randomUUID();
+    return 'p-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2);
+  }
+  // Finds a row `ensureSeedLeaderboard` itself owns — matched by isSeed once
+  // steady-state, or (one-time, for a device whose board predates isSeed
+  // existing at all) by the seed's own fixed placeholder `date`
+  // ('2026-01-01T00:00:00.000Z' for every seed row) — a real player's row
+  // always carries today's real date (see addCurrentScoreToLeaderboard), so
+  // this can never accidentally match one, even if the names happen to be
+  // identical. Never matches on name alone — that was the actual bug.
+  function isSeedRow(entry, seed) {
+    return entry.name === seed.name && (entry.isSeed || entry.date === seed.date);
+  }
   // Upserts by name rather than "only if the board is completely empty" —
   // that original check was the actual bug (2026-09-10): anyone who'd
   // already played and saved their own score before this feature shipped
   // had a non-empty board, so the seed rows silently never got added and
   // the leaderboard looked like it only had one person on it. This adds
-  // whichever seed rows are missing (by name) and re-syncs their time if a
-  // stale value from an earlier version of this file is still sitting in
-  // localStorage — real players' own rows are never touched.
+  // whichever seed rows are missing and re-syncs their time if a stale
+  // value from an earlier version of this file is still sitting in
+  // localStorage — a real player's own row is never touched (see isSeedRow).
   function ensureSeedLeaderboard() {
     var board = loadLeaderboard();
     var changed = false;
     SEED_LEADERBOARD.forEach(function (seed) {
-      var idx = board.findIndex(function (e) { return e.name === seed.name; });
+      var idx = board.findIndex(function (e) { return isSeedRow(e, seed); });
       if (idx === -1) {
         board.push({ name: seed.name, finalMs: seed.finalMs, misses: seed.misses, date: seed.date, isSeed: true });
         changed = true;
@@ -1077,6 +1119,34 @@
       }
     });
     if (changed) saveLeaderboard(board);
+  }
+  // Generates (once) and returns this device's stable playerId. On the very
+  // first call ever for a device, also claims/cleans up whatever the old
+  // name-based logic already left behind under the currently-saved name:
+  // every non-seed row sharing that name is folded down to just the single
+  // best (lowest finalMs) one, stamped with the new playerId — fixing
+  // exactly the bug this was written for (2026-09-14, Ben's own device:
+  // "I have two scores here since these both came from the same single
+  // account... only my best score should appear... unless I deleted it, in
+  // which case no score should appear").
+  function ensurePlayerIdentity() {
+    var playerId = loadPlayerId();
+    if (playerId) return playerId;
+    playerId = generatePlayerId();
+    var lastName = loadLastName();
+    if (lastName) {
+      var board = loadLeaderboard();
+      var mine = board.filter(function (e) { return !e.isSeed && e.name === lastName; });
+      if (mine.length > 0) {
+        var best = mine.reduce(function (a, b) { return b.finalMs < a.finalMs ? b : a; });
+        var kept = board.filter(function (e) { return e.isSeed || e.name !== lastName; });
+        best.playerId = playerId;
+        kept.push(best);
+        saveLeaderboard(kept);
+      }
+    }
+    savePlayerId(playerId);
+    return playerId;
   }
 
   // ---------- helpers ----------
@@ -1458,42 +1528,60 @@
       // large. The original version of this fix showed the edit/remove
       // affordance on every row, which let anyone rename or delete anyone
       // else's score (and edit the system-generated pro placeholders too).
-      // Since this leaderboard is per-device (localStorage), not per-login,
-      // "your own entry" is approximated as the one row matching the name
-      // most recently saved on this device — and a seed/placeholder row
-      // (isSeed, see ensureSeedLeaderboard) never gets the affordance at
-      // all, for anyone.
-      if (!entry.isSeed && entry.name === loadLastName()) {
-        var actions = document.createElement('div');
-        actions.className = 'lb-actions';
+      // "Your own entry" is the one row carrying this device's own
+      // playerId (see ensurePlayerIdentity) — not the one matching your
+      // current typed name, which a 2026-09-14 live bug report showed was
+      // unreliable (see that function's own comment for the real incident).
+      // A seed/placeholder row (isSeed, see ensureSeedLeaderboard) never
+      // gets the affordance at all, for anyone.
+      //
+      // The actions slot itself is always appended, on every row — only its
+      // *content* (and visibility) depends on eligibility. Ben, 2026-09-14,
+      // live on his phone: the times didn't line up, because the one row
+      // that had a visible actions element was narrower everywhere else
+      // (`.lb-name`'s flex: 1 absorbs whatever space isn't taken by
+      // `.lb-time`+`.lb-actions`, so a row with no actions element puts its
+      // time flush against the row's own right edge, and a row with one
+      // doesn't) — reserving the same space on every row, invisible when
+      // not applicable, is what actually keeps every row's time in one
+      // straight column.
+      var actions = document.createElement('div');
+      actions.className = 'lb-actions';
+      if (!entry.isSeed && entry.playerId === MY_PLAYER_ID) {
         var editBtn = document.createElement('button');
         editBtn.type = 'button';
         editBtn.className = 'lb-action-btn';
         editBtn.textContent = '✎';
         editBtn.setAttribute('aria-label', 'Edit name for ' + entry.name);
-        editBtn.onclick = function () { renameLeaderboardEntry(entry.name); };
+        editBtn.onclick = function () { renameLeaderboardEntry(); };
         var removeBtn = document.createElement('button');
         removeBtn.type = 'button';
         removeBtn.className = 'lb-action-btn';
         removeBtn.textContent = '✕';
         removeBtn.setAttribute('aria-label', 'Remove ' + entry.name + ' from the leaderboard');
-        removeBtn.onclick = function () { removeLeaderboardEntry(entry.name); };
+        removeBtn.onclick = function () { removeLeaderboardEntry(); };
         actions.appendChild(editBtn);
         actions.appendChild(removeBtn);
-        row.appendChild(actions);
+      } else {
+        // Left empty, no buttons — .lb-actions' own fixed `width` (not
+        // min-width) in the stylesheet still reserves the exact same
+        // footprint a populated one would.
+        actions.style.visibility = 'hidden';
       }
+      row.appendChild(actions);
       if (i === highlightIndex) row.id = 'lb-me-row';
       container.appendChild(row);
     });
   }
 
-  // Inserts by name, keeping only the better (lower finalMs) of an existing
-  // entry vs. a new one — the actual fix for feedback #162 ("you should
-  // only be able to appear once for your best possible score"). Used by
-  // both a fresh Add and a rename-into-an-existing-name, so "one row per
-  // person" holds regardless of which path got you there.
+  // Inserts by playerId, keeping only the better (lower finalMs) of an
+  // existing entry vs. a new one — the actual fix for feedback #162 ("you
+  // should only be able to appear once for your best possible score").
+  // Matching on playerId rather than name (2026-09-14 follow-up) is what
+  // keeps this true regardless of what you type as your display name — see
+  // ensurePlayerIdentity's own comment for the real bug this replaced.
   function upsertLeaderboardEntry(board, entry) {
-    var idx = board.findIndex(function (e) { return e.name === entry.name; });
+    var idx = board.findIndex(function (e) { return e.playerId === entry.playerId; });
     if (idx === -1) {
       board.push(entry);
       return { added: true, replaced: false };
@@ -1511,35 +1599,33 @@
     renderLeaderboardList(el.standaloneLeaderboardList, board, null);
   }
 
-  function renameLeaderboardEntry(oldName) {
-    // Guards against the same thing the render-time check above does —
-    // belt-and-suspenders in case a stale row is still on screen (e.g. two
-    // browser tabs open) when a click fires.
-    if (oldName !== loadLastName()) return;
+  // Renaming only ever changes the `name` field on the one row carrying
+  // this device's playerId — it can never merge into (or get confused
+  // with) any other row, including a seed pro's, even if you rename into
+  // the exact same text as one of them. That's a deliberate simplification
+  // over the old name-keyed version, which had to delete-then-reinsert and
+  // could silently merge two unrelated rows that happened to share a name.
+  function renameLeaderboardEntry() {
+    var board = loadLeaderboard();
+    var idx = board.findIndex(function (e) { return !e.isSeed && e.playerId === MY_PLAYER_ID; });
+    if (idx === -1) return;
+    var oldName = board[idx].name;
     var newName = window.prompt('Edit name', oldName);
     if (newName === null) return;
     newName = newName.trim();
     if (!newName || newName === oldName) return;
-    var board = loadLeaderboard();
-    var idx = board.findIndex(function (e) { return e.name === oldName; });
-    if (idx === -1 || board[idx].isSeed) return;
-    var entry = board[idx];
-    board.splice(idx, 1);
-    // Renaming into a name that's already on the board merges the two —
-    // same one-row-per-person rule a fresh Add already follows.
-    upsertLeaderboardEntry(board, { name: newName, finalMs: entry.finalMs, misses: entry.misses, date: entry.date });
+    board[idx].name = newName;
     saveLeaderboard(board);
-    if (loadLastName() === oldName) saveLastName(newName);
+    saveLastName(newName);
     refreshVisibleLeaderboards();
   }
 
-  function removeLeaderboardEntry(name) {
-    if (name !== loadLastName()) return;
+  function removeLeaderboardEntry() {
     var board = loadLeaderboard();
-    var existing = board.find(function (e) { return e.name === name; });
-    if (!existing || existing.isSeed) return;
-    if (!window.confirm('Remove ' + name + ' from the leaderboard?')) return;
-    board = board.filter(function (e) { return e.name !== name; });
+    var existing = board.find(function (e) { return !e.isSeed && e.playerId === MY_PLAYER_ID; });
+    if (!existing) return;
+    if (!window.confirm('Remove ' + existing.name + ' from the leaderboard?')) return;
+    board = board.filter(function (e) { return e !== existing; });
     saveLeaderboard(board);
     refreshVisibleLeaderboards();
   }
@@ -1548,9 +1634,15 @@
     var name = (el.nameInput.value || '').trim() || 'Player';
     saveLastName(name);
     var board = loadLeaderboard();
-    var result = upsertLeaderboardEntry(board, { name: name, finalMs: finalMs, misses: round.misses, date: new Date().toISOString() });
+    var result = upsertLeaderboardEntry(board, {
+      name: name,
+      finalMs: finalMs,
+      misses: round.misses,
+      date: new Date().toISOString(),
+      playerId: MY_PLAYER_ID,
+    });
     board = saveLeaderboard(board);
-    var myIndex = board.findIndex(function (e) { return e.name === name; });
+    var myIndex = board.findIndex(function (e) { return e.playerId === MY_PLAYER_ID; });
 
     el.nameEntry.classList.remove('show');
     if (result.replaced) {
@@ -1654,6 +1746,7 @@
   });
 
   ensureSeedLeaderboard();
+  MY_PLAYER_ID = ensurePlayerIdentity();
   renderBestRow(el.bestRow);
   renderRecordRow();
   showScreen('start');
