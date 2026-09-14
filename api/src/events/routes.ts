@@ -131,7 +131,7 @@ export async function eventsRoutes(app: FastifyInstance) {
         row.interestStatus as InterestStatus | null,
         row.interestedCount,
         row.interestedPeople,
-        userId,
+        request.currentUser,
         row.submittedBy,
       ),
     })
@@ -394,7 +394,7 @@ export async function eventsRoutes(app: FastifyInstance) {
         row.interestStatus as InterestStatus | null,
         row.interestedCount,
         row.interestedPeople,
-        currentUser.id,
+        currentUser,
         row.submittedBy,
       ),
     })
@@ -497,7 +497,7 @@ export async function eventsRoutes(app: FastifyInstance) {
         row.interestStatus as InterestStatus | null,
         row.interestedCount,
         row.interestedPeople,
-        currentUser.id,
+        currentUser,
         row.submittedBy,
       ),
     })
@@ -932,7 +932,7 @@ export async function eventsRoutes(app: FastifyInstance) {
           row.interestStatus as InterestStatus | null,
           row.interestedCount,
           row.interestedPeople,
-          userId,
+          request.currentUser,
           row.submittedBy,
         ),
       ),
@@ -970,12 +970,11 @@ export async function eventsRoutes(app: FastifyInstance) {
     if (!weekStart || !/^\d{4}-\d{2}-\d{2}$/.test(weekStart)) {
       return reply.code(400).send({ error: { message: 'start (YYYY-MM-DD) is required' } })
     }
-    const userId = request.currentUser?.id ?? null
     const topics = parseTopicsParam(query.topics)
     const beforeTime = parseBeforeTimeParam(query.before_time)
     const afterTime = parseAfterTimeParam(query.after_time)
 
-    const weekEvents = await getEventsForWeek(weekStart, topics, beforeTime, afterTime, userId)
+    const weekEvents = await getEventsForWeek(weekStart, topics, beforeTime, afterTime, request.currentUser)
     return reply.send({ data: weekEvents })
   })
 }

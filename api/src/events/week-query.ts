@@ -32,8 +32,9 @@ export async function getEventsForWeek(
   topics: string[],
   beforeTime: string | null,
   afterTime: string | null,
-  userId: string | null,
+  currentUser: { id: string; roles: string[] } | null,
 ) {
+  const userId = currentUser?.id ?? null
   const weekEnd = toISODate(addDays(parseISODate(weekStart), 6))
 
   const conditions = [
@@ -85,7 +86,7 @@ export async function getEventsForWeek(
       row.interestStatus as InterestStatus | null,
       row.interestedCount,
       row.interestedPeople,
-      userId,
+      currentUser,
       row.submittedBy,
     ),
   )

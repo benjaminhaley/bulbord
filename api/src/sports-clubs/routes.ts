@@ -57,7 +57,7 @@ type HydratedSportsClub = SerializableSportsClub & {
   occurrences: OccurrenceSummary[]
 }
 
-function serializeSportsClub(c: HydratedSportsClub, currentUserId: string | null) {
+function serializeSportsClub(c: HydratedSportsClub, currentUser: { id: string; roles: string[] } | null) {
   return {
     id: c.id,
     title: c.title,
@@ -94,10 +94,10 @@ function serializeSportsClub(c: HydratedSportsClub, currentUserId: string | null
     interested_count: c.interestedCount,
     interested_people: c.interestedPeople,
     // can_edit: any logged-in member (feedback #141, 2026-09-07). can_delete:
-    // still creator-only, no admin override — see events/permissions.ts's
-    // canEditEvent/canDeleteEvent for the full reasoning.
-    can_edit: currentUserId !== null && canEditSportsClub({ id: currentUserId }, c),
-    can_delete: currentUserId !== null && canDeleteSportsClub({ id: currentUserId }, c),
+    // creator-only, plus an admin override (feedback #164, 2026-09-14) — see
+    // events/permissions.ts's canEditEvent/canDeleteEvent for the full reasoning.
+    can_edit: currentUser !== null && canEditSportsClub({ id: currentUser.id }, c),
+    can_delete: currentUser !== null && canDeleteSportsClub(currentUser, c),
     submitted_by: c.submittedBy,
     source: c.source,
     next_occurrence_date: c.nextOccurrenceDate,
@@ -267,7 +267,7 @@ export async function sportsClubsRoutes(app: FastifyInstance) {
       return reply.code(404).send({ error: { message: 'Sports club not found' } })
     }
 
-    return reply.send({ data: serializeSportsClub(row, userId) })
+    return reply.send({ data: serializeSportsClub(row, request.currentUser) })
   })
 
   // Member self-service posting, same posture as events'/camps' feedback
@@ -301,7 +301,7 @@ export async function sportsClubsRoutes(app: FastifyInstance) {
     await db.insert(eventsLog).values({ actor: currentUser.id, action: 'sports_club_created', metadata: { sportsClubId: created.id } })
 
     const row = (await loadSportsClubDetail(created.id, currentUser.id))!
-    return reply.code(201).send({ data: serializeSportsClub(row, currentUser.id) })
+    return reply.code(201).send({ data: serializeSportsClub(row, currentUser) })
   })
 
   app.patch('/sports-clubs/:id', { preHandler: requireAuth }, async (request, reply) => {
@@ -368,7 +368,7 @@ export async function sportsClubsRoutes(app: FastifyInstance) {
     await db.insert(eventsLog).values({ actor: currentUser.id, action: 'sports_club_updated', metadata: { sportsClubId: id } })
 
     const row = (await loadSportsClubDetail(id, currentUser.id))!
-    return reply.send({ data: serializeSportsClub(row, currentUser.id) })
+    return reply.send({ data: serializeSportsClub(row, currentUser) })
   })
 
   app.delete('/sports-clubs/:id', { preHandler: requireAuth }, async (request, reply) => {
@@ -486,7 +486,7 @@ export async function sportsClubsRoutes(app: FastifyInstance) {
     const visible = includeStarted ? sorted : sorted.filter((c) => !c.hiddenByDefault)
 
     return reply.send({
-      data: visible.map((c) => ({ ...serializeSportsClub({ ...c.row, source: null }, userId), hidden_by_default: c.hiddenByDefault })),
+      data: visible.map((c) => ({ ...serializeSportsClub({ ...c.row, source: null }, request.currentUser), hidden_by_default: c.hiddenByDefault })),
       hidden_started_count: hiddenStartedCount,
     })
   })

@@ -60,7 +60,7 @@ type HydratedCamp = SerializableCamp & {
   source: SourceSummary | null
 }
 
-function serializeCamp(c: HydratedCamp, currentUserId: string | null) {
+function serializeCamp(c: HydratedCamp, currentUser: { id: string; roles: string[] } | null) {
   return {
     id: c.id,
     title: c.title,
@@ -111,10 +111,10 @@ function serializeCamp(c: HydratedCamp, currentUserId: string | null) {
     interested_count: c.interestedCount,
     interested_people: c.interestedPeople,
     // can_edit: any logged-in member (feedback #141, 2026-09-07). can_delete:
-    // still creator-only, no admin override — see events/permissions.ts's
-    // canEditEvent/canDeleteEvent for the full reasoning.
-    can_edit: currentUserId !== null && canEditCamp({ id: currentUserId }, c),
-    can_delete: currentUserId !== null && canDeleteCamp({ id: currentUserId }, c),
+    // creator-only, plus an admin override (feedback #164, 2026-09-14) — see
+    // events/permissions.ts's canEditEvent/canDeleteEvent for the full reasoning.
+    can_edit: currentUser !== null && canEditCamp({ id: currentUser.id }, c),
+    can_delete: currentUser !== null && canDeleteCamp(currentUser, c),
     submitted_by: c.submittedBy,
     source: c.source,
   }
@@ -255,7 +255,7 @@ export async function campsRoutes(app: FastifyInstance) {
       return reply.code(404).send({ error: { message: 'Camp not found' } })
     }
 
-    return reply.send({ data: serializeCamp(row, userId) })
+    return reply.send({ data: serializeCamp(row, request.currentUser) })
   })
 
   // Member self-service camp posting, same posture as events' feedback #46:
@@ -331,7 +331,7 @@ export async function campsRoutes(app: FastifyInstance) {
     await db.insert(eventsLog).values({ actor: currentUser.id, action: 'camp_created', metadata: { campId: created.id } })
 
     const row = (await loadCampDetail(created.id, currentUser.id))!
-    return reply.code(201).send({ data: serializeCamp(row, currentUser.id) })
+    return reply.code(201).send({ data: serializeCamp(row, currentUser) })
   })
 
   app.patch('/camps/:id', { preHandler: requireAuth }, async (request, reply) => {
@@ -426,7 +426,7 @@ export async function campsRoutes(app: FastifyInstance) {
     await db.insert(eventsLog).values({ actor: currentUser.id, action: 'camp_updated', metadata: { campId: id } })
 
     const row = (await loadCampDetail(id, currentUser.id))!
-    return reply.send({ data: serializeCamp(row, currentUser.id) })
+    return reply.send({ data: serializeCamp(row, currentUser) })
   })
 
   app.delete('/camps/:id', { preHandler: requireAuth }, async (request, reply) => {
@@ -533,7 +533,7 @@ export async function campsRoutes(app: FastifyInstance) {
 
     const breaks: SchoolBreakRow[] = breakRows
     const serializedCamps = campRows.map((row) => ({
-      ...serializeCamp({ ...row, source: null }, userId),
+      ...serializeCamp({ ...row, source: null }, request.currentUser),
       startDate: row.startDate,
       endDate: row.endDate,
     }))

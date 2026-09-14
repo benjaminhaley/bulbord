@@ -43,7 +43,7 @@ export function serializeEvent(
   interestStatus: InterestStatus | null,
   interestedCount: number,
   interestedPeople: InterestedPersonSummary[],
-  currentUserId: string | null,
+  currentUser: { id: string; roles: string[] } | null,
   submittedBy: SubmitterSummary | null,
 ) {
   return {
@@ -66,13 +66,11 @@ export function serializeEvent(
     interested_count: interestedCount,
     interested_people: interestedPeople,
     // can_edit: any logged-in member (feedback #141, 2026-09-07 — reverses
-    // the original creator-only rule). can_delete: still creator-only, no
-    // admin override — deletion is materially more destructive than an
-    // edit (which is always visible/attributed/reversible via edit
-    // history) and #141 only asked for editability, not deletability — see
-    // permissions.ts's canEditEvent/canDeleteEvent for the full reasoning.
-    can_edit: currentUserId !== null && canEditEvent({ id: currentUserId }, e),
-    can_delete: currentUserId !== null && canDeleteEvent({ id: currentUserId }, e),
+    // the original creator-only rule). can_delete: creator-only, plus an
+    // admin override (feedback #164, 2026-09-14) — see permissions.ts's
+    // canEditEvent/canDeleteEvent for the full reasoning.
+    can_edit: currentUser !== null && canEditEvent({ id: currentUser.id }, e),
+    can_delete: currentUser !== null && canDeleteEvent(currentUser, e),
     submitted_by: submittedBy,
   }
 }

@@ -12,8 +12,11 @@ export function canEditCamp(_currentUser: { id: string }, _camp: { submittedByUs
   return true
 }
 
-// Deletion stays creator-only, no admin override — see events/permissions.ts's
-// canDeleteEvent for the full reasoning (#141 only asked for editability).
-export function canDeleteCamp(currentUser: { id: string }, camp: { submittedByUserId: string | null }): boolean {
-  return currentUser.id === camp.submittedByUserId
+// Deletion stays creator-only, except for an admin override — see
+// events/permissions.ts's canDeleteEvent for the full reasoning (feedback #164).
+export function canDeleteCamp(
+  currentUser: { id: string; roles: string[] },
+  camp: { submittedByUserId: string | null },
+): boolean {
+  return currentUser.roles.includes('admin') || currentUser.id === camp.submittedByUserId
 }

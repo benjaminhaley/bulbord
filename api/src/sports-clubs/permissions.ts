@@ -11,8 +11,11 @@ export function canEditSportsClub(_currentUser: { id: string }, _sportsClub: { s
   return true
 }
 
-// Deletion stays creator-only, no admin override — see events/permissions.ts's
-// canDeleteEvent for the full reasoning (#141 only asked for editability).
-export function canDeleteSportsClub(currentUser: { id: string }, sportsClub: { submittedByUserId: string | null }): boolean {
-  return currentUser.id === sportsClub.submittedByUserId
+// Deletion stays creator-only, except for an admin override — see
+// events/permissions.ts's canDeleteEvent for the full reasoning (feedback #164).
+export function canDeleteSportsClub(
+  currentUser: { id: string; roles: string[] },
+  sportsClub: { submittedByUserId: string | null },
+): boolean {
+  return currentUser.roles.includes('admin') || currentUser.id === sportsClub.submittedByUserId
 }

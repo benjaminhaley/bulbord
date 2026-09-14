@@ -15,13 +15,17 @@ export function canEditEvent(_currentUser: { id: string }, _event: { submittedBy
   return true
 }
 
-// Deletion stays creator-only, no admin override — #141 only asked for
-// editability, not deletability, and a soft-delete is a materially more
-// destructive, harder-to-notice-and-undo action than a field edit (which is
-// always visible, attributed, and reversible via the edit history) — so it
-// stays scoped to the original poster, same posture as feedback-post
-// deletes. A system-sourced event (submittedByUserId null) still has no
-// member delete path at all, unchanged from before this split.
-export function canDeleteEvent(currentUser: { id: string }, event: { submittedByUserId: string | null }): boolean {
-  return currentUser.id === event.submittedByUserId
+// Deletion stays creator-only, except for an admin override (feedback #164,
+// 2026-09-14: "I should be able to delete any event camp club or sport as an
+// admin. But others should only be able to delete ones that they added
+// themselves.") — a soft-delete is still materially more destructive, harder-
+// to-notice-and-undo than a field edit (always visible/attributed/reversible
+// via edit history), so it stays scoped to the original poster for everyone
+// else, same posture as feedback-post deletes. A system-sourced event
+// (submittedByUserId null) still has no non-admin member delete path at all.
+export function canDeleteEvent(
+  currentUser: { id: string; roles: string[] },
+  event: { submittedByUserId: string | null },
+): boolean {
+  return currentUser.roles.includes('admin') || currentUser.id === event.submittedByUserId
 }
