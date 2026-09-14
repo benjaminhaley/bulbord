@@ -602,24 +602,18 @@
   .lb-rank { width: 28px; text-align: center; font-weight: 900; flex-shrink: 0; }
   .lb-name {
     flex: 1;
+    display: flex;
+    align-items: center;
+    min-width: 0;
+  }
+  .lb-name-text {
     text-align: left;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    min-width: 0;
   }
   .lb-time { font-variant-numeric: tabular-nums; font-weight: 900; color: var(--ink); flex-shrink: 0; }
-  /* A fixed `width` (not min-width) — not just present on every row but
-     exactly the same size whether populated with real buttons or left
-     empty (see renderLeaderboardList's own comment on why every row's
-     .lb-actions must reserve identical space, populated or not, for the
-     .lb-time column above it to actually line up). */
-  .lb-actions { display: flex; justify-content: flex-end; gap: 2px; flex-shrink: 0; margin-left: 2px; width: 56px; }
-  .lb-action-btn {
-    border: none; background: transparent; cursor: pointer;
-    font-size: 0.95rem; line-height: 1; padding: 4px 5px; border-radius: 8px;
-    color: #9fb0a6;
-  }
-  .lb-action-btn:active { background: #e3ece5; }
   .lb-row.me {
     background: #fff7dd;
     box-shadow: 0 0 0 2px var(--gold) inset;
@@ -629,7 +623,40 @@
     0%, 100% { background: #fff7dd; }
     50% { background: #ffe79c; }
   }
+  /* Feedback, 2026-09-14 (Ben, live): persistent — unlike .me above (which
+     only ever shows right after you post a fresh score), this marks your
+     row every time you open the leaderboard, and it's the one row that's
+     tappable at all (see the row click handler in renderLeaderboardList).
+     Deliberately a lighter tint than .me's celebratory gold-pulse — a
+     permanent "this one's mine" cue, not a one-time "you just did it!". */
+  .lb-row.mine {
+    background: #fff9ea;
+    box-shadow: 0 0 0 1.5px var(--gold) inset;
+    cursor: pointer;
+  }
+  .lb-row.mine:active { background: #fff1c8; }
+  .lb-you-badge {
+    display: inline-block;
+    margin-left: 6px;
+    font-size: 0.65rem;
+    font-weight: 900;
+    letter-spacing: 0.02em;
+    color: #6b5400;
+    background: var(--gold);
+    padding: 1px 6px;
+    border-radius: 999px;
+    vertical-align: 1px;
+    flex-shrink: 0;
+  }
   .lb-empty { text-align: center; color: #7a8a80; font-weight: 700; font-size: 0.85rem; padding: 18px 4px; }
+  .row-actions-body { display: flex; flex-direction: column; gap: 8px; padding: 16px; }
+  .row-action-btn {
+    border: none; border-radius: 12px; padding: 14px 16px;
+    font-size: 1rem; font-weight: 800; text-align: left;
+    background: #f4f8f5; color: var(--ink); cursor: pointer;
+  }
+  .row-action-btn:active { background: #e3ece5; }
+  .row-action-danger { color: #b3261e; }
 
   #play-again-btn { background: var(--pitch); color: white; }
 
@@ -920,6 +947,28 @@
   </div>
 </div>
 
+<!-- Feedback, 2026-09-14 (Ben, live): "Don't show the X and edit button
+     here instead make it so when you click on the row, it's a prompt" —
+     tapping your own leaderboard row (the only one ever clickable — see
+     ensurePlayerIdentity/the .mine class) opens this instead of always
+     showing a pencil/✕ inline. Reuses the exact same bottom-sheet
+     overlay classes the Share modal above already defines, so it's
+     visually consistent with the rest of the page for free. -->
+<div class="share-modal-overlay hidden" id="row-actions-overlay">
+  <div class="share-modal">
+    <div class="share-modal-header">
+      <span id="row-actions-title">Your Entry</span>
+      <button class="share-modal-close" id="row-actions-close-btn" type="button" aria-label="Close">
+        <svg viewBox="0 0 512 512" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="32"><path d="M368 368 144 144M368 144 144 368"/></svg>
+      </button>
+    </div>
+    <div class="share-modal-body row-actions-body">
+      <button class="row-action-btn" id="row-actions-edit-btn" type="button">✎ Edit Name</button>
+      <button class="row-action-btn row-action-danger" id="row-actions-remove-btn" type="button">✕ Remove from Leaderboard</button>
+    </div>
+  </div>
+</div>
+
 <!-- A real, self-hosted build of the same `qrcode` npm package the main
      app uses (see scripts/build-soccer-math-qr-bundle.mjs) — not a
      third-party CDN, not a hand-rolled encoder. -->
@@ -1019,6 +1068,11 @@
     shareQrImg: document.getElementById('share-qr-img'),
     shareOrDivider: document.getElementById('share-or-divider'),
     shareNativeBtn: document.getElementById('share-native-btn'),
+    rowActionsOverlay: document.getElementById('row-actions-overlay'),
+    rowActionsCloseBtn: document.getElementById('row-actions-close-btn'),
+    rowActionsTitle: document.getElementById('row-actions-title'),
+    rowActionsEditBtn: document.getElementById('row-actions-edit-btn'),
+    rowActionsRemoveBtn: document.getElementById('row-actions-remove-btn'),
   };
 
   // Set once, at init (see the bottom of this script) — after
@@ -1509,66 +1563,54 @@
       return;
     }
     entries.forEach(function (entry, i) {
+      // Feedback #162 (2026-09-14 follow-ups): "your own entry" is the one
+      // row carrying this device's own playerId (see ensurePlayerIdentity)
+      // — not the one matching your current typed name, which an earlier
+      // live bug report showed was unreliable. A seed/placeholder row
+      // (isSeed, see ensureSeedLeaderboard) is never editable, for anyone.
+      var isMine = !entry.isSeed && entry.playerId === MY_PLAYER_ID;
+
       var row = document.createElement('div');
-      row.className = 'lb-row' + (i === highlightIndex ? ' me pulse' : '');
+      row.className = 'lb-row' + (i === highlightIndex ? ' me pulse' : '') + (isMine ? ' mine' : '');
       var rank = document.createElement('div');
       rank.className = 'lb-rank';
       rank.textContent = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : '#' + (i + 1);
       var name = document.createElement('div');
       name.className = 'lb-name';
-      name.textContent = entry.name;
+      var nameText = document.createElement('span');
+      nameText.className = 'lb-name-text';
+      nameText.textContent = entry.name;
+      name.appendChild(nameText);
+      // Ben, 2026-09-14 ("make your own personal row somehow highlighted so
+      // it's a little clear that it's yours"): the .mine background/border
+      // tint alone was judged not clear enough — a small explicit badge is
+      // the unambiguous version of the same signal.
+      if (isMine) {
+        var badge = document.createElement('span');
+        badge.className = 'lb-you-badge';
+        badge.textContent = 'YOU';
+        name.appendChild(badge);
+      }
       var time = document.createElement('div');
       time.className = 'lb-time';
       time.textContent = formatTime(entry.finalMs);
       row.appendChild(rank);
       row.appendChild(name);
       row.appendChild(time);
-      // Feedback #162: "you can always edit your name or clear your best
-      // possible score" meant your own entry only — not the leaderboard at
-      // large. The original version of this fix showed the edit/remove
-      // affordance on every row, which let anyone rename or delete anyone
-      // else's score (and edit the system-generated pro placeholders too).
-      // "Your own entry" is the one row carrying this device's own
-      // playerId (see ensurePlayerIdentity) — not the one matching your
-      // current typed name, which a 2026-09-14 live bug report showed was
-      // unreliable (see that function's own comment for the real incident).
-      // A seed/placeholder row (isSeed, see ensureSeedLeaderboard) never
-      // gets the affordance at all, for anyone.
-      //
-      // The actions slot itself is always appended, on every row — only its
-      // *content* (and visibility) depends on eligibility. Ben, 2026-09-14,
-      // live on his phone: the times didn't line up, because the one row
-      // that had a visible actions element was narrower everywhere else
-      // (`.lb-name`'s flex: 1 absorbs whatever space isn't taken by
-      // `.lb-time`+`.lb-actions`, so a row with no actions element puts its
-      // time flush against the row's own right edge, and a row with one
-      // doesn't) — reserving the same space on every row, invisible when
-      // not applicable, is what actually keeps every row's time in one
-      // straight column.
-      var actions = document.createElement('div');
-      actions.className = 'lb-actions';
-      if (!entry.isSeed && entry.playerId === MY_PLAYER_ID) {
-        var editBtn = document.createElement('button');
-        editBtn.type = 'button';
-        editBtn.className = 'lb-action-btn';
-        editBtn.textContent = '✎';
-        editBtn.setAttribute('aria-label', 'Edit name for ' + entry.name);
-        editBtn.onclick = function () { renameLeaderboardEntry(); };
-        var removeBtn = document.createElement('button');
-        removeBtn.type = 'button';
-        removeBtn.className = 'lb-action-btn';
-        removeBtn.textContent = '✕';
-        removeBtn.setAttribute('aria-label', 'Remove ' + entry.name + ' from the leaderboard');
-        removeBtn.onclick = function () { removeLeaderboardEntry(); };
-        actions.appendChild(editBtn);
-        actions.appendChild(removeBtn);
-      } else {
-        // Left empty, no buttons — .lb-actions' own fixed `width` (not
-        // min-width) in the stylesheet still reserves the exact same
-        // footprint a populated one would.
-        actions.style.visibility = 'hidden';
+      // Feedback, 2026-09-14 (Ben, live): "Don't show the X and edit button
+      // here instead make it so when you click on the row, it's a prompt"
+      // — no more always-visible pencil/✕ pair; tapping your own row (the
+      // only row that's ever clickable) opens the row-actions bottom sheet
+      // instead. This also incidentally fixed the time-column misalignment
+      // from the previous round (every row is now structurally identical —
+      // rank/name/time and nothing else — so there's no longer a
+      // conditional trailing element to keep in sync at all).
+      if (isMine) {
+        row.setAttribute('role', 'button');
+        row.setAttribute('tabindex', '0');
+        row.setAttribute('aria-label', 'Edit or remove your entry, ' + entry.name);
+        row.onclick = function () { openRowActions(entry); };
       }
-      row.appendChild(actions);
       if (i === highlightIndex) row.id = 'lb-me-row';
       container.appendChild(row);
     });
@@ -1597,6 +1639,17 @@
     var board = loadLeaderboard();
     renderLeaderboardList(el.endLeaderboardList, board, null);
     renderLeaderboardList(el.standaloneLeaderboardList, board, null);
+  }
+
+  // Feedback, 2026-09-14 (Ben, live): tapping your own row (the only
+  // clickable one — see renderLeaderboardList) opens this bottom sheet
+  // instead of always showing a pencil/✕ pair inline.
+  function openRowActions(entry) {
+    el.rowActionsTitle.textContent = entry.name;
+    el.rowActionsOverlay.classList.remove('hidden');
+  }
+  function closeRowActions() {
+    el.rowActionsOverlay.classList.add('hidden');
   }
 
   // Renaming only ever changes the `name` field on the one row carrying
@@ -1743,6 +1796,19 @@
   el.shareNativeBtn.addEventListener('click', function () {
     var shareUrl = window.location.origin + window.location.pathname;
     navigator.share({ url: shareUrl }).catch(function () {});
+  });
+
+  el.rowActionsCloseBtn.addEventListener('click', closeRowActions);
+  el.rowActionsOverlay.addEventListener('click', function (e) {
+    if (e.target === el.rowActionsOverlay) closeRowActions();
+  });
+  el.rowActionsEditBtn.addEventListener('click', function () {
+    closeRowActions();
+    renameLeaderboardEntry();
+  });
+  el.rowActionsRemoveBtn.addEventListener('click', function () {
+    closeRowActions();
+    removeLeaderboardEntry();
   });
 
   ensureSeedLeaderboard();
