@@ -265,6 +265,15 @@ export function AddEventModal({
   const [retryNote, setRetryNote] = useState('')
   const [retrying, setRetrying] = useState(false)
   const [retryVersion, setRetryVersion] = useState(0)
+  // Feedback, 2026-09-14 (Ben, live: "I don't see any option to retry and
+  // leave a note"): the retry UI was real, but lived in the ordinary
+  // scrollable body, below Title/Description/Date/Time — a member who
+  // scrolled straight to the required Address field (as Ben did) never saw
+  // it at all, since it had already scrolled out of view above. Starts
+  // collapsed to a single compact line inside the sticky block (see below)
+  // so it's always visible without permanently eating screen space for the
+  // common case where a retry isn't needed.
+  const [retryExpanded, setRetryExpanded] = useState(false)
 
   // Points at the most recent attempt's session for as long as it's the
   // one on screen — used only to guard live UI updates (setState calls)
@@ -289,6 +298,7 @@ export function AddEventModal({
     setRetryNote('')
     setRetrying(false)
     setRetryVersion(0)
+    setRetryExpanded(false)
   }
 
   function handleDismiss() {
@@ -353,6 +363,7 @@ export function AddEventModal({
     setUploadedImage(null)
     setRetryNote('')
     setRetryVersion(0)
+    setRetryExpanded(false)
     setPipeline({ active: true, stage1: 'running', stage2: 'skipped', stage3: 'skipped' })
     setStage('form')
 
@@ -415,6 +426,7 @@ export function AddEventModal({
     setUploadedImage(null)
     setRetryNote('')
     setRetryVersion(0)
+    setRetryExpanded(false)
     // All three steps start 'running' together, even though stage 3's own
     // real search doesn't kick off until stage 1/2 both resolve (see
     // below) — feedback, 2026-09-05: the "Finding a photo…" row was popping
@@ -525,6 +537,7 @@ export function AddEventModal({
       if (fields) {
         setRetryVersion((v) => v + 1)
         setRetryNote('')
+        setRetryExpanded(false)
       }
     } finally {
       setRetrying(false)
@@ -724,6 +737,64 @@ export function AddEventModal({
                   </div>
                 )}
                 <PipelineStatus pipeline={pipeline} mode={pinned.kind} />
+                {/* Feedback #165 (2026-09-14), then a live follow-up the same
+                    day (Ben: "I don't see any option to retry and leave a
+                    note" — it existed, but lived in the ordinary scrollable
+                    body below Title/Description/Date/Time, so scrolling
+                    straight to a required field like Address, as he did,
+                    scrolled right past it while this sticky block stayed
+                    pinned above). Living inside the SAME sticky element as
+                    PipelineStatus is what actually fixes that — it can never
+                    scroll out of view now, matching the exact reasoning this
+                    block's own header comment already gives for why
+                    PipelineStatus itself lives here. Starts collapsed to one
+                    compact line so it doesn't permanently eat screen space
+                    for the common case where nothing needs retrying. */}
+                {pipeline.stage1 !== 'running' && (
+                  <div style={{ padding: '2px 16px 10px' }}>
+                    {!retryExpanded ? (
+                      <IonButton
+                        fill="clear"
+                        size="small"
+                        style={{ ...unstyledButtonStyle, color: 'var(--ion-color-medium)', fontSize: '0.8125rem' }}
+                        onClick={() => setRetryExpanded(true)}
+                      >
+                        <IonIcon slot="start" icon={refreshOutline} />
+                        Not quite right? Retry with a note
+                      </IonButton>
+                    ) : (
+                      <>
+                        <IonText color="medium">
+                          <p style={{ fontSize: '0.8125rem', margin: '4px 0 6px' }}>Tell it what to look for and try again.</p>
+                        </IonText>
+                        <IonTextarea
+                          value={retryNote}
+                          onIonInput={(e) => setRetryNote(e.detail.value ?? '')}
+                          autoGrow
+                          autofocus
+                          disabled={retrying}
+                          placeholder={pinned.kind === 'photo' ? 'e.g. “read the QR code in the photo”' : 'e.g. “the price is per week, not per day”'}
+                          style={{ border: '1px solid var(--ion-color-step-200, #ccc)', borderRadius: 10, padding: '8px 10px', fontSize: '0.875rem' }}
+                        />
+                        <div style={{ marginTop: 8 }}>
+                          <IonButton fill="outline" size="small" disabled={!retryNote.trim() || retrying} onClick={() => void handleRetry()}>
+                            {retrying ? (
+                              <IonSpinner name="dots" style={{ width: 16, height: 16 }} />
+                            ) : (
+                              <>
+                                <IonIcon slot="start" icon={refreshOutline} />
+                                Retry
+                              </>
+                            )}
+                          </IonButton>
+                          <IonButton fill="clear" size="small" color="medium" disabled={retrying} onClick={() => setRetryExpanded(false)}>
+                            Cancel
+                          </IonButton>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                )}
               </div>
             )}
             {/* The real photo stage 3 found (or, while still searching, a
@@ -769,45 +840,6 @@ export function AddEventModal({
               <IonText color="medium">
                 <p style={{ fontSize: '0.8125rem', margin: '12px 16px 8px' }}>{formNote}</p>
               </IonText>
-            )}
-            {/* Feedback #165 (2026-09-14): "there should always be a retry
-                button for having the background engine look again, and
-                there should be a little note field where you can provide
-                instructions". Shown once stage 1 has actually resolved
-                (running or the manual-entry path with no pinned input at
-                all has nothing to retry yet) — a person may want to retry
-                even a nominally successful first pass, e.g. "the address is
-                actually printed smaller near the bottom". */}
-            {pinned && pipeline.stage1 !== 'running' && (
-              <div style={{ padding: '4px 16px 16px' }}>
-                <IonText color="medium">
-                  <p style={{ fontSize: '0.8125rem', margin: '0 0 6px' }}>Not quite right? Tell it what to look for and try again.</p>
-                </IonText>
-                <IonTextarea
-                  value={retryNote}
-                  onIonInput={(e) => setRetryNote(e.detail.value ?? '')}
-                  autoGrow
-                  disabled={retrying}
-                  placeholder={pinned.kind === 'photo' ? 'e.g. “read the QR code in the photo”' : 'e.g. “the price is per week, not per day”'}
-                  style={{ border: '1px solid var(--ion-color-step-200, #ccc)', borderRadius: 10, padding: '8px 10px', fontSize: '0.875rem' }}
-                />
-                <IonButton
-                  fill="outline"
-                  size="small"
-                  style={{ marginTop: 8 }}
-                  disabled={!retryNote.trim() || retrying}
-                  onClick={() => void handleRetry()}
-                >
-                  {retrying ? (
-                    <IonSpinner name="dots" style={{ width: 16, height: 16 }} />
-                  ) : (
-                    <>
-                      <IonIcon slot="start" icon={refreshOutline} />
-                      Retry
-                    </>
-                  )}
-                </IonButton>
-              </div>
             )}
             <EventForm
               key={initialValues ? `${pinned?.kind ?? 'manual'}-prefill-${retryVersion}` : 'blank'}
