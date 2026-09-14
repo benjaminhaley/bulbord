@@ -608,6 +608,13 @@
     white-space: nowrap;
   }
   .lb-time { font-variant-numeric: tabular-nums; font-weight: 900; color: var(--ink); flex-shrink: 0; }
+  .lb-actions { display: flex; gap: 2px; flex-shrink: 0; margin-left: 2px; }
+  .lb-action-btn {
+    border: none; background: transparent; cursor: pointer;
+    font-size: 0.95rem; line-height: 1; padding: 4px 5px; border-radius: 8px;
+    color: #9fb0a6;
+  }
+  .lb-action-btn:active { background: #e3ece5; }
   .lb-row.me {
     background: #fff7dd;
     box-shadow: 0 0 0 2px var(--gold) inset;
@@ -1439,23 +1446,97 @@
       row.appendChild(rank);
       row.appendChild(name);
       row.appendChild(time);
+      // Feedback #162: "you can always edit your name or clear your best
+      // possible score" — a small edit/remove affordance right on each row,
+      // since this leaderboard is per-device (localStorage), not per-login,
+      // so there's no other way to manage an entry once it's posted.
+      var actions = document.createElement('div');
+      actions.className = 'lb-actions';
+      var editBtn = document.createElement('button');
+      editBtn.type = 'button';
+      editBtn.className = 'lb-action-btn';
+      editBtn.textContent = '✎';
+      editBtn.setAttribute('aria-label', 'Edit name for ' + entry.name);
+      editBtn.onclick = function () { renameLeaderboardEntry(entry.name); };
+      var removeBtn = document.createElement('button');
+      removeBtn.type = 'button';
+      removeBtn.className = 'lb-action-btn';
+      removeBtn.textContent = '✕';
+      removeBtn.setAttribute('aria-label', 'Remove ' + entry.name + ' from the leaderboard');
+      removeBtn.onclick = function () { removeLeaderboardEntry(entry.name); };
+      actions.appendChild(editBtn);
+      actions.appendChild(removeBtn);
+      row.appendChild(actions);
       if (i === highlightIndex) row.id = 'lb-me-row';
       container.appendChild(row);
     });
+  }
+
+  // Inserts by name, keeping only the better (lower finalMs) of an existing
+  // entry vs. a new one — the actual fix for feedback #162 ("you should
+  // only be able to appear once for your best possible score"). Used by
+  // both a fresh Add and a rename-into-an-existing-name, so "one row per
+  // person" holds regardless of which path got you there.
+  function upsertLeaderboardEntry(board, entry) {
+    var idx = board.findIndex(function (e) { return e.name === entry.name; });
+    if (idx === -1) {
+      board.push(entry);
+      return { added: true, replaced: false };
+    }
+    if (entry.finalMs < board[idx].finalMs) {
+      board[idx] = entry;
+      return { added: false, replaced: true };
+    }
+    return { added: false, replaced: false };
+  }
+
+  function refreshVisibleLeaderboards() {
+    var board = loadLeaderboard();
+    renderLeaderboardList(el.endLeaderboardList, board, null);
+    renderLeaderboardList(el.standaloneLeaderboardList, board, null);
+  }
+
+  function renameLeaderboardEntry(oldName) {
+    var newName = window.prompt('Edit name', oldName);
+    if (newName === null) return;
+    newName = newName.trim();
+    if (!newName || newName === oldName) return;
+    var board = loadLeaderboard();
+    var idx = board.findIndex(function (e) { return e.name === oldName; });
+    if (idx === -1) return;
+    var entry = board[idx];
+    board.splice(idx, 1);
+    // Renaming into a name that's already on the board merges the two —
+    // same one-row-per-person rule a fresh Add already follows.
+    upsertLeaderboardEntry(board, { name: newName, finalMs: entry.finalMs, misses: entry.misses, date: entry.date });
+    saveLeaderboard(board);
+    if (loadLastName() === oldName) saveLastName(newName);
+    refreshVisibleLeaderboards();
+  }
+
+  function removeLeaderboardEntry(name) {
+    if (!window.confirm('Remove ' + name + ' from the leaderboard?')) return;
+    var board = loadLeaderboard().filter(function (e) { return e.name !== name; });
+    saveLeaderboard(board);
+    refreshVisibleLeaderboards();
   }
 
   function addCurrentScoreToLeaderboard(finalMs) {
     var name = (el.nameInput.value || '').trim() || 'Player';
     saveLastName(name);
     var board = loadLeaderboard();
-    board.push({ name: name, finalMs: finalMs, misses: round.misses, date: new Date().toISOString() });
+    var result = upsertLeaderboardEntry(board, { name: name, finalMs: finalMs, misses: round.misses, date: new Date().toISOString() });
     board = saveLeaderboard(board);
-    var myIndex = board.findIndex(function (e) {
-      return e.name === name && e.finalMs === finalMs && e.misses === round.misses;
-    });
+    var myIndex = board.findIndex(function (e) { return e.name === name; });
 
     el.nameEntry.classList.remove('show');
-    el.addedNote.textContent = myIndex >= 0 ? 'Added! You’re #' + (myIndex + 1) + ' on the board 🎉' : 'Added to the leaderboard!';
+    if (result.replaced) {
+      el.addedNote.textContent = 'New best! You’re #' + (myIndex + 1) + ' on the board 🎉';
+    } else if (result.added) {
+      el.addedNote.textContent = myIndex >= 0 ? 'Added! You’re #' + (myIndex + 1) + ' on the board 🎉' : 'Added to the leaderboard!';
+    } else {
+      el.addedNote.textContent = 'Your best stays #' + (myIndex + 1) + ' — that run wasn’t faster.';
+    }
     el.addedNote.classList.add('show');
 
     renderLeaderboardList(el.endLeaderboardList, board, myIndex);
