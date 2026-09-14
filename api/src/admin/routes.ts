@@ -332,6 +332,7 @@ export async function adminRoutes(app: FastifyInstance) {
           title: k.title,
           source_id: k.sourceId,
           source_name: k.sourceName,
+          submitted_by_name: k.submittedByName,
           created_at: k.createdAt,
           status: k.status,
           image_url: k.imageUrl,

@@ -426,7 +426,7 @@ export function PipelineReviewPage() {
           />
           <hr style={sectionDividerStyle} />
           <IonNote color="medium">
-            {item.source_name ?? 'Unknown source'} · {formatRelativeDateTime(item.created_at)}
+            {item.source_name ?? (item.submitted_by_name ? `Posted by ${item.submitted_by_name}` : 'Unknown source')} · {formatRelativeDateTime(item.created_at)}
           </IonNote>
           {item.status === 'pending' && (
             <p style={factLineStyle}>

@@ -16,9 +16,11 @@ import { buildEventFilterConditions, parseAfterTimeParam, parseBeforeTimeParam, 
 import { getEventsForWeek } from './week-query.js'
 import { canDeleteEvent, canEditEvent } from './permissions.js'
 import { applyEventEdit } from './edit.js'
+import { buildDuplicateCheck, checkDateQuality, checkTimeQuality, runTextChecksWithRetry, type PipelineChecks } from './candidate-checks.js'
 import { extractEventFieldsFromDescription, findEventDetailsFromDescription } from './description-extraction.js'
-import { enrichEventImage, findCandidateEventImage } from './image-enrichment.js'
+import { enrichEventImage, findCandidateEventImage, scoreStoredEventImage } from './image-enrichment.js'
 import { extractEventFieldsFromPhoto, findEventSource, type ExtractedEventFields } from './photo-extraction.js'
+import { fetchPageText } from './resourcing.js'
 import { registerDiscoveredEventSource } from './source-registration.js'
 import {
   interestedCountExpr,
@@ -316,13 +318,56 @@ export async function eventsRoutes(app: FastifyInstance) {
     // instant; the real photo (if one is found) shows up the next time the
     // event is fetched, same as every other background enrichment in this
     // codebase.
-    if (!(body.image_url && body.thumbnail_url)) {
-      void enrichEventImage(created.id, {
-        sourceUrl: body.source_url?.trim() || null,
-        title,
-        description: body.description?.trim() || null,
-      }).catch(() => {})
-    }
+    const imageEnrichmentPromise = body.image_url && body.thumbnail_url
+      ? null
+      : enrichEventImage(created.id, {
+          sourceUrl: body.source_url?.trim() || null,
+          title,
+          description: body.description?.trim() || null,
+        }).catch(() => null)
+
+    // Feedback #163 ("make sure any manually added events also require
+    // review... to be super clear that they passed the various checks
+    // involved"): a member-submitted event used to get no
+    // pipelineQualityChecks at all — Pipeline Review's own query only ever
+    // looked at system-sourced rows (submittedByUserId is null), so these
+    // were both unchecked and invisible to that whole audit layer. This
+    // computes the same 9-check suite a sourced event gets, fire-and-forget
+    // (same "posting still feels instant" posture as the image search
+    // above, which this waits on first so it can score whatever image
+    // actually ends up on the row — the member's own attach, a found photo,
+    // or the placeholder — with one code path instead of three). Never
+    // gates publish status: the event is already live the instant this
+    // request returns, same as before — this only makes it reviewable.
+    void (async () => {
+      try {
+        await imageEnrichmentPromise
+        const description = body.description?.trim() || undefined
+        const locationName = body.location_name?.trim() || undefined
+        const sourceUrlTrimmed = body.source_url?.trim() || null
+        const sourceText = sourceUrlTrimmed ? (await fetchPageText(sourceUrlTrimmed)) ?? undefined : undefined
+        const [{ checks: textChecks }] = await runTextChecksWithRetry([{ title, description, address, locationName }], sourceText)
+
+        const [current] = await db.select({ imageUrl: events.imageUrl }).from(events).where(eq(events.id, created.id)).limit(1)
+        const { imageQuality, imageRelevance } = current
+          ? await scoreStoredEventImage(current.imageUrl, title, description ?? null)
+          : { imageQuality: { pass: false, reason: 'Event no longer exists', attempts: 1 }, imageRelevance: { pass: false, reason: 'Event no longer exists', attempts: 1 } }
+
+        const checks: PipelineChecks = {
+          ...textChecks,
+          dateQuality: checkDateQuality(startDate, todayInChicago()),
+          timeQuality: checkTimeQuality(allDay ? undefined : body.start_time?.trim() || undefined, allDay),
+          imageQuality,
+          imageRelevance,
+          duplicateCheck: buildDuplicateCheck(),
+        }
+        const pipelineChecksPassed = Object.values(checks).every((c) => c.pass)
+        await db.update(events).set({ pipelineQualityChecks: checks, pipelineChecksPassed, updatedAt: new Date() }).where(eq(events.id, created.id))
+      } catch {
+        // Best-effort — a failed check computation must never affect the
+        // already-created, already-live event.
+      }
+    })()
 
     // Best-effort, non-blocking: a failure here must never undo or fail the
     // event creation that already succeeded above.

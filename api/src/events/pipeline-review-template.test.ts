@@ -9,6 +9,8 @@ function kept(overrides: Partial<KeptReviewItem> = {}): KeptReviewItem {
     title: 'Fall Festival',
     sourceId: 'source-1',
     sourceName: 'Example Source',
+    submittedByUserId: null,
+    submittedByName: null,
     createdAt: new Date('2026-09-09T12:00:00Z'),
     status: 'approved',
     imageUrl: '/uploads/events/a.jpg',

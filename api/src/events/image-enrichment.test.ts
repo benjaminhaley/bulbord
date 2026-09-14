@@ -1,3 +1,5 @@
+import { Readable } from 'node:stream'
+
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const extractPageImageCandidatesMock = vi.fn()
@@ -5,6 +7,7 @@ const fetchExternalImageMock = vi.fn()
 const isLowQualityImageMock = vi.fn()
 const scoreImageRelevanceMock = vi.fn()
 const uploadImageMock = vi.fn()
+const getImageObjectMock = vi.fn()
 const searchWebImageMock = vi.fn()
 const updateMock = vi.fn()
 const setMock = vi.fn(() => ({ where: updateMock }))
@@ -20,7 +23,7 @@ vi.mock('../uploads/extract-page-image.js', () => ({ extractPageImageCandidates:
 vi.mock('../uploads/fetch-external-image.js', () => ({ fetchExternalImage: fetchExternalImageMock }))
 vi.mock('../uploads/image-quality.js', () => ({ isLowQualityImage: isLowQualityImageMock }))
 vi.mock('../uploads/image-relevance.js', () => ({ scoreImageRelevance: scoreImageRelevanceMock }))
-vi.mock('../uploads/storage.js', () => ({ imageUrl: (key: string) => `/uploads/${key}`, uploadImage: uploadImageMock }))
+vi.mock('../uploads/storage.js', () => ({ imageUrl: (key: string) => `/uploads/${key}`, uploadImage: uploadImageMock, getImageObject: getImageObjectMock }))
 // searchWebImageMock keeps its old shape (returns one flat url[] per call) —
 // wrapped here as a single-tier async generator so every existing
 // `.mockResolvedValue([...])` call site below still works unchanged, even
@@ -49,6 +52,7 @@ describe('enrichEventImage', () => {
     isLowQualityImageMock.mockReset()
     scoreImageRelevanceMock.mockReset().mockResolvedValue({ keep: true, reason: null })
     uploadImageMock.mockReset().mockResolvedValue({ key: 'events/final.jpg', thumbnailKey: 'events/final-thumb.jpg' })
+    getImageObjectMock.mockReset()
     searchWebImageMock.mockReset().mockResolvedValue([])
     setMock.mockClear()
     updateMock.mockReset()
@@ -414,5 +418,50 @@ describe('findCandidateEventImage', () => {
     const result = await findCandidateEventImage({ sourceUrl: 'https://example.com/page', title: 'Fall Festival' })
 
     expect(result).not.toBeNull()
+  })
+})
+
+// Feedback #163: a member's own manual/Describe-It post needs a real
+// imageQuality/imageRelevance verdict against whatever's currently stored on
+// the row (their own attach, a found photo, or the placeholder) — this is
+// the one shared function all three cases go through.
+describe('scoreStoredEventImage', () => {
+  beforeEach(() => {
+    getImageObjectMock.mockReset()
+    isLowQualityImageMock.mockReset()
+    scoreImageRelevanceMock.mockReset()
+  })
+
+  it('downloads the object at the stored key (stripping the /uploads/ prefix) and scores it', async () => {
+    getImageObjectMock.mockResolvedValue({ body: Readable.from([Buffer.from('photo-bytes')]) })
+    isLowQualityImageMock.mockResolvedValue(false)
+    scoreImageRelevanceMock.mockResolvedValue({ keep: true, reason: 'Matches the event' })
+    const { scoreStoredEventImage } = await import('./image-enrichment.js')
+
+    const result = await scoreStoredEventImage('/uploads/events/abc.jpg', 'Fall Festival', 'A fun fall event')
+
+    expect(getImageObjectMock).toHaveBeenCalledWith('events/abc.jpg')
+    expect(result.imageQuality).toEqual({ pass: true, reason: 'Passes the size/aspect-ratio check', attempts: 1 })
+    expect(result.imageRelevance).toEqual({ pass: true, reason: 'Matches the event', attempts: 1 })
+  })
+
+  it('fails open honestly when the object is missing from the bucket', async () => {
+    getImageObjectMock.mockResolvedValue(null)
+    const { scoreStoredEventImage } = await import('./image-enrichment.js')
+
+    const result = await scoreStoredEventImage('/uploads/events/missing.jpg', 'Fall Festival', null)
+
+    expect(result.imageQuality).toEqual({ pass: false, reason: 'Stored image object could not be found in the bucket', attempts: 1 })
+    expect(result.imageRelevance).toEqual({ pass: false, reason: 'No image to score — object missing', attempts: 1 })
+  })
+
+  it('fails open when the download itself errors', async () => {
+    getImageObjectMock.mockRejectedValue(new Error('network blip'))
+    const { scoreStoredEventImage } = await import('./image-enrichment.js')
+
+    const result = await scoreStoredEventImage('/uploads/events/abc.jpg', 'Fall Festival', null)
+
+    expect(result.imageQuality).toEqual({ pass: false, reason: 'Could not verify — network blip', attempts: 1 })
+    expect(result.imageRelevance).toEqual({ pass: false, reason: 'Not scored — the verification itself errored', attempts: 1 })
   })
 })

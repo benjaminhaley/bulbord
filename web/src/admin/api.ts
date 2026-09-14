@@ -322,6 +322,10 @@ export interface PipelineKeptCandidate {
   title: string
   source_id: string | null
   source_name: string | null
+  // Feedback #163: a member's own manual/Describe-It post now shows up
+  // here too — null source_id/source_name, a real submitted_by_name
+  // instead (mirroring the real event detail page's "Posted by {name}").
+  submitted_by_name: string | null
   created_at: string
   status: 'approved' | 'pending'
   image_url: string

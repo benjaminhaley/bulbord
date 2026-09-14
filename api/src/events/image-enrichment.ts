@@ -8,7 +8,7 @@ import { extractPageImageCandidates } from '../uploads/extract-page-image.js'
 import { fetchExternalImage } from '../uploads/fetch-external-image.js'
 import { scoreImageRelevance } from '../uploads/image-relevance.js'
 import { isLowQualityImage } from '../uploads/image-quality.js'
-import { imageUrl, uploadImage } from '../uploads/storage.js'
+import { getImageObject, imageUrl, uploadImage } from '../uploads/storage.js'
 import { searchWebImageQueryTiers } from '../uploads/web-image-search.js'
 import type { CheckResult } from './candidate-checks.js'
 import { SEARCH_STAGE_DEADLINE_MS, withDeadline } from './extraction-shared.js'
@@ -467,4 +467,56 @@ export async function enrichEventImages(
 
   await Promise.all(Array.from({ length: Math.min(ENRICH_CONCURRENCY, rows.length) }, worker))
   return { sourced, none, traces, checksByEventId }
+}
+
+async function bufferFromImageStream(stream: NodeJS.ReadableStream): Promise<Buffer> {
+  const chunks: Buffer[] = []
+  for await (const chunk of stream) chunks.push(chunk as Buffer)
+  return Buffer.concat(chunks)
+}
+
+// Downloads and scores whatever image is CURRENTLY stored on an event —
+// used by feedback #163's member-post checklist (POST /events, see
+// events/routes.ts), which needs a real imageQuality/imageRelevance
+// verdict regardless of whether the photo came from the member's own
+// attach, a background enrichEventImage() search, or the generated
+// placeholder fallback — one code path instead of three. Same technique as
+// the backfill scripts that re-verify an already-live event's photo
+// (checkStoredImage in backfill-2026-09-06-kept-event-checks.ts /
+// fix-2026-09-09-stale-cron-review-run.ts), pulled out here as a real
+// export since a third, live-request caller now needs the same thing.
+export async function scoreStoredEventImage(
+  storedImageUrl: string,
+  title: string,
+  description: string | null,
+): Promise<{ imageQuality: CheckResult; imageRelevance: CheckResult }> {
+  const key = storedImageUrl.replace(/^\/uploads\//, '')
+  try {
+    const object = await getImageObject(key)
+    if (!object) {
+      return {
+        imageQuality: { pass: false, reason: 'Stored image object could not be found in the bucket', attempts: 1 },
+        imageRelevance: { pass: false, reason: 'No image to score — object missing', attempts: 1 },
+      }
+    }
+    const buffer = await bufferFromImageStream(object.body)
+    const isLowQuality = await isLowQualityImage(buffer)
+    const imageQuality: CheckResult = isLowQuality
+      ? { pass: false, reason: 'Fails the size/aspect-ratio check', attempts: 1 }
+      : { pass: true, reason: 'Passes the size/aspect-ratio check', attempts: 1 }
+
+    const relevance = await scoreImageRelevance(buffer, { title, description })
+    const imageRelevance: CheckResult = {
+      pass: relevance.keep,
+      reason: relevance.reason ?? (relevance.keep ? 'Assumed relevant (no API key or scoring unavailable)' : 'Not judged to match this event'),
+      attempts: 1,
+    }
+    return { imageQuality, imageRelevance }
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : 'unknown error'
+    return {
+      imageQuality: { pass: false, reason: `Could not verify — ${reason}`, attempts: 1 },
+      imageRelevance: { pass: false, reason: 'Not scored — the verification itself errored', attempts: 1 },
+    }
+  }
 }

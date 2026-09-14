@@ -6,6 +6,7 @@
 // (GET /admin/events/pipeline-review) and the weekly digest email
 // (pipeline-review-email.ts).
 import { and, desc, eq, gte, isNull } from 'drizzle-orm'
+import { alias } from 'drizzle-orm/pg-core'
 
 import { db } from '../db/client.js'
 import { events, eventSources, rejectedEventCandidates, users } from '../db/schema.js'
@@ -23,6 +24,13 @@ export interface KeptReviewItem {
   title: string
   sourceId: string | null
   sourceName: string | null
+  // Feedback #163: a member's own manual/Describe-It post now shows up
+  // here too, alongside system-sourced candidates — sourceId/sourceName
+  // are null for these, so the review UI needs a submitter identity to
+  // show instead ("Posted by {name}", mirroring the real event detail
+  // page's own convention).
+  submittedByUserId: string | null
+  submittedByName: string | null
   createdAt: Date
   status: string
   imageUrl: string
@@ -60,15 +68,19 @@ export interface RejectedReviewItem {
   addedAsEventId: string | null
 }
 
-// A kept candidate is any event ingestEvents() produced — identified by
-// submittedByUserId being null (system-sourced, per events.submittedByUserId's
-// own doc comment) rather than by sourceId, since a member's own self-service
-// post can also carry a sourceId (see events/routes.ts's
-// registerDiscoveredEventSource) when they supply their own source URL.
+// A kept candidate used to mean only "system-sourced" (submittedByUserId
+// null) — feedback #163 ("make sure any manually added events also
+// require review... to be super clear that they passed the various checks
+// involved") widened this to every non-deleted event regardless of who
+// created it, since a member's own manual/Describe-It post now gets the
+// same 9-check suite computed at creation time (see events/routes.ts's
+// POST /events) and deserves the same post-hoc audit visibility.
 function keptCandidateWhere(includeReviewed: boolean) {
-  const base = and(isNull(events.deletedAt), isNull(events.submittedByUserId))
+  const base = isNull(events.deletedAt)
   return includeReviewed ? base : and(base, isNull(events.pipelineReviewedAt))
 }
+
+const submitters = alias(users, 'submitters')
 
 async function loadKeptItems(where: ReturnType<typeof keptCandidateWhere>, since?: Date): Promise<KeptReviewItem[]> {
   const rows = await db
@@ -77,6 +89,8 @@ async function loadKeptItems(where: ReturnType<typeof keptCandidateWhere>, since
       title: events.title,
       sourceId: events.sourceId,
       sourceName: eventSources.name,
+      submittedByUserId: events.submittedByUserId,
+      submittedByName: submitters.name,
       createdAt: events.createdAt,
       status: events.status,
       imageUrl: events.imageUrl,
@@ -96,6 +110,7 @@ async function loadKeptItems(where: ReturnType<typeof keptCandidateWhere>, since
     })
     .from(events)
     .leftJoin(eventSources, eq(eventSources.id, events.sourceId))
+    .leftJoin(submitters, eq(submitters.id, events.submittedByUserId))
     .leftJoin(users, eq(users.id, events.pipelineReviewedByUserId))
     .where(since ? and(where, gte(events.createdAt, since)) : where)
     .orderBy(desc(events.createdAt))
@@ -105,6 +120,8 @@ async function loadKeptItems(where: ReturnType<typeof keptCandidateWhere>, since
     title: r.title,
     sourceId: r.sourceId,
     sourceName: r.sourceName,
+    submittedByUserId: r.submittedByUserId,
+    submittedByName: r.submittedByName,
     createdAt: r.createdAt,
     status: r.status,
     imageUrl: r.imageUrl,
