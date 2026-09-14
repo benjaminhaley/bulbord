@@ -301,8 +301,12 @@ export interface PipelineChecks {
 // The named-check order the review page renders them in — every row always
 // shows an icon plus its own reason inline, never behind a hover tooltip
 // (Ben: "if something failed, you should have a clear reason why... so the
-// person reading it can debug").
+// person reading it can debug"). duplicateCheck sits first (feedback,
+// 2026-09-14: "put the duplicate check at the top... easier to review
+// because it's closer to the original title") — the one check most worth
+// seeing immediately, right under the post's own title, rather than last.
 export const PIPELINE_CHECK_LABELS: { key: keyof PipelineChecks; label: string }[] = [
+  { key: 'duplicateCheck', label: 'Not a duplicate' },
   { key: 'titleQuality', label: 'Title' },
   { key: 'descriptionQuality', label: 'Description' },
   { key: 'locationLabelQuality', label: 'Location name' },
@@ -311,7 +315,6 @@ export const PIPELINE_CHECK_LABELS: { key: keyof PipelineChecks; label: string }
   { key: 'timeQuality', label: 'Time' },
   { key: 'imageQuality', label: 'Image quality' },
   { key: 'imageRelevance', label: 'Image relevance' },
-  { key: 'duplicateCheck', label: 'Not a duplicate' },
 ]
 
 export interface PipelineKeptCandidate {
