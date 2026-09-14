@@ -513,8 +513,8 @@ export function AddEventModal({
   // at mount (see EventForm.tsx's own comment on why fieldSuggestions is a
   // separate live-applied prop instead).
   async function handleRetry() {
-    const note = retryNote.trim()
-    if (!pinned || !note || retrying) return
+    const note = retryNote.trim() || undefined
+    if (!pinned || retrying) return
     const session = activeSessionRef.current
     if (!session || session.cancelled) return
 
@@ -737,64 +737,6 @@ export function AddEventModal({
                   </div>
                 )}
                 <PipelineStatus pipeline={pipeline} mode={pinned.kind} />
-                {/* Feedback #165 (2026-09-14), then a live follow-up the same
-                    day (Ben: "I don't see any option to retry and leave a
-                    note" — it existed, but lived in the ordinary scrollable
-                    body below Title/Description/Date/Time, so scrolling
-                    straight to a required field like Address, as he did,
-                    scrolled right past it while this sticky block stayed
-                    pinned above). Living inside the SAME sticky element as
-                    PipelineStatus is what actually fixes that — it can never
-                    scroll out of view now, matching the exact reasoning this
-                    block's own header comment already gives for why
-                    PipelineStatus itself lives here. Starts collapsed to one
-                    compact line so it doesn't permanently eat screen space
-                    for the common case where nothing needs retrying. */}
-                {pipeline.stage1 !== 'running' && (
-                  <div style={{ padding: '2px 16px 10px' }}>
-                    {!retryExpanded ? (
-                      <IonButton
-                        fill="clear"
-                        size="small"
-                        style={{ ...unstyledButtonStyle, color: 'var(--ion-color-medium)', fontSize: '0.8125rem' }}
-                        onClick={() => setRetryExpanded(true)}
-                      >
-                        <IonIcon slot="start" icon={refreshOutline} />
-                        Not quite right? Retry with a note
-                      </IonButton>
-                    ) : (
-                      <>
-                        <IonText color="medium">
-                          <p style={{ fontSize: '0.8125rem', margin: '4px 0 6px' }}>Tell it what to look for and try again.</p>
-                        </IonText>
-                        <IonTextarea
-                          value={retryNote}
-                          onIonInput={(e) => setRetryNote(e.detail.value ?? '')}
-                          autoGrow
-                          autofocus
-                          disabled={retrying}
-                          placeholder={pinned.kind === 'photo' ? 'e.g. “read the QR code in the photo”' : 'e.g. “the price is per week, not per day”'}
-                          style={{ border: '1px solid var(--ion-color-step-200, #ccc)', borderRadius: 10, padding: '8px 10px', fontSize: '0.875rem' }}
-                        />
-                        <div style={{ marginTop: 8 }}>
-                          <IonButton fill="outline" size="small" disabled={!retryNote.trim() || retrying} onClick={() => void handleRetry()}>
-                            {retrying ? (
-                              <IonSpinner name="dots" style={{ width: 16, height: 16 }} />
-                            ) : (
-                              <>
-                                <IonIcon slot="start" icon={refreshOutline} />
-                                Retry
-                              </>
-                            )}
-                          </IonButton>
-                          <IonButton fill="clear" size="small" color="medium" disabled={retrying} onClick={() => setRetryExpanded(false)}>
-                            Cancel
-                          </IonButton>
-                        </div>
-                      </>
-                    )}
-                  </div>
-                )}
               </div>
             )}
             {/* The real photo stage 3 found (or, while still searching, a
@@ -851,10 +793,74 @@ export function AddEventModal({
               hidePhotoAttach={pipeline.active}
               onSubmit={handleSubmit}
               onCancel={handleDismiss}
+              // Feedback #165 (2026-09-14), then two live follow-ups the same
+              // day: (1) the retry affordance had to live somewhere it
+              // couldn't be scrolled past — tried making it a sticky
+              // compact link, but Ben's actual ask was for a real button
+              // "near the post button" that "opens a box with optional
+              // note" — a dedicated third button right in the Post/Cancel
+              // row (see EventForm.tsx's extraAction prop) opening a small
+              // modal is the direct match for that, not a spot picked for
+              // scroll-safety reasons. Only offered when there's something
+              // to retry (a photo/description on file, and stage 1 has
+              // actually resolved).
+              extraAction={
+                pinned &&
+                pipeline.stage1 !== 'running' && (
+                  <IonButton fill="clear" color="medium" onClick={() => setRetryExpanded(true)}>
+                    <IonIcon slot="start" icon={refreshOutline} />
+                    Retry
+                  </IonButton>
+                )
+              }
             />
           </>
         )}
       </IonContent>
+      {/* The "box with optional note" Ben asked for — a small nested modal,
+          not an inline expand-in-place section (see the Retry button
+          above). Ionic supports one IonModal presented from within
+          another's content without issue. */}
+      <IonModal isOpen={retryExpanded} onDidDismiss={() => setRetryExpanded(false)}>
+        <IonHeader>
+          <IonToolbar>
+            <IonTitle>Retry</IonTitle>
+            <IonButton slot="end" fill="clear" onClick={() => setRetryExpanded(false)} aria-label="Close">
+              <IonIcon slot="icon-only" icon={closeOutline} />
+            </IonButton>
+          </IonToolbar>
+        </IonHeader>
+        <IonContent className="ion-padding">
+          <IonText color="medium">
+            <p style={{ fontSize: '0.875rem', margin: '0 0 12px' }}>
+              Tell it what to look for and try again — e.g.{' '}
+              {pinned?.kind === 'photo' ? '"read the QR code in the photo"' : '"the price is per week, not per day"'}. Optional — you can also just
+              retry with no note.
+            </p>
+          </IonText>
+          <IonTextarea
+            value={retryNote}
+            onIonInput={(e) => setRetryNote(e.detail.value ?? '')}
+            autoGrow
+            autofocus
+            disabled={retrying}
+            placeholder="Optional note"
+            style={{ border: '1px solid var(--ion-color-step-200, #ccc)', borderRadius: 10, padding: '8px 10px' }}
+          />
+          <IonButton expand="block" style={{ marginTop: 16 }} disabled={retrying} onClick={() => void handleRetry()}>
+            {retrying ? <IonSpinner name="dots" /> : 'Retry'}
+          </IonButton>
+          {/* A failed retry leaves this modal open (only a success closes
+              it — see handleRetry) so the "still couldn't find it" message
+              is visible right here, not hidden behind the modal the member
+              would otherwise have to close first to see it. */}
+          {!retrying && pipeline.stage1 === 'failed' && formNote && (
+            <IonText color="medium">
+              <p style={{ fontSize: '0.8125rem', marginTop: 12 }}>{formNote}</p>
+            </IonText>
+          )}
+        </IonContent>
+      </IonModal>
     </IonModal>
   )
 }

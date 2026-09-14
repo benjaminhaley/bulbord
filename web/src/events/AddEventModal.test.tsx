@@ -194,36 +194,50 @@ describe('AddEventModal — retry with a note (feedback #165)', () => {
     fireEvent.click(screen.getByText('Look It Up').closest('ion-button')!)
   }
 
-  // Feedback, 2026-09-14 (Ben, live follow-up: "I don't see any option to
-  // retry and leave a note" — it lived below Title/Description/Date/Time in
-  // the scrollable body, so scrolling straight to a required field scrolled
-  // right past it). Moved into the sticky pipeline-status block, collapsed
-  // to a compact link by default — this expands it, same as a real tap.
-  async function expandRetry() {
-    const collapsedLink = await screen.findByText('Not quite right? Retry with a note')
-    fireEvent.click(collapsedLink.closest('ion-button')!)
+  // Feedback, 2026-09-14 (two live follow-ups the same day): first moved
+  // into a sticky collapsible section (Ben: "I don't see any option to
+  // retry" — it had scrolled out of view), then Ben asked for something
+  // different: a real "Retry" button "near the post button" that "opens a
+  // box with optional note" — a third button in EventForm's own Post/
+  // Cancel row (see EventForm.tsx's extraAction prop), opening a small
+  // modal. This finds and clicks that trigger button (the one NOT inside
+  // the retry modal itself — before the modal opens there's exactly one
+  // "Retry" text on screen; the modal's own submit button reuses the same
+  // label).
+  async function openRetryModal() {
+    const triggerButton = await screen.findByText('Retry')
+    fireEvent.click(triggerButton.closest('ion-button')!)
+    await screen.findByPlaceholderText('Optional note')
   }
 
-  it('starts collapsed, and disables Retry until a note is typed', async () => {
+  function retrySubmitButton() {
+    // Now two "Retry" texts exist — the trigger (outside the modal) and
+    // this submit button (inside it, expand="block" so it renders full-width).
+    return screen.getAllByText('Retry').find((el) => el.closest('ion-button')?.getAttribute('expand') === 'block')!.closest('ion-button')!
+  }
+
+  it('opens a modal with an optional note field when Retry is tapped', async () => {
     await openDescribeItAndSubmit()
-    await screen.findByText('Not quite right? Retry with a note')
 
-    // Collapsed: no textarea, no submit "Retry" button yet.
-    expect(document.querySelector('ion-textarea[placeholder*="the price is per week"]')).not.toBeInTheDocument()
+    const noteField = document.querySelector<HTMLElement>('ion-textarea[placeholder="Optional note"]')
+    expect(noteField).not.toBeInTheDocument()
 
-    await expandRetry()
-    const retryButton = await screen.findByText('Retry')
-    expect(retryButton.closest('ion-button')).toHaveAttribute('disabled')
+    await openRetryModal()
+
+    // Optional — the submit button inside the modal is never disabled just
+    // because the note is empty (feedback: "you can also just retry with
+    // no note").
+    expect(retrySubmitButton()).not.toHaveAttribute('disabled')
   })
 
-  it('re-runs stage 1 with the typed note and collapses back on success', async () => {
+  it('re-runs stage 1 with the typed note and closes the modal on success', async () => {
     await openDescribeItAndSubmit('the Nettelhorst fall festival this weekend')
-    await expandRetry()
+    await openRetryModal()
     mockExtractFromDescription.mockResolvedValue({ title: 'Nettelhorst Fall Festival', start_date: '2026-10-03', all_day: false, start_time: '10:00' })
 
-    const noteField = document.querySelector<HTMLElement>('ion-textarea[placeholder*="the price is per week"]')!
+    const noteField = document.querySelector<HTMLElement>('ion-textarea[placeholder="Optional note"]')!
     typeIntoIonTextarea(noteField, 'it actually starts at 10am, not all day')
-    fireEvent.click(screen.getByText('Retry').closest('ion-button')!)
+    fireEvent.click(retrySubmitButton())
 
     await waitFor(() =>
       expect(mockExtractFromDescription).toHaveBeenCalledWith(
@@ -231,18 +245,25 @@ describe('AddEventModal — retry with a note (feedback #165)', () => {
         'it actually starts at 10am, not all day',
       ),
     )
-    // A successful retry collapses the section back to the compact link —
-    // a "you're done" signal, same as before the note existed.
-    await waitFor(() => expect(screen.getByText('Not quite right? Retry with a note')).toBeInTheDocument())
+    await waitFor(() => expect(document.querySelector('ion-textarea[placeholder="Optional note"]')).not.toBeInTheDocument())
+  })
+
+  it('retries with no note at all', async () => {
+    await openDescribeItAndSubmit('the Nettelhorst fall festival this weekend')
+    await openRetryModal()
+
+    fireEvent.click(retrySubmitButton())
+
+    await waitFor(() => expect(mockExtractFromDescription).toHaveBeenCalledWith('the Nettelhorst fall festival this weekend', undefined))
   })
 
   it('never re-uploads a photo or re-runs the web search on retry — only stage 1', async () => {
     await openDescribeItAndSubmit()
-    await expandRetry()
+    await openRetryModal()
 
-    const noteField = document.querySelector<HTMLElement>('ion-textarea[placeholder*="the price is per week"]')!
+    const noteField = document.querySelector<HTMLElement>('ion-textarea[placeholder="Optional note"]')!
     typeIntoIonTextarea(noteField, 'check the /rates page for the real price')
-    fireEvent.click(screen.getByText('Retry').closest('ion-button')!)
+    fireEvent.click(retrySubmitButton())
 
     await waitFor(() => expect(mockExtractFromDescription).toHaveBeenCalledTimes(2))
     // findEventDetailsFromDescription (stage 2) only ran once, during the

@@ -110,6 +110,7 @@ export function EventForm({
   fieldSuggestions,
   imageSuggestion,
   hidePhotoAttach,
+  extraAction,
 }: {
   initial?: EventFormInitialValues
   submitLabel: string
@@ -129,6 +130,12 @@ export function EventForm({
   // photo prominently pinned at the top of the screen — avoids showing the
   // same photo a second time via this form's own attach/thumbnail section.
   hidePhotoAttach?: boolean
+  // A third button, rendered in the same row as Post/Cancel (feedback,
+  // 2026-09-14, Ben live: "This should appear near the post button" —
+  // AddEventModal.tsx's own retry-with-a-note trigger). Nothing else uses
+  // this today; kept generic/optional rather than named after that one
+  // caller.
+  extraAction?: React.ReactNode
 }) {
   const [title, setTitle] = useState(initial?.title ?? '')
   const [description, setDescription] = useState(initial?.description ?? '')
@@ -359,6 +366,7 @@ export function EventForm({
         <IonButton fill="clear" color="medium" disabled={submitting} onClick={onCancel}>
           Cancel
         </IonButton>
+        {extraAction}
       </IonItem>
       {!canSubmit && (
         <IonText color="medium">
