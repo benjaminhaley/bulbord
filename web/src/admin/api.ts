@@ -225,6 +225,19 @@ interface LowRecurringSeries {
   days_until_last_occurrence: number
 }
 
+// Feedback #167/#168 — a camp still marked `booking_status: 'not_opened'`
+// whose start date is coming up soon: nothing else automatically rechecks
+// whether the real registration system has opened since we last looked
+// (see api/src/camps/booking-status-health.ts).
+interface StaleBookingStatus {
+  camp_id: string
+  title: string
+  source_id: string | null
+  source_name: string | null
+  start_date: string
+  days_until_start: number
+}
+
 // Feedback #69 — how stale events/camps data is, so the admin's own avatar
 // and Dev Tools can flag it without a manual check.
 export interface DataFreshness {
@@ -233,6 +246,7 @@ export interface DataFreshness {
   oldest_at: string | null
   is_stale: boolean
   recurring_series_running_low: LowRecurringSeries[]
+  booking_status_needs_check: StaleBookingStatus[]
 }
 
 export async function fetchDataFreshness(): Promise<DataFreshness> {

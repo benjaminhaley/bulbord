@@ -74,6 +74,15 @@ function runwayLabel(daysUntilLastOccurrence: number): string {
   return `due in ${daysUntilLastOccurrence} day${daysUntilLastOccurrence === 1 ? '' : 's'}`
 }
 
+// Feedback #167/#168: same "how urgent is this" framing as runwayLabel
+// above, for a camp whose booking_status is still 'not_opened' as its own
+// start date approaches.
+function startsInLabel(daysUntilStart: number): string {
+  if (daysUntilStart === 0) return 'today'
+  if (daysUntilStart === 1) return 'tomorrow'
+  return `in ${daysUntilStart} days`
+}
+
 // See the hash-handling effect in DevToolsPage below — a brief highlight on
 // whichever section a /notifications freshness-alert deep link pointed at.
 function highlightStyle(id: string, highlightId: string | null): React.CSSProperties | undefined {
@@ -613,6 +622,40 @@ export function DevToolsPage() {
                   <IonNote color="medium">
                     Last: {formatDate(`${series.last_occurrence_date}T00:00:00`)} ({runwayLabel(series.days_until_last_occurrence)}) ·{' '}
                     {series.occurrence_count} occurrences seen · {series.source_name ?? 'no source'}
+                  </IonNote>
+                </IonLabel>
+              </IonItem>
+            ))}
+          </IonList>
+        )}
+        {/* Feedback #167/#168's root-cause fix: booking_status is a manual
+            snapshot with no automated recheck, so a 'not_opened' camp just
+            sits there until someone notices the real registration system
+            opened. Auto-surfaced the same way as recurring-series-health
+            above, rather than requiring a member to notice and file
+            feedback about it — see camps/booking-status-health.ts. */}
+        {(freshness?.booking_status_needs_check.length ?? 0) > 0 && (
+          <IonList inset id="booking-status-health" style={highlightStyle('booking-status-health', highlightId)}>
+            <IonListHeader>
+              <IonLabel>Camp booking statuses due for a recheck</IonLabel>
+            </IonListHeader>
+            <IonItem lines="full">
+              <IonNote className="ion-text-wrap" color="medium">
+                Still marked "not opened" with their date coming up soon — check the real booking system.
+              </IonNote>
+            </IonItem>
+            {freshness!.booking_status_needs_check.map((camp) => (
+              <IonItem
+                key={camp.camp_id}
+                lines="full"
+                button={!!camp.source_id}
+                routerLink={camp.source_id ? `/camp-sources/${camp.source_id}` : undefined}
+              >
+                <IonIcon slot="start" icon={timeOutline} color="warning" />
+                <IonLabel className="ion-text-wrap">
+                  <h2>{camp.title}</h2>
+                  <IonNote color="medium">
+                    Starts {formatDate(`${camp.start_date}T00:00:00`)} ({startsInLabel(camp.days_until_start)}) · {camp.source_name ?? 'no source'}
                   </IonNote>
                 </IonLabel>
               </IonItem>

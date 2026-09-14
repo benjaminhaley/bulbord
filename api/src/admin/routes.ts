@@ -4,6 +4,8 @@ import { getAnalyticsSummary } from '../analytics/service.js'
 import { requireRole } from '../auth/plugin.js'
 import { listUsersForAdmin } from '../auth/service.js'
 import { sendTestCampReminderEmail } from '../camp-reminders/service.js'
+import { findStaleBookingStatuses } from '../camps/booking-status-health.js'
+import { getCampBookingStatuses } from '../camps/booking-status-query.js'
 import { getCampsLastUpdatedAt } from '../camps/staleness.js'
 import { createTestFriendRequest, sendTestConnectionAlertEmail } from '../connections/service.js'
 import { todayInChicago } from '../dates.js'
@@ -167,14 +169,21 @@ export async function adminRoutes(app: FastifyInstance) {
   // Bundled into this same endpoint/badge rather than a separate one, since
   // from the admin's perspective both are the same kind of nudge: "some
   // event-sourcing data needs your attention."
+  //
+  // booking_status_needs_check (feedback #167/#168, 2026-09-14) is the same
+  // idea applied to camps' booking_status: a `not_opened` snapshot with no
+  // automated recheck, sitting there until Ben notices the real registration
+  // system has since opened — see camps/booking-status-health.ts.
   app.get('/admin/data-freshness', { preHandler: requireRole('admin') }, async (_request, reply) => {
-    const [eventsLastCheckedAt, campsLastUpdatedAt, seriesRows] = await Promise.all([
+    const [eventsLastCheckedAt, campsLastUpdatedAt, seriesRows, bookingStatusRows] = await Promise.all([
       getSourcesLastCheckedAt(),
       getCampsLastUpdatedAt(),
       getApprovedEventOccurrences(),
+      getCampBookingStatuses(),
     ])
     const freshness = computeDataFreshness(eventsLastCheckedAt, campsLastUpdatedAt, STALE_AFTER_MS)
     const lowSeries = findLowRecurringSeries(seriesRows, todayInChicago())
+    const staleBookingStatuses = findStaleBookingStatuses(bookingStatusRows, todayInChicago())
     return reply.send({
       data: {
         events_last_checked_at: freshness.eventsLastCheckedAt,
@@ -189,6 +198,14 @@ export async function adminRoutes(app: FastifyInstance) {
           last_occurrence_date: s.lastOccurrenceDate,
           typical_gap_days: s.typicalGapDays,
           days_until_last_occurrence: s.daysUntilLastOccurrence,
+        })),
+        booking_status_needs_check: staleBookingStatuses.map((s) => ({
+          camp_id: s.campId,
+          title: s.title,
+          source_id: s.sourceId,
+          source_name: s.sourceName,
+          start_date: s.startDate,
+          days_until_start: s.daysUntilStart,
         })),
       },
     })

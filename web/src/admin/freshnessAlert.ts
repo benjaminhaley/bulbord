@@ -16,10 +16,14 @@ import { type DataFreshness } from './api'
 export function describeFreshnessAlert(freshness: DataFreshness | null): string | null {
   if (!freshness) return null
   const lowCount = freshness.recurring_series_running_low.length
+  const staleBookingCount = freshness.booking_status_needs_check.length
   const parts: string[] = []
   if (freshness.is_stale) parts.push('Events/camps data needs a refresh')
   if (lowCount > 0) {
     parts.push(`${lowCount} recurring listing${lowCount === 1 ? '' : 's'} running low on confirmed dates`)
+  }
+  if (staleBookingCount > 0) {
+    parts.push(`${staleBookingCount} camp booking status${staleBookingCount === 1 ? '' : 'es'} due for a recheck`)
   }
   // Feedback #140: "I don't get directed to anything actionable and I'm not
   // even sure what I would do" — the alert used to just restate the raw
@@ -40,6 +44,7 @@ export function describeFreshnessAlert(freshness: DataFreshness | null): string 
 export function freshnessAlertTargetPath(freshness: DataFreshness | null): string {
   if (!freshness) return '/admin/dev-tools'
   if (freshness.recurring_series_running_low.length > 0) return '/admin/dev-tools#recurring-series-health'
+  if (freshness.booking_status_needs_check.length > 0) return '/admin/dev-tools#booking-status-health'
   if (freshness.is_stale) return '/admin/dev-tools#sourcing-and-data'
   return '/admin/dev-tools'
 }
@@ -64,5 +69,9 @@ export function freshnessSignature(freshness: DataFreshness | null): string | nu
     .map((s) => `${s.source_id ?? s.title}@${s.last_occurrence_date}`)
     .sort()
     .join(',')
-  return `${freshness.is_stale ? 'stale' : 'fresh'}|${lowSeries}`
+  const staleBooking = freshness.booking_status_needs_check
+    .map((s) => `${s.camp_id}@${s.start_date}`)
+    .sort()
+    .join(',')
+  return `${freshness.is_stale ? 'stale' : 'fresh'}|${lowSeries}|${staleBooking}`
 }
