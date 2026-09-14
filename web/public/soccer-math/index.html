@@ -1062,10 +1062,17 @@
     SEED_LEADERBOARD.forEach(function (seed) {
       var idx = board.findIndex(function (e) { return e.name === seed.name; });
       if (idx === -1) {
-        board.push({ name: seed.name, finalMs: seed.finalMs, misses: seed.misses, date: seed.date });
+        board.push({ name: seed.name, finalMs: seed.finalMs, misses: seed.misses, date: seed.date, isSeed: true });
         changed = true;
-      } else if (board[idx].finalMs !== seed.finalMs) {
-        board[idx] = { name: seed.name, finalMs: seed.finalMs, misses: seed.misses, date: seed.date };
+      } else if (board[idx].finalMs !== seed.finalMs || !board[idx].isSeed) {
+        // The `!board[idx].isSeed` half re-stamps a row that was saved by an
+        // earlier version of this file before isSeed existed (feedback #162:
+        // "these other entries are kind of system generated placeholders
+        // that no user should be able to edit" — a device that already had
+        // these rows in localStorage needs this migrated on load, not just
+        // new rows going forward) — including undoing any edit/rename a
+        // player made to a placeholder before this fix existed.
+        board[idx] = { name: seed.name, finalMs: seed.finalMs, misses: seed.misses, date: seed.date, isSeed: true };
         changed = true;
       }
     });
@@ -1447,26 +1454,34 @@
       row.appendChild(name);
       row.appendChild(time);
       // Feedback #162: "you can always edit your name or clear your best
-      // possible score" — a small edit/remove affordance right on each row,
-      // since this leaderboard is per-device (localStorage), not per-login,
-      // so there's no other way to manage an entry once it's posted.
-      var actions = document.createElement('div');
-      actions.className = 'lb-actions';
-      var editBtn = document.createElement('button');
-      editBtn.type = 'button';
-      editBtn.className = 'lb-action-btn';
-      editBtn.textContent = '✎';
-      editBtn.setAttribute('aria-label', 'Edit name for ' + entry.name);
-      editBtn.onclick = function () { renameLeaderboardEntry(entry.name); };
-      var removeBtn = document.createElement('button');
-      removeBtn.type = 'button';
-      removeBtn.className = 'lb-action-btn';
-      removeBtn.textContent = '✕';
-      removeBtn.setAttribute('aria-label', 'Remove ' + entry.name + ' from the leaderboard');
-      removeBtn.onclick = function () { removeLeaderboardEntry(entry.name); };
-      actions.appendChild(editBtn);
-      actions.appendChild(removeBtn);
-      row.appendChild(actions);
+      // possible score" meant your own entry only — not the leaderboard at
+      // large. The original version of this fix showed the edit/remove
+      // affordance on every row, which let anyone rename or delete anyone
+      // else's score (and edit the system-generated pro placeholders too).
+      // Since this leaderboard is per-device (localStorage), not per-login,
+      // "your own entry" is approximated as the one row matching the name
+      // most recently saved on this device — and a seed/placeholder row
+      // (isSeed, see ensureSeedLeaderboard) never gets the affordance at
+      // all, for anyone.
+      if (!entry.isSeed && entry.name === loadLastName()) {
+        var actions = document.createElement('div');
+        actions.className = 'lb-actions';
+        var editBtn = document.createElement('button');
+        editBtn.type = 'button';
+        editBtn.className = 'lb-action-btn';
+        editBtn.textContent = '✎';
+        editBtn.setAttribute('aria-label', 'Edit name for ' + entry.name);
+        editBtn.onclick = function () { renameLeaderboardEntry(entry.name); };
+        var removeBtn = document.createElement('button');
+        removeBtn.type = 'button';
+        removeBtn.className = 'lb-action-btn';
+        removeBtn.textContent = '✕';
+        removeBtn.setAttribute('aria-label', 'Remove ' + entry.name + ' from the leaderboard');
+        removeBtn.onclick = function () { removeLeaderboardEntry(entry.name); };
+        actions.appendChild(editBtn);
+        actions.appendChild(removeBtn);
+        row.appendChild(actions);
+      }
       if (i === highlightIndex) row.id = 'lb-me-row';
       container.appendChild(row);
     });
@@ -1497,13 +1512,17 @@
   }
 
   function renameLeaderboardEntry(oldName) {
+    // Guards against the same thing the render-time check above does —
+    // belt-and-suspenders in case a stale row is still on screen (e.g. two
+    // browser tabs open) when a click fires.
+    if (oldName !== loadLastName()) return;
     var newName = window.prompt('Edit name', oldName);
     if (newName === null) return;
     newName = newName.trim();
     if (!newName || newName === oldName) return;
     var board = loadLeaderboard();
     var idx = board.findIndex(function (e) { return e.name === oldName; });
-    if (idx === -1) return;
+    if (idx === -1 || board[idx].isSeed) return;
     var entry = board[idx];
     board.splice(idx, 1);
     // Renaming into a name that's already on the board merges the two —
@@ -1515,8 +1534,12 @@
   }
 
   function removeLeaderboardEntry(name) {
+    if (name !== loadLastName()) return;
+    var board = loadLeaderboard();
+    var existing = board.find(function (e) { return e.name === name; });
+    if (!existing || existing.isSeed) return;
     if (!window.confirm('Remove ' + name + ' from the leaderboard?')) return;
-    var board = loadLeaderboard().filter(function (e) { return e.name !== name; });
+    board = board.filter(function (e) { return e.name !== name; });
     saveLeaderboard(board);
     refreshVisibleLeaderboards();
   }
