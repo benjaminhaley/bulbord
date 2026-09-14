@@ -17,6 +17,7 @@ import type { CandidateEvent } from './ingest.js'
 import { ingestEvents } from './ingest.js'
 import { enrichEventImage } from './image-enrichment.js'
 import { fetchPageText } from './resourcing.js'
+import { recordRetryNote } from './retry-strategies.js'
 import { snapshotEventForHistory } from './serialize.js'
 
 export interface KeptReviewItem {
@@ -366,7 +367,16 @@ export async function retryEventImageForKeptItem(eventId: string, adminId: strin
 // when the image checks are the ones currently failing, so a clean check
 // isn't re-searched for no reason. Same "fixed the last thing wrong with it
 // should actually go live" auto-publish rule as retryEventImageForKeptItem.
-export async function retryPipelineChecks(eventId: string, adminId: string): Promise<PipelineReviewActionError | { allPassing: boolean }> {
+// `note` (feedback #165, 2026-09-14): an admin's own free-text instructions
+// for this retry — recorded into the shared pipeline_retry_notes library
+// (see retry-strategies.ts) so it's available to every future retry, not
+// just this one, and also fed straight into this retry's own text-check
+// call via runTextChecksWithRetry's `note` param.
+export async function retryPipelineChecks(
+  eventId: string,
+  adminId: string,
+  note?: string,
+): Promise<PipelineReviewActionError | { allPassing: boolean }> {
   const [existing] = await db
     .select({
       title: events.title,
@@ -402,8 +412,13 @@ export async function retryPipelineChecks(eventId: string, adminId: string): Pro
   const [{ checks: textChecks, correctedFields }] = await runTextChecksWithRetry(
     [{ title: existing.title, description: existing.description ?? undefined, address: existing.address ?? undefined, locationName: existing.locationName ?? undefined }],
     sourceText,
+    note,
   )
   const merged = { ...existing, ...correctedFields }
+
+  if (note?.trim()) {
+    await recordRetryNote({ note, stage: 'pipeline_review', eventId, contextTitle: existing.title, userId: adminId })
+  }
 
   // Only re-search the image when it's actually one of the checks currently
   // failing — a passing image has nothing to gain from a fresh search, and

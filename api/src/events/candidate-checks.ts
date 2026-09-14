@@ -20,6 +20,7 @@
 // values, which the caller applies before finalizing the row.
 import { getAnthropicClient, stripJsonCodeFence } from '../claude.js'
 import { addDays } from '../dates.js'
+import { getRetryStrategiesPromptBlock } from './retry-strategies.js'
 
 export interface CheckResult {
   pass: boolean
@@ -112,7 +113,7 @@ const CHECKS_SYSTEM_PROMPT = `You are scoring already-extracted event candidates
 
 Respond with ONLY a JSON array, same length and order as the input, no markdown fences, no explanation. Each element: {"titleQuality": {"pass": boolean, "reason": string}, "descriptionQuality": {"pass": boolean, "reason": string}, "locationLabelQuality": {"pass": boolean, "reason": string}, "addressQuality": {"pass": boolean, "reason": string}}. "reason" is always required, whether passing or failing — a short, specific phrase useful for debugging later.`
 
-const RETRY_SYSTEM_PROMPT = `You previously extracted an event candidate from the source text below, and a review pass found problems with some of its fields. Using the ORIGINAL SOURCE TEXT (not just your own prior extraction), try to fix exactly the fields named as failing — do not change fields that weren't flagged. If the source text genuinely doesn't contain a better answer, leave that field as-is and say so honestly in its reason. If original_source_text is null, that only means this particular recheck wasn't given the page text (e.g. a live re-fetch of the source failed) — say so as a limitation of this recheck specifically ("this recheck couldn't re-fetch the source page"), never phrase it as if the event itself has no real source.
+const RETRY_SYSTEM_PROMPT = `You previously extracted an event candidate from the source text below, and a review pass found problems with some of its fields. Using the ORIGINAL SOURCE TEXT (not just your own prior extraction), try to fix exactly the fields named as failing — do not change fields that weren't flagged. If the source text genuinely doesn't contain a better answer, leave that field as-is and say so honestly in its reason. If original_source_text is null, that only means this particular recheck wasn't given the page text (e.g. a live re-fetch of the source failed) — say so as a limitation of this recheck specifically ("this recheck couldn't re-fetch the source page"), never phrase it as if the event itself has no real source. If admin_note is given, it's a person's own instructions for this specific retry — follow it closely alongside the source text.
 
 Respond with ONLY a JSON object, no markdown fences, no explanation, containing only the keys for the checks you were asked to fix. Each key's value: {"pass": boolean, "reason": string, "correctedTitle"?: string, "correctedDescription"?: string, "correctedLocationName"?: string, "correctedAddress"?: string} — include a "corrected*" field only when you found a genuinely better value for it from the source text.`
 
@@ -207,6 +208,8 @@ async function retryOne(
   item: TextCheckInput,
   failingChecks: CheckName[],
   sourceText: string | undefined,
+  note: string | undefined,
+  strategiesBlock: string,
 ): Promise<{ checks: Partial<TextChecks>; correctedFields: Partial<TextCheckInput> }> {
   const anthropic = getAnthropicClient()
   if (!anthropic) return { checks: {}, correctedFields: {} }
@@ -216,7 +219,7 @@ async function retryOne(
       model: 'claude-opus-5',
       max_tokens: 1500,
       output_config: { effort: 'low' },
-      system: RETRY_SYSTEM_PROMPT,
+      system: RETRY_SYSTEM_PROMPT + strategiesBlock,
       messages: [
         {
           role: 'user',
@@ -224,6 +227,11 @@ async function retryOne(
             current_candidate: { title: item.title, description: item.description ?? null, address: item.address ?? null, location_name: item.locationName ?? null },
             checks_to_fix: failingChecks,
             original_source_text: sourceText ? sourceText.slice(0, 12_000) : null,
+            // An admin's own free-text instructions for this specific retry
+            // (feedback #165, 2026-09-14's Pipeline Review half — the photo/
+            // description-extraction half is photo-extraction.ts/
+            // description-extraction.ts's identical `note` param).
+            admin_note: note ?? null,
           }),
         },
       ],
@@ -255,11 +263,23 @@ async function retryOne(
 // The main entry point — one initial batch call for every candidate, then
 // exactly one retry call for each candidate that has any failing check
 // (bounded: at most 2 attempts per check, never more).
-export async function runTextChecksWithRetry(items: TextCheckInput[], sourceText?: string): Promise<TextCheckedCandidate[]> {
+// `note` (feedback #165, 2026-09-14): an admin's own free-text retry
+// instructions — only meaningful for pipeline-review-service.ts's
+// single-candidate retryPipelineChecks call site; ingest.ts's own bounded
+// automatic retry (every fresh candidate with a failing check) never has
+// one, and applies it to nothing.
+export async function runTextChecksWithRetry(items: TextCheckInput[], sourceText?: string, note?: string): Promise<TextCheckedCandidate[]> {
   if (items.length === 0) return []
 
   const initial = await scoreTextChecks(items)
   if (!initial) return items.map(() => ({ checks: allPassing('Check unavailable'), correctedFields: {} }))
+
+  const anyFailing = initial.some((checks) => CHECK_NAMES.some((name) => !checks[name].pass))
+  // Fetched once for the whole batch, not per-candidate — every retry in
+  // this call shares the same up-to-the-moment strategies list, and a
+  // fresh-ingestion batch of many candidates shouldn't fire one query per
+  // failing candidate for identical results.
+  const strategiesBlock = anyFailing ? await getRetryStrategiesPromptBlock() : ''
 
   return Promise.all(
     items.map(async (item, i): Promise<TextCheckedCandidate> => {
@@ -267,7 +287,7 @@ export async function runTextChecksWithRetry(items: TextCheckInput[], sourceText
       const failing = CHECK_NAMES.filter((name) => !checks[name].pass)
       if (failing.length === 0) return { checks, correctedFields: {} }
 
-      const { checks: retried, correctedFields } = await retryOne(item, failing, sourceText)
+      const { checks: retried, correctedFields } = await retryOne(item, failing, sourceText, note, strategiesBlock)
       const finalChecks: TextChecks = { ...checks }
       for (const name of failing) {
         const retriedCheck = retried[name]

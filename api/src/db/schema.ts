@@ -189,6 +189,29 @@ export const rejectedEventCandidates = pgTable('rejected_event_candidates', {
   ...timestamps,
 })
 
+// A growing, shared library of real corrections a member or admin has had to
+// type when retrying a stuck event-extraction/pipeline-check attempt
+// (feedback #165, 2026-09-14: "a full list of all retry notes with linked
+// context should be kept accessible to the pipeline when it runs and tries
+// to retry itself. These should be strategies it pulls on itself to try to
+// solve problems before giving up.") — every future retry (across every
+// event, not just the one the note was written for) gets shown the most
+// recent notes as context (see events/retry-strategies.ts), so the same kind
+// of problem doesn't need to be explained again from scratch. `eventId` is
+// nullable because a note can be written before the event is ever posted (a
+// member retrying the photo/description extraction stage of creating a new
+// listing, before there's a real row to point at yet) — `contextTitle` keeps
+// the note human-readable ("from retrying X") even then.
+export const pipelineRetryNotes = pgTable('pipeline_retry_notes', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  eventId: uuid('event_id').references(() => events.id),
+  stage: text('stage').notNull(), // 'photo_extraction' | 'description_extraction' | 'pipeline_review'
+  note: text('note').notNull(),
+  contextTitle: text('context_title'),
+  createdByUserId: uuid('created_by_user_id').references(() => users.id),
+  ...timestamps,
+})
+
 export const users = pgTable('users', {
   id: uuid('id').primaryKey().defaultRandom(),
   name: text('name').notNull(),

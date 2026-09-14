@@ -9,6 +9,13 @@ vi.mock('@anthropic-ai/sdk', () => {
   return { default: MockAnthropic }
 })
 
+// Avoids a real DB round-trip — see candidate-checks.test.ts's identical mock.
+const getRetryStrategiesPromptBlockMock = vi.fn()
+vi.mock('./retry-strategies.js', () => ({
+  getRetryStrategiesPromptBlock: getRetryStrategiesPromptBlockMock,
+  recordRetryNote: vi.fn(),
+}))
+
 function textResponse(text: string, stopReason = 'end_turn') {
   return { stop_reason: stopReason, content: [{ type: 'text', text }] }
 }
@@ -17,7 +24,35 @@ describe('extractEventFieldsFromDescription', () => {
   beforeEach(() => {
     vi.stubEnv('ANTHROPIC_API_KEY', 'test-key')
     createMock.mockReset()
+    getRetryStrategiesPromptBlockMock.mockReset().mockResolvedValue('')
     vi.resetModules()
+  })
+
+  // feedback #165 (2026-09-14): a member's own retry instructions.
+  it('includes retry instructions and the strategies library only when a note is given', async () => {
+    getRetryStrategiesPromptBlockMock.mockResolvedValue('\n\nPast retry strategies:\n- check the /rates page for the real price')
+    createMock.mockResolvedValue(textResponse(JSON.stringify({ found: true, title: 'Fall Festival' })))
+    const { extractEventFieldsFromDescription } = await import('./description-extraction.js')
+
+    await extractEventFieldsFromDescription('Fall Festival', 'the price is per week not per day')
+
+    expect(getRetryStrategiesPromptBlockMock).toHaveBeenCalled()
+    expect(createMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        system: expect.stringContaining('Past retry strategies'),
+        messages: [expect.objectContaining({ content: expect.stringContaining('the price is per week not per day') })],
+      }),
+      expect.anything(),
+    )
+  })
+
+  it('does not fetch the strategies library on a first, non-retry attempt', async () => {
+    createMock.mockResolvedValue(textResponse(JSON.stringify({ found: true, title: 'Fall Festival' })))
+    const { extractEventFieldsFromDescription } = await import('./description-extraction.js')
+
+    await extractEventFieldsFromDescription('Fall Festival')
+
+    expect(getRetryStrategiesPromptBlockMock).not.toHaveBeenCalled()
   })
 
   it('returns fields parsed from a description that states everything', async () => {

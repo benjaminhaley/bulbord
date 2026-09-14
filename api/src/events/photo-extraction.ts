@@ -1,6 +1,7 @@
 import { getAnthropicClient, stripJsonCodeFence } from '../claude.js'
 import { todayInChicago } from '../dates.js'
 import { getImageObject } from '../uploads/storage.js'
+import { getRetryStrategiesPromptBlock } from './retry-strategies.js'
 import {
   CALL_MAX_RETRIES,
   CALL_TIMEOUT_MS,
@@ -26,6 +27,7 @@ Rules:
 - source_url: only if a website/URL is legibly printed on the poster itself (e.g. "more info at hsapta.org") — the poster's own stated URL, never a guess. Omit if none is printed; a QR code with no visible URL text doesn't count, since it can't be read from a photo.
 - topic: pick the single best match from this fixed list if one clearly applies, otherwise omit the field entirely: ${JSON.stringify(TOPIC_OPTIONS)}
 - If you can't confidently read a real, dated, upcoming event from this image at all (a blurry photo, no event-like content), respond with exactly {"found": false} and nothing else — never invent one.
+- If a "retry_instructions" field is given, this is a second attempt after a person looked at your first result and found it lacking — follow it closely and look extra carefully at whatever it points you to (e.g. "read the QR code in the photo": really try to decode it directly from the image, not just note that one exists).
 
 Respond with ONLY a JSON object, no markdown fences, no explanation, one of:
 {"found": true, "title": string, "description"?: string, "start_date": string, "start_time"?: string, "end_time"?: string, "all_day": boolean, "address"?: string, "location_name"?: string, "source_url"?: string, "topic"?: string}
@@ -119,11 +121,20 @@ function toExtractedFields(raw: RawExtractedFields): ExtractedEventFields | null
 // finding nothing all degrade to null, never throw — the caller surfaces an
 // honest "couldn't read that, fill it in yourself" result on null rather
 // than the member ever seeing a raw error or an indefinite hang.
-export async function extractEventFieldsFromPhoto(imageUrl: string): Promise<ExtractedEventFields | null> {
-  return withDeadline(extractEventFieldsFromPhotoInner(imageUrl), null, STAGE_DEADLINE_MS)
+// `note` (feedback #165, 2026-09-14): a member's own free-text instructions
+// for a retry — "there should always be a retry button... and a little note
+// field where you can provide instructions to the background engine to help
+// it in its retry attempt" — passed through as extra guidance on top of the
+// original photo, plus this stage benefits from the same growing library of
+// past retry strategies the admin-side pipeline retry does (see
+// retry-strategies.ts). Only fetched/applied on an actual retry (`note`
+// present) — a first, non-retry attempt behaves exactly as before, with no
+// extra DB round-trip.
+export async function extractEventFieldsFromPhoto(imageUrl: string, note?: string): Promise<ExtractedEventFields | null> {
+  return withDeadline(extractEventFieldsFromPhotoInner(imageUrl, note), null, STAGE_DEADLINE_MS)
 }
 
-async function extractEventFieldsFromPhotoInner(imageUrl: string): Promise<ExtractedEventFields | null> {
+async function extractEventFieldsFromPhotoInner(imageUrl: string, note?: string): Promise<ExtractedEventFields | null> {
   const anthropic = getAnthropicClient()
   if (!anthropic) return null
 
@@ -136,19 +147,25 @@ async function extractEventFieldsFromPhotoInner(imageUrl: string): Promise<Extra
 
   try {
     const buffer = await bufferFromStream(object.body)
+    const strategiesBlock = note ? await getRetryStrategiesPromptBlock() : ''
 
     const message = await anthropic.messages.create(
       {
         model: 'claude-opus-5',
         max_tokens: 1000,
         output_config: { effort: 'medium' },
-        system: EXTRACT_SYSTEM_PROMPT,
+        system: EXTRACT_SYSTEM_PROMPT + strategiesBlock,
         messages: [
           {
             role: 'user',
             content: [
               { type: 'image', source: { type: 'base64', media_type: mediaType, data: buffer.toString('base64') } },
-              { type: 'text', text: JSON.stringify({ today: todayInChicago() }) },
+              {
+                type: 'text',
+                text: JSON.stringify(
+                  note ? { today: todayInChicago(), retry_instructions: note } : { today: todayInChicago() },
+                ),
+              },
             ],
           },
         ],

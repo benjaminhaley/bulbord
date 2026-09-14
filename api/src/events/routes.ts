@@ -22,6 +22,7 @@ import { enrichEventImage, findCandidateEventImage, scoreStoredEventImage } from
 import { extractEventFieldsFromPhoto, findEventSource, type ExtractedEventFields } from './photo-extraction.js'
 import { fetchPageText } from './resourcing.js'
 import { registerDiscoveredEventSource } from './source-registration.js'
+import { recordRetryNote } from './retry-strategies.js'
 import {
   interestedCountExpr,
   interestedPeopleExpr,
@@ -149,13 +150,22 @@ export async function eventsRoutes(app: FastifyInstance) {
   // tapping Post. Stage 2 (POST /events/find-event-source, below) is a
   // separate, slower call the frontend makes afterward, in parallel with
   // the member already looking at this stage's result.
+  // `note` (feedback #165, 2026-09-14): present only on a retry — a member
+  // looked at stage 1's first result and typed instructions for a second
+  // attempt (AddEventModal.tsx's retry affordance). Recorded into the
+  // shared pipeline_retry_notes library so future retries (on any event, not
+  // just this one) get to see it too — see retry-strategies.ts.
   app.post('/events/extract-from-photo', { preHandler: requireAuth }, async (request, reply) => {
-    const body = request.body as { image_url?: string }
+    const body = request.body as { image_url?: string; note?: string }
     const imageUrl = body.image_url?.trim()
     if (!imageUrl) {
       return reply.code(400).send({ error: { message: 'image_url is required' } })
     }
-    const extracted = await extractEventFieldsFromPhoto(imageUrl)
+    const note = body.note?.trim() || undefined
+    const extracted = await extractEventFieldsFromPhoto(imageUrl, note)
+    if (note) {
+      await recordRetryNote({ note, stage: 'photo_extraction', contextTitle: extracted?.title ?? null, userId: request.currentUser!.id })
+    }
     return reply.send({ data: extracted })
   })
 
@@ -185,13 +195,19 @@ export async function eventsRoutes(app: FastifyInstance) {
   // to count as "found" — a typed description often can't pin one down on
   // its own, and stage 2 below (always run for this flow, not conditional)
   // is what's actually responsible for finding it via search.
+  // `note`: same retry-instructions/strategies-library mechanism as
+  // extract-from-photo above.
   app.post('/events/extract-from-description', { preHandler: requireAuth }, async (request, reply) => {
-    const body = request.body as { description?: string }
+    const body = request.body as { description?: string; note?: string }
     const description = body.description?.trim()
     if (!description) {
       return reply.code(400).send({ error: { message: 'description is required' } })
     }
-    const extracted = await extractEventFieldsFromDescription(description)
+    const note = body.note?.trim() || undefined
+    const extracted = await extractEventFieldsFromDescription(description, note)
+    if (note) {
+      await recordRetryNote({ note, stage: 'description_extraction', contextTitle: extracted?.title ?? null, userId: request.currentUser!.id })
+    }
     return reply.send({ data: extracted })
   })
 

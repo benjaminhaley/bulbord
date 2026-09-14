@@ -483,7 +483,12 @@ export function PipelineReviewPage() {
                     Reruns the same bounded self-healing pipeline a fresh
                     ingestion already gets: a text-check retry, plus a
                     fresh image search if the image checks are the ones
-                    currently failing. */}
+                    currently failing. Reuses the same note field above
+                    (already shared by Approve/Reject) as Retry's own
+                    instructions field (feedback #165, 2026-09-14) — typed
+                    text gets sent through to the retry itself and, once
+                    given, recorded into a shared, growing library of retry
+                    strategies future retries (on any event) get shown too. */}
                 {item.pipeline_checks_passed === false && (
                   <IonButton
                     size="small"
@@ -492,7 +497,7 @@ export function PipelineReviewPage() {
                     onClick={async () => {
                       setBusyId(item.id)
                       try {
-                        const result = await retryPipelineEventChecks(item.id)
+                        const result = await retryPipelineEventChecks(item.id, notes[item.id])
                         setToast(result.allPassing ? 'Retried — now passing' : 'Retried — some issues remain')
                         load()
                       } catch (err) {

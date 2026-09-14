@@ -13,6 +13,7 @@ import {
   type RawExtractedFields,
 } from './extraction-shared.js'
 import type { ExtractedEventFields } from './photo-extraction.js'
+import { getRetryStrategiesPromptBlock } from './retry-strategies.js'
 
 // Feedback #133 ("if I don't wanna enter a picture, my other option should
 // be to describe the event in words... look up the details based on that
@@ -52,6 +53,7 @@ Rules:
 - source_url: only if the description itself contains a literal URL — never invent or guess one.
 - topic: pick the single best match from this fixed list if one clearly applies, otherwise omit the field entirely: ${JSON.stringify(TOPIC_OPTIONS)}
 - If the description doesn't name anything recognizable as a real event at all (too vague, or not describing an event), respond with exactly {"found": false} and nothing else.
+- If a "retry_instructions" field is given, this is a second attempt after a person looked at your first result and found it lacking — follow it closely.
 
 Respond with ONLY a JSON object, no markdown fences, no explanation, one of:
 {"found": true, "title": string, "description"?: string, "start_date"?: string, "start_time"?: string, "end_time"?: string, "address"?: string, "location_name"?: string, "source_url"?: string, "topic"?: string}
@@ -129,22 +131,33 @@ function toStage1Fields(raw: RawExtractedFields): ExtractedEventFields | null {
 // vision-only stage 1. Best-effort like every Claude-backed feature in this
 // codebase: a missing key, a malformed response, a timeout, or the model
 // finding nothing at all in the description all degrade to null.
-export async function extractEventFieldsFromDescription(description: string): Promise<ExtractedEventFields | null> {
-  return withDeadline(extractInner(description), null, STAGE_DEADLINE_MS)
+// `note` (feedback #165, 2026-09-14): see photo-extraction.ts's
+// extractEventFieldsFromPhoto for the identical retry-note/strategies
+// rationale — only fetched/applied on an actual retry.
+export async function extractEventFieldsFromDescription(description: string, note?: string): Promise<ExtractedEventFields | null> {
+  return withDeadline(extractInner(description, note), null, STAGE_DEADLINE_MS)
 }
 
-async function extractInner(description: string): Promise<ExtractedEventFields | null> {
+async function extractInner(description: string, note?: string): Promise<ExtractedEventFields | null> {
   const anthropic = getAnthropicClient()
   if (!anthropic) return null
 
   try {
+    const strategiesBlock = note ? await getRetryStrategiesPromptBlock() : ''
     const message = await anthropic.messages.create(
       {
         model: 'claude-opus-5',
         max_tokens: 1000,
         output_config: { effort: 'medium' },
-        system: EXTRACT_SYSTEM_PROMPT,
-        messages: [{ role: 'user', content: JSON.stringify({ description, today: todayInChicago() }) }],
+        system: EXTRACT_SYSTEM_PROMPT + strategiesBlock,
+        messages: [
+          {
+            role: 'user',
+            content: JSON.stringify(
+              note ? { description, today: todayInChicago(), retry_instructions: note } : { description, today: todayInChicago() },
+            ),
+          },
+        ],
       },
       { timeout: CALL_TIMEOUT_MS, maxRetries: CALL_MAX_RETRIES },
     )

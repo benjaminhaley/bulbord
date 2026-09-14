@@ -1,5 +1,5 @@
 import { IonButton, IonContent, IonHeader, IonIcon, IonModal, IonSpinner, IonText, IonTextarea, IonTitle, IonToolbar } from '@ionic/react'
-import { cameraOutline, checkmarkCircle, chatbubbleEllipsesOutline, closeCircleOutline, closeOutline } from 'ionicons/icons'
+import { cameraOutline, checkmarkCircle, chatbubbleEllipsesOutline, closeCircleOutline, closeOutline, refreshOutline } from 'ionicons/icons'
 import { useRef, useState } from 'react'
 
 import { API_URL } from '../config'
@@ -253,6 +253,18 @@ export function AddEventModal({
   const [fieldSuggestions, setFieldSuggestions] = useState<EventFieldSuggestions | null>(null)
   const [foundImage, setFoundImage] = useState<UploadedImage | null>(null)
   const [pipeline, setPipeline] = useState<Pipeline>(PIPELINE_IDLE)
+  // The photo flow's own uploaded image, kept around (separately from
+  // `pinned`'s blob preview URL) so a retry can re-read stage 1 on the same
+  // real image without re-uploading it.
+  const [uploadedImage, setUploadedImage] = useState<UploadedImage | null>(null)
+  // Feedback #165 (2026-09-14): "there should always be a retry button... and
+  // a little note field where you can provide instructions to the
+  // background engine to help it in its retry attempt." retryVersion forces
+  // EventForm to remount (see its `key` below) so a retry's corrected
+  // fields actually show up — `initial` only ever applies once, at mount.
+  const [retryNote, setRetryNote] = useState('')
+  const [retrying, setRetrying] = useState(false)
+  const [retryVersion, setRetryVersion] = useState(0)
 
   // Points at the most recent attempt's session for as long as it's the
   // one on screen — used only to guard live UI updates (setState calls)
@@ -273,6 +285,10 @@ export function AddEventModal({
     setFieldSuggestions(null)
     setFoundImage(null)
     setPipeline(PIPELINE_IDLE)
+    setUploadedImage(null)
+    setRetryNote('')
+    setRetrying(false)
+    setRetryVersion(0)
   }
 
   function handleDismiss() {
@@ -334,6 +350,9 @@ export function AddEventModal({
     setFormNote(null)
     setFieldSuggestions(null)
     setFoundImage(null)
+    setUploadedImage(null)
+    setRetryNote('')
+    setRetryVersion(0)
     setPipeline({ active: true, stage1: 'running', stage2: 'skipped', stage3: 'skipped' })
     setStage('form')
 
@@ -351,6 +370,7 @@ export function AddEventModal({
       setStage('choice')
       return
     }
+    setUploadedImage(image)
 
     let fields: ExtractedEventFields | null = null
     try {
@@ -392,6 +412,9 @@ export function AddEventModal({
     setFormNote(null)
     setFieldSuggestions(null)
     setFoundImage(null)
+    setUploadedImage(null)
+    setRetryNote('')
+    setRetryVersion(0)
     // All three steps start 'running' together, even though stage 3's own
     // real search doesn't kick off until stage 1/2 both resolve (see
     // below) — feedback, 2026-09-05: the "Finding a photo…" row was popping
@@ -466,6 +489,45 @@ export function AddEventModal({
     if (activeSessionRef.current === session) {
       setPipeline((prev) => ({ ...prev, stage3: image ? 'found' : 'not_found' }))
       if (image) setFoundImage(image)
+    }
+  }
+
+  // Feedback #165 (2026-09-14): re-runs stage 1 only (the actual "read the
+  // photo/description" step the note is instructions for) — never
+  // re-uploads a photo, and never re-runs stage 2/3 (the web search/photo
+  // search), which aren't what a note like "read the QR code" is about.
+  // `retryVersion` forces EventForm to remount below so the corrected
+  // fields actually populate the form — `initial` only ever applies once,
+  // at mount (see EventForm.tsx's own comment on why fieldSuggestions is a
+  // separate live-applied prop instead).
+  async function handleRetry() {
+    const note = retryNote.trim()
+    if (!pinned || !note || retrying) return
+    const session = activeSessionRef.current
+    if (!session || session.cancelled) return
+
+    setRetrying(true)
+    setPipeline((prev) => ({ ...prev, stage1: 'running' }))
+    try {
+      let fields: ExtractedEventFields | null = null
+      if (pinned.kind === 'photo') {
+        if (!uploadedImage) return
+        fields = await extractEventFieldsFromPhoto(uploadedImage.image_url, note).catch(() => null)
+        if (session.cancelled) return
+        if (fields) setInitialValues(toInitialValues(fields, uploadedImage))
+      } else {
+        fields = await extractEventFieldsFromDescription(pinned.text, note).catch(() => null)
+        if (session.cancelled) return
+        if (fields) setInitialValues(toInitialValues(fields, null))
+      }
+      setFormNote(fields ? null : "Still couldn't find those details — fill in the rest yourself.")
+      setPipeline((prev) => ({ ...prev, stage1: fields ? 'ok' : 'failed' }))
+      if (fields) {
+        setRetryVersion((v) => v + 1)
+        setRetryNote('')
+      }
+    } finally {
+      setRetrying(false)
     }
   }
 
@@ -708,8 +770,47 @@ export function AddEventModal({
                 <p style={{ fontSize: '0.8125rem', margin: '12px 16px 8px' }}>{formNote}</p>
               </IonText>
             )}
+            {/* Feedback #165 (2026-09-14): "there should always be a retry
+                button for having the background engine look again, and
+                there should be a little note field where you can provide
+                instructions". Shown once stage 1 has actually resolved
+                (running or the manual-entry path with no pinned input at
+                all has nothing to retry yet) — a person may want to retry
+                even a nominally successful first pass, e.g. "the address is
+                actually printed smaller near the bottom". */}
+            {pinned && pipeline.stage1 !== 'running' && (
+              <div style={{ padding: '4px 16px 16px' }}>
+                <IonText color="medium">
+                  <p style={{ fontSize: '0.8125rem', margin: '0 0 6px' }}>Not quite right? Tell it what to look for and try again.</p>
+                </IonText>
+                <IonTextarea
+                  value={retryNote}
+                  onIonInput={(e) => setRetryNote(e.detail.value ?? '')}
+                  autoGrow
+                  disabled={retrying}
+                  placeholder={pinned.kind === 'photo' ? 'e.g. “read the QR code in the photo”' : 'e.g. “the price is per week, not per day”'}
+                  style={{ border: '1px solid var(--ion-color-step-200, #ccc)', borderRadius: 10, padding: '8px 10px', fontSize: '0.875rem' }}
+                />
+                <IonButton
+                  fill="outline"
+                  size="small"
+                  style={{ marginTop: 8 }}
+                  disabled={!retryNote.trim() || retrying}
+                  onClick={() => void handleRetry()}
+                >
+                  {retrying ? (
+                    <IonSpinner name="dots" style={{ width: 16, height: 16 }} />
+                  ) : (
+                    <>
+                      <IonIcon slot="start" icon={refreshOutline} />
+                      Retry
+                    </>
+                  )}
+                </IonButton>
+              </div>
+            )}
             <EventForm
-              key={initialValues ? `${pinned?.kind ?? 'manual'}-prefill` : 'blank'}
+              key={initialValues ? `${pinned?.kind ?? 'manual'}-prefill-${retryVersion}` : 'blank'}
               initial={initialValues ?? undefined}
               submitLabel="Post"
               errorMessage="Could not post this event"

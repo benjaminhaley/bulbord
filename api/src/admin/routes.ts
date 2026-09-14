@@ -438,7 +438,8 @@ export async function adminRoutes(app: FastifyInstance) {
   // retype a field first.
   app.post('/admin/events/:id/pipeline-review/retry', { preHandler: requireRole('admin') }, async (request, reply) => {
     const { id } = request.params as { id: string }
-    const result = await retryPipelineChecks(id, request.currentUser!.id)
+    const { note } = (request.body ?? {}) as { note?: string }
+    const result = await retryPipelineChecks(id, request.currentUser!.id, note)
     if (result === 'not_found') return reply.code(404).send({ error: { message: 'Event not found' } })
     return reply.send({ data: { all_passing: result.allPassing } })
   })

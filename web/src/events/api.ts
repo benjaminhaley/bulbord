@@ -263,11 +263,15 @@ interface ExtractFromPhotoResponse {
 
 // Stage 1 of 2 (feedback, 2026-08-23) — vision only, fast. AddEventModal.tsx
 // calls this first and shows the review form the instant it resolves.
-export async function extractEventFieldsFromPhoto(imageUrl: string): Promise<ExtractedEventFields | null> {
+// `note` (feedback #165, 2026-09-14): a member's own free-text instructions
+// for a retry — passed straight through to the extraction call, and also
+// recorded server-side into a shared, growing library of past retry
+// strategies future retries (on any event) get shown too.
+export async function extractEventFieldsFromPhoto(imageUrl: string, note?: string): Promise<ExtractedEventFields | null> {
   const response = await fetch(`${API_URL}/events/extract-from-photo`, {
     method: 'POST',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
-    body: JSON.stringify({ image_url: imageUrl }),
+    body: JSON.stringify(note ? { image_url: imageUrl, note } : { image_url: imageUrl }),
   })
   if (!response.ok) {
     throw new Error(`Failed to extract event from photo: ${response.status}`)
@@ -326,11 +330,13 @@ interface ExtractFromDescriptionResponse {
 // see toStage1Fields's own comment in api/src/events/description-
 // extraction.ts — so `start_date` can legitimately come back empty even
 // when `data` itself isn't null.
-export async function extractEventFieldsFromDescription(description: string): Promise<ExtractedEventFields | null> {
+// `note`: same retry-instructions/strategies-library mechanism as
+// extractEventFieldsFromPhoto above.
+export async function extractEventFieldsFromDescription(description: string, note?: string): Promise<ExtractedEventFields | null> {
   const response = await fetch(`${API_URL}/events/extract-from-description`, {
     method: 'POST',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
-    body: JSON.stringify({ description }),
+    body: JSON.stringify(note ? { description, note } : { description }),
   })
   if (!response.ok) {
     throw new Error(`Failed to extract event from description: ${response.status}`)

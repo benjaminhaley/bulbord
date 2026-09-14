@@ -175,3 +175,64 @@ describe('AddEventModal — Describe It flow (feedback #133)', () => {
     await waitFor(() => expect(mockFindEventImage).toHaveBeenCalled())
   })
 })
+
+describe('AddEventModal — retry with a note (feedback #165)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockExtractFromDescription.mockResolvedValue({ title: 'Fall Festival', start_date: '2026-10-03', all_day: true })
+    mockFindEventDetails.mockResolvedValue(null)
+    mockFindEventImage.mockResolvedValue(null)
+  })
+
+  async function openDescribeItAndSubmit(text = 'the Nettelhorst fall festival this weekend') {
+    const { rerender } = render(<AddEventModal isOpen={false} onClose={vi.fn()} onCreated={vi.fn()} />)
+    rerender(<AddEventModal isOpen onClose={vi.fn()} onCreated={vi.fn()} />)
+    const describeIt = await screen.findByText('Describe It')
+    fireEvent.click(describeIt.closest('ion-button')!)
+    const textarea = await screen.findByPlaceholderText(/Fall Festival at Nettelhorst Park/)
+    typeIntoIonTextarea(textarea, text)
+    fireEvent.click(screen.getByText('Look It Up').closest('ion-button')!)
+  }
+
+  it('disables Retry until a note is typed', async () => {
+    await openDescribeItAndSubmit()
+
+    const retryButton = await screen.findByText('Retry')
+    expect(retryButton.closest('ion-button')).toHaveAttribute('disabled')
+  })
+
+  it('re-runs stage 1 with the typed note and clears the note on success', async () => {
+    await openDescribeItAndSubmit('the Nettelhorst fall festival this weekend')
+    await screen.findByText('Retry')
+    mockExtractFromDescription.mockResolvedValue({ title: 'Nettelhorst Fall Festival', start_date: '2026-10-03', all_day: false, start_time: '10:00' })
+
+    const noteField = document.querySelector<HTMLElement>('ion-textarea[placeholder*="the price is per week"]')!
+    typeIntoIonTextarea(noteField, 'it actually starts at 10am, not all day')
+    fireEvent.click(screen.getByText('Retry').closest('ion-button')!)
+
+    await waitFor(() =>
+      expect(mockExtractFromDescription).toHaveBeenCalledWith(
+        'the Nettelhorst fall festival this weekend',
+        'it actually starts at 10am, not all day',
+      ),
+    )
+    // The note itself is cleared on a successful retry — the Retry button
+    // (disabled whenever the note is empty) goes back to disabled.
+    await waitFor(() => expect(screen.getByText('Retry').closest('ion-button')).toHaveAttribute('disabled'))
+  })
+
+  it('never re-uploads a photo or re-runs the web search on retry — only stage 1', async () => {
+    await openDescribeItAndSubmit()
+    await screen.findByText('Retry')
+
+    const noteField = document.querySelector<HTMLElement>('ion-textarea[placeholder*="the price is per week"]')!
+    typeIntoIonTextarea(noteField, 'check the /rates page for the real price')
+    fireEvent.click(screen.getByText('Retry').closest('ion-button')!)
+
+    await waitFor(() => expect(mockExtractFromDescription).toHaveBeenCalledTimes(2))
+    // findEventDetailsFromDescription (stage 2) only ran once, during the
+    // original submit — a retry note is instructions for re-reading the
+    // description, not a reason to re-search the web.
+    expect(mockFindEventDetails).toHaveBeenCalledTimes(1)
+  })
+})

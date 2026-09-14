@@ -449,14 +449,22 @@ export async function retryPipelineEventImage(eventId: string): Promise<{ found:
 // 2026-09-13: "several events... should have just caused them to be rerun
 // and tried again") — reruns the same self-healing pipeline a fresh
 // ingestion already gets on whichever checks are currently failing.
-async function postPipelineRetry(path: string): Promise<{ allPassing: boolean }> {
-  const response = await fetch(`${API_URL}${path}`, { method: 'POST', headers: authHeaders() })
+async function postPipelineRetry(path: string, note?: string): Promise<{ allPassing: boolean }> {
+  const response = await fetch(`${API_URL}${path}`, {
+    method: 'POST',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify(note ? { note } : {}),
+  })
   await throwOnError(response, 'Failed to retry')
   const body = (await response.json()) as { data: { all_passing: boolean } }
   return { allPassing: body.data.all_passing }
 }
 
-export const retryPipelineEventChecks = (eventId: string) => postPipelineRetry(`/admin/events/${eventId}/pipeline-review/retry`)
+// `note` (feedback #165, 2026-09-14): an admin's own free-text retry
+// instructions — recorded into the shared strategies library future retries
+// (on any event) get to see too, see api/src/events/retry-strategies.ts.
+export const retryPipelineEventChecks = (eventId: string, note?: string) =>
+  postPipelineRetry(`/admin/events/${eventId}/pipeline-review/retry`, note)
 
 export const retryPipelineRejectedCandidateChecks = (id: string) => postPipelineRetry(`/admin/rejected-event-candidates/${id}/retry`)
 

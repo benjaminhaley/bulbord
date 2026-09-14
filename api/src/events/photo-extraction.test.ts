@@ -12,6 +12,13 @@ vi.mock('@anthropic-ai/sdk', () => {
 
 vi.mock('../uploads/storage.js', () => ({ getImageObject: getImageObjectMock }))
 
+// Avoids a real DB round-trip — see candidate-checks.test.ts's identical mock.
+const getRetryStrategiesPromptBlockMock = vi.fn()
+vi.mock('./retry-strategies.js', () => ({
+  getRetryStrategiesPromptBlock: getRetryStrategiesPromptBlockMock,
+  recordRetryNote: vi.fn(),
+}))
+
 function textResponse(text: string, stopReason = 'end_turn') {
   return { stop_reason: stopReason, content: [{ type: 'text', text }] }
 }
@@ -35,7 +42,44 @@ describe('extractEventFieldsFromPhoto', () => {
     vi.stubEnv('ANTHROPIC_API_KEY', 'test-key')
     createMock.mockReset()
     getImageObjectMock.mockReset()
+    getRetryStrategiesPromptBlockMock.mockReset().mockResolvedValue('')
     vi.resetModules()
+  })
+
+  // feedback #165 (2026-09-14): a member's own retry instructions.
+  it('includes retry instructions and the strategies library only when a note is given', async () => {
+    getImageObjectMock.mockResolvedValue(imageObject())
+    getRetryStrategiesPromptBlockMock.mockResolvedValue('\n\nPast retry strategies:\n- read the QR code')
+    createMock.mockResolvedValue(textResponse(JSON.stringify({ found: true, title: 'Family Fun Fest', start_date: '2026-09-20', all_day: true })))
+    const { extractEventFieldsFromPhoto } = await import('./photo-extraction.js')
+
+    await extractEventFieldsFromPhoto('/uploads/events/flyer.jpeg', 'read the QR code in the photo')
+
+    expect(getRetryStrategiesPromptBlockMock).toHaveBeenCalled()
+    expect(createMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        system: expect.stringContaining('Past retry strategies'),
+        messages: [
+          expect.objectContaining({
+            content: [
+              expect.anything(),
+              expect.objectContaining({ type: 'text', text: expect.stringContaining('read the QR code in the photo') }),
+            ],
+          }),
+        ],
+      }),
+      expect.anything(),
+    )
+  })
+
+  it('does not fetch the strategies library on a first, non-retry attempt', async () => {
+    getImageObjectMock.mockResolvedValue(imageObject())
+    createMock.mockResolvedValue(textResponse(JSON.stringify({ found: true, title: 'Family Fun Fest', start_date: '2026-09-20', all_day: true })))
+    const { extractEventFieldsFromPhoto } = await import('./photo-extraction.js')
+
+    await extractEventFieldsFromPhoto('/uploads/events/flyer.jpeg')
+
+    expect(getRetryStrategiesPromptBlockMock).not.toHaveBeenCalled()
   })
 
   it('returns extracted fields parsed from a successful model call', async () => {

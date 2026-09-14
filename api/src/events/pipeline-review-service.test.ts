@@ -48,6 +48,8 @@ vi.mock('./candidate-checks.js', async () => {
   const actual = await vi.importActual<typeof import('./candidate-checks.js')>('./candidate-checks.js')
   return { ...actual, scoreTextChecks: scoreTextChecksMock, runTextChecksWithRetry: runTextChecksWithRetryMock }
 })
+const recordRetryNoteMock = vi.fn()
+vi.mock('./retry-strategies.js', () => ({ recordRetryNote: recordRetryNoteMock }))
 
 const PASSING_CHECK = { pass: true, reason: 'ok', attempts: 1 }
 const PASSING_TEXT_CHECKS = {
@@ -66,6 +68,7 @@ beforeEach(() => {
   runTextChecksWithRetryMock.mockReset().mockResolvedValue([{ checks: PASSING_TEXT_CHECKS, correctedFields: {} }])
   recordEditMock.mockReset()
   fetchPageTextMock.mockReset().mockResolvedValue('the real page text')
+  recordRetryNoteMock.mockReset()
 })
 
 describe('approveEvent', () => {
@@ -366,7 +369,7 @@ describe('retryPipelineChecks', () => {
     await retryPipelineChecks('event-1', 'admin-1')
 
     expect(fetchPageTextMock).toHaveBeenCalledWith('https://northalsted.example/events')
-    expect(runTextChecksWithRetryMock).toHaveBeenCalledWith(expect.anything(), 'The festival happens at 3252 N Broadway.')
+    expect(runTextChecksWithRetryMock).toHaveBeenCalledWith(expect.anything(), 'The festival happens at 3252 N Broadway.', undefined)
   })
 
   it('skips the re-fetch entirely for an event with no source_url (a member self-service post)', async () => {
@@ -393,7 +396,71 @@ describe('retryPipelineChecks', () => {
     await retryPipelineChecks('event-1', 'admin-1')
 
     expect(fetchPageTextMock).not.toHaveBeenCalled()
-    expect(runTextChecksWithRetryMock).toHaveBeenCalledWith(expect.anything(), undefined)
+    expect(runTextChecksWithRetryMock).toHaveBeenCalledWith(expect.anything(), undefined, undefined)
+  })
+
+  // feedback #165 (2026-09-14): an admin's own retry instructions.
+  it('passes an admin note through to the text-check retry, and records it into the shared strategies library', async () => {
+    selectResults.push([
+      {
+        title: 'Old Title',
+        description: null,
+        address: 'Northalsted',
+        locationName: null,
+        startDate: '2026-10-10',
+        startTime: null,
+        endTime: null,
+        allDay: true,
+        sourceUrl: null,
+        topic: null,
+        imageUrl: 'https://example.com/img.jpg',
+        thumbnailUrl: 'https://example.com/thumb.jpg',
+        checks: priorChecksAllPassing,
+        status: 'approved',
+      },
+    ])
+    const { retryPipelineChecks } = await import('./pipeline-review-service.js')
+
+    await retryPipelineChecks('event-1', 'admin-1', 'the address is a cross-street, not a numbered address')
+
+    expect(runTextChecksWithRetryMock).toHaveBeenCalledWith(
+      expect.anything(),
+      undefined,
+      'the address is a cross-street, not a numbered address',
+    )
+    expect(recordRetryNoteMock).toHaveBeenCalledWith({
+      note: 'the address is a cross-street, not a numbered address',
+      stage: 'pipeline_review',
+      eventId: 'event-1',
+      contextTitle: 'Old Title',
+      userId: 'admin-1',
+    })
+  })
+
+  it('does not record a note when none was given', async () => {
+    selectResults.push([
+      {
+        title: 'Old Title',
+        description: null,
+        address: 'Northalsted',
+        locationName: null,
+        startDate: '2026-10-10',
+        startTime: null,
+        endTime: null,
+        allDay: true,
+        sourceUrl: null,
+        topic: null,
+        imageUrl: 'https://example.com/img.jpg',
+        thumbnailUrl: 'https://example.com/thumb.jpg',
+        checks: priorChecksAllPassing,
+        status: 'approved',
+      },
+    ])
+    const { retryPipelineChecks } = await import('./pipeline-review-service.js')
+
+    await retryPipelineChecks('event-1', 'admin-1')
+
+    expect(recordRetryNoteMock).not.toHaveBeenCalled()
   })
 })
 

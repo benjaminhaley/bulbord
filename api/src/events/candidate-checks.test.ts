@@ -9,6 +9,14 @@ vi.mock('@anthropic-ai/sdk', () => {
   return { default: MockAnthropic }
 })
 
+// Avoids a real DB round-trip (getRetryStrategiesPromptBlock queries the
+// pipeline_retry_notes table) — these tests exercise the check/retry logic
+// itself, not the strategies-library feature (see retry-strategies.test.ts).
+vi.mock('./retry-strategies.js', () => ({
+  getRetryStrategiesPromptBlock: vi.fn().mockResolvedValue(''),
+  recordRetryNote: vi.fn(),
+}))
+
 function textResponse(text: string, stopReason = 'end_turn') {
   return { stop_reason: stopReason, content: [{ type: 'text', text }] }
 }
