@@ -828,7 +828,7 @@
     <section id="screen-start">
       <div class="card">
         <div class="ball-bounce">⚽</div>
-        <div class="start-tagline">Times tables 1–12, best time wins.</div>
+        <div class="start-tagline">Times tables 2–11, best time wins.</div>
         <div class="best-row" id="best-row"></div>
         <div id="record-row"></div>
 
@@ -978,7 +978,8 @@
   'use strict';
 
   var SHOTS_PER_ROUND = 10;
-  var MAX_TABLE = 12;
+  var MIN_TABLE = 2;
+  var MAX_TABLE = 11;
   // A miss costs time the natural way — the round simply pauses here for
   // real, with the live timer still running, rather than a number added to
   // the score afterward. This is the one source of truth for both the
@@ -1241,8 +1242,8 @@
   function buildShots() {
     var shots = [];
     for (var i = 0; i < SHOTS_PER_ROUND; i++) {
-      var a = randInt(1, MAX_TABLE);
-      var b = randInt(1, MAX_TABLE);
+      var a = randInt(MIN_TABLE, MAX_TABLE);
+      var b = randInt(MIN_TABLE, MAX_TABLE);
       shots.push({ a: a, b: b, answer: a * b, result: null });
     }
     return shots;
