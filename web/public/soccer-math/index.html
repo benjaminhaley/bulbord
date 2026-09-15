@@ -1581,6 +1581,7 @@
     el.nameEntry.className = 'name-entry';
     el.addedNote.className = 'added-note';
     el.endLeaderboardWrap.className = 'leaderboard-wrap';
+    el.addToLeaderboardBtn.classList.remove('hidden');
     revealedFinalMs = null;
 
     animateCount(el.tallyFinalScore, finalMs, 650, function () {
@@ -1598,10 +1599,13 @@
   // always be the persisted personal best, even right after a worse run —
   // confusing when it doesn't match the final score shown just above.
   // Splices in a second, display-only row for this run's own score at the
-  // rank it would actually earn, so both are visible side by side; this
-  // never touches storage — saving only ever happens through the real Add
-  // button below (addCurrentScoreToLeaderboard). Pulled out of
-  // revealRankAndLeaderboard so changeName() can redraw it too.
+  // rank it would actually earn, so both are visible side by side. Building
+  // this from `loadLeaderboard()` fresh (rather than storage) is what lets
+  // revealRankAndLeaderboard call this BEFORE it auto-saves a new best
+  // below — the split still shows the real NEW BEST/PREVIOUS BEST
+  // difference for a moment even though the save itself already happened
+  // by the time anyone reads it. Pulled out of revealRankAndLeaderboard so
+  // changeName() can redraw it too.
   function renderEndLeaderboardWithCurrentRun(finalMs) {
     var board = loadLeaderboard();
     var insertAt = board.filter(function (e) { return e.finalMs <= finalMs; }).length;
@@ -1625,10 +1629,31 @@
 
     revealedFinalMs = finalMs;
     renderNameStatus();
-    el.nameEntry.classList.add('show');
-
     renderEndLeaderboardWithCurrentRun(finalMs);
     el.endLeaderboardWrap.classList.add('show');
+
+    // Feedback, 2026-09-15 (Ben, live): "it's not actually saving my new
+    // best run" — Ben reloaded before ever tapping Add and lost a genuine
+    // new best. A real new best now saves itself the moment it's revealed
+    // (as long as we already know who's playing — a true first-time player
+    // still needs the name input below), so there's nothing left to lose
+    // by navigating away. The comparison rendered just above still shows
+    // the real NEW BEST/PREVIOUS BEST split even though the save behind it
+    // already happened.
+    var priorBest = board.find(function (e) { return !e.isSeed && e.playerId === MY_PLAYER_ID; });
+    var isNewBest = !priorBest || finalMs < priorBest.finalMs;
+    var savedName = loadLastName();
+    if (isNewBest && savedName) {
+      var persisted = persistScore(savedName, finalMs);
+      var myIndex = persisted.board.findIndex(function (e) { return e.playerId === MY_PLAYER_ID; });
+      el.addedNote.textContent = describeSaveResult(persisted.result, myIndex);
+      el.addedNote.classList.add('show');
+      revealedFinalMs = null;
+      el.addToLeaderboardBtn.classList.add('hidden');
+    } else {
+      el.addToLeaderboardBtn.classList.remove('hidden');
+    }
+    el.nameEntry.classList.add('show');
 
     setTimeout(function () {
       var row = document.getElementById('lb-me-row');
@@ -1841,12 +1866,14 @@
     refreshVisibleLeaderboards();
   }
 
-  function addCurrentScoreToLeaderboard(finalMs) {
-    var name = (el.nameInput.value || '').trim() || 'Player';
-    // setPlayerName (not a bare saveLastName) so an existing persisted
-    // best's own name field gets corrected too, even on a run that isn't
-    // fast enough to replace it via upsertLeaderboardEntry below — see the
-    // nameText.textContent comment above for the bug this closes.
+  // Pulled out of addCurrentScoreToLeaderboard so revealRankAndLeaderboard
+  // can also save a genuine new best immediately, without waiting for a
+  // manual Add tap (feedback, 2026-09-15, Ben live — see there for why).
+  // setPlayerName (not a bare saveLastName) so an existing persisted best's
+  // own name field gets corrected too, even on a run that isn't fast
+  // enough to replace it via upsertLeaderboardEntry below — see the
+  // nameText.textContent comment above for the bug this closes.
+  function persistScore(name, finalMs) {
     setPlayerName(name);
     var board = loadLeaderboard();
     var result = upsertLeaderboardEntry(board, {
@@ -1857,22 +1884,29 @@
       playerId: MY_PLAYER_ID,
     });
     board = saveLeaderboard(board);
-    var myIndex = board.findIndex(function (e) { return e.playerId === MY_PLAYER_ID; });
+    return { result: result, board: board };
+  }
+
+  function describeSaveResult(result, myIndex) {
+    var rank = myIndex + 1;
+    if (result.replaced) return 'New best! You’re #' + rank + ' on the board 🎉';
+    if (result.added) return myIndex >= 0 ? 'Added! You’re #' + rank + ' on the board 🎉' : 'Added to the leaderboard!';
+    return 'Your best stays #' + rank + ' — that run wasn’t faster.';
+  }
+
+  function addCurrentScoreToLeaderboard(finalMs) {
+    var name = (el.nameInput.value || '').trim() || 'Player';
+    var persisted = persistScore(name, finalMs);
+    var myIndex = persisted.board.findIndex(function (e) { return e.playerId === MY_PLAYER_ID; });
     // The score is now officially recorded, so "this run" and "best" are
     // the same thing again — back to the ordinary single-row view.
     revealedFinalMs = null;
 
     el.nameEntry.classList.remove('show');
-    if (result.replaced) {
-      el.addedNote.textContent = 'New best! You’re #' + (myIndex + 1) + ' on the board 🎉';
-    } else if (result.added) {
-      el.addedNote.textContent = myIndex >= 0 ? 'Added! You’re #' + (myIndex + 1) + ' on the board 🎉' : 'Added to the leaderboard!';
-    } else {
-      el.addedNote.textContent = 'Your best stays #' + (myIndex + 1) + ' — that run wasn’t faster.';
-    }
+    el.addedNote.textContent = describeSaveResult(persisted.result, myIndex);
     el.addedNote.classList.add('show');
 
-    renderLeaderboardList(el.endLeaderboardList, board, myIndex);
+    renderLeaderboardList(el.endLeaderboardList, persisted.board, myIndex);
     if (myIndex >= 0) {
       setTimeout(function () {
         var row = document.getElementById('lb-me-row');
