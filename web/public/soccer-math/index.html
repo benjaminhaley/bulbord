@@ -528,6 +528,38 @@
     transition: opacity 0.4s ease, max-height 0.4s ease;
   }
   .name-entry.show { opacity: 1; max-height: 60px; }
+  /* Feedback, 2026-09-15 (Ben, live): typing a name into this row every
+     time read as "entering it for this run" — it's really a one-time
+     "who you are" choice that should carry forward on its own, editable
+     whenever you want rather than re-typed per run. Shown instead of the
+     text input (see renderNameStatus) once a name is already saved. */
+  .playing-as {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex: 1;
+    min-width: 0;
+    font-size: 0.9rem;
+    font-weight: 700;
+    color: var(--ink);
+  }
+  .playing-as-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+  }
+  .change-name-btn {
+    flex-shrink: 0;
+    border: none;
+    background: none;
+    padding: 0;
+    font-size: 0.75rem;
+    font-weight: 800;
+    color: var(--pitch);
+    text-decoration: underline;
+    cursor: pointer;
+  }
   .name-entry input {
     flex: 1;
     border: 2px solid #dfe6ec;
@@ -647,6 +679,7 @@
     border-radius: 999px;
     vertical-align: 1px;
     flex-shrink: 0;
+    white-space: nowrap;
   }
   .lb-empty { text-align: center; color: #7a8a80; font-weight: 700; font-size: 0.85rem; padding: 18px 4px; }
   .row-actions-body { display: flex; flex-direction: column; gap: 8px; padding: 16px; }
@@ -878,6 +911,10 @@
           <div class="rank-reveal" id="rank-reveal"></div>
 
           <div class="name-entry" id="name-entry">
+            <div class="playing-as hidden" id="playing-as-row">
+              Playing as <span class="playing-as-name" id="playing-as-name"></span>
+              <button class="change-name-btn" id="change-name-btn" type="button">change</button>
+            </div>
             <input id="name-input" type="text" maxlength="20" placeholder="Your name" autocomplete="off" />
             <button class="add-btn" id="add-to-leaderboard-btn" type="button">Add</button>
           </div>
@@ -1055,6 +1092,9 @@
     newBestBadge: document.getElementById('new-best-badge'),
     rankReveal: document.getElementById('rank-reveal'),
     nameEntry: document.getElementById('name-entry'),
+    playingAsRow: document.getElementById('playing-as-row'),
+    playingAsName: document.getElementById('playing-as-name'),
+    changeNameBtn: document.getElementById('change-name-btn'),
     nameInput: document.getElementById('name-input'),
     addToLeaderboardBtn: document.getElementById('add-to-leaderboard-btn'),
     addedNote: document.getElementById('added-note'),
@@ -1534,10 +1574,38 @@
     el.nameEntry.className = 'name-entry';
     el.addedNote.className = 'added-note';
     el.endLeaderboardWrap.className = 'leaderboard-wrap';
+    revealedFinalMs = null;
 
     animateCount(el.tallyFinalScore, finalMs, 650, function () {
       tallyTimers.push(setTimeout(function () { revealRankAndLeaderboard(finalMs); }, 450));
     });
+  }
+
+  // While the end screen's "this run vs. best" two-row view is showing,
+  // remembers which finalMs it's showing — so changeName() (below) can
+  // redraw that same view with the new name rather than leaving a stale
+  // one on screen. Cleared whenever a fresh round starts (see runTally).
+  var revealedFinalMs = null;
+
+  // Feedback, 2026-09-15 (Ben, live): the highlighted "YOU" row here used to
+  // always be the persisted personal best, even right after a worse run —
+  // confusing when it doesn't match the final score shown just above.
+  // Splices in a second, display-only row for this run's own score at the
+  // rank it would actually earn, so both are visible side by side; this
+  // never touches storage — saving only ever happens through the real Add
+  // button below (addCurrentScoreToLeaderboard). Pulled out of
+  // revealRankAndLeaderboard so changeName() can redraw it too.
+  function renderEndLeaderboardWithCurrentRun(finalMs) {
+    var board = loadLeaderboard();
+    var insertAt = board.filter(function (e) { return e.finalMs <= finalMs; }).length;
+    var displayBoard = board.slice();
+    displayBoard.splice(insertAt, 0, {
+      name: loadLastName() || 'You',
+      finalMs: finalMs,
+      playerId: MY_PLAYER_ID,
+      isCurrentRun: true,
+    });
+    renderLeaderboardList(el.endLeaderboardList, displayBoard, insertAt);
   }
 
   function revealRankAndLeaderboard(finalMs) {
@@ -1548,26 +1616,11 @@
       : 'That would rank <span class="big">#' + previewRank + '</span> of ' + (board.length + 1) + '!';
     el.rankReveal.classList.add('show');
 
-    el.nameInput.value = loadLastName();
+    revealedFinalMs = finalMs;
+    renderNameStatus();
     el.nameEntry.classList.add('show');
 
-    // Feedback, 2026-09-15 (Ben, live): the highlighted "YOU" row here used
-    // to always be the persisted personal best, even right after a worse
-    // run — confusing when it doesn't match the final score shown just
-    // above. Splice in a second, display-only row for this run's own score
-    // at the rank it would actually earn, so both are visible side by
-    // side; this never touches storage — saving only ever happens through
-    // the real Add button below (addCurrentScoreToLeaderboard).
-    var insertAt = board.filter(function (e) { return e.finalMs <= finalMs; }).length;
-    var displayBoard = board.slice();
-    displayBoard.splice(insertAt, 0, {
-      name: loadLastName() || 'You',
-      finalMs: finalMs,
-      playerId: MY_PLAYER_ID,
-      isCurrentRun: true,
-    });
-
-    renderLeaderboardList(el.endLeaderboardList, displayBoard, insertAt);
+    renderEndLeaderboardWithCurrentRun(finalMs);
     el.endLeaderboardWrap.classList.add('show');
 
     setTimeout(function () {
@@ -1590,7 +1643,16 @@
     // once — when that's happening, badge text needs to say which is
     // which; otherwise (every other render of this list) there's only ever
     // one "mine" row and the plain "YOU" badge from before is unambiguous.
-    var hasCurrentRunRow = entries.some(function (e) { return e.isCurrentRun; });
+    var currentRunEntry = entries.find(function (e) { return e.isCurrentRun; });
+    var hasCurrentRunRow = !!currentRunEntry;
+    var priorBestEntry = entries.find(function (e) { return !e.isSeed && !e.isCurrentRun && e.playerId === MY_PLAYER_ID; });
+    // Feedback, 2026-09-15 (Ben, live): "I just got my all-time best and
+    // instead it says this run" — the label has to track which time is
+    // actually lower, not just which row is the freshly-played one. Once
+    // this run beats the old best, THIS RUN becomes the new BEST and the
+    // old row is demoted to PREVIOUS BEST, rather than the two badges
+    // staying frozen to "which row is synthetic" regardless of the times.
+    var currentRunIsNewBest = hasCurrentRunRow && (!priorBestEntry || currentRunEntry.finalMs < priorBestEntry.finalMs);
 
     entries.forEach(function (entry, i) {
       // Feedback #162 (2026-09-14 follow-ups): "your own entry" is the one
@@ -1622,7 +1684,15 @@
       if (isMine) {
         var badge = document.createElement('span');
         badge.className = 'lb-you-badge';
-        badge.textContent = !hasCurrentRunRow ? 'YOU' : entry.isCurrentRun ? 'THIS RUN' : 'BEST';
+        var badgeText;
+        if (!hasCurrentRunRow) {
+          badgeText = 'YOU';
+        } else if (entry.isCurrentRun) {
+          badgeText = currentRunIsNewBest ? 'NEW BEST' : 'THIS RUN';
+        } else {
+          badgeText = currentRunIsNewBest ? 'PREVIOUS BEST' : 'BEST';
+        }
+        badge.textContent = badgeText;
         name.appendChild(badge);
       }
       var time = document.createElement('div');
@@ -1671,7 +1741,14 @@
 
   function refreshVisibleLeaderboards() {
     var board = loadLeaderboard();
-    renderLeaderboardList(el.endLeaderboardList, board, null);
+    // Mid-reveal (revealedFinalMs set — this run hasn't been Added yet),
+    // a plain re-render here would silently drop the "this run" row a
+    // rename should leave in place — see renderEndLeaderboardWithCurrentRun.
+    if (revealedFinalMs != null) {
+      renderEndLeaderboardWithCurrentRun(revealedFinalMs);
+    } else {
+      renderLeaderboardList(el.endLeaderboardList, board, null);
+    }
     renderLeaderboardList(el.standaloneLeaderboardList, board, null);
   }
 
@@ -1686,26 +1763,56 @@
     el.rowActionsOverlay.classList.add('hidden');
   }
 
-  // Renaming only ever changes the `name` field on the one row carrying
-  // this device's playerId — it can never merge into (or get confused
-  // with) any other row, including a seed pro's, even if you rename into
-  // the exact same text as one of them. That's a deliberate simplification
-  // over the old name-keyed version, which had to delete-then-reinsert and
-  // could silently merge two unrelated rows that happened to share a name.
-  function renameLeaderboardEntry() {
+  // Your name is one persistent identity, not something typed fresh per
+  // run (feedback, 2026-09-15, Ben live) — this is the one place that
+  // changes it, so every caller (the end screen's "change" link, and
+  // renameLeaderboardEntry below) stays in sync automatically: future
+  // rounds default to it (saveLastName), and if you already have a
+  // persisted best on the board, that row's name updates immediately too.
+  // Renaming only ever touches the one row carrying this device's own
+  // playerId — it can never merge into (or get confused with) any other
+  // row, including a seed pro's, even if you rename into the exact same
+  // text as one of them.
+  function setPlayerName(newName) {
+    newName = (newName || '').trim();
+    if (!newName) return false;
+    saveLastName(newName);
     var board = loadLeaderboard();
     var idx = board.findIndex(function (e) { return !e.isSeed && e.playerId === MY_PLAYER_ID; });
-    if (idx === -1) return;
-    var oldName = board[idx].name;
-    var newName = window.prompt('Edit name', oldName);
+    if (idx !== -1 && board[idx].name !== newName) {
+      board[idx].name = newName;
+      saveLeaderboard(board);
+    }
+    return true;
+  }
+
+  // Shows "Playing as <name>" once a name is already saved (see
+  // setPlayerName) instead of an empty input that reads as "type a name
+  // for this run" — only a brand-new player (nothing saved yet) still sees
+  // the plain text input, which doubles as picking a name for the first
+  // time. Either way, el.nameInput.value stays in sync (even while
+  // visually hidden) since addCurrentScoreToLeaderboard reads it directly.
+  function renderNameStatus() {
+    var savedName = loadLastName();
+    var hasName = !!savedName;
+    el.nameInput.value = savedName;
+    el.playingAsRow.classList.toggle('hidden', !hasName);
+    el.nameInput.classList.toggle('hidden', hasName);
+    if (hasName) el.playingAsName.textContent = savedName;
+  }
+
+  // One shared prompt-and-apply flow for both entry points into changing
+  // your name: the end screen's "change" link and the row-actions sheet's
+  // "Edit Name" button.
+  function promptToChangeName() {
+    var newName = window.prompt('Your name', loadLastName() || '');
     if (newName === null) return;
-    newName = newName.trim();
-    if (!newName || newName === oldName) return;
-    board[idx].name = newName;
-    saveLeaderboard(board);
-    saveLastName(newName);
+    if (!setPlayerName(newName.trim())) return;
+    renderNameStatus();
     refreshVisibleLeaderboards();
   }
+  var changeName = promptToChangeName;
+  var renameLeaderboardEntry = promptToChangeName;
 
   function removeLeaderboardEntry() {
     var board = loadLeaderboard();
@@ -1730,6 +1837,9 @@
     });
     board = saveLeaderboard(board);
     var myIndex = board.findIndex(function (e) { return e.playerId === MY_PLAYER_ID; });
+    // The score is now officially recorded, so "this run" and "best" are
+    // the same thing again — back to the ordinary single-row view.
+    revealedFinalMs = null;
 
     el.nameEntry.classList.remove('show');
     if (result.replaced) {
@@ -1844,6 +1954,7 @@
     closeRowActions();
     removeLeaderboardEntry();
   });
+  el.changeNameBtn.addEventListener('click', changeName);
 
   ensureSeedLeaderboard();
   MY_PLAYER_ID = ensurePlayerIdentity();
