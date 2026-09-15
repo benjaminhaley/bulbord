@@ -1550,8 +1550,30 @@
 
     el.nameInput.value = loadLastName();
     el.nameEntry.classList.add('show');
-    renderLeaderboardList(el.endLeaderboardList, board, null);
+
+    // Feedback, 2026-09-15 (Ben, live): the highlighted "YOU" row here used
+    // to always be the persisted personal best, even right after a worse
+    // run — confusing when it doesn't match the final score shown just
+    // above. Splice in a second, display-only row for this run's own score
+    // at the rank it would actually earn, so both are visible side by
+    // side; this never touches storage — saving only ever happens through
+    // the real Add button below (addCurrentScoreToLeaderboard).
+    var insertAt = board.filter(function (e) { return e.finalMs <= finalMs; }).length;
+    var displayBoard = board.slice();
+    displayBoard.splice(insertAt, 0, {
+      name: loadLastName() || 'You',
+      finalMs: finalMs,
+      playerId: MY_PLAYER_ID,
+      isCurrentRun: true,
+    });
+
+    renderLeaderboardList(el.endLeaderboardList, displayBoard, insertAt);
     el.endLeaderboardWrap.classList.add('show');
+
+    setTimeout(function () {
+      var row = document.getElementById('lb-me-row');
+      if (row) row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 150);
   }
 
   function renderLeaderboardList(container, entries, highlightIndex) {
@@ -1563,6 +1585,13 @@
       container.appendChild(empty);
       return;
     }
+    // Feedback, 2026-09-15: revealRankAndLeaderboard splices in a synthetic
+    // isCurrentRun entry alongside your real persisted best so both show at
+    // once — when that's happening, badge text needs to say which is
+    // which; otherwise (every other render of this list) there's only ever
+    // one "mine" row and the plain "YOU" badge from before is unambiguous.
+    var hasCurrentRunRow = entries.some(function (e) { return e.isCurrentRun; });
+
     entries.forEach(function (entry, i) {
       // Feedback #162 (2026-09-14 follow-ups): "your own entry" is the one
       // row carrying this device's own playerId (see ensurePlayerIdentity)
@@ -1570,6 +1599,10 @@
       // live bug report showed was unreliable. A seed/placeholder row
       // (isSeed, see ensureSeedLeaderboard) is never editable, for anyone.
       var isMine = !entry.isSeed && entry.playerId === MY_PLAYER_ID;
+      // The synthetic current-run row isn't a real saved entry — renaming
+      // or removing "it" would actually mutate your real persisted best
+      // behind the scenes, so it never opens the row-actions sheet.
+      var isActionable = isMine && !entry.isCurrentRun;
 
       var row = document.createElement('div');
       row.className = 'lb-row' + (i === highlightIndex ? ' me pulse' : '') + (isMine ? ' mine' : '');
@@ -1589,7 +1622,7 @@
       if (isMine) {
         var badge = document.createElement('span');
         badge.className = 'lb-you-badge';
-        badge.textContent = 'YOU';
+        badge.textContent = !hasCurrentRunRow ? 'YOU' : entry.isCurrentRun ? 'THIS RUN' : 'BEST';
         name.appendChild(badge);
       }
       var time = document.createElement('div');
@@ -1606,7 +1639,7 @@
       // from the previous round (every row is now structurally identical —
       // rank/name/time and nothing else — so there's no longer a
       // conditional trailing element to keep in sync at all).
-      if (isMine) {
+      if (isActionable) {
         row.setAttribute('role', 'button');
         row.setAttribute('tabindex', '0');
         row.setAttribute('aria-label', 'Edit or remove your entry, ' + entry.name);
