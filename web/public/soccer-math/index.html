@@ -574,7 +574,14 @@
   .add-btn {
     border: none;
     border-radius: 12px;
-    padding: 0 16px;
+    /* Real vertical padding (not 0, relying on flex stretch to borrow the
+       input's height) — feedback, 2026-09-15 (Ben, live): "the add button
+       got shrunk a little bit". .name-entry has no align-items, so its
+       default `stretch` used to size every child to match its tallest
+       sibling — fine while the ~40px-tall text input was that sibling, but
+       .playing-as (no vertical padding of its own) is shorter, so the
+       stretched button shrank down with it once a name is already saved. */
+    padding: 10px 16px;
     font-weight: 800;
     font-size: 0.85rem;
     background: var(--pitch);
@@ -1675,7 +1682,17 @@
       name.className = 'lb-name';
       var nameText = document.createElement('span');
       nameText.className = 'lb-name-text';
-      nameText.textContent = entry.name;
+      // Feedback, 2026-09-15 (Ben, live): "both of my scores here should
+      // say Ben, instead the top one says Messi" — the persisted best
+      // row's own `.name` field only gets updated when a rename actively
+      // touches it (setPlayerName) or a faster run replaces it
+      // (upsertLeaderboardEntry); a name saved via addCurrentScoreToLeaderboard
+      // on a run that *didn't* beat the old best used to leave that old
+      // row's name stale. Rendering your own row's name straight from your
+      // current saved identity (rather than trusting entry.name to have
+      // been kept in sync) makes every "mine" row self-heal to whoever
+      // you're playing as right now, regardless of how it drifted.
+      nameText.textContent = isMine ? (loadLastName() || entry.name) : entry.name;
       name.appendChild(nameText);
       // Ben, 2026-09-14 ("make your own personal row somehow highlighted so
       // it's a little clear that it's yours"): the .mine background/border
@@ -1826,7 +1843,11 @@
 
   function addCurrentScoreToLeaderboard(finalMs) {
     var name = (el.nameInput.value || '').trim() || 'Player';
-    saveLastName(name);
+    // setPlayerName (not a bare saveLastName) so an existing persisted
+    // best's own name field gets corrected too, even on a run that isn't
+    // fast enough to replace it via upsertLeaderboardEntry below — see the
+    // nameText.textContent comment above for the bug this closes.
+    setPlayerName(name);
     var board = loadLeaderboard();
     var result = upsertLeaderboardEntry(board, {
       name: name,
