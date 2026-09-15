@@ -1030,7 +1030,6 @@
   // pause duration and the on-screen countdown.
   var MISS_TIMEOUT_MS = 2000;
   var MAX_LEADERBOARD_ENTRIES = 100;
-  var BEST_STORAGE_KEY = 'soccerMathBestTime_v1';
   var NAME_STORAGE_KEY = 'soccerMathLastName_v1';
   var LEADERBOARD_STORAGE_KEY = 'soccerMathLeaderboard_v1';
   // A stable per-device identity (feedback #162 follow-up, 2026-09-14: Ben's
@@ -1137,18 +1136,15 @@
   var ballFlyResetTimeout = null;
 
   // ---------- storage ----------
-  function loadBest() {
-    try {
-      var raw = localStorage.getItem(BEST_STORAGE_KEY);
-      if (!raw) return { bestTimeMs: null };
-      var parsed = JSON.parse(raw);
-      return { bestTimeMs: typeof parsed.bestTimeMs === 'number' ? parsed.bestTimeMs : null };
-    } catch (e) {
-      return { bestTimeMs: null };
-    }
-  }
-  function saveBest(best) {
-    try { localStorage.setItem(BEST_STORAGE_KEY, JSON.stringify(best)); } catch (e) {}
+  // Feedback, 2026-09-16 (Ben, live): "my best does not match when I view
+  // leaderboard vs splash screen" — a second, independent "your best"
+  // number (BEST_STORAGE_KEY) used to live here, updated on every
+  // completed round regardless of whether that run ever made it into the
+  // real leaderboard (which needs a saved name). The two could only ever
+  // drift apart. Retired in favor of one real source of truth: your own
+  // entry on the leaderboard itself (see myBestEntry below).
+  function myBestEntry() {
+    return loadLeaderboard().find(function (e) { return !e.isSeed && e.playerId === MY_PLAYER_ID; });
   }
   function loadLeaderboard() {
     try {
@@ -1265,12 +1261,12 @@
   function pick(arr) { return arr[randInt(0, arr.length - 1)]; }
 
   function renderBestRow(container) {
-    var best = loadBest();
     container.innerHTML = '';
-    if (best.bestTimeMs == null) return;
+    var mine = myBestEntry();
+    if (!mine) return;
     var p1 = document.createElement('div');
     p1.className = 'pill';
-    p1.textContent = 'Your Best: ' + formatTime(best.bestTimeMs);
+    p1.textContent = 'Your Best: ' + formatTime(mine.finalMs);
     container.appendChild(p1);
   }
 
@@ -1640,7 +1636,7 @@
     // by navigating away. The comparison rendered just above still shows
     // the real NEW BEST/PREVIOUS BEST split even though the save behind it
     // already happened.
-    var priorBest = board.find(function (e) { return !e.isSeed && e.playerId === MY_PLAYER_ID; });
+    var priorBest = myBestEntry();
     var isNewBest = !priorBest || finalMs < priorBest.finalMs;
     var savedName = loadLastName();
     if (isNewBest && savedName) {
@@ -1921,10 +1917,12 @@
     // there's nothing left to add here.
     var finalMs = round.elapsedMs;
 
-    var best = loadBest();
-    var isNewBest = best.bestTimeMs == null || finalMs < best.bestTimeMs;
-    saveBest({ bestTimeMs: best.bestTimeMs == null ? finalMs : Math.min(best.bestTimeMs, finalMs) });
-
+    // Same real leaderboard entry revealRankAndLeaderboard checks below to
+    // decide whether to auto-save — one fact, not two independent guesses
+    // at "is this a new best" (see myBestEntry's own comment for the bug
+    // this replaced).
+    var priorBest = myBestEntry();
+    var isNewBest = !priorBest || finalMs < priorBest.finalMs;
     el.newBestBadge.classList.toggle('hidden', !isNewBest);
 
     showScreen('end');
@@ -2013,9 +2011,27 @@
 
   ensureSeedLeaderboard();
   MY_PLAYER_ID = ensurePlayerIdentity();
-  renderBestRow(el.bestRow);
-  renderRecordRow();
-  showScreen('start');
+
+  function refreshStartScreen() {
+    ensureSeedLeaderboard();
+    renderBestRow(el.bestRow);
+    renderRecordRow();
+    showScreen('start');
+  }
+
+  // Feedback, 2026-09-16 (Ben, live): "my best does not match when I view
+  // leaderboard vs splash screen" — a page restored from the browser's
+  // back/forward cache (bfcache, e.g. tapping the browser's own back
+  // button after leaving this page) never re-runs this script at all, so
+  // whatever the "Your Best" pill already said stays frozen on screen even
+  // after a later round changes the real data underneath it. Re-rendering
+  // on a bfcache restore is what keeps it honest without needing a real
+  // reload.
+  window.addEventListener('pageshow', function (e) {
+    if (e.persisted) refreshStartScreen();
+  });
+
+  refreshStartScreen();
 })();
 </script>
 </body>
