@@ -11,6 +11,40 @@ interface WikipediaPageSummaryResponse {
   thumbnail?: { source: string }
 }
 
+// A search result title ends in "film)" for both a plain disambiguator
+// ("Clifford the Big Red Dog (film)") and a year-qualified one used when two
+// films share a title ("Pete's Dragon (1977 film)").
+const FILM_PAGE_TITLE = /\bfilm\)$/i
+
+// Picks the real film page out of Wikipedia's raw search results, rather
+// than trusting whichever one the search ranked first — a real incident
+// (feedback #169 follow-up, 2026-09-16): searching "Clifford the Big Red Dog
+// (2021) film" ranks the bare, undisambiguated "Clifford the Big Red Dog"
+// page (about Norman Bridwell's 1963 picture book) ABOVE "Clifford the Big
+// Red Dog (film)" — adding the year, exactly what identifyFilmScreening's
+// own disambiguation instruction produces, makes Wikipedia's relevance
+// ranking pick the *wrong* page more often, not less. Confirmed by direct
+// testing that a plain "<title> film" query (no year) ranks the correct
+// "(film)" page first for a single-film title, and that a year-qualified
+// query ("Pete's Dragon (1977) film") correctly ranks "(1977 film)" first
+// when two films really do share a title — so the fix isn't the query, it's
+// never trusting raw position: prefer the first *actual* film-disambiguated
+// result, and among several (a genuine title clash across two eras), prefer
+// the one whose own title contains the year `movieTitle` supplied. Falls
+// back to the raw top result when nothing looks like a real film page at
+// all (many films — anything without a competing same-named topic — are
+// simply titled bare, e.g. "Inception", with no "(film)" suffix at all).
+function pickFilmPageTitle(searchTitles: string[], yearHint: string | null): string | null {
+  if (searchTitles.length === 0) return null
+  const filmPages = searchTitles.filter((t) => FILM_PAGE_TITLE.test(t))
+  if (filmPages.length === 0) return searchTitles[0]
+  if (yearHint) {
+    const matchingYear = filmPages.find((t) => t.includes(yearHint))
+    if (matchingYear) return matchingYear
+  }
+  return filmPages[0]
+}
+
 // Looks up a film's official poster via Wikipedia's public, keyless API — no
 // secret required, unlike title-normalization.ts/resourcing.ts's Claude
 // calls. Built specifically for "Movie Night: <film>" events (see ingest.ts):
@@ -21,28 +55,33 @@ interface WikipediaPageSummaryResponse {
 // fix-2026-08-03-movie-night-posters.ts). Two calls: the legacy search API
 // resolves a bare title to the exact disambiguated page (e.g. "National
 // Treasure" alone hits the "national treasure" concept page, not the film —
-// searching "National Treasure film" finds "National Treasure (film)"); the
-// REST summary endpoint (not the legacy pageimages API, which deliberately
-// excludes non-free/fair-use images — and nearly every theatrical poster is
-// one) then returns that resolved page's real infobox poster. Best-effort
-// like every other sourcing helper in this codebase: any failure (no search
-// hit, no page thumbnail, network error) degrades to null rather than
-// throwing, so a lookup miss never blocks ingestion — image-enrichment.ts
-// falls back to its normal page-extraction path when this returns null.
+// searching "National Treasure film" finds "National Treasure (film)" among
+// the results, picked out by pickFilmPageTitle above rather than trusted to
+// rank first); the REST summary endpoint (not the legacy pageimages API,
+// which deliberately excludes non-free/fair-use images — and nearly every
+// theatrical poster is one) then returns that resolved page's real infobox
+// poster. Best-effort like every other sourcing helper in this codebase: any
+// failure (no search hit, no page thumbnail, network error) degrades to null
+// rather than throwing, so a lookup miss never blocks ingestion —
+// image-enrichment.ts falls back to its normal page-extraction path when
+// this returns null.
 export async function lookupMoviePoster(movieTitle: string): Promise<string | null> {
   try {
     const searchUrl = new URL('https://en.wikipedia.org/w/api.php')
     searchUrl.searchParams.set('action', 'query')
     searchUrl.searchParams.set('list', 'search')
     searchUrl.searchParams.set('srsearch', `${movieTitle} film`)
-    searchUrl.searchParams.set('srlimit', '1')
+    // More than 1 (2026-09-16 fix, above) — picking the right page means
+    // looking past whichever result Wikipedia's own ranking put first.
+    searchUrl.searchParams.set('srlimit', '8')
     searchUrl.searchParams.set('format', 'json')
     searchUrl.searchParams.set('origin', '*')
 
     const searchResponse = await fetchWithTimeout(searchUrl.toString(), FETCH_TIMEOUT_MS)
     if (!searchResponse || !searchResponse.ok) return null
     const searchResult = (await searchResponse.json()) as WikipediaSearchResponse
-    const pageTitle = searchResult.query?.search?.[0]?.title
+    const yearHint = movieTitle.match(/\((\d{4})\)/)?.[1] ?? null
+    const pageTitle = pickFilmPageTitle(searchResult.query?.search?.map((s) => s.title) ?? [], yearHint)
     if (!pageTitle) return null
 
     const summaryUrl = `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(pageTitle.replace(/ /g, '_'))}`

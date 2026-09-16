@@ -37,6 +37,70 @@ describe('lookupMoviePoster', () => {
     expect(fetchWithTimeoutMock.mock.calls[1][0]).toBe('https://en.wikipedia.org/api/rest_v1/page/summary/Happy_Gilmore')
   })
 
+  // Real incident (feedback #169 follow-up, 2026-09-16): Wikipedia's own
+  // search ranking put the bare "Clifford the Big Red Dog" page (the 1963
+  // picture book) ABOVE "Clifford the Big Red Dog (film)" once a year was
+  // in the query — trusting the top result picked the wrong page/poster.
+  it('prefers a "(film)"-disambiguated result over a higher-ranked bare-title page', async () => {
+    fetchWithTimeoutMock
+      .mockResolvedValueOnce(
+        jsonResponse({
+          query: {
+            search: [
+              { title: 'Clifford the Big Red Dog' },
+              { title: 'Clifford the Big Red Dog (film)' },
+              { title: 'Clifford the Big Red Dog (2019 TV series)' },
+            ],
+          },
+        }),
+      )
+      .mockResolvedValueOnce(jsonResponse({ thumbnail: { source: 'https://upload.wikimedia.org/clifford2021poster.jpg' } }))
+    const { lookupMoviePoster } = await import('./movie-poster-lookup.js')
+
+    const result = await lookupMoviePoster('Clifford the Big Red Dog')
+
+    expect(result).toBe('https://upload.wikimedia.org/clifford2021poster.jpg')
+    expect(fetchWithTimeoutMock.mock.calls[1][0]).toBe('https://en.wikipedia.org/api/rest_v1/page/summary/Clifford_the_Big_Red_Dog_(film)')
+  })
+
+  // Two real films sharing one title (a remake) — Music Box's Indoor Kids
+  // series shows the 1977 original, not the 2016 remake (the exact case
+  // fix-2026-09-05-petes-dragon-poster.ts fixed by hand).
+  it('prefers the film page matching a year hint in the given title, when several film pages exist', async () => {
+    fetchWithTimeoutMock
+      .mockResolvedValueOnce(
+        jsonResponse({
+          query: {
+            search: [
+              { title: "Pete's Dragon (2016 film)" },
+              { title: "Pete's Dragon (1977 film)" },
+              { title: "Pete's Dragon" },
+            ],
+          },
+        }),
+      )
+      .mockResolvedValueOnce(jsonResponse({ thumbnail: { source: 'https://upload.wikimedia.org/petesdragon1977.jpg' } }))
+    const { lookupMoviePoster } = await import('./movie-poster-lookup.js')
+
+    const result = await lookupMoviePoster("Pete's Dragon (1977)")
+
+    expect(result).toBe('https://upload.wikimedia.org/petesdragon1977.jpg')
+    expect(fetchWithTimeoutMock.mock.calls[1][0]).toBe("https://en.wikipedia.org/api/rest_v1/page/summary/Pete's_Dragon_(1977_film)")
+  })
+
+  it('falls back to the first film page when no result title contains the given year hint', async () => {
+    fetchWithTimeoutMock
+      .mockResolvedValueOnce(
+        jsonResponse({ query: { search: [{ title: 'Clifford the Big Red Dog' }, { title: 'Clifford the Big Red Dog (film)' }] } }),
+      )
+      .mockResolvedValueOnce(jsonResponse({ thumbnail: { source: 'https://upload.wikimedia.org/clifford2021poster.jpg' } }))
+    const { lookupMoviePoster } = await import('./movie-poster-lookup.js')
+
+    const result = await lookupMoviePoster('Clifford the Big Red Dog (2021)')
+
+    expect(result).toBe('https://upload.wikimedia.org/clifford2021poster.jpg')
+  })
+
   it('returns null when the search finds no page', async () => {
     fetchWithTimeoutMock.mockResolvedValueOnce(jsonResponse({ query: { search: [] } }))
     const { lookupMoviePoster } = await import('./movie-poster-lookup.js')
