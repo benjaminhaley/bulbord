@@ -155,6 +155,36 @@ describe('findBroaderImageSearchPages', () => {
     )
   })
 
+  // Feedback #169 follow-up (2026-09-16): an admin's own retry note is
+  // threaded into the search itself, not just corrected text fields.
+  it('includes a given admin note in the request payload', async () => {
+    createMock.mockResolvedValue(textResponse(JSON.stringify(['https://venue.example.com/poster'])))
+    const { findBroaderImageSearchPages } = await import('./web-image-search.js')
+
+    await findBroaderImageSearchPages('Fall Festival', 'A community fall festival', 'look up the official poster')
+
+    expect(createMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        messages: [{ role: 'user', content: JSON.stringify({ title: 'Fall Festival', description: 'A community fall festival', admin_note: 'look up the official poster' }) }],
+      }),
+      expect.anything(),
+    )
+  })
+
+  it('sends a null admin_note when no note is given', async () => {
+    createMock.mockResolvedValue(textResponse(JSON.stringify([])))
+    const { findBroaderImageSearchPages } = await import('./web-image-search.js')
+
+    await findBroaderImageSearchPages('Fall Festival')
+
+    expect(createMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        messages: [{ role: 'user', content: JSON.stringify({ title: 'Fall Festival', description: null, admin_note: null }) }],
+      }),
+      expect.anything(),
+    )
+  })
+
   it('filters out anything that is not a real http(s) URL', async () => {
     createMock.mockResolvedValue(textResponse(JSON.stringify(['https://real.example.com/page', 'not-a-url', 42, null])))
     const { findBroaderImageSearchPages } = await import('./web-image-search.js')

@@ -166,6 +166,7 @@ Rules:
 - Return page URLs (the article/listing/organization page itself), not direct image file links — the actual photo will be extracted from whichever page you point to.
 - Return up to 5 URLs, most likely to have a real relevant photo first.
 - If your search turns up nothing plausible, return an empty array.
+- If admin_note is given, it's a person's own specific instructions for this search (e.g. "look for the official poster," "try the venue's Instagram") — follow it closely; it takes priority over your own default approach.
 
 Respond with ONLY a JSON array of URL strings, no markdown fences, no explanation.`
 
@@ -184,7 +185,13 @@ Respond with ONLY a JSON array of URL strings, no markdown fences, no explanatio
 // each returned page that source_url itself already goes through, so a
 // hallucinated or dead page just yields no usable candidate rather than a
 // bad image slipping through unverified.
-export async function findBroaderImageSearchPages(title: string, description?: string | null): Promise<string[]> {
+// `note` (feedback #169 follow-up, 2026-09-16, "I should be able to retry
+// again with yet another note"): an admin's own free-text instructions for
+// one specific retry, threaded straight into this search — previously a
+// retry's note only ever reached corrected text fields (candidate-checks.ts's
+// admin_note), so an image-focused instruction like "look up the official
+// poster" had no way to actually change what got searched for.
+export async function findBroaderImageSearchPages(title: string, description?: string | null, note?: string | null): Promise<string[]> {
   const anthropic = getAnthropicClient()
   if (!anthropic) return []
 
@@ -196,7 +203,7 @@ export async function findBroaderImageSearchPages(title: string, description?: s
         output_config: { effort: 'low' },
         system: BROADER_SEARCH_SYSTEM_PROMPT,
         tools: [{ type: 'web_search_20260209', name: 'web_search', max_uses: 3 }],
-        messages: [{ role: 'user', content: JSON.stringify({ title, description: description ?? null }) }],
+        messages: [{ role: 'user', content: JSON.stringify({ title, description: description ?? null, admin_note: note?.trim() || null }) }],
       },
       { timeout: SEARCH_CALL_TIMEOUT_MS, maxRetries: SEARCH_CALL_MAX_RETRIES },
     )

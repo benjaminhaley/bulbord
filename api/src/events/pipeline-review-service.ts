@@ -420,14 +420,20 @@ export async function retryPipelineChecks(
     await recordRetryNote({ note, stage: 'pipeline_review', eventId, contextTitle: existing.title, userId: adminId })
   }
 
-  // Only re-search the image when it's actually one of the checks currently
-  // failing — a passing image has nothing to gain from a fresh search, and
+  // Re-search the image when it's actually one of the checks currently
+  // failing (a passing image has nothing to gain from a fresh search, and
   // re-running it anyway would just burn a real network fetch + vision call
-  // for no reason.
+  // for no reason) — OR when the admin gave an explicit note (feedback #169
+  // follow-up, 2026-09-16, "I should be able to retry again with yet
+  // another note"): once every check passes, the Retry button stays
+  // available (see PipelineReviewPage.tsx) specifically so a note like
+  // "look up a better photo" can keep being tried, and an explicit
+  // instruction always outranks the "don't redo passing work" default.
   const imageWasFailing = priorChecks ? !priorChecks.imageQuality.pass || !priorChecks.imageRelevance.pass : false
+  const shouldRetryImage = imageWasFailing || Boolean(note?.trim())
   let imageQuality = priorChecks?.imageQuality ?? { pass: true, reason: 'Not attempted', attempts: 1 }
   let imageRelevance = priorChecks?.imageRelevance ?? { pass: true, reason: 'Not attempted', attempts: 1 }
-  if (imageWasFailing) {
+  if (shouldRetryImage) {
     // enrichEventImage() doesn't fail open on its own — see
     // retryEventImageForKeptItem's own comment on why this call site needs
     // the same wrapping a fresh ingest's batch enrichEventImages() gets for
@@ -435,7 +441,7 @@ export async function retryPipelineChecks(
     try {
       ;({ imageQuality, imageRelevance } = await enrichEventImage(
         eventId,
-        { sourceUrl: existing.sourceUrl, title: merged.title, description: merged.description ?? null },
+        { sourceUrl: existing.sourceUrl, title: merged.title, description: merged.description ?? null, note },
         { scoreLogos: true, actor: adminId },
       ))
     } catch (err) {

@@ -269,6 +269,43 @@ describe('retryPipelineChecks', () => {
     expect(recordEditMock).toHaveBeenCalledWith(expect.objectContaining({ before: expect.objectContaining({ address: 'Northalsted' }), after: expect.objectContaining({ address: '3252 N Broadway' }) }))
   })
 
+  // Feedback #169 follow-up (2026-09-16, "I should be able to retry again
+  // with yet another note"): the Retry button stays available even once
+  // everything already passes, specifically so a note-guided image search
+  // can keep being tried — this only works if a note actually forces a
+  // fresh search rather than being silently skipped because nothing is
+  // currently failing.
+  it('re-searches the image when a note is given, even though every check currently passes', async () => {
+    selectResults.push([
+      {
+        title: 'Film Screening: Some Movie',
+        description: null,
+        address: '644 W Belmont Ave',
+        locationName: 'Merlo Branch Library',
+        startDate: '2026-10-10',
+        startTime: null,
+        endTime: null,
+        allDay: true,
+        sourceUrl: 'https://example.com',
+        topic: null,
+        imageUrl: 'https://example.com/img.jpg',
+        thumbnailUrl: 'https://example.com/thumb.jpg',
+        checks: priorChecksAllPassing,
+        status: 'approved',
+      },
+    ])
+    enrichEventImageMock.mockResolvedValue({ result: 'sourced', trace: [], imageQuality: PASSING_CHECK, imageRelevance: PASSING_CHECK })
+    const { retryPipelineChecks } = await import('./pipeline-review-service.js')
+
+    await retryPipelineChecks('event-1', 'admin-1', 'look up the official movie poster')
+
+    expect(enrichEventImageMock).toHaveBeenCalledWith(
+      'event-1',
+      expect.objectContaining({ title: 'Film Screening: Some Movie', note: 'look up the official movie poster' }),
+      { scoreLogos: true, actor: 'admin-1' },
+    )
+  })
+
   it('re-searches the image only when the image checks are the ones currently failing, and auto-publishes once everything passes', async () => {
     const priorChecks = { ...priorChecksAllPassing, imageQuality: { pass: false, reason: 'object missing', attempts: 1 }, imageRelevance: { pass: false, reason: 'object missing', attempts: 1 } }
     selectResults.push([

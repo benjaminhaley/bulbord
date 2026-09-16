@@ -477,39 +477,43 @@ export function PipelineReviewPage() {
                 </IonButton>
                 {/* A general "just try again" action (Ben, 2026-09-13:
                     "several events... should have just caused them to be
-                    rerun and tried again") — visible directly whenever
-                    there's something failing, not tucked inside Edit the
-                    way the narrower Retry image sub-action still is.
-                    Reruns the same bounded self-healing pipeline a fresh
-                    ingestion already gets: a text-check retry, plus a
-                    fresh image search if the image checks are the ones
-                    currently failing. Reuses the same note field above
-                    (already shared by Approve/Reject) as Retry's own
-                    instructions field (feedback #165, 2026-09-14) — typed
-                    text gets sent through to the retry itself and, once
-                    given, recorded into a shared, growing library of retry
-                    strategies future retries (on any event) get shown too. */}
-                {item.pipeline_checks_passed === false && (
-                  <IonButton
-                    size="small"
-                    fill="outline"
-                    disabled={busyId === item.id}
-                    onClick={async () => {
-                      setBusyId(item.id)
-                      try {
-                        const result = await retryPipelineEventChecks(item.id, notes[item.id])
-                        setToast(result.allPassing ? 'Retried — now passing' : 'Retried — some issues remain')
-                        load()
-                      } catch (err) {
-                        setToast(err instanceof Error ? err.message : 'Could not retry')
-                      } finally {
-                        setBusyId(null)
-                      }
-                    }}
-                  >
-                    Retry
-                  </IonButton>
-                )}
+                    rerun and tried again") — not tucked inside Edit the way
+                    the narrower Retry image sub-action still is. Reruns the
+                    same bounded self-healing pipeline a fresh ingestion
+                    already gets: a text-check retry, plus a fresh image
+                    search whenever the image checks are currently failing
+                    OR a note is given (see retryPipelineChecks's own
+                    comment). Reuses the same note field above (already
+                    shared by Approve/Reject) as Retry's own instructions
+                    field (feedback #165, 2026-09-14) — typed text gets sent
+                    through to the retry itself and, once given, recorded
+                    into a shared, growing library of retry strategies
+                    future retries (on any event) get shown too. Always
+                    available, not just while something's failing (feedback
+                    #169 follow-up, 2026-09-16, "I should be able to retry
+                    again with yet another note") — same "a decision can
+                    always be changed" posture Approve/Reject/Edit already
+                    have above, and a note-guided image retry is a genuinely
+                    useful ask even once every check already passes. */}
+                <IonButton
+                  size="small"
+                  fill="outline"
+                  disabled={busyId === item.id}
+                  onClick={async () => {
+                    setBusyId(item.id)
+                    try {
+                      const result = await retryPipelineEventChecks(item.id, notes[item.id])
+                      setToast(result.allPassing ? 'Retried — now passing' : 'Retried — some issues remain')
+                      load()
+                    } catch (err) {
+                      setToast(err instanceof Error ? err.message : 'Could not retry')
+                    } finally {
+                      setBusyId(null)
+                    }
+                  }}
+                >
+                  Retry
+                </IonButton>
                 {editingId === item.id && (
                   <IonButton
                     size="small"

@@ -147,6 +147,10 @@ interface ImageSearchOptions {
   overrideImageUrl?: string | null
   title?: string
   description?: string | null
+  // An admin's own free-text instructions for one specific retry (feedback
+  // #169 follow-up, 2026-09-16 — see this file's own findImageCandidate
+  // comment on how it's used). Undefined/empty for every non-retry caller.
+  note?: string | null
 }
 
 interface ChosenCandidate {
@@ -185,7 +189,7 @@ interface ChosenCandidate {
 // so this reliably surfaces as an honest "couldn't find a photo" instead.
 async function findImageCandidate(
   eventId: string,
-  { sourceUrl, overrideImageUrl, title, description }: ImageSearchOptions,
+  { sourceUrl, overrideImageUrl, title, description, note }: ImageSearchOptions,
   { scoreLogos = false }: { scoreLogos?: boolean } = {},
 ): Promise<{ chosen: ChosenCandidate | null; trace: ImageCandidateTrace[] }> {
   const trace: ImageCandidateTrace[] = []
@@ -257,6 +261,39 @@ async function findImageCandidate(
       }
     }
 
+    // Feedback #169 (2026-09-16): Commons is a real stock-photo library, but
+    // it's thin for anything hyper-local — a specific school's event, a
+    // specific neighborhood festival — since it can only ever hold generic
+    // stock photos of the general subject, never a photo of the actual
+    // thing. This broader tier uses a real web search (see
+    // findBroaderImageSearchPages's own header) to find candidate PAGES
+    // that plausibly have a genuine, specific photo, then runs each one
+    // through the exact same extractPageImageCandidates()/download/quality/
+    // relevance pipeline source_url itself already goes through — a
+    // hallucinated or dead page just yields no usable candidate rather than
+    // a bad image slipping through. `note` is threaded straight into the
+    // search itself (not just corrected text fields, the only place a
+    // retry's own note used to reach) so "look up X" from an admin actually
+    // changes what gets searched for, not just re-runs the same automatic
+    // guess a second time.
+    async function tryBroaderSearch(): Promise<ChosenCandidate | null> {
+      for (const pageUrl of await findBroaderImageSearchPages(title!, description, note)) {
+        const pageCandidates = await extractPageImageCandidates(pageUrl)
+        const fromBroaderSearch = await tryCandidates(pageCandidates.filter((c) => !c.isLogo).map((c) => ({ url: c.url, isLogo: false })))
+        if (fromBroaderSearch) return fromBroaderSearch
+      }
+      return null
+    }
+
+    // A real, explicit instruction from a person outranks every automatic
+    // guess below it — tried first, ahead of even the plain Commons search,
+    // when one is given. Otherwise the ordering is unchanged: Commons, then
+    // this same broader search un-guided.
+    if (note?.trim()) {
+      const fromNoteGuidedSearch = await tryBroaderSearch()
+      if (fromNoteGuidedSearch) return { chosen: fromNoteGuidedSearch, trace }
+    }
+
     // Self-healing (Pipeline Review v2, 2026-09-06, "the algorithm should be
     // searching harder"): try every query tier searchWebImageQueryTiers
     // yields (most specific first), not just the first one that happened to
@@ -271,20 +308,8 @@ async function findImageCandidate(
       if (fromWeb) return { chosen: fromWeb, trace }
     }
 
-    // Feedback #169 (2026-09-16): Commons above is a real stock-photo
-    // library, but it's thin for anything hyper-local — a specific school's
-    // event, a specific neighborhood festival — since it can only ever hold
-    // generic stock photos of the general subject, never a photo of the
-    // actual thing. This broader tier uses a real web search (see
-    // findBroaderImageSearchPages's own header) to find candidate PAGES
-    // that plausibly have a genuine, specific photo, then runs each one
-    // through the exact same extractPageImageCandidates()/download/quality/
-    // relevance pipeline source_url itself already goes through — a
-    // hallucinated or dead page just yields no usable candidate rather than
-    // a bad image slipping through.
-    for (const pageUrl of await findBroaderImageSearchPages(title, description)) {
-      const pageCandidates = await extractPageImageCandidates(pageUrl)
-      const fromBroaderSearch = await tryCandidates(pageCandidates.filter((c) => !c.isLogo).map((c) => ({ url: c.url, isLogo: false })))
+    if (!note?.trim()) {
+      const fromBroaderSearch = await tryBroaderSearch()
       if (fromBroaderSearch) return { chosen: fromBroaderSearch, trace }
     }
   }

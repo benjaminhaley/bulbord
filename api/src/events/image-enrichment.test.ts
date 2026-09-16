@@ -415,10 +415,58 @@ describe('enrichEventImage', () => {
 
     expect(result.result).toBe('sourced')
     expect(searchWebImageMock).toHaveBeenCalled()
-    expect(findBroaderImageSearchPagesMock).toHaveBeenCalledWith('Some Event', undefined)
+    expect(findBroaderImageSearchPagesMock).toHaveBeenCalledWith('Some Event', undefined, undefined)
     expect(extractPageImageCandidatesMock).toHaveBeenCalledWith('https://news.example.com/coverage')
     expect(fetchExternalImageMock).toHaveBeenCalledWith('https://news.example.com/photo.jpg')
     expect(fetchExternalImageMock).not.toHaveBeenCalledWith('https://example.com/logo.png')
+  })
+
+  // Feedback #169 follow-up (2026-09-16, "I should be able to retry again
+  // with yet another note"): an admin's explicit instruction outranks even
+  // the plain Commons search — tried first, and the note text itself is
+  // threaded into the search, not just re-running the same automatic guess.
+  it('tries a note-guided broader search before Commons, when a note is given', async () => {
+    extractPageImageCandidatesMock
+      .mockResolvedValueOnce([]) // source page extraction (no content candidates)
+      .mockResolvedValueOnce([{ url: 'https://venue.example.com/poster.jpg', isLogo: false }]) // note-guided page extraction
+    findBroaderImageSearchPagesMock.mockResolvedValue(['https://venue.example.com/announcement'])
+    fetchExternalImageMock.mockResolvedValueOnce(Buffer.from('found-bytes'))
+    isLowQualityImageMock.mockResolvedValueOnce(false)
+    const { enrichEventImage } = await import('./image-enrichment.js')
+
+    const result = await enrichEventImage('event-1', {
+      sourceUrl: 'https://example.com/page',
+      overrideImageUrl: null,
+      title: 'Some Event',
+      description: 'A community event.',
+      note: 'look up the official poster',
+    })
+
+    expect(result.result).toBe('sourced')
+    expect(findBroaderImageSearchPagesMock).toHaveBeenCalledWith('Some Event', 'A community event.', 'look up the official poster')
+    expect(fetchExternalImageMock).toHaveBeenCalledWith('https://venue.example.com/poster.jpg')
+    expect(searchWebImageMock).not.toHaveBeenCalled()
+  })
+
+  it('falls through to Commons search when the note-guided search finds nothing, without a second unguided attempt', async () => {
+    findBroaderImageSearchPagesMock.mockResolvedValue([])
+    searchWebImageMock.mockResolvedValue(['https://upload.wikimedia.org/found.jpg'])
+    fetchExternalImageMock.mockResolvedValueOnce(Buffer.from('found-bytes'))
+    isLowQualityImageMock.mockResolvedValueOnce(false)
+    const { enrichEventImage } = await import('./image-enrichment.js')
+
+    const result = await enrichEventImage('event-1', {
+      sourceUrl: 'https://example.com/page',
+      overrideImageUrl: null,
+      title: 'Some Event',
+      note: 'look up the official poster',
+    })
+
+    expect(result.result).toBe('sourced')
+    expect(fetchExternalImageMock).toHaveBeenCalledWith('https://upload.wikimedia.org/found.jpg')
+    // Only the one note-guided attempt — no redundant second, unguided call
+    // once Commons already found something.
+    expect(findBroaderImageSearchPagesMock).toHaveBeenCalledTimes(1)
   })
 
   // Feedback #169 follow-up (2026-09-16): a well-known film's real poster
