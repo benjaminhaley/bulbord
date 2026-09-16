@@ -9,6 +9,7 @@ const scoreImageRelevanceMock = vi.fn()
 const uploadImageMock = vi.fn()
 const getImageObjectMock = vi.fn()
 const searchWebImageMock = vi.fn()
+const findBroaderImageSearchPagesMock = vi.fn()
 const updateMock = vi.fn()
 const setMock = vi.fn(() => ({ where: updateMock }))
 // Consumed, in call order, by both isSharedListingPage's and
@@ -33,6 +34,7 @@ vi.mock('../uploads/web-image-search.js', () => ({
   searchWebImageQueryTiers: async function* (title: string, description?: string | null) {
     yield await searchWebImageMock(title, description)
   },
+  findBroaderImageSearchPages: findBroaderImageSearchPagesMock,
 }))
 vi.mock('../db/client.js', () => ({
   db: {
@@ -45,20 +47,27 @@ vi.mock('../db/client.js', () => ({
   },
 }))
 
-describe('enrichEventImage', () => {
-  beforeEach(() => {
-    extractPageImageCandidatesMock.mockReset().mockResolvedValue([])
-    fetchExternalImageMock.mockReset()
-    isLowQualityImageMock.mockReset()
-    scoreImageRelevanceMock.mockReset().mockResolvedValue({ keep: true, reason: null })
-    uploadImageMock.mockReset().mockResolvedValue({ key: 'events/final.jpg', thumbnailKey: 'events/final-thumb.jpg' })
-    getImageObjectMock.mockReset()
-    searchWebImageMock.mockReset().mockResolvedValue([])
-    setMock.mockClear()
-    updateMock.mockReset()
-    dbQueryResults.length = 0
-  })
+// A plain, file-scoped beforeEach (not nested inside any one describe) —
+// setMock/updateMock are shared module-level mocks that both the
+// enrichEventImage AND findCandidateEventImage describe blocks below
+// exercise (the latter only to assert they were NEVER called), so a reset
+// scoped to just one describe left a real call from that describe's own
+// last test bleeding into the next describe's very first assertion.
+beforeEach(() => {
+  extractPageImageCandidatesMock.mockReset().mockResolvedValue([])
+  fetchExternalImageMock.mockReset()
+  isLowQualityImageMock.mockReset()
+  scoreImageRelevanceMock.mockReset().mockResolvedValue({ keep: true, reason: null })
+  uploadImageMock.mockReset().mockResolvedValue({ key: 'events/final.jpg', thumbnailKey: 'events/final-thumb.jpg' })
+  getImageObjectMock.mockReset()
+  searchWebImageMock.mockReset().mockResolvedValue([])
+  findBroaderImageSearchPagesMock.mockReset().mockResolvedValue([])
+  setMock.mockClear()
+  updateMock.mockReset()
+  dbQueryResults.length = 0
+})
 
+describe('enrichEventImage', () => {
   it('skips a low-quality content candidate and sources from the next one down the list', async () => {
     extractPageImageCandidatesMock.mockResolvedValue([
       { url: 'https://example.com/tiny-badge.jpg', isLogo: false },
@@ -294,6 +303,34 @@ describe('enrichEventImage', () => {
     expect(setMock).toHaveBeenCalledWith(expect.objectContaining({ sourceImageUrl: 'https://example.com/real-photo.jpg' }))
   })
 
+  // Feedback #169 (2026-09-16): the full candidate trace is persisted onto
+  // the event row itself — chosen or not — so a single event's own search
+  // history is directly queryable without knowing which ingestion batch
+  // touched it.
+  it('persists the full candidate trace onto the event row when an image is found', async () => {
+    extractPageImageCandidatesMock.mockResolvedValue([{ url: 'https://example.com/real-photo.jpg', isLogo: false }])
+    fetchExternalImageMock.mockResolvedValueOnce(Buffer.from('real-photo-bytes'))
+    isLowQualityImageMock.mockResolvedValueOnce(false)
+    const { enrichEventImage } = await import('./image-enrichment.js')
+
+    await enrichEventImage('event-1', { sourceUrl: 'https://example.com/page', overrideImageUrl: null, title: 'Some Event' })
+
+    expect(setMock).toHaveBeenCalledWith(
+      expect.objectContaining({ imageSearchTrace: [{ url: 'https://example.com/real-photo.jpg', outcome: 'chosen' }] }),
+    )
+  })
+
+  it('persists the full candidate trace onto the event row even when nothing is found', async () => {
+    extractPageImageCandidatesMock.mockResolvedValue([{ url: 'https://example.com/broken.jpg', isLogo: false }])
+    fetchExternalImageMock.mockResolvedValueOnce(null)
+    const { enrichEventImage } = await import('./image-enrichment.js')
+
+    const result = await enrichEventImage('event-1', { sourceUrl: 'https://example.com/page', overrideImageUrl: null })
+
+    expect(result.result).toBe('none')
+    expect(setMock).toHaveBeenCalledWith({ imageSearchTrace: [{ url: 'https://example.com/broken.jpg', outcome: 'download_failed' }] })
+  })
+
   it('skips a page-extracted candidate that fails the content-relevance score, and falls back to web search', async () => {
     // Feedback #158: a real, well-formed, correctly-sized photo of the
     // wrong thing (a hosting org's own generic branding photo) used to
@@ -344,6 +381,54 @@ describe('enrichEventImage', () => {
 
     expect(result.result).toBe('none')
     expect(searchWebImageMock).not.toHaveBeenCalled()
+    expect(findBroaderImageSearchPagesMock).not.toHaveBeenCalled()
+  })
+
+  // Feedback #169 (2026-09-16): Wikimedia Commons alone is thin for anything
+  // hyper-local, so a broader real web search (via findBroaderImageSearchPages)
+  // runs after Commons and before the last-resort logo tier — reusing the
+  // exact same extractPageImageCandidates()/quality/relevance pipeline
+  // source_url itself goes through, against whatever pages that search finds.
+  it('tries the broader web search only after Commons search is exhausted, before the logo tier', async () => {
+    extractPageImageCandidatesMock
+      .mockResolvedValueOnce([{ url: 'https://example.com/logo.png', isLogo: true }]) // source page extraction
+      .mockResolvedValueOnce([{ url: 'https://news.example.com/photo.jpg', isLogo: false }]) // broader-search page extraction
+    searchWebImageMock.mockResolvedValue([])
+    findBroaderImageSearchPagesMock.mockResolvedValue(['https://news.example.com/coverage'])
+    fetchExternalImageMock.mockResolvedValueOnce(Buffer.from('found-bytes'))
+    isLowQualityImageMock.mockResolvedValueOnce(false)
+    const { enrichEventImage } = await import('./image-enrichment.js')
+
+    const result = await enrichEventImage('event-1', {
+      sourceUrl: 'https://example.com/page',
+      overrideImageUrl: null,
+      title: 'Some Event',
+    })
+
+    expect(result.result).toBe('sourced')
+    expect(searchWebImageMock).toHaveBeenCalled()
+    expect(findBroaderImageSearchPagesMock).toHaveBeenCalledWith('Some Event', undefined)
+    expect(extractPageImageCandidatesMock).toHaveBeenCalledWith('https://news.example.com/coverage')
+    expect(fetchExternalImageMock).toHaveBeenCalledWith('https://news.example.com/photo.jpg')
+    expect(fetchExternalImageMock).not.toHaveBeenCalledWith('https://example.com/logo.png')
+  })
+
+  it('falls through to the logo tier when the broader search finds nothing usable', async () => {
+    extractPageImageCandidatesMock.mockResolvedValue([{ url: 'https://example.com/logo.png', isLogo: true }])
+    searchWebImageMock.mockResolvedValue([])
+    findBroaderImageSearchPagesMock.mockResolvedValue([])
+    fetchExternalImageMock.mockResolvedValueOnce(Buffer.from('logo-bytes'))
+    isLowQualityImageMock.mockResolvedValueOnce(false)
+    const { enrichEventImage } = await import('./image-enrichment.js')
+
+    const result = await enrichEventImage('event-1', {
+      sourceUrl: 'https://example.com/page',
+      overrideImageUrl: null,
+      title: 'Some Event',
+    })
+
+    expect(result.result).toBe('sourced')
+    expect(fetchExternalImageMock).toHaveBeenCalledWith('https://example.com/logo.png')
   })
 })
 

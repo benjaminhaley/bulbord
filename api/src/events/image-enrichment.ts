@@ -9,7 +9,7 @@ import { fetchExternalImage } from '../uploads/fetch-external-image.js'
 import { scoreImageRelevance } from '../uploads/image-relevance.js'
 import { isLowQualityImage } from '../uploads/image-quality.js'
 import { getImageObject, imageUrl, uploadImage } from '../uploads/storage.js'
-import { searchWebImageQueryTiers } from '../uploads/web-image-search.js'
+import { findBroaderImageSearchPages, searchWebImageQueryTiers } from '../uploads/web-image-search.js'
 import type { CheckResult } from './candidate-checks.js'
 import { SEARCH_STAGE_DEADLINE_MS, withDeadline } from './extraction-shared.js'
 import { recordEdit } from '../edit-history/service.js'
@@ -251,6 +251,23 @@ async function findImageCandidate(
       const fromWeb = await tryCandidates(urls.map((url) => ({ url, isLogo: false })))
       if (fromWeb) return { chosen: fromWeb, trace }
     }
+
+    // Feedback #169 (2026-09-16): Commons above is a real stock-photo
+    // library, but it's thin for anything hyper-local — a specific school's
+    // event, a specific neighborhood festival — since it can only ever hold
+    // generic stock photos of the general subject, never a photo of the
+    // actual thing. This broader tier uses a real web search (see
+    // findBroaderImageSearchPages's own header) to find candidate PAGES
+    // that plausibly have a genuine, specific photo, then runs each one
+    // through the exact same extractPageImageCandidates()/download/quality/
+    // relevance pipeline source_url itself already goes through — a
+    // hallucinated or dead page just yields no usable candidate rather than
+    // a bad image slipping through.
+    for (const pageUrl of await findBroaderImageSearchPages(title, description)) {
+      const pageCandidates = await extractPageImageCandidates(pageUrl)
+      const fromBroaderSearch = await tryCandidates(pageCandidates.filter((c) => !c.isLogo).map((c) => ({ url: c.url, isLogo: false })))
+      if (fromBroaderSearch) return { chosen: fromBroaderSearch, trace }
+    }
   }
 
   const fromLogo = await tryCandidates(logoCandidates)
@@ -315,7 +332,20 @@ export async function enrichEventImage(
 ): Promise<ImageEnrichmentResult> {
   const { chosen, trace } = await findImageCandidate(eventId, options, { scoreLogos })
   const { imageQuality, imageRelevance } = deriveImageChecks(chosen, trace)
-  if (!chosen) return { result: 'none', trace, imageQuality, imageRelevance }
+
+  // Feedback #169 (2026-09-16): persisted on the row itself — not just
+  // logged into events_ingested's own events_log entry — so a single
+  // event's own search history ("what did we actually try, and why did
+  // each candidate fail") is directly queryable (admin panel, plain SQL)
+  // without knowing which batch ingestion run touched it, and so a member
+  // self-service post or an explicit retry (neither of which ever went
+  // through ingestEvents()) gets the same debuggability a sourced event
+  // already had. Written here for the "nothing found" case; the "chosen"
+  // case below folds it into that same update instead of a second write.
+  if (!chosen) {
+    await db.update(events).set({ imageSearchTrace: trace }).where(eq(events.id, eventId))
+    return { result: 'none', trace, imageQuality, imageRelevance }
+  }
 
   // The full editable-field row, not just image_url/thumbnail_url — a
   // history entry needs a *complete* before/after snapshot (so "view this
@@ -351,6 +381,7 @@ export async function enrichEventImage(
       imageUrl: newImageUrl,
       thumbnailUrl: newThumbnailUrl,
       sourceImageUrl: chosen.sourceImageUrl,
+      imageSearchTrace: trace,
       updatedAt: new Date(),
     })
     .where(eq(events.id, eventId))

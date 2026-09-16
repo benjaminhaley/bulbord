@@ -108,6 +108,19 @@ export const events = pgTable('events', {
   // { titleQuality, descriptionQuality, locationQuality }, each
   // { pass: boolean, reason: string } — see candidate-validation.ts.
   pipelineQualityChecks: jsonb('pipeline_quality_checks'),
+  // Feedback #169 (2026-09-16): the full list of every image candidate the
+  // most recent enrichEventImage() run considered for THIS event — same
+  // shape as the ImageCandidateTrace[] that's always been written into
+  // events_log's events_ingested rows (image-enrichment.ts), just also kept
+  // on the row itself so any single event's own search history is directly
+  // queryable (admin panel, plain SQL) without grepping a batch log for the
+  // right eventId. Overwritten on every enrichment attempt (initial
+  // ingestion, a member post, an explicit retry) — there's no need to keep
+  // older attempts once a newer one has run, since enrichEventImage is only
+  // ever re-invoked when the event still lacks a real image or someone
+  // explicitly asked for a retry, never as a redundant re-check of an
+  // already-successful search.
+  imageSearchTrace: jsonb('image_search_trace'),
   ...timestamps,
 })
 

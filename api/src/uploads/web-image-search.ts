@@ -1,4 +1,5 @@
 import { getAnthropicClient, stripJsonCodeFence } from '../claude.js'
+import { SEARCH_CALL_MAX_RETRIES, SEARCH_CALL_TIMEOUT_MS } from '../events/extraction-shared.js'
 import { fetchWithTimeout } from './fetch-with-timeout.js'
 
 const FETCH_TIMEOUT_MS = 10_000
@@ -153,5 +154,69 @@ export async function* searchWebImageQueryTiers(title: string, description?: str
   } catch {
     // Nothing more to yield — same fail-open posture as every other
     // Claude-backed step in this pipeline.
+  }
+}
+
+const BROADER_SEARCH_SYSTEM_PROMPT = `You help find a real, specific photo of an event or venue using live web search.
+
+Given an event's title and description, search the web for pages that likely show an actual, specific photo of this event, the group/organization running it, or its venue — e.g. the host's own site, local news coverage, a community calendar listing, a past year's recap, a social media post. Prefer the most specific, most likely-to-have-a-real-photo pages your search actually returns.
+
+Rules:
+- Only return page URLs that genuinely appeared in your search results — never invent or guess a URL.
+- Return page URLs (the article/listing/organization page itself), not direct image file links — the actual photo will be extracted from whichever page you point to.
+- Return up to 5 URLs, most likely to have a real relevant photo first.
+- If your search turns up nothing plausible, return an empty array.
+
+Respond with ONLY a JSON array of URL strings, no markdown fences, no explanation.`
+
+// Feedback #169 (2026-09-16, "run a broader Google-based search"): Wikimedia
+// Commons' own search above is a real, keyless stock-photo library, but it's
+// thin for anything hyper-local (a specific school, a specific neighborhood
+// festival) — it can only ever return generic stock photos of the general
+// subject, never a photo of the actual thing. This reuses the same
+// web_search tool already paid for and exercised elsewhere in this codebase
+// (description-extraction.ts, photo-extraction.ts, resourcing.ts) to do a
+// genuine broader web search, deliberately asking for candidate PAGE URLs
+// rather than trusting the model to name a real image file URL from memory
+// (a model can describe a photo it "knows about" without the URL actually
+// resolving to it) — the caller (image-enrichment.ts) runs the exact same
+// extractPageImageCandidates()/download/quality/relevance pipeline against
+// each returned page that source_url itself already goes through, so a
+// hallucinated or dead page just yields no usable candidate rather than a
+// bad image slipping through unverified.
+export async function findBroaderImageSearchPages(title: string, description?: string | null): Promise<string[]> {
+  const anthropic = getAnthropicClient()
+  if (!anthropic) return []
+
+  try {
+    const response = await anthropic.messages.create(
+      {
+        model: 'claude-opus-5',
+        max_tokens: 1000,
+        output_config: { effort: 'low' },
+        system: BROADER_SEARCH_SYSTEM_PROMPT,
+        tools: [{ type: 'web_search_20260209', name: 'web_search', max_uses: 3 }],
+        messages: [{ role: 'user', content: JSON.stringify({ title, description: description ?? null }) }],
+      },
+      { timeout: SEARCH_CALL_TIMEOUT_MS, maxRetries: SEARCH_CALL_MAX_RETRIES },
+    )
+
+    if (response.stop_reason === 'refusal') return []
+    const block = [...response.content].reverse().find((b) => b.type === 'text')
+    const raw = block?.type === 'text' ? block.text.trim() : ''
+    if (!raw) return []
+
+    const parsed = JSON.parse(stripJsonCodeFence(raw))
+    if (!Array.isArray(parsed)) return []
+    return parsed.filter((u): u is string => {
+      if (typeof u !== 'string') return false
+      try {
+        return ['http:', 'https:'].includes(new URL(u).protocol)
+      } catch {
+        return false
+      }
+    })
+  } catch {
+    return []
   }
 }

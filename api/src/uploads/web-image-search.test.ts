@@ -134,3 +134,60 @@ describe('searchWebImage', () => {
     expect(new URL(fetchWithTimeoutMock.mock.calls[0][0] as string).searchParams.get('srsearch')).toBe('Curriculum Night')
   })
 })
+
+describe('findBroaderImageSearchPages', () => {
+  beforeEach(() => {
+    vi.stubEnv('ANTHROPIC_API_KEY', 'test-key')
+    createMock.mockReset()
+    vi.resetModules()
+  })
+
+  it('returns the real page URLs the model found via web search', async () => {
+    createMock.mockResolvedValue(textResponse(JSON.stringify(['https://news.example.com/article', 'https://venue.example.com/events'])))
+    const { findBroaderImageSearchPages } = await import('./web-image-search.js')
+
+    const result = await findBroaderImageSearchPages('Fall Festival', 'A community fall festival')
+
+    expect(result).toEqual(['https://news.example.com/article', 'https://venue.example.com/events'])
+    expect(createMock).toHaveBeenCalledWith(
+      expect.objectContaining({ tools: [{ type: 'web_search_20260209', name: 'web_search', max_uses: 3 }] }),
+      expect.anything(),
+    )
+  })
+
+  it('filters out anything that is not a real http(s) URL', async () => {
+    createMock.mockResolvedValue(textResponse(JSON.stringify(['https://real.example.com/page', 'not-a-url', 42, null])))
+    const { findBroaderImageSearchPages } = await import('./web-image-search.js')
+
+    expect(await findBroaderImageSearchPages('Fall Festival')).toEqual(['https://real.example.com/page'])
+  })
+
+  it('returns an empty array when no API key is configured', async () => {
+    vi.stubEnv('ANTHROPIC_API_KEY', '')
+    const { findBroaderImageSearchPages } = await import('./web-image-search.js')
+
+    expect(await findBroaderImageSearchPages('Fall Festival')).toEqual([])
+    expect(createMock).not.toHaveBeenCalled()
+  })
+
+  it('returns an empty array on a refusal', async () => {
+    createMock.mockResolvedValue({ stop_reason: 'refusal', content: [] })
+    const { findBroaderImageSearchPages } = await import('./web-image-search.js')
+
+    expect(await findBroaderImageSearchPages('Fall Festival')).toEqual([])
+  })
+
+  it('returns an empty array and does not throw on an unexpected error', async () => {
+    createMock.mockRejectedValue(new Error('boom'))
+    const { findBroaderImageSearchPages } = await import('./web-image-search.js')
+
+    expect(await findBroaderImageSearchPages('Fall Festival')).toEqual([])
+  })
+
+  it('returns an empty array when the model response is malformed JSON', async () => {
+    createMock.mockResolvedValue(textResponse('not json'))
+    const { findBroaderImageSearchPages } = await import('./web-image-search.js')
+
+    expect(await findBroaderImageSearchPages('Fall Festival')).toEqual([])
+  })
+})
