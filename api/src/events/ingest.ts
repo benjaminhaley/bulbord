@@ -7,14 +7,7 @@ import { uploadPlaceholderImage } from '../uploads/placeholder.js'
 import { checkDateQuality, checkTimeQuality, buildDuplicateCheck, runTextChecksWithRetry, scoreTextChecks, type PipelineChecks } from './candidate-checks.js'
 import { findLikelyDuplicateEvent } from './duplicate-detection.js'
 import { enrichEventImages } from './image-enrichment.js'
-import { lookupMoviePoster } from './movie-poster-lookup.js'
 import { simplifyTitle } from './title-normalization.js'
-
-// Matches the "Movie Night: <film>" convention used for Gallagher Way movie
-// screenings (see seed-2026-07-31-new-sources.ts and
-// update-2026-08-03-manual-sourcing-pass.ts) — if title simplification's own
-// output convention changes later, this needs updating to match.
-const MOVIE_NIGHT_TITLE_PATTERN = /^Movie Night: (.+)$/
 
 export interface CandidateEvent {
   title: string
@@ -180,19 +173,18 @@ export async function ingestEvents(candidates: CandidateEvent[], { sourceId, act
     sourceText,
   )
 
-  // A movie-night candidate's own source_url is usually one shared listing
-  // page (see movie-poster-lookup.ts) — prefer the film's real poster over
-  // whatever generic image that page yields, unless a candidate already
-  // supplies its own hand-verified imageUrl.
-  const toEnrich = await Promise.all(
-    toFinalize.map(async (f, i) => {
-      const corrected = textResults[i].correctedFields
-      const description = corrected.description ?? f.description
-      const movieMatch = f.candidate.imageUrl ? null : f.title.match(MOVIE_NIGHT_TITLE_PATTERN)
-      const imageUrl = f.candidate.imageUrl ?? (movieMatch ? await lookupMoviePoster(movieMatch[1]) : null)
-      return { id: f.id, sourceUrl: f.sourceUrl, imageUrl, title: corrected.title ?? f.title, description }
-    }),
-  )
+  // Movie-poster lookup (a movie-night candidate's own source_url is usually
+  // one shared listing page with no per-occurrence photo of its own) now
+  // lives inside enrichEventImages -> findImageCandidate itself (feedback
+  // #169 follow-up, 2026-09-16 — see movie-poster-lookup.ts's own header),
+  // so every entry point gets it, not just this one — nothing more to do
+  // here beyond passing each candidate's own hand-verified imageUrl through
+  // as an override when one was already supplied.
+  const toEnrich = toFinalize.map((f, i) => {
+    const corrected = textResults[i].correctedFields
+    const description = corrected.description ?? f.description
+    return { id: f.id, sourceUrl: f.sourceUrl, imageUrl: f.candidate.imageUrl ?? null, title: corrected.title ?? f.title, description }
+  })
   const { sourced, none, traces, checksByEventId } = await enrichEventImages(toEnrich)
 
   const today = todayInChicago()

@@ -12,6 +12,7 @@ import { getImageObject, imageUrl, uploadImage } from '../uploads/storage.js'
 import { findBroaderImageSearchPages, searchWebImageQueryTiers } from '../uploads/web-image-search.js'
 import type { CheckResult } from './candidate-checks.js'
 import { SEARCH_STAGE_DEADLINE_MS, withDeadline } from './extraction-shared.js'
+import { identifyFilmScreening, lookupMoviePoster } from './movie-poster-lookup.js'
 import { recordEdit } from '../edit-history/service.js'
 import { snapshotEventForHistory } from './serialize.js'
 
@@ -238,6 +239,24 @@ async function findImageCandidate(
   if (fromContent) return { chosen: fromContent, trace }
 
   if (title) {
+    // Feedback #169 follow-up (2026-09-16): a specific, well-known film
+    // being screened has a real, authoritative official poster (see
+    // movie-poster-lookup.ts's own header for the full incident history of
+    // why this replaced a brittle title-prefix regex) — far more reliable
+    // than a generic keyword search, so it's tried before both web-search
+    // tiers below, not after. identifyFilmScreening reads title+description
+    // together (not just a naming convention), so it generalizes past
+    // "Movie Night: <film>" to any phrasing ("Film Screening: <film>", a
+    // description that just names the film) a source might use.
+    const filmTitle = await identifyFilmScreening(title, description)
+    if (filmTitle) {
+      const posterUrl = await lookupMoviePoster(filmTitle)
+      if (posterUrl) {
+        const fromPoster = await tryCandidates([{ url: posterUrl, isLogo: false }])
+        if (fromPoster) return { chosen: fromPoster, trace }
+      }
+    }
+
     // Self-healing (Pipeline Review v2, 2026-09-06, "the algorithm should be
     // searching harder"): try every query tier searchWebImageQueryTiers
     // yields (most specific first), not just the first one that happened to

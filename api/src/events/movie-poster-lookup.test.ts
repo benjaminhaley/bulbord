@@ -1,11 +1,22 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const fetchWithTimeoutMock = vi.fn()
+const createMock = vi.fn()
 
 vi.mock('../uploads/fetch-with-timeout.js', () => ({ fetchWithTimeout: fetchWithTimeoutMock }))
+vi.mock('@anthropic-ai/sdk', () => {
+  class MockAnthropic {
+    messages = { create: createMock }
+  }
+  return { default: MockAnthropic }
+})
 
 function jsonResponse(body: unknown, ok = true) {
   return { ok, json: async () => body }
+}
+
+function textResponse(text: string, stopReason = 'end_turn') {
+  return { stop_reason: stopReason, content: [{ type: 'text', text }] }
 }
 
 describe('lookupMoviePoster', () => {
@@ -72,5 +83,58 @@ describe('lookupMoviePoster', () => {
     const result = await lookupMoviePoster('Anything')
 
     expect(result).toBeNull()
+  })
+})
+
+describe('identifyFilmScreening', () => {
+  beforeEach(() => {
+    vi.stubEnv('ANTHROPIC_API_KEY', 'test-key')
+    createMock.mockReset()
+    vi.resetModules()
+  })
+
+  it('returns the canonical film title when the model identifies a real film screening', async () => {
+    createMock.mockResolvedValue(textResponse(JSON.stringify({ isFilmScreening: true, filmTitle: 'Clifford the Big Red Dog' })))
+    const { identifyFilmScreening } = await import('./movie-poster-lookup.js')
+
+    const result = await identifyFilmScreening('Film Screening: Clifford the Big Red Dog', 'A screening at the library.')
+
+    expect(result).toBe('Clifford the Big Red Dog')
+  })
+
+  it('returns null when the model says this is not a specific film screening', async () => {
+    createMock.mockResolvedValue(textResponse(JSON.stringify({ isFilmScreening: false, filmTitle: null })))
+    const { identifyFilmScreening } = await import('./movie-poster-lookup.js')
+
+    expect(await identifyFilmScreening('Family Movie Night')).toBeNull()
+  })
+
+  it('returns null when no API key is configured', async () => {
+    vi.stubEnv('ANTHROPIC_API_KEY', '')
+    const { identifyFilmScreening } = await import('./movie-poster-lookup.js')
+
+    expect(await identifyFilmScreening('Film Screening: Clifford the Big Red Dog')).toBeNull()
+    expect(createMock).not.toHaveBeenCalled()
+  })
+
+  it('returns null on a refusal or truncated response', async () => {
+    createMock.mockResolvedValue(textResponse('', 'refusal'))
+    const { identifyFilmScreening } = await import('./movie-poster-lookup.js')
+
+    expect(await identifyFilmScreening('Anything')).toBeNull()
+  })
+
+  it('returns null and does not throw on an unexpected error', async () => {
+    createMock.mockRejectedValue(new Error('boom'))
+    const { identifyFilmScreening } = await import('./movie-poster-lookup.js')
+
+    expect(await identifyFilmScreening('Anything')).toBeNull()
+  })
+
+  it('returns null on malformed JSON', async () => {
+    createMock.mockResolvedValue(textResponse('not json'))
+    const { identifyFilmScreening } = await import('./movie-poster-lookup.js')
+
+    expect(await identifyFilmScreening('Anything')).toBeNull()
   })
 })

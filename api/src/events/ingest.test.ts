@@ -12,7 +12,6 @@ const sameDayResults: Record<string, unknown>[][] = []
 const updateCalls: Record<string, unknown>[] = []
 const uploadPlaceholderImageMock = vi.fn()
 const simplifyTitleMock = vi.fn()
-const lookupMoviePosterMock = vi.fn()
 const enrichEventImagesMock = vi.fn()
 const runTextChecksWithRetryMock = vi.fn()
 const PASSING_CHECK = { pass: true, reason: 'ok', attempts: 1 }
@@ -52,7 +51,6 @@ vi.mock('../db/client.js', () => {
 })
 vi.mock('../uploads/placeholder.js', () => ({ uploadPlaceholderImage: uploadPlaceholderImageMock }))
 vi.mock('./title-normalization.js', () => ({ simplifyTitle: simplifyTitleMock }))
-vi.mock('./movie-poster-lookup.js', () => ({ lookupMoviePoster: lookupMoviePosterMock }))
 vi.mock('./image-enrichment.js', () => ({ enrichEventImages: enrichEventImagesMock }))
 // checkDateQuality/checkTimeQuality/buildDuplicateCheck are pure and safe to
 // use for real; only runTextChecksWithRetry makes a real (Claude-backed)
@@ -81,7 +79,6 @@ describe('ingestEvents', () => {
       thumbnailUrl: '/uploads/events/placeholder-thumb.jpg',
     })
     simplifyTitleMock.mockReset().mockImplementation(async ({ title }: { title: string }) => title)
-    lookupMoviePosterMock.mockReset().mockResolvedValue(null)
     enrichEventImagesMock.mockReset().mockResolvedValue({ sourced: 0, none: 1, traces: [], checksByEventId: new Map() })
     runTextChecksWithRetryMock.mockReset().mockImplementation(async (items: unknown[]) => items.map(() => ({ checks: PASSING_TEXT_CHECKS, correctedFields: {} })))
   })

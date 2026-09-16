@@ -10,6 +10,8 @@ const uploadImageMock = vi.fn()
 const getImageObjectMock = vi.fn()
 const searchWebImageMock = vi.fn()
 const findBroaderImageSearchPagesMock = vi.fn()
+const identifyFilmScreeningMock = vi.fn()
+const lookupMoviePosterMock = vi.fn()
 const updateMock = vi.fn()
 const setMock = vi.fn(() => ({ where: updateMock }))
 // Consumed, in call order, by both isSharedListingPage's and
@@ -35,6 +37,10 @@ vi.mock('../uploads/web-image-search.js', () => ({
     yield await searchWebImageMock(title, description)
   },
   findBroaderImageSearchPages: findBroaderImageSearchPagesMock,
+}))
+vi.mock('./movie-poster-lookup.js', () => ({
+  identifyFilmScreening: identifyFilmScreeningMock,
+  lookupMoviePoster: lookupMoviePosterMock,
 }))
 vi.mock('../db/client.js', () => ({
   db: {
@@ -62,6 +68,8 @@ beforeEach(() => {
   getImageObjectMock.mockReset()
   searchWebImageMock.mockReset().mockResolvedValue([])
   findBroaderImageSearchPagesMock.mockReset().mockResolvedValue([])
+  identifyFilmScreeningMock.mockReset().mockResolvedValue(null)
+  lookupMoviePosterMock.mockReset().mockResolvedValue(null)
   setMock.mockClear()
   updateMock.mockReset()
   dbQueryResults.length = 0
@@ -411,6 +419,96 @@ describe('enrichEventImage', () => {
     expect(extractPageImageCandidatesMock).toHaveBeenCalledWith('https://news.example.com/coverage')
     expect(fetchExternalImageMock).toHaveBeenCalledWith('https://news.example.com/photo.jpg')
     expect(fetchExternalImageMock).not.toHaveBeenCalledWith('https://example.com/logo.png')
+  })
+
+  // Feedback #169 follow-up (2026-09-16): a well-known film's real poster
+  // should be found and used even when the event's title doesn't follow any
+  // particular naming convention — identifyFilmScreening reads title AND
+  // description, replacing a brittle prefix-regex that only ever matched
+  // "Movie Night: <film>".
+  it('tries a real film poster before any web-search tier, once identifyFilmScreening names a film', async () => {
+    identifyFilmScreeningMock.mockResolvedValue('Clifford the Big Red Dog')
+    lookupMoviePosterMock.mockResolvedValue('https://upload.wikimedia.org/clifford-poster.jpg')
+    fetchExternalImageMock.mockResolvedValueOnce(Buffer.from('poster-bytes'))
+    isLowQualityImageMock.mockResolvedValueOnce(false)
+    const { enrichEventImage } = await import('./image-enrichment.js')
+
+    const result = await enrichEventImage('event-1', {
+      sourceUrl: 'https://chipublib.org/locations/51',
+      overrideImageUrl: null,
+      title: 'Film Screening: Clifford the Big Red Dog',
+      description: 'A screening at the Merlo Branch Library.',
+    })
+
+    expect(result.result).toBe('sourced')
+    expect(identifyFilmScreeningMock).toHaveBeenCalledWith('Film Screening: Clifford the Big Red Dog', 'A screening at the Merlo Branch Library.')
+    expect(lookupMoviePosterMock).toHaveBeenCalledWith('Clifford the Big Red Dog')
+    expect(fetchExternalImageMock).toHaveBeenCalledWith('https://upload.wikimedia.org/clifford-poster.jpg')
+    expect(searchWebImageMock).not.toHaveBeenCalled()
+    expect(findBroaderImageSearchPagesMock).not.toHaveBeenCalled()
+  })
+
+  it('falls through to web search when identifyFilmScreening finds no film', async () => {
+    identifyFilmScreeningMock.mockResolvedValue(null)
+    searchWebImageMock.mockResolvedValue(['https://upload.wikimedia.org/found.jpg'])
+    fetchExternalImageMock.mockResolvedValueOnce(Buffer.from('found-bytes'))
+    isLowQualityImageMock.mockResolvedValueOnce(false)
+    const { enrichEventImage } = await import('./image-enrichment.js')
+
+    const result = await enrichEventImage('event-1', {
+      sourceUrl: 'https://example.com/page',
+      overrideImageUrl: null,
+      title: 'Family Movie Night',
+    })
+
+    expect(result.result).toBe('sourced')
+    expect(lookupMoviePosterMock).not.toHaveBeenCalled()
+    expect(fetchExternalImageMock).toHaveBeenCalledWith('https://upload.wikimedia.org/found.jpg')
+  })
+
+  it('falls through to web search when a film is identified but Wikipedia has no poster for it', async () => {
+    identifyFilmScreeningMock.mockResolvedValue('Some Obscure Film')
+    lookupMoviePosterMock.mockResolvedValue(null)
+    searchWebImageMock.mockResolvedValue(['https://upload.wikimedia.org/found.jpg'])
+    fetchExternalImageMock.mockResolvedValueOnce(Buffer.from('found-bytes'))
+    isLowQualityImageMock.mockResolvedValueOnce(false)
+    const { enrichEventImage } = await import('./image-enrichment.js')
+
+    const result = await enrichEventImage('event-1', {
+      sourceUrl: 'https://example.com/page',
+      overrideImageUrl: null,
+      title: 'Film Screening: Some Obscure Film',
+    })
+
+    expect(result.result).toBe('sourced')
+    expect(fetchExternalImageMock).toHaveBeenCalledWith('https://upload.wikimedia.org/found.jpg')
+  })
+
+  it('falls through to web search when the poster candidate itself fails quality/relevance', async () => {
+    identifyFilmScreeningMock.mockResolvedValue('Clifford the Big Red Dog')
+    lookupMoviePosterMock.mockResolvedValue('https://upload.wikimedia.org/wrong-poster.jpg')
+    fetchExternalImageMock.mockResolvedValueOnce(Buffer.from('wrong-bytes')).mockResolvedValueOnce(Buffer.from('found-bytes'))
+    isLowQualityImageMock.mockResolvedValueOnce(true).mockResolvedValueOnce(false)
+    searchWebImageMock.mockResolvedValue(['https://upload.wikimedia.org/found.jpg'])
+    const { enrichEventImage } = await import('./image-enrichment.js')
+
+    const result = await enrichEventImage('event-1', {
+      sourceUrl: 'https://example.com/page',
+      overrideImageUrl: null,
+      title: 'Film Screening: Clifford the Big Red Dog',
+    })
+
+    expect(result.result).toBe('sourced')
+    expect(fetchExternalImageMock).toHaveBeenCalledWith('https://upload.wikimedia.org/found.jpg')
+  })
+
+  it('never looks up a film poster when no title is given', async () => {
+    extractPageImageCandidatesMock.mockResolvedValue([])
+    const { enrichEventImage } = await import('./image-enrichment.js')
+
+    await enrichEventImage('event-1', { sourceUrl: 'https://example.com/page', overrideImageUrl: null })
+
+    expect(identifyFilmScreeningMock).not.toHaveBeenCalled()
   })
 
   it('falls through to the logo tier when the broader search finds nothing usable', async () => {
