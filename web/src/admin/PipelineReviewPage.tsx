@@ -24,7 +24,7 @@ import {
 import { useCallback, useEffect, useState } from 'react'
 
 import { formatRelativeDateTime } from '../format'
-import { EventBody } from '../events/EventBody'
+import { EventPostView } from '../events/EventPostView'
 import { factLineStyle, sectionDividerStyle } from '../theme/layout'
 import {
   approvePipelineEvent,
@@ -417,100 +417,258 @@ export function PipelineReviewPage() {
 
   function keptItemNode(item: PipelineKeptCandidate) {
     return (
-      <IonItem key={item.id} lines="full">
-        <IonLabel className="ion-text-wrap" style={{ marginTop: 8, marginBottom: 8 }}>
-          {/* The post itself — title through description — renders through
-              the exact same component (and the same title treatment) the
-              real detail page uses, completely uninterrupted. Ben,
-              2026-09-06 (fourth pass): "they should actually use the same
-              code paths and components" — EventBody's title/titleHref
-              options (new this pass) are what make this the same component
-              rather than a parallel copy with its own hand-styled heading. */}
-          <EventBody
-            event={{
-              image_url: item.image_url,
-              start_date: item.start_date,
-              start_time: item.start_time,
-              end_time: null,
-              all_day: item.all_day,
-              location_name: item.location_name,
-              address: item.address,
-              description: item.description,
-            }}
-            title={item.title}
-            titleHref={`/events/${item.id}`}
-          />
-          <hr style={sectionDividerStyle} />
+      // A plain div, not IonItem/IonLabel (feedback #171: "fonts are
+      // different" — IonLabel's own Material Design typography rules for
+      // list-item text were silently overriding the post's real body
+      // styles, the same rules a member never sees since EventDetailPage
+      // renders EventPostView directly inside IonContent, not inside an
+      // item). The border below is this file's own stand-in for the divider
+      // IonItem's lines="full" used to draw between rows.
+      <div key={item.id} style={{ padding: '16px 0', borderBottom: '1px solid var(--ion-color-step-150, #d9d9d9)' }}>
+        {/* The post itself, plus the same Add to Calendar/View source
+            buttons the real detail page shows — EventPostView (feedback
+            #171) is the exact same shared component EventDetailPage.tsx
+            renders, not a parallel copy with its own hand-styled heading.
+            Ben, 2026-09-06 (fourth pass): "they should actually use the
+            same code paths and components." */}
+        <EventPostView
+          event={{
+            title: item.title,
+            image_url: item.image_url,
+            start_date: item.start_date,
+            start_time: item.start_time,
+            end_time: item.end_time,
+            all_day: item.all_day,
+            location_name: item.location_name,
+            address: item.address,
+            description: item.description,
+            source_url: item.source_url,
+          }}
+          titleHref={`/events/${item.id}`}
+          calendarUrl={`${window.location.origin}/events/${item.id}`}
+        />
+        <hr style={sectionDividerStyle} />
+        <IonNote color="medium">
+          {item.source_name ?? (item.submitted_by_name ? `Posted by ${item.submitted_by_name}` : 'Unknown source')} · {formatRelativeDateTime(item.created_at)}
+        </IonNote>
+        {item.status === 'pending' && (
+          <p style={factLineStyle}>
+            <IonBadge color="danger">Held for review</IonBadge>
+          </p>
+        )}
+        {item.relevance_reason && <p style={factLineStyle}>Why relevant: {item.relevance_reason}</p>}
+        <ChecksSection checks={item.checks} />
+        {/* The "Reviewed by" note and the action buttons are no longer
+            mutually exclusive (Ben, 2026-09-06: "how do I change my
+            review for an existing one that was already reviewed?") — a
+            past review still shows here, but Approve/Reject/Edit stay
+            available underneath it so a decision can always be changed,
+            not just made once. */}
+        {item.reviewed_at && (
           <IonNote color="medium">
-            {item.source_name ?? (item.submitted_by_name ? `Posted by ${item.submitted_by_name}` : 'Unknown source')} · {formatRelativeDateTime(item.created_at)}
+            Reviewed by {item.reviewed_by_name ?? 'an admin'} {formatRelativeDateTime(item.reviewed_at)}
+            {item.review_note ? ` — "${item.review_note}"` : ''}
           </IonNote>
-          {item.status === 'pending' && (
-            <p style={factLineStyle}>
-              <IonBadge color="danger">Held for review</IonBadge>
-            </p>
-          )}
-          {item.relevance_reason && <p style={factLineStyle}>Why relevant: {item.relevance_reason}</p>}
-          <ChecksSection checks={item.checks} />
-          {/* The "Reviewed by" note and the action buttons are no longer
-              mutually exclusive (Ben, 2026-09-06: "how do I change my
-              review for an existing one that was already reviewed?") — a
-              past review still shows here, but Approve/Reject/Edit stay
-              available underneath it so a decision can always be changed,
-              not just made once. */}
-          {item.reviewed_at && (
-            <IonNote color="medium">
-              Reviewed by {item.reviewed_by_name ?? 'an admin'} {formatRelativeDateTime(item.reviewed_at)}
-              {item.review_note ? ` — "${item.review_note}"` : ''}
-            </IonNote>
-          )}
-          {editingId === item.id ? (
-            <EditPanel
-              initial={{
-                title: item.title,
-                description: item.description ?? '',
-                address: item.address ?? '',
-                locationName: item.location_name ?? '',
-                startDate: item.start_date,
-                startTime: item.start_time ?? '',
-                allDay: item.all_day,
-              }}
-              saving={busyId === item.id}
-              onCancel={() => setEditingId(null)}
-              onSave={(fields) => runAction(item.id, () => editPipelineEvent(item.id, fields), 'Saved')}
-            />
-          ) : (
-            <>
-              {noteField(notes[item.id] ?? '', (v) => setNotes((prev) => ({ ...prev, [item.id]: v })))}
-              <div style={{ marginTop: 6 }}>
-                <IonButton size="small" fill="outline" disabled={busyId === item.id} onClick={() => runAction(item.id, () => approvePipelineEvent(item.id, notes[item.id]), 'Approved')}>
-                  Approve
+        )}
+        {editingId === item.id ? (
+          <EditPanel
+            initial={{
+              title: item.title,
+              description: item.description ?? '',
+              address: item.address ?? '',
+              locationName: item.location_name ?? '',
+              startDate: item.start_date,
+              startTime: item.start_time ?? '',
+              allDay: item.all_day,
+            }}
+            saving={busyId === item.id}
+            onCancel={() => setEditingId(null)}
+            onSave={(fields) => runAction(item.id, () => editPipelineEvent(item.id, fields), 'Saved')}
+          />
+        ) : (
+          <>
+            {noteField(notes[item.id] ?? '', (v) => setNotes((prev) => ({ ...prev, [item.id]: v })))}
+            <div style={{ marginTop: 6 }}>
+              <IonButton size="small" fill="outline" disabled={busyId === item.id} onClick={() => runAction(item.id, () => approvePipelineEvent(item.id, notes[item.id]), 'Approved')}>
+                Approve
+              </IonButton>
+              <IonButton size="small" fill="outline" color="danger" disabled={busyId === item.id} onClick={() => runAction(item.id, () => rejectPipelineEvent(item.id, notes[item.id]), 'Rejected')}>
+                Reject
+              </IonButton>
+              <IonButton size="small" fill="outline" disabled={busyId === item.id} onClick={() => setEditingId(item.id)}>
+                Edit
+              </IonButton>
+              {/* A general "just try again" action (Ben, 2026-09-13:
+                  "several events... should have just caused them to be
+                  rerun and tried again") — not tucked inside Edit the way
+                  the narrower Retry image sub-action still is. Reruns the
+                  same bounded self-healing pipeline a fresh ingestion
+                  already gets: a text-check retry, plus a fresh image
+                  search whenever the image checks are currently failing
+                  OR a note is given (see retryPipelineChecks's own
+                  comment). Reuses the same note field above (already
+                  shared by Approve/Reject) as Retry's own instructions
+                  field (feedback #165, 2026-09-14) — typed text gets sent
+                  through to the retry itself and, once given, recorded
+                  into a shared, growing library of retry strategies
+                  future retries (on any event) get shown too. Always
+                  available, not just while something's failing (feedback
+                  #169 follow-up, 2026-09-16, "I should be able to retry
+                  again with yet another note") — same "a decision can
+                  always be changed" posture Approve/Reject/Edit already
+                  have above, and a note-guided image retry is a genuinely
+                  useful ask even once every check already passes. */}
+              <IonButton
+                size="small"
+                fill="outline"
+                disabled={busyId === item.id}
+                onClick={async () => {
+                  setBusyId(item.id)
+                  try {
+                    const result = await retryPipelineEventChecks(item.id, notes[item.id])
+                    setToast(describeRetryResult(result))
+                    load()
+                  } catch (err) {
+                    setToast(err instanceof Error ? err.message : 'Could not retry')
+                  } finally {
+                    setBusyId(null)
+                  }
+                }}
+              >
+                Retry
+              </IonButton>
+              {editingId === item.id && (
+                <IonButton
+                  size="small"
+                  fill="clear"
+                  disabled={busyId === item.id}
+                  onClick={async () => {
+                    setBusyId(item.id)
+                    try {
+                      const result = await retryPipelineEventImage(item.id)
+                      setToast(result.found ? 'Found a new image' : 'Still no usable image found')
+                      load()
+                    } catch (err) {
+                      setToast(err instanceof Error ? err.message : 'Could not retry image search')
+                    } finally {
+                      setBusyId(null)
+                    }
+                  }}
+                >
+                  Retry image
                 </IonButton>
-                <IonButton size="small" fill="outline" color="danger" disabled={busyId === item.id} onClick={() => runAction(item.id, () => rejectPipelineEvent(item.id, notes[item.id]), 'Rejected')}>
-                  Reject
-                </IonButton>
-                <IonButton size="small" fill="outline" disabled={busyId === item.id} onClick={() => setEditingId(item.id)}>
-                  Edit
-                </IonButton>
-                {/* A general "just try again" action (Ben, 2026-09-13:
-                    "several events... should have just caused them to be
-                    rerun and tried again") — not tucked inside Edit the way
-                    the narrower Retry image sub-action still is. Reruns the
-                    same bounded self-healing pipeline a fresh ingestion
-                    already gets: a text-check retry, plus a fresh image
-                    search whenever the image checks are currently failing
-                    OR a note is given (see retryPipelineChecks's own
-                    comment). Reuses the same note field above (already
-                    shared by Approve/Reject) as Retry's own instructions
-                    field (feedback #165, 2026-09-14) — typed text gets sent
-                    through to the retry itself and, once given, recorded
-                    into a shared, growing library of retry strategies
-                    future retries (on any event) get shown too. Always
-                    available, not just while something's failing (feedback
-                    #169 follow-up, 2026-09-16, "I should be able to retry
-                    again with yet another note") — same "a decision can
-                    always be changed" posture Approve/Reject/Edit already
-                    have above, and a note-guided image retry is a genuinely
-                    useful ask even once every check already passes. */}
+              )}
+              {busyId === item.id && <IonSpinner name="dots" style={{ marginInlineStart: 8 }} />}
+            </div>
+          </>
+        )}
+      </div>
+    )
+  }
+
+  function rejectedItemNode(item: PipelineRejectedCandidate) {
+    return (
+      // Same plain-div fix as keptItemNode above (feedback #171).
+      <div key={item.id} style={{ padding: '16px 0', borderBottom: '1px solid var(--ion-color-step-150, #d9d9d9)' }}>
+        {/* Same title-then-post shape as a kept item above, through the
+            same shared EventPostView (feedback #171) — a rejected candidate
+            never had a real image search run (image_url is always null
+            here), so the body simply shows no image, and the not-applicable
+            image checks below say so honestly. Linked to the real event
+            only once it's actually been added (Approve, below); until then
+            there's no real permalink for Add to Calendar to reference. */}
+        <EventPostView
+          event={{
+            title: item.title,
+            image_url: null,
+            start_date: item.candidate_data.start_date,
+            start_time: item.candidate_data.start_time,
+            end_time: null,
+            all_day: item.candidate_data.all_day,
+            location_name: item.candidate_data.location_name,
+            address: item.candidate_data.address,
+            description: item.candidate_data.description,
+            source_url: item.candidate_data.source_url,
+          }}
+          titleHref={item.added_as_event_id ? `/events/${item.added_as_event_id}` : undefined}
+          calendarUrl={item.added_as_event_id ? `${window.location.origin}/events/${item.added_as_event_id}` : undefined}
+        />
+        <hr style={sectionDividerStyle} />
+        <IonNote color="medium">
+          {item.source_name ?? 'Unknown source'} · {formatRelativeDateTime(item.created_at)} · {item.rejection_type === 'duplicate' ? 'Duplicate' : 'Not relevant'}
+        </IonNote>
+        {/* A duplicate rejection's own reason no longer needs restating
+            here (feedback, 2026-09-13) — the Checks section's own
+            duplicateCheck row below now carries the same fact, as a real
+            link, directly in its own error text. A relevance rejection
+            still shows its plain reason, since that check line only ever
+            says "Not checked" for those (see ingest.ts). */}
+        {item.rejection_type !== 'duplicate' && <p style={factLineStyle}>{item.rejection_reason}</p>}
+        <ChecksSection
+          checks={item.checks}
+          duplicateOf={item.duplicate_of_event_id ? { id: item.duplicate_of_event_id, title: item.duplicate_of_event_title ?? 'view the matching event' } : undefined}
+        />
+        {/* Same "note stays, buttons stay too" fix as a kept item above —
+            re-clicking Approve here safely re-runs add-anyway (the real
+            dedup check inside ingestEvents() reports it as already
+            existing rather than creating a second copy), and re-clicking
+            Reject just re-records the decision. */}
+        {item.reviewed_at && (
+          <IonNote color="medium">
+            {item.review_action === 'approved' ? 'Approved' : 'Rejected'} by {item.reviewed_by_name ?? 'an admin'} {formatRelativeDateTime(item.reviewed_at)}
+            {item.review_note ? ` — "${item.review_note}"` : ''}
+          </IonNote>
+        )}
+        {editingId === item.id ? (
+          <EditPanel
+            initial={{
+              title: item.title,
+              description: item.candidate_data.description ?? '',
+              address: item.candidate_data.address ?? '',
+              locationName: item.candidate_data.location_name ?? '',
+              startDate: item.candidate_data.start_date,
+              startTime: item.candidate_data.start_time ?? '',
+              allDay: item.candidate_data.all_day,
+            }}
+            saving={busyId === item.id}
+            onCancel={() => setEditingId(null)}
+            onSave={(fields) => runAction(item.id, () => editPipelineRejectedCandidate(item.id, fields), 'Saved')}
+          />
+        ) : (
+          <>
+            {noteField(notes[item.id] ?? '', (v) => setNotes((prev) => ({ ...prev, [item.id]: v })))}
+            <div style={{ marginTop: 6 }}>
+              <IonButton
+                size="small"
+                fill="outline"
+                disabled={busyId === item.id}
+                onClick={async () => {
+                  setBusyId(item.id)
+                  try {
+                    const result = await approvePipelineRejectedCandidate(item.id, notes[item.id])
+                    setToast(result.deduped ? 'Already exists as another event — not added again' : 'Approved')
+                    setEditingId(null)
+                    load()
+                  } catch (err) {
+                    setToast(err instanceof Error ? err.message : 'Could not approve')
+                  } finally {
+                    setBusyId(null)
+                  }
+                }}
+              >
+                Approve
+              </IonButton>
+              <IonButton size="small" fill="outline" color="danger" disabled={busyId === item.id} onClick={() => runAction(item.id, () => rejectPipelineRejectedCandidate(item.id, notes[item.id]), 'Rejected')}>
+                Reject
+              </IonButton>
+              <IonButton size="small" fill="outline" disabled={busyId === item.id} onClick={() => setEditingId(item.id)}>
+                Edit
+              </IonButton>
+              {/* Same "just try again" ask as a kept item's own Retry
+                  button — only fixes the text/date/time checklist here,
+                  never the rejection verdict itself (see
+                  hasRetryableFailure's own comment). */}
+              {hasRetryableFailure(item.checks) && (
                 <IonButton
                   size="small"
                   fill="outline"
@@ -518,8 +676,8 @@ export function PipelineReviewPage() {
                   onClick={async () => {
                     setBusyId(item.id)
                     try {
-                      const result = await retryPipelineEventChecks(item.id, notes[item.id])
-                      setToast(describeRetryResult(result))
+                      const result = await retryPipelineRejectedCandidateChecks(item.id)
+                      setToast(result.allPassing ? 'Retried — now passing' : 'Retried — some issues remain')
                       load()
                     } catch (err) {
                       setToast(err instanceof Error ? err.message : 'Could not retry')
@@ -530,162 +688,12 @@ export function PipelineReviewPage() {
                 >
                   Retry
                 </IonButton>
-                {editingId === item.id && (
-                  <IonButton
-                    size="small"
-                    fill="clear"
-                    disabled={busyId === item.id}
-                    onClick={async () => {
-                      setBusyId(item.id)
-                      try {
-                        const result = await retryPipelineEventImage(item.id)
-                        setToast(result.found ? 'Found a new image' : 'Still no usable image found')
-                        load()
-                      } catch (err) {
-                        setToast(err instanceof Error ? err.message : 'Could not retry image search')
-                      } finally {
-                        setBusyId(null)
-                      }
-                    }}
-                  >
-                    Retry image
-                  </IonButton>
-                )}
-              </div>
-            </>
-          )}
-        </IonLabel>
-        {busyId === item.id && <IonSpinner slot="end" name="dots" />}
-      </IonItem>
-    )
-  }
-
-  function rejectedItemNode(item: PipelineRejectedCandidate) {
-    return (
-      <IonItem key={item.id} lines="full">
-        <IonLabel className="ion-text-wrap" style={{ marginTop: 8, marginBottom: 8 }}>
-          {/* Same title-then-EventBody "post" shape as a kept item above — a
-              rejected candidate never had a real image search run
-              (image_url is always null here), so EventBody simply shows no
-              image, and the not-applicable image checks below say so
-              honestly. Linked to the real event only once it's actually
-              been added (Approve, below). */}
-          <EventBody
-            event={{
-              image_url: null,
-              start_date: item.candidate_data.start_date,
-              start_time: item.candidate_data.start_time,
-              end_time: null,
-              all_day: item.candidate_data.all_day,
-              location_name: item.candidate_data.location_name,
-              address: item.candidate_data.address,
-              description: item.candidate_data.description,
-            }}
-            title={item.title}
-            titleHref={item.added_as_event_id ? `/events/${item.added_as_event_id}` : undefined}
-          />
-          <hr style={sectionDividerStyle} />
-          <IonNote color="medium">
-            {item.source_name ?? 'Unknown source'} · {formatRelativeDateTime(item.created_at)} · {item.rejection_type === 'duplicate' ? 'Duplicate' : 'Not relevant'}
-          </IonNote>
-          {/* A duplicate rejection's own reason no longer needs restating
-              here (feedback, 2026-09-13) — the Checks section's own
-              duplicateCheck row below now carries the same fact, as a real
-              link, directly in its own error text. A relevance rejection
-              still shows its plain reason, since that check line only ever
-              says "Not checked" for those (see ingest.ts). */}
-          {item.rejection_type !== 'duplicate' && <p style={factLineStyle}>{item.rejection_reason}</p>}
-          <ChecksSection
-            checks={item.checks}
-            duplicateOf={item.duplicate_of_event_id ? { id: item.duplicate_of_event_id, title: item.duplicate_of_event_title ?? 'view the matching event' } : undefined}
-          />
-          {/* Same "note stays, buttons stay too" fix as a kept item above —
-              re-clicking Approve here safely re-runs add-anyway (the real
-              dedup check inside ingestEvents() reports it as already
-              existing rather than creating a second copy), and re-clicking
-              Reject just re-records the decision. */}
-          {item.reviewed_at && (
-            <IonNote color="medium">
-              {item.review_action === 'approved' ? 'Approved' : 'Rejected'} by {item.reviewed_by_name ?? 'an admin'} {formatRelativeDateTime(item.reviewed_at)}
-              {item.review_note ? ` — "${item.review_note}"` : ''}
-            </IonNote>
-          )}
-          {editingId === item.id ? (
-            <EditPanel
-              initial={{
-                title: item.title,
-                description: item.candidate_data.description ?? '',
-                address: item.candidate_data.address ?? '',
-                locationName: item.candidate_data.location_name ?? '',
-                startDate: item.candidate_data.start_date,
-                startTime: item.candidate_data.start_time ?? '',
-                allDay: item.candidate_data.all_day,
-              }}
-              saving={busyId === item.id}
-              onCancel={() => setEditingId(null)}
-              onSave={(fields) => runAction(item.id, () => editPipelineRejectedCandidate(item.id, fields), 'Saved')}
-            />
-          ) : (
-            <>
-              {noteField(notes[item.id] ?? '', (v) => setNotes((prev) => ({ ...prev, [item.id]: v })))}
-              <div style={{ marginTop: 6 }}>
-                <IonButton
-                  size="small"
-                  fill="outline"
-                  disabled={busyId === item.id}
-                  onClick={async () => {
-                    setBusyId(item.id)
-                    try {
-                      const result = await approvePipelineRejectedCandidate(item.id, notes[item.id])
-                      setToast(result.deduped ? 'Already exists as another event — not added again' : 'Approved')
-                      setEditingId(null)
-                      load()
-                    } catch (err) {
-                      setToast(err instanceof Error ? err.message : 'Could not approve')
-                    } finally {
-                      setBusyId(null)
-                    }
-                  }}
-                >
-                  Approve
-                </IonButton>
-                <IonButton size="small" fill="outline" color="danger" disabled={busyId === item.id} onClick={() => runAction(item.id, () => rejectPipelineRejectedCandidate(item.id, notes[item.id]), 'Rejected')}>
-                  Reject
-                </IonButton>
-                <IonButton size="small" fill="outline" disabled={busyId === item.id} onClick={() => setEditingId(item.id)}>
-                  Edit
-                </IonButton>
-                {/* Same "just try again" ask as a kept item's own Retry
-                    button — only fixes the text/date/time checklist here,
-                    never the rejection verdict itself (see
-                    hasRetryableFailure's own comment). */}
-                {hasRetryableFailure(item.checks) && (
-                  <IonButton
-                    size="small"
-                    fill="outline"
-                    disabled={busyId === item.id}
-                    onClick={async () => {
-                      setBusyId(item.id)
-                      try {
-                        const result = await retryPipelineRejectedCandidateChecks(item.id)
-                        setToast(result.allPassing ? 'Retried — now passing' : 'Retried — some issues remain')
-                        load()
-                      } catch (err) {
-                        setToast(err instanceof Error ? err.message : 'Could not retry')
-                      } finally {
-                        setBusyId(null)
-                      }
-                    }}
-                  >
-                    Retry
-                  </IonButton>
-                )}
-              </div>
-            </>
-          )}
-        </IonLabel>
-        {busyId === item.id && <IonSpinner slot="end" name="dots" />}
-      </IonItem>
+              )}
+              {busyId === item.id && <IonSpinner name="dots" style={{ marginInlineStart: 8 }} />}
+            </div>
+          </>
+        )}
+      </div>
     )
   }
 

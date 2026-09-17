@@ -17,13 +17,13 @@ import { useEffect, useState } from 'react'
 import { useHistory, useParams } from 'react-router-dom'
 
 import { track } from '../analytics/api'
-import { AddToCalendarButton } from '../calendar/AddToCalendarButton'
 import { InlineImageEditor } from '../edit-history/InlineField'
-import { factLineStyle, leadingButtonGap } from '../theme/layout'
+import { factLineStyle } from '../theme/layout'
 import { Avatar } from '../uploads/Avatar'
 import { deleteEvent, fetchEvent, updateEvent, type Event } from './api'
 import { CommentsSection } from './CommentsSection'
-import { EventBody, type EventBodyDraft } from './EventBody'
+import type { EventBodyDraft } from './EventBody'
+import { EventPostView } from './EventPostView'
 import { InterestedBadge } from './InterestedBadge'
 import { useEventImageUpload } from './useEventImageUpload'
 import { useEventInterest } from './useEventInterest'
@@ -207,9 +207,16 @@ export function EventDetailPage() {
                 one, one field at a time swapped in place (see EventBody.tsx
                 and edit-history/InlineField.tsx) — not a separate form
                 screen, and not a different component tree, so entering/
-                leaving edit mode never remounts the page or resets scroll. */}
-            <EventBody
+                leaving edit mode never remounts the page or resets scroll.
+                Feedback #171: EventPostView (EventBody plus the Add to
+                Calendar/View source buttons below) is the same shared
+                component Pipeline Review's own candidate preview renders,
+                so a fix or a new button added here can't silently stop
+                short of that page again. */}
+            <EventPostView
               event={event}
+              showTitle={false}
+              calendarUrl={window.location.href}
               editing={editing}
               draft={draft ?? undefined}
               onFieldChange={(key, value) => setDraft((d) => (d ? { ...d, [key]: value } : d))}
@@ -230,31 +237,7 @@ export function EventDetailPage() {
             {saveError && (
               <p style={{ ...factLineStyle, color: 'var(--ion-color-danger)' }}>{saveError}</p>
             )}
-            {!editing && (
-              <>
-                {/* Feedback #76: lets a member add this event to their own
-                    calendar (Google/Outlook/.ics — see AddToCalendarButton). */}
-                <AddToCalendarButton
-                  event={{
-                    title: event.title,
-                    description: event.description,
-                    location: event.location_name ?? event.address,
-                    url: window.location.href,
-                    startDate: event.start_date,
-                    startTime: event.start_time,
-                    allDay: event.all_day,
-                  }}
-                  filename={`${event.title}.ics`}
-                  style={leadingButtonGap}
-                />
-                {event.source_url && (
-                  <IonButton expand="block" href={event.source_url} target="_blank" rel="noreferrer" style={leadingButtonGap}>
-                    View source
-                  </IonButton>
-                )}
-                <CommentsSection eventId={event.id} />
-              </>
-            )}
+            {!editing && <CommentsSection eventId={event.id} />}
           </>
         )}
       </IonContent>

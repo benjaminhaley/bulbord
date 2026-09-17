@@ -38,10 +38,14 @@ export interface KeptReviewItem {
   thumbnailUrl: string
   startDate: string
   startTime: string | null
+  endTime: string | null
   allDay: boolean
   address: string | null
   locationName: string | null
   description: string | null
+  // feedback #171: needed so the admin preview can render the same
+  // "View source" button the real detail page shows, not just the post body.
+  sourceUrl: string | null
   relevanceReason: string | null
   checks: PipelineChecks | null
   pipelineChecksPassed: boolean | null
@@ -98,10 +102,12 @@ async function loadKeptItems(where: ReturnType<typeof keptCandidateWhere>, since
       thumbnailUrl: events.thumbnailUrl,
       startDate: events.startDate,
       startTime: events.startTime,
+      endTime: events.endTime,
       allDay: events.allDay,
       address: events.address,
       locationName: events.locationName,
       description: events.description,
+      sourceUrl: events.sourceUrl,
       relevanceReason: events.pipelineRelevanceReason,
       checks: events.pipelineQualityChecks,
       pipelineChecksPassed: events.pipelineChecksPassed,
@@ -129,10 +135,12 @@ async function loadKeptItems(where: ReturnType<typeof keptCandidateWhere>, since
     thumbnailUrl: r.thumbnailUrl,
     startDate: r.startDate,
     startTime: r.startTime,
+    endTime: r.endTime,
     allDay: r.allDay,
     address: r.address,
     locationName: r.locationName,
     description: r.description,
+    sourceUrl: r.sourceUrl,
     relevanceReason: r.relevanceReason,
     checks: (r.checks as PipelineChecks | null) ?? null,
     pipelineChecksPassed: r.pipelineChecksPassed,

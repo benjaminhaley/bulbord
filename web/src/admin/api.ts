@@ -346,10 +346,14 @@ export interface PipelineKeptCandidate {
   thumbnail_url: string
   start_date: string
   start_time: string | null
+  end_time: string | null
   all_day: boolean
   address: string | null
   location_name: string | null
   description: string | null
+  // feedback #171: lets the review page render the same "View source"
+  // button the real detail page shows, via the shared EventPostView.
+  source_url: string | null
   relevance_reason: string | null
   checks: PipelineChecks | null
   pipeline_checks_passed: boolean | null
@@ -365,6 +369,7 @@ interface PipelineRejectedCandidateData {
   start_date: string
   start_time: string | null
   all_day: boolean
+  source_url: string | null
 }
 
 export interface PipelineRejectedCandidate {
