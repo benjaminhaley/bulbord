@@ -458,7 +458,14 @@ export async function adminRoutes(app: FastifyInstance) {
     const { note } = (request.body ?? {}) as { note?: string }
     const result = await retryPipelineChecks(id, request.currentUser!.id, note)
     if (result === 'not_found') return reply.code(404).send({ error: { message: 'Event not found' } })
-    return reply.send({ data: { all_passing: result.allPassing } })
+    return reply.send({
+      data: {
+        all_passing: result.allPassing,
+        image_retried: result.imageRetried,
+        image_changed: result.imageChanged,
+        image_reason: result.imageReason,
+      },
+    })
   })
 
   app.post('/admin/rejected-event-candidates/:id/reject', { preHandler: requireRole('admin') }, async (request, reply) => {

@@ -162,10 +162,12 @@ const BROADER_SEARCH_SYSTEM_PROMPT = `You help find a real, specific photo of an
 Given an event's title and description, search the web for pages that likely show an actual, specific photo of this event, the group/organization running it, or its venue — e.g. the host's own site, local news coverage, a community calendar listing, a past year's recap, a social media post. Prefer the most specific, most likely-to-have-a-real-photo pages your search actually returns.
 
 Rules:
+- Run at most 1-2 search queries. Do not repeat the same or a very similar query, and do not run an extensive multi-round research process — a couple of good results is enough to work with.
 - Only return page URLs that genuinely appeared in your search results — never invent or guess a URL.
 - Return page URLs (the article/listing/organization page itself), not direct image file links — the actual photo will be extracted from whichever page you point to.
 - Return up to 5 URLs, most likely to have a real relevant photo first.
-- If your search turns up nothing plausible, return an empty array.
+- As soon as your search returns any plausible pages, stop searching and report them — do not keep searching for a "perfect" match. If a search attempt errors or hits a limit, immediately report the best pages you already found instead of retrying or giving up.
+- Return an empty array ONLY if every search you ran came back with nothing even remotely plausible — never return an empty array just because you wanted to search more.
 - If admin_note is given, it's a person's own specific instructions for this search (e.g. "look for the official poster," "try the venue's Instagram") — follow it closely; it takes priority over your own default approach.
 
 Respond with ONLY a JSON array of URL strings, no markdown fences, no explanation.`
@@ -185,6 +187,45 @@ Respond with ONLY a JSON array of URL strings, no markdown fences, no explanatio
 // each returned page that source_url itself already goes through, so a
 // hallucinated or dead page just yields no usable candidate rather than a
 // bad image slipping through unverified.
+function isHttpUrl(value: unknown): value is string {
+  if (typeof value !== 'string') return false
+  try {
+    return ['http:', 'https:'].includes(new URL(value).protocol)
+  } catch {
+    return false
+  }
+}
+
+// A real incident (feedback #169 follow-up, 2026-09-17, "it didn't actually
+// do what my note requested... it should at least provide some response
+// why, but really it should just be able to do it"): a long, specific note
+// sent the model into an extended multi-round research spiral — it found
+// several genuinely excellent, on-topic candidate pages early on, then kept
+// searching for more, eventually hit the tool's own server-side rate limit
+// ("Server tool use limit exceeded during code execution"), and gave up
+// with a bare `[]` as its final answer — discarding every real result it
+// had already gathered earlier in the SAME turn. The tightened prompt above
+// asks it not to do this, but a model's own text summary is never fully
+// reliable under a genuine tool error mid-turn, so this doesn't only trust
+// that: it also pulls real URLs directly out of the raw
+// `web_search_tool_result` blocks the API already returned (the same search
+// results the model itself saw) as a fallback whenever the model's own
+// final text comes back empty — so a real, already-completed search is
+// never silently thrown away just because the model's own wrap-up failed.
+function extractSearchResultUrls(content: readonly unknown[]): string[] {
+  const urls: string[] = []
+  for (const block of content) {
+    if (!block || typeof block !== 'object' || (block as { type?: unknown }).type !== 'web_search_tool_result') continue
+    const items = (block as { content?: unknown }).content
+    if (!Array.isArray(items)) continue
+    for (const item of items) {
+      const url = (item as { url?: unknown } | null)?.url
+      if (isHttpUrl(url) && !urls.includes(url)) urls.push(url)
+    }
+  }
+  return urls
+}
+
 // `note` (feedback #169 follow-up, 2026-09-16, "I should be able to retry
 // again with yet another note"): an admin's own free-text instructions for
 // one specific retry, threaded straight into this search — previously a
@@ -202,7 +243,7 @@ export async function findBroaderImageSearchPages(title: string, description?: s
         max_tokens: 1000,
         output_config: { effort: 'low' },
         system: BROADER_SEARCH_SYSTEM_PROMPT,
-        tools: [{ type: 'web_search_20260209', name: 'web_search', max_uses: 3 }],
+        tools: [{ type: 'web_search_20260209', name: 'web_search', max_uses: 5 }],
         messages: [{ role: 'user', content: JSON.stringify({ title, description: description ?? null, admin_note: note?.trim() || null }) }],
       },
       { timeout: SEARCH_CALL_TIMEOUT_MS, maxRetries: SEARCH_CALL_MAX_RETRIES },
@@ -211,18 +252,18 @@ export async function findBroaderImageSearchPages(title: string, description?: s
     if (response.stop_reason === 'refusal') return []
     const block = [...response.content].reverse().find((b) => b.type === 'text')
     const raw = block?.type === 'text' ? block.text.trim() : ''
-    if (!raw) return []
 
-    const parsed = JSON.parse(stripJsonCodeFence(raw))
-    if (!Array.isArray(parsed)) return []
-    return parsed.filter((u): u is string => {
-      if (typeof u !== 'string') return false
+    let urls: string[] = []
+    if (raw) {
       try {
-        return ['http:', 'https:'].includes(new URL(u).protocol)
+        const parsed = JSON.parse(stripJsonCodeFence(raw))
+        if (Array.isArray(parsed)) urls = parsed.filter(isHttpUrl)
       } catch {
-        return false
+        // Fall through to the raw-search-result fallback below.
       }
-    })
+    }
+
+    return urls.length > 0 ? urls : extractSearchResultUrls(response.content).slice(0, 5)
   } catch {
     return []
   }

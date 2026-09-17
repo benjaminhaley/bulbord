@@ -80,6 +80,22 @@ function hasRetryableFailure(checks: PipelineChecks | null): boolean {
   return RETRYABLE_REJECTED_KEYS.some((key) => !checks[key]?.pass)
 }
 
+// Feedback #169 follow-up (2026-09-17, "it should at least provide some
+// sort of response... why it wasn't able to"): a plain "now passing"/"some
+// issues remain" toast said nothing about whether an image-focused retry
+// actually found a different photo — an admin retrying with a note like
+// "look up a better photo" needs to know whether that note actually changed
+// anything, not just whether the checklist stayed green.
+function describeRetryResult(result: { allPassing: boolean; imageRetried?: boolean; imageChanged?: boolean; imageReason?: string }): string {
+  if (result.imageRetried && !result.imageChanged) {
+    return result.allPassing
+      ? 'Retried — the current photo is still the best match found'
+      : `Retried — no better photo found${result.imageReason ? `: ${result.imageReason}` : ''}`
+  }
+  if (result.imageRetried && result.imageChanged) return 'Retried — found a different photo'
+  return result.allPassing ? 'Retried — now passing' : 'Retried — some issues remain'
+}
+
 // A passing check is compressed to just its name + checkmark — the specific
 // "why" for a pass is almost always the same generic sentence every time
 // (now in CHECK_DESCRIPTIONS above instead), so repeating it per event was
@@ -503,7 +519,7 @@ export function PipelineReviewPage() {
                     setBusyId(item.id)
                     try {
                       const result = await retryPipelineEventChecks(item.id, notes[item.id])
-                      setToast(result.allPassing ? 'Retried — now passing' : 'Retried — some issues remain')
+                      setToast(describeRetryResult(result))
                       load()
                     } catch (err) {
                       setToast(err instanceof Error ? err.message : 'Could not retry')

@@ -261,7 +261,7 @@ describe('retryPipelineChecks', () => {
 
     const result = await retryPipelineChecks('event-1', 'admin-1')
 
-    expect(result).toEqual({ allPassing: true })
+    expect(result).toEqual(expect.objectContaining({ allPassing: true }))
     expect(updateCalls[0].set).toEqual(expect.objectContaining({ address: '3252 N Broadway', pipelineChecksPassed: true }))
     // A clean image check has nothing to gain from a fresh search — not
     // worth burning a real network fetch + vision call on.
@@ -306,6 +306,73 @@ describe('retryPipelineChecks', () => {
     )
   })
 
+  // Feedback #169 follow-up (2026-09-17, "it should at least provide some
+  // sort of response... why it wasn't able to"): reports whether the retry
+  // actually swapped in a different photo, not just whether checks pass —
+  // a note-guided retry can legitimately re-confirm the same photo as the
+  // best match rather than find a different one.
+  it('reports imageChanged: true when the retry actually swaps in a different photo', async () => {
+    selectResults.push(
+      [
+        {
+          title: 'Urban Birding Festival',
+          description: null,
+          address: null,
+          locationName: 'Nature Museum',
+          startDate: '2026-10-10',
+          startTime: null,
+          endTime: null,
+          allDay: true,
+          sourceUrl: 'https://example.com',
+          topic: null,
+          imageUrl: '/uploads/events/old.jpg',
+          thumbnailUrl: '/uploads/events/old-thumb.jpg',
+          checks: priorChecksAllPassing,
+          status: 'approved',
+        },
+      ],
+      [{ imageUrl: '/uploads/events/new.jpg' }],
+    )
+    enrichEventImageMock.mockResolvedValue({ result: 'sourced', trace: [], imageQuality: PASSING_CHECK, imageRelevance: PASSING_CHECK })
+    const { retryPipelineChecks } = await import('./pipeline-review-service.js')
+
+    const result = await retryPipelineChecks('event-1', 'admin-1', 'find a better photo')
+
+    expect(result).toEqual(expect.objectContaining({ imageRetried: true, imageChanged: true }))
+  })
+
+  it('reports imageChanged: false when the retry re-confirms the same photo', async () => {
+    selectResults.push(
+      [
+        {
+          title: 'Urban Birding Festival',
+          description: null,
+          address: null,
+          locationName: 'Nature Museum',
+          startDate: '2026-10-10',
+          startTime: null,
+          endTime: null,
+          allDay: true,
+          sourceUrl: 'https://example.com',
+          topic: null,
+          imageUrl: '/uploads/events/same.jpg',
+          thumbnailUrl: '/uploads/events/same-thumb.jpg',
+          checks: priorChecksAllPassing,
+          status: 'approved',
+        },
+      ],
+      [{ imageUrl: '/uploads/events/same.jpg' }],
+    )
+    enrichEventImageMock.mockResolvedValue({ result: 'sourced', trace: [], imageQuality: PASSING_CHECK, imageRelevance: { pass: true, reason: 'already the best real match found', attempts: 2 } })
+    const { retryPipelineChecks } = await import('./pipeline-review-service.js')
+
+    const result = await retryPipelineChecks('event-1', 'admin-1', 'find a better photo')
+
+    expect(result).toEqual(
+      expect.objectContaining({ imageRetried: true, imageChanged: false, imageReason: 'already the best real match found' }),
+    )
+  })
+
   it('re-searches the image only when the image checks are the ones currently failing, and auto-publishes once everything passes', async () => {
     const priorChecks = { ...priorChecksAllPassing, imageQuality: { pass: false, reason: 'object missing', attempts: 1 }, imageRelevance: { pass: false, reason: 'object missing', attempts: 1 } }
     selectResults.push([
@@ -332,7 +399,7 @@ describe('retryPipelineChecks', () => {
     const result = await retryPipelineChecks('event-1', 'admin-1')
 
     expect(enrichEventImageMock).toHaveBeenCalledWith('event-1', expect.objectContaining({ sourceUrl: 'https://example.com', title: 'Live Music' }), { scoreLogos: true, actor: 'admin-1' })
-    expect(result).toEqual({ allPassing: true })
+    expect(result).toEqual(expect.objectContaining({ allPassing: true }))
     expect(updateCalls[0].set).toEqual(expect.objectContaining({ status: 'approved', pipelineChecksPassed: true }))
     // No text field was corrected — nothing worth a history entry beyond
     // what enrichEventImage already records for the image itself.
@@ -363,7 +430,7 @@ describe('retryPipelineChecks', () => {
 
     const result = await retryPipelineChecks('event-1', 'admin-1')
 
-    expect(result).toEqual({ allPassing: false })
+    expect(result).toEqual(expect.objectContaining({ allPassing: false }))
     expect(updateCalls[0].set).toEqual(expect.objectContaining({ status: 'pending', pipelineChecksPassed: false }))
   })
 

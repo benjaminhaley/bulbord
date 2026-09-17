@@ -463,15 +463,22 @@ export async function retryPipelineEventImage(eventId: string): Promise<{ found:
 // 2026-09-13: "several events... should have just caused them to be rerun
 // and tried again") — reruns the same self-healing pipeline a fresh
 // ingestion already gets on whichever checks are currently failing.
-async function postPipelineRetry(path: string, note?: string): Promise<{ allPassing: boolean }> {
+// `imageRetried`/`imageChanged`/`imageReason` (feedback #169 follow-up,
+// 2026-09-17, "it should at least provide some sort of response... why it
+// wasn't able to") — undefined for the rejected-candidate retry, which never
+// touches an image at all (see retryRejectedCandidateChecks's own comment).
+async function postPipelineRetry(
+  path: string,
+  note?: string,
+): Promise<{ allPassing: boolean; imageRetried?: boolean; imageChanged?: boolean; imageReason?: string }> {
   const response = await fetch(`${API_URL}${path}`, {
     method: 'POST',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
     body: JSON.stringify(note ? { note } : {}),
   })
   await throwOnError(response, 'Failed to retry')
-  const body = (await response.json()) as { data: { all_passing: boolean } }
-  return { allPassing: body.data.all_passing }
+  const body = (await response.json()) as { data: { all_passing: boolean; image_retried?: boolean; image_changed?: boolean; image_reason?: string } }
+  return { allPassing: body.data.all_passing, imageRetried: body.data.image_retried, imageChanged: body.data.image_changed, imageReason: body.data.image_reason }
 }
 
 // `note` (feedback #165, 2026-09-14): an admin's own free-text retry

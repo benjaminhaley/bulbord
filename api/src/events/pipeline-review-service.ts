@@ -376,7 +376,7 @@ export async function retryPipelineChecks(
   eventId: string,
   adminId: string,
   note?: string,
-): Promise<PipelineReviewActionError | { allPassing: boolean }> {
+): Promise<PipelineReviewActionError | { allPassing: boolean; imageRetried: boolean; imageChanged: boolean; imageReason?: string }> {
   const [existing] = await db
     .select({
       title: events.title,
@@ -433,6 +433,13 @@ export async function retryPipelineChecks(
   const shouldRetryImage = imageWasFailing || Boolean(note?.trim())
   let imageQuality = priorChecks?.imageQuality ?? { pass: true, reason: 'Not attempted', attempts: 1 }
   let imageRelevance = priorChecks?.imageRelevance ?? { pass: true, reason: 'Not attempted', attempts: 1 }
+  // Whether the retry actually swapped in a different photo (feedback #169
+  // follow-up, 2026-09-17, "it should at least provide some sort of response
+  // ... why it wasn't able to") — a note-guided retry can legitimately
+  // re-confirm the same photo as the best available match rather than find
+  // a different one; surfacing that distinction (rather than a generic
+  // "retried — now passing" either way) is what actually answers "why."
+  let imageChanged = false
   if (shouldRetryImage) {
     // enrichEventImage() doesn't fail open on its own — see
     // retryEventImageForKeptItem's own comment on why this call site needs
@@ -444,6 +451,8 @@ export async function retryPipelineChecks(
         { sourceUrl: existing.sourceUrl, title: merged.title, description: merged.description ?? null, note },
         { scoreLogos: true, actor: adminId },
       ))
+      const [after] = await db.select({ imageUrl: events.imageUrl }).from(events).where(eq(events.id, eventId)).limit(1)
+      imageChanged = after !== undefined && after.imageUrl !== existing.imageUrl
     } catch (err) {
       const reason = err instanceof Error ? err.message : 'unknown error'
       imageQuality = { pass: false, reason: `Image search errored: ${reason}`, attempts: (priorChecks?.imageQuality.attempts ?? 1) + 1 }
@@ -484,7 +493,7 @@ export async function retryPipelineChecks(
     })
   }
 
-  return { allPassing: pipelineChecksPassed }
+  return { allPassing: pipelineChecksPassed, imageRetried: shouldRetryImage, imageChanged, imageReason: shouldRetryImage ? imageRelevance.reason : undefined }
 }
 
 // The rejected-candidate equivalent — reruns the text-check retry against

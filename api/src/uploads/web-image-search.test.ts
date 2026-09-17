@@ -150,7 +150,7 @@ describe('findBroaderImageSearchPages', () => {
 
     expect(result).toEqual(['https://news.example.com/article', 'https://venue.example.com/events'])
     expect(createMock).toHaveBeenCalledWith(
-      expect.objectContaining({ tools: [{ type: 'web_search_20260209', name: 'web_search', max_uses: 3 }] }),
+      expect.objectContaining({ tools: [{ type: 'web_search_20260209', name: 'web_search', max_uses: 5 }] }),
       expect.anything(),
     )
   })
@@ -214,10 +214,71 @@ describe('findBroaderImageSearchPages', () => {
     expect(await findBroaderImageSearchPages('Fall Festival')).toEqual([])
   })
 
-  it('returns an empty array when the model response is malformed JSON', async () => {
+  it('returns an empty array when the model response is malformed JSON and no search results exist to fall back on', async () => {
     createMock.mockResolvedValue(textResponse('not json'))
     const { findBroaderImageSearchPages } = await import('./web-image-search.js')
 
     expect(await findBroaderImageSearchPages('Fall Festival')).toEqual([])
+  })
+
+  // Real incident (feedback #169 follow-up, 2026-09-17, "it didn't actually
+  // do what my note requested"): a long, specific note sent the model into
+  // an extended research spiral that hit the tool's own server-side rate
+  // limit ("Server tool use limit exceeded during code execution") and gave
+  // up with a bare `[]`, discarding several genuinely on-topic pages it had
+  // already found via real web_search calls earlier in the same turn.
+  function webSearchToolResult(urls: string[]) {
+    return { type: 'web_search_tool_result', content: urls.map((url) => ({ type: 'web_search_result', title: 'A result', url })) }
+  }
+
+  it('falls back to the raw search results when the model gives up with an empty array despite finding real pages', async () => {
+    createMock.mockResolvedValue({
+      stop_reason: 'end_turn',
+      content: [
+        webSearchToolResult(['https://do312.com/events/urban-birding-festival', 'https://theurbanbirdingfestival.org/']),
+        { type: 'text', text: '[]' },
+      ],
+    })
+    const { findBroaderImageSearchPages } = await import('./web-image-search.js')
+
+    const result = await findBroaderImageSearchPages('Urban Birding Festival')
+
+    expect(result).toEqual(['https://do312.com/events/urban-birding-festival', 'https://theurbanbirdingfestival.org/'])
+  })
+
+  it('falls back to the raw search results when the final text is missing entirely', async () => {
+    createMock.mockResolvedValue({
+      stop_reason: 'end_turn',
+      content: [webSearchToolResult(['https://news.example.com/coverage'])],
+    })
+    const { findBroaderImageSearchPages } = await import('./web-image-search.js')
+
+    expect(await findBroaderImageSearchPages('Fall Festival')).toEqual(['https://news.example.com/coverage'])
+  })
+
+  it('does not fall back when the model already returned real URLs of its own', async () => {
+    createMock.mockResolvedValue({
+      stop_reason: 'end_turn',
+      content: [
+        webSearchToolResult(['https://irrelevant.example.com/', 'https://also-irrelevant.example.com/']),
+        { type: 'text', text: JSON.stringify(['https://the-real-pick.example.com/']) },
+      ],
+    })
+    const { findBroaderImageSearchPages } = await import('./web-image-search.js')
+
+    expect(await findBroaderImageSearchPages('Fall Festival')).toEqual(['https://the-real-pick.example.com/'])
+  })
+
+  it('deduplicates and caps the fallback at 5 URLs', async () => {
+    const urls = Array.from({ length: 8 }, (_, i) => `https://example.com/page-${i}`)
+    createMock.mockResolvedValue({
+      stop_reason: 'end_turn',
+      content: [webSearchToolResult([...urls, urls[0]]), { type: 'text', text: '[]' }],
+    })
+    const { findBroaderImageSearchPages } = await import('./web-image-search.js')
+
+    const result = await findBroaderImageSearchPages('Fall Festival')
+
+    expect(result).toEqual(urls.slice(0, 5))
   })
 })
