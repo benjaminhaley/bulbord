@@ -11,9 +11,9 @@ export async function calendarFeedRoutes(app: FastifyInstance) {
   })
 
   // Public by design (token-in-URL) — calendar apps poll it with no headers.
-  app.get('/calendar/feed/:file', async (request, reply) => {
-    const { file } = request.params as { file: string }
-    const ics = await renderFeedForToken(file.replace(/\.ics$/, ''))
+  app.get('/calendar/feed.ics', async (request, reply) => {
+    const { token } = request.query as { token?: string }
+    const ics = await renderFeedForToken(token)
     if (!ics) return reply.code(404).send({ error: { message: 'Calendar feed not found' } })
     return reply.type('text/calendar; charset=utf-8').header('Cache-Control', 'private, max-age=900').send(ics)
   })

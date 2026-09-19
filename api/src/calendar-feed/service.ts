@@ -35,7 +35,7 @@ function verifyFeedToken(token: string | undefined): string | null {
 }
 
 export function feedUrl(userId: string): string {
-  return `${requireEnv('PUBLIC_API_URL')}/calendar/feed/${createFeedToken(userId)}.ics`
+  return `${requireEnv('PUBLIC_API_URL')}/calendar/feed.ics?token=${createFeedToken(userId)}`
 }
 
 function location(locationName: string | null, address: string | null): string | null {
