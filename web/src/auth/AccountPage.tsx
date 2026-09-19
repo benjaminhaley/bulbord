@@ -1,5 +1,5 @@
 import { IonBackButton, IonButton, IonButtons, IonContent, IonHeader, IonIcon, IonItem, IonLabel, IonList, IonPage, IonTitle, IonToolbar } from '@ionic/react'
-import { createOutline, flaskOutline, informationCircleOutline, notificationsOutline, peopleOutline, shieldCheckmarkOutline } from 'ionicons/icons'
+import { calendarOutline, createOutline, flaskOutline, informationCircleOutline, notificationsOutline, peopleOutline, shieldCheckmarkOutline } from 'ionicons/icons'
 
 import { Avatar } from '../uploads/Avatar'
 import { useAuth } from './AuthContext'
@@ -51,6 +51,10 @@ export function AccountPage() {
             <IonItem button routerLink="/account/notification-settings" lines="none">
               <IonIcon slot="start" icon={notificationsOutline} />
               <IonLabel>Notification Settings</IonLabel>
+            </IonItem>
+            <IonItem button routerLink="/account/calendar-sync" lines="none">
+              <IonIcon slot="start" icon={calendarOutline} />
+              <IonLabel>Sync to Calendar</IonLabel>
             </IonItem>
             <IonItem button routerLink="/about" lines="none">
               <IonIcon slot="start" icon={informationCircleOutline} />

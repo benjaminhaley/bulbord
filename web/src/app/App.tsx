@@ -40,6 +40,7 @@ import { SportsClubSourcesPage } from '../sports-clubs/SportsClubSourcesPage'
 import { SportsClubSourceDetailPage } from '../sports-clubs/SportsClubSourceDetailPage'
 import { FeedbackDetailPage } from '../feedback/FeedbackDetailPage'
 import { FeedbackPage } from '../feedback/FeedbackPage'
+import { CalendarSyncPage } from '../calendar/CalendarSyncPage'
 import { NotificationSettingsPage } from '../notifications/NotificationSettingsPage'
 import { NotificationsPage } from '../notifications/NotificationsPage'
 import { ShareButton } from '../sharing/ShareButton'
@@ -76,6 +77,7 @@ export function App() {
                   <Route exact path="/account" component={AccountPage} />
                   <Route exact path="/account/edit" component={EditProfilePage} />
                   <Route exact path="/account/notification-settings" component={NotificationSettingsPage} />
+                  <Route exact path="/account/calendar-sync" component={CalendarSyncPage} />
                   <Route exact path="/about" component={AboutPage} />
                   <Route exact path="/labs" component={LabsPage} />
                   <Route exact path="/friends" component={FriendsPage} />
