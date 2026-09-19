@@ -16,7 +16,8 @@
     "events:refine-sources": "tsx src/events/update-2026-07-29-refine-sources.ts",
     "newsletter:send": "tsx src/newsletter/send-weekly.ts",
     "camp-reminders:send": "tsx src/camp-reminders/send-due.ts",
-    "events:resource": "tsx src/events/sourcing-cron.ts"
+    "events:resource": "tsx src/events/sourcing-cron.ts",
+    "feedback:reply": "tsx src/feedback/update-post-reply.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.115.0",
