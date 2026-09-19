@@ -1,6 +1,7 @@
 import { API_URL } from '../config'
 import { authHeaders } from '../auth/token'
 import type { UploadedImage } from '../uploads/api'
+import type { RepeatPattern } from './repeat'
 
 export type InterestStatus = 'interested' | 'dismissed'
 
@@ -56,6 +57,9 @@ export interface EventInput {
   image_url: string | null
   thumbnail_url: string | null
   topic: string
+  // Feedback #173: post as a repeating event; start_date is the first
+  // occurrence. Only honored by POST /events.
+  repeat?: RepeatPattern
   // Only ever set by the photo-extraction flow (AddEventChoice.tsx) — its
   // presence tells POST /events to also register source_url as a crawlable
   // event_sources row (feedback, 2026-08-23). Never shown/edited in the UI.
@@ -255,6 +259,8 @@ export interface ExtractedEventFields {
   location_name?: string
   source_url?: string
   topic?: string
+  // A stated repeat schedule the extraction found (feedback #173).
+  recurrence?: RepeatPattern
 }
 
 interface ExtractFromPhotoResponse {

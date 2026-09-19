@@ -3,6 +3,7 @@ import { todayInChicago } from '../dates.js'
 import { decodeQrCode } from '../uploads/qr-decode.js'
 import { getImageObject } from '../uploads/storage.js'
 import { fetchPageText } from './resourcing.js'
+import { parseRecurrence, RECURRENCE_PROMPT_RULE, type RecurrencePattern } from './recurrence.js'
 import { getRetryStrategiesPromptBlock } from './retry-strategies.js'
 import {
   CALL_MAX_RETRIES,
@@ -29,11 +30,12 @@ Rules:
 - source_url: only if a website/URL is legibly printed on the poster itself (e.g. "more info at hsapta.org") — the poster's own stated URL, never a guess. If a "qr_code_url" field is given below, that's the real, already-decoded destination the poster's own QR code points to (not a guess — it was read with a real decoder, not by you) — use it as source_url whenever nothing better is printed as plain text.
 - If a "qr_code_page_text" field is given, that's the real page the QR code linked to — treat it as an authoritative source for any field, same trust level as text printed on the poster itself (e.g. a full address or exact time that didn't fit on the poster but is on that page).
 - topic: pick the single best match from this fixed list if one clearly applies, otherwise omit the field entirely: ${JSON.stringify(TOPIC_OPTIONS)}
+${RECURRENCE_PROMPT_RULE}
 - If you can't confidently read a real, dated, upcoming event from this image at all (a blurry photo, no event-like content), respond with exactly {"found": false} and nothing else — never invent one.
 - If a "retry_instructions" field is given, this is a second attempt after a person looked at your first result and found it lacking — follow it closely. Don't attempt to decode a QR code yourself from the raw image pixels even if asked to — that's unreliable; a "qr_code_url"/"qr_code_page_text" field (see above) is the real result of an actual decoder already having tried, and its absence means no QR code was found or it didn't decode, not that you should guess at it.
 
 Respond with ONLY a JSON object, no markdown fences, no explanation, one of:
-{"found": true, "title": string, "description"?: string, "start_date": string, "start_time"?: string, "end_time"?: string, "all_day": boolean, "address"?: string, "location_name"?: string, "source_url"?: string, "topic"?: string}
+{"found": true, "title": string, "description"?: string, "start_date": string, "start_time"?: string, "end_time"?: string, "all_day": boolean, "address"?: string, "location_name"?: string, "source_url"?: string, "topic"?: string, "recurrence"?: string}
 {"found": false}`
 
 // Stage 2 only — a slower, separate call the frontend makes in parallel
@@ -68,6 +70,7 @@ export interface ExtractedEventFields {
   location_name?: string
   source_url?: string
   topic?: string
+  recurrence?: RecurrencePattern
 }
 
 export interface DiscoveredEventSource {
@@ -107,6 +110,7 @@ function toExtractedFields(raw: RawExtractedFields): ExtractedEventFields | null
     location_name: typeof raw.location_name === 'string' && raw.location_name.trim() ? raw.location_name.trim() : undefined,
     source_url: isHttpUrl(raw.source_url) ? raw.source_url.trim() : undefined,
     topic: typeof raw.topic === 'string' && TOPIC_OPTIONS.includes(raw.topic) ? raw.topic : undefined,
+    recurrence: parseRecurrence(raw.recurrence),
   }
 }
 

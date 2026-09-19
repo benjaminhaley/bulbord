@@ -18,6 +18,7 @@ import { useEffect, useState } from 'react'
 import { API_URL } from '../config'
 import type { UploadedImage } from '../uploads/api'
 import type { Event, EventInput } from './api'
+import { REPEAT_LIMIT_NOTE, repeatOptionsFor, validRepeat, type RepeatPattern } from './repeat'
 import { EVENT_TOPIC_OPTIONS } from './topics'
 import { useEventImageUpload } from './useEventImageUpload'
 
@@ -69,7 +70,10 @@ export type EventFormInitialValues = Pick<
   | 'topic'
   | 'image_url'
   | 'thumbnail_url'
->
+> & {
+  // Feedback #173: a repeat schedule the extraction proposed for review.
+  recurrence?: RepeatPattern | null
+}
 
 // Shared by the "new event" and "edit event" flows (feedback #46) — same
 // shape as feedback/FeedbackForm's shared new/edit component. Only
@@ -147,6 +151,7 @@ export function EventForm({
   const [address, setAddress] = useState(initial?.address ?? '')
   const [sourceUrl, setSourceUrl] = useState(initial?.source_url ?? '')
   const [topic, setTopic] = useState(initial?.topic ?? '')
+  const [repeat, setRepeat] = useState<RepeatPattern | ''>(validRepeat(initial?.recurrence, initial?.start_date ?? ''))
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const { image, fileInputRef, uploading, attach, remove, setImage } = useEventImageUpload(
@@ -200,6 +205,10 @@ export function EventForm({
     !startDate && 'Date',
   ].filter((v): v is string => !!v)
   const canSubmit = missingFields.length === 0
+  const repeatOptions = repeatOptionsFor(startDate)
+  // A chosen pattern only counts while it still fits the (possibly since
+  // changed) date — the select below shows the same effective value.
+  const effectiveRepeat = validRepeat(repeat, startDate)
 
 
   async function submit() {
@@ -219,6 +228,7 @@ export function EventForm({
           address: address.trim(),
           source_url: sourceUrl.trim(),
           topic,
+          ...(effectiveRepeat && { repeat: effectiveRepeat }),
         }),
       )
     } catch {
@@ -248,6 +258,29 @@ export function EventForm({
         </IonLabel>
         <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} style={dateTimeInputStyle} />
       </IonItem>
+      <IonItem>
+        <IonLabel position="stacked">Repeats</IonLabel>
+        <IonSelect
+          value={effectiveRepeat}
+          disabled={repeatOptions.length === 0}
+          onIonChange={(e) => setRepeat(e.detail.value ?? '')}
+          placeholder={repeatOptions.length === 0 ? 'Choose a date first' : undefined}
+        >
+          <IonSelectOption value="">Does not repeat</IonSelectOption>
+          {repeatOptions.map((option) => (
+            <IonSelectOption key={option.value} value={option.value}>
+              {option.label}
+            </IonSelectOption>
+          ))}
+        </IonSelect>
+      </IonItem>
+      {effectiveRepeat && (
+        <IonText color="medium">
+          <p className="ion-padding-start" style={{ fontSize: '0.8125rem', margin: '4px 16px 8px' }}>
+            {REPEAT_LIMIT_NOTE}
+          </p>
+        </IonText>
+      )}
       <IonItem>
         <IonCheckbox checked={allDay} onIonChange={(e) => setAllDay(e.detail.checked)}>
           All day

@@ -1,4 +1,4 @@
-import { and, asc, eq, getTableColumns, gte, isNull, lte, or, sql } from 'drizzle-orm'
+import { and, asc, eq, getTableColumns, gte, inArray, isNull, lte, or, sql } from 'drizzle-orm'
 import type { FastifyInstance } from 'fastify'
 
 import { requireAuth, requireRole } from '../auth/plugin.js'
@@ -23,6 +23,7 @@ import { extractEventFieldsFromPhoto, findEventSource, type ExtractedEventFields
 import { fetchPageText } from './resourcing.js'
 import { registerDiscoveredEventSource } from './source-registration.js'
 import { recordRetryNote } from './retry-strategies.js'
+import { expandRecurrence, isRecurrencePattern, RECURRENCE_PATTERNS, type RecurrencePattern } from './recurrence.js'
 import {
   interestedCountExpr,
   interestedPeopleExpr,
@@ -72,6 +73,28 @@ async function loadEventDetail(id: string, userId: string | null) {
     .where(and(eq(events.id, id), eq(events.status, 'approved'), isNull(events.deletedAt)))
     .limit(1)
   return row ?? null
+}
+
+// Feedback #173: after the first occurrence's real image search and quality
+// checks finish, every later occurrence of the same repeating post takes on
+// the same final result instead of re-running (and possibly disagreeing
+// with) them per row.
+async function copyOccurrenceResults(firstId: string, laterIds: string[]): Promise<void> {
+  if (laterIds.length === 0) return
+  const [first] = await db
+    .select({
+      imageUrl: events.imageUrl,
+      thumbnailUrl: events.thumbnailUrl,
+      sourceImageUrl: events.sourceImageUrl,
+      imageSearchTrace: events.imageSearchTrace,
+      pipelineQualityChecks: events.pipelineQualityChecks,
+      pipelineChecksPassed: events.pipelineChecksPassed,
+    })
+    .from(events)
+    .where(eq(events.id, firstId))
+    .limit(1)
+  if (!first) return
+  await db.update(events).set({ ...first, updatedAt: new Date() }).where(inArray(events.id, laterIds))
 }
 
 export async function eventsRoutes(app: FastifyInstance) {
@@ -278,6 +301,9 @@ export async function eventsRoutes(app: FastifyInstance) {
       image_url?: string
       thumbnail_url?: string
       topic?: string
+      // Feedback #173: post a repeating event — see recurrence.ts. The
+      // start date is always the first occurrence.
+      repeat?: string
     }
     const title = body.title?.trim()
     const address = body.address?.trim()
@@ -285,6 +311,10 @@ export async function eventsRoutes(app: FastifyInstance) {
     if (!title || !address || !startDate) {
       return reply.code(400).send({ error: { message: 'title, address, and start_date are required' } })
     }
+    if (body.repeat && !isRecurrencePattern(body.repeat)) {
+      return reply.code(400).send({ error: { message: `repeat must be one of: ${RECURRENCE_PATTERNS.join(', ')}` } })
+    }
+    const laterDates = body.repeat ? expandRecurrence(startDate, body.repeat as RecurrencePattern).slice(1) : []
 
     const currentUser = request.currentUser!
     const allDay = !!body.all_day
@@ -318,8 +348,39 @@ export async function eventsRoutes(app: FastifyInstance) {
     await db.insert(eventsLog).values({
       actor: currentUser.id,
       action: 'event_created',
-      metadata: { eventId: created.id },
+      metadata: { eventId: created.id, ...(laterDates.length > 0 && { repeat: body.repeat, occurrences: laterDates.length + 1 }) },
     })
+
+    // Feedback #173: the remaining occurrences are ordinary independent rows
+    // sharing the first one's fields (and, via source_url, its list-collapse
+    // key). They start with the same image as the first; the background
+    // block below copies the first one's final image/checks over once the
+    // real search finishes, so one series never ends up with mixed photos.
+    const laterEvents =
+      laterDates.length > 0
+        ? await db
+            .insert(events)
+            .values(
+              laterDates.map((date) => ({
+                title,
+                description: body.description?.trim() || null,
+                startDate: date,
+                startTime: allDay ? null : body.start_time?.trim() || null,
+                endTime: allDay ? null : body.end_time?.trim() || null,
+                allDay,
+                address,
+                locationName: body.location_name?.trim() || null,
+                sourceUrl: body.source_url?.trim() || null,
+                imageUrl: image.imageUrl,
+                thumbnailUrl: image.thumbnailUrl,
+                topic: body.topic?.trim() || null,
+                status: 'approved' as const,
+                submittedByUserId: currentUser.id,
+              })),
+            )
+            .returning({ id: events.id })
+        : []
+    const laterEventIds = laterEvents.map((e) => e.id)
 
     // Member self-service posting had no automated image-sourcing of its
     // own — a member who doesn't attach a photo (both the manual-entry and
@@ -379,9 +440,12 @@ export async function eventsRoutes(app: FastifyInstance) {
         }
         const pipelineChecksPassed = Object.values(checks).every((c) => c.pass)
         await db.update(events).set({ pipelineQualityChecks: checks, pipelineChecksPassed, updatedAt: new Date() }).where(eq(events.id, created.id))
+        await copyOccurrenceResults(created.id, laterEventIds)
       } catch {
         // Best-effort — a failed check computation must never affect the
-        // already-created, already-live event.
+        // already-created, already-live event. Later occurrences still get
+        // whatever image the first one ended up with.
+        await copyOccurrenceResults(created.id, laterEventIds).catch(() => undefined)
       }
     })()
 
@@ -397,7 +461,7 @@ export async function eventsRoutes(app: FastifyInstance) {
         // but nothing (the admin sources list's own event_count, a future
         // resourcing.ts join) can see the connection (feedback, 2026-08-23:
         // "I don't see the root source... being added to event sources").
-        await db.update(events).set({ sourceId }).where(eq(events.id, created.id))
+        await db.update(events).set({ sourceId }).where(inArray(events.id, [created.id, ...laterEventIds]))
       } catch {
         // ignore — see comment above
       }
@@ -413,6 +477,7 @@ export async function eventsRoutes(app: FastifyInstance) {
         currentUser,
         row.submittedBy,
       ),
+      occurrences_created: laterEventIds.length + 1,
     })
   })
 

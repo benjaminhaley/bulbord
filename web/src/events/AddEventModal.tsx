@@ -47,6 +47,7 @@ function toInitialValues(extracted: ExtractedEventFields | null, image: Uploaded
     // stage-2 result reaches an already-open form.
     source_url: extracted?.source_url ?? null,
     topic: extracted?.topic ?? null,
+    recurrence: extracted?.recurrence ?? null,
     image_url: image?.image_url ?? null,
     thumbnail_url: image?.thumbnail_url ?? null,
   }

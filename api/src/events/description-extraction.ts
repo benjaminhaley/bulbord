@@ -13,6 +13,7 @@ import {
   type RawExtractedFields,
 } from './extraction-shared.js'
 import type { ExtractedEventFields } from './photo-extraction.js'
+import { parseRecurrence, RECURRENCE_PROMPT_RULE } from './recurrence.js'
 import { getRetryStrategiesPromptBlock } from './retry-strategies.js'
 
 // Feedback #133 ("if I don't wanna enter a picture, my other option should
@@ -52,11 +53,12 @@ Rules:
 - location_name/address: only if the description actually names a venue or gives an address — don't guess a street address from a venue name you merely recognize, even a well-known one (that's what the web-search stage is for). A parade, walk, or street event often has no single building address at all — a bounded street segment or intersection ("Lincoln Ave from Wellington to Diversey", "Pine Grove Ave & Wellington Ave") is a real, specific address for this purpose too if the description states one; don't put that kind of location in location_name instead just because it isn't a numbered street address.
 - source_url: only if the description itself contains a literal URL — never invent or guess one.
 - topic: pick the single best match from this fixed list if one clearly applies, otherwise omit the field entirely: ${JSON.stringify(TOPIC_OPTIONS)}
+${RECURRENCE_PROMPT_RULE}
 - If the description doesn't name anything recognizable as a real event at all (too vague, or not describing an event), respond with exactly {"found": false} and nothing else.
 - If a "retry_instructions" field is given, this is a second attempt after a person looked at your first result and found it lacking — follow it closely.
 
 Respond with ONLY a JSON object, no markdown fences, no explanation, one of:
-{"found": true, "title": string, "description"?: string, "start_date"?: string, "start_time"?: string, "end_time"?: string, "address"?: string, "location_name"?: string, "source_url"?: string, "topic"?: string}
+{"found": true, "title": string, "description"?: string, "start_date"?: string, "start_time"?: string, "end_time"?: string, "address"?: string, "location_name"?: string, "source_url"?: string, "topic"?: string, "recurrence"?: string}
 {"found": false}`
 
 // Stage 2 differs from photo-extraction's findEventSource in scope, not
@@ -121,6 +123,7 @@ function toStage1Fields(raw: RawExtractedFields): ExtractedEventFields | null {
     location_name: trimmedOrUndefined(raw.location_name),
     source_url: isHttpUrl(raw.source_url) ? raw.source_url.trim() : undefined,
     topic: typeof raw.topic === 'string' && TOPIC_OPTIONS.includes(raw.topic) ? raw.topic : undefined,
+    recurrence: parseRecurrence(raw.recurrence),
   }
 }
 

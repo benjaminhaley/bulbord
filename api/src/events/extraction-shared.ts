@@ -89,4 +89,5 @@ export interface RawExtractedFields {
   location_name?: unknown
   source_url?: unknown
   topic?: unknown
+  recurrence?: unknown
 }
