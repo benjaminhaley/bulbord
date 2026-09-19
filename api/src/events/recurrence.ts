@@ -10,7 +10,7 @@
 export const RECURRENCE_PATTERNS = ['weekly', 'biweekly', 'monthly_nth', 'monthly_last'] as const
 export type RecurrencePattern = (typeof RECURRENCE_PATTERNS)[number]
 
-export const MAX_OCCURRENCES = 20
+const MAX_OCCURRENCES = 20
 
 export function isRecurrencePattern(value: unknown): value is RecurrencePattern {
   return typeof value === 'string' && (RECURRENCE_PATTERNS as readonly string[]).includes(value)
