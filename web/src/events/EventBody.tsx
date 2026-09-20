@@ -11,6 +11,7 @@ import {
   InlineTextareaInput,
   InlineTimeInput,
 } from '../edit-history/InlineField'
+import { localEventTiming } from '../timezone'
 import { formatWhen } from './format'
 import { EVENT_TOPIC_OPTIONS } from './topics'
 
@@ -135,7 +136,7 @@ export function EventBody({
         hasValue={true}
         highlighted={isHighlighted('start_date') || isHighlighted('start_time') || isHighlighted('end_time') || isHighlighted('all_day')}
         readContent={formatWhen(
-          { startDate: event.start_date, startTime: event.start_time, endTime: event.end_time ?? null, allDay: event.all_day },
+          localEventTiming(event.start_date, event.start_time, event.end_time ?? null, event.all_day),
           undefined,
           'detailed',
         )}

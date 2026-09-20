@@ -5,6 +5,7 @@
 // infra, same as it is for camps/events, so it comes from ../dayLabel
 // rather than a third diverging copy.
 import { dayLabel } from '../dayLabel'
+import { localizeWallClock } from '../timezone'
 import type { ScheduleType, SportsClubOccurrence } from './api'
 
 export const CATEGORY_OPTIONS = [
@@ -89,13 +90,14 @@ function formatTimeRange(startTime: string, endTime: string | null): string {
 // specific to a multi-row list, where every row needs to read as the same
 // kind of fact: full weekday name, month, and day, every time.
 export function occurrenceLabel(occurrence: SportsClubOccurrence): string {
-  const weekdayDate = new Date(`${occurrence.date}T00:00:00`).toLocaleDateString('en-US', {
+  const local = localizeWallClock(occurrence.date, occurrence.start_time, occurrence.end_time)
+  const weekdayDate = new Date(`${local.date}T00:00:00`).toLocaleDateString('en-US', {
     weekday: 'long',
     month: 'short',
     day: 'numeric',
   })
-  if (!occurrence.start_time) return weekdayDate
-  return `${weekdayDate} · ${formatTimeRange(occurrence.start_time, occurrence.end_time)}`
+  if (!local.startTime) return weekdayDate
+  return `${weekdayDate} · ${formatTimeRange(local.startTime, local.endTime)}`
 }
 
 const RECURRING_WEEKDAY_NAMES = ['Sundays', 'Mondays', 'Tuesdays', 'Wednesdays', 'Thursdays', 'Fridays', 'Saturdays']
@@ -117,9 +119,10 @@ const RECURRING_WEEKDAY_NAMES = ['Sundays', 'Mondays', 'Tuesdays', 'Wednesdays',
 export function nextOccurrenceDayTimeLabel(occurrences: SportsClubOccurrence[]): string | null {
   const next = occurrences[0]
   if (!next) return null
-  const weekday = RECURRING_WEEKDAY_NAMES[new Date(`${next.date}T00:00:00`).getDay()]
-  if (!next.start_time) return weekday
-  return `${weekday}, ${formatTimeRange(next.start_time, next.end_time)}`
+  const local = localizeWallClock(next.date, next.start_time, next.end_time)
+  const weekday = RECURRING_WEEKDAY_NAMES[new Date(`${local.date}T00:00:00`).getDay()]
+  if (!local.startTime) return weekday
+  return `${weekday}, ${formatTimeRange(local.startTime, local.endTime)}`
 }
 
 // A fixed_session's own first/last day, or "Ongoing — join anytime" for a

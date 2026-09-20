@@ -30,6 +30,7 @@ import { AddEventModal } from './AddEventModal'
 import { CalendarWeekView } from './CalendarWeekView'
 import { DEFAULT_INTEREST_FILTER, EventFilterChips } from './EventFilterChips'
 import { fetchEvents, type Event, type EventFilters, type InterestStatus } from './api'
+import { localEventTiming } from '../timezone'
 import { formatWhen, locationLabel, teaser } from './format'
 import { InterestedBadge } from './InterestedBadge'
 import { useEventInterest } from './useEventInterest'
@@ -95,7 +96,7 @@ export function EventRow({
             {dimmed && <IonNote style={{ marginLeft: 6, fontSize: '0.75em', textTransform: 'uppercase' }}>Dismissed</IonNote>}
           </h2>
           <p>
-            {formatWhen({ startDate: event.start_date, startTime: event.start_time, endTime: event.end_time, allDay: event.all_day })}
+            {formatWhen(localEventTiming(event.start_date, event.start_time, event.end_time, event.all_day))}
           </p>
           {location && <IonNote>{location}</IonNote>}
           {description && <p className="teaser">{description}</p>}

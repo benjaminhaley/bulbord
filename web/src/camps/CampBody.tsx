@@ -15,6 +15,7 @@ import {
 } from '../edit-history/InlineField'
 import { factLineStyle, headingContentGap, sectionDividerStyle } from '../theme/layout'
 import type { CampOptionLine, CampPrepLine } from './api'
+import { localTimeLabel } from './localTime'
 import {
   bookingStatusChipStyle,
   bookingStatusLabel,
@@ -27,7 +28,6 @@ import {
   optionTimeCell,
   shortAddress,
   sortOptionsByPrice,
-  timeLabel,
 } from './format'
 
 // Feedback #141 (2026-09-07): CampDetailPage's own read-mode rendering,
@@ -289,7 +289,7 @@ export function CampBody({
           editing={editing}
           hasValue
           highlighted={isHighlighted('start_time') || isHighlighted('end_time')}
-          readContent={timeLabel(camp.start_time, camp.end_time)}
+          readContent={localTimeLabel(camp.start_date, camp.start_time, camp.end_time)}
           editContent={
             draft && (
               <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>

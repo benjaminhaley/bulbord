@@ -14,6 +14,10 @@ export default defineConfig({
       extends: true,
       test: {
         environment: 'jsdom',
+        // Stored times are Chicago wall-clock and displayed in the viewer's zone
+        // (src/timezone.ts) — pin the test viewer to Chicago so CI's UTC box
+        // doesn't shift expectations.
+        env: { TZ: 'America/Chicago' },
         setupFiles: ['./src/test-setup.ts'],
         exclude: ['**/node_modules/**', './e2e/**']
       }

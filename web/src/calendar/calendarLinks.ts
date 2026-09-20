@@ -1,17 +1,12 @@
-// Shared "Add to calendar" link/file builders (feedback #76) — generic
-// across Events and Camps, the same "truly generic shared infra" bar as
-// auth/uploads/Avatar/dayLabel.ts (see CLAUDE.md's Camps section: "no
-// imports from events/", so this lives at the top level, not inside either
-// feature folder). No timezone conversion is done anywhere here: every
-// date/time in this app is already a plain, timezone-less local value (see
-// api/src/db/schema.ts's `date`/`time` columns, no offset stored) — every
-// calendar target below gets a "floating" local time with no UTC/offset
-// suffix, the same convention RFC 5545 itself uses for a timezone-less
-// DTSTART, and consistent with how the rest of this codebase never does
-// timezone math client-side either (dayLabel.ts parses a bare date the same
-// way). A recipient's own calendar app renders a floating time in whatever
-// timezone it's already set to — correct for this app's Chicago-area
-// audience without needing real TZ-conversion logic.
+// Shared "Add to Calendar" link/file builders (feedback #76) — generic
+// across Events and Camps (see CLAUDE.md's Camps section: "no imports from
+// events/", so this lives at the top level, not inside either feature
+// folder). Stored times are Chicago wall-clock values (see timezone.ts); a
+// timed event is converted to a real UTC instant here, so every calendar
+// app shows it at the right local time wherever the viewer is. All-day
+// events stay date-only.
+
+import { chicagoWallClockToInstantMs, instantToUtcParts } from '../timezone'
 
 export interface CalendarEventInput {
   title: string
@@ -55,8 +50,15 @@ function compactDate(dateStr: string): string {
   return dateStr.replace(/-/g, '')
 }
 
-function compactDateTime(dateStr: string, time: string): string {
-  return `${compactDate(dateStr)}T${time.replace(/:/g, '')}`
+// Chicago wall-clock -> compact UTC instant ("20260816T143000Z").
+function compactUtc(dateStr: string, time: string): string {
+  const { date, time: t } = instantToUtcParts(chicagoWallClockToInstantMs(dateStr, time))
+  return `${compactDate(date)}T${t.replace(/:/g, '')}Z`
+}
+
+function isoUtc(dateStr: string, time: string): string {
+  const { date, time: t } = instantToUtcParts(chicagoWallClockToInstantMs(dateStr, time))
+  return `${date}T${t}Z`
 }
 
 interface ResolvedRange {
@@ -79,8 +81,8 @@ function resolveRange(input: CalendarEventInput): ResolvedRange {
   const endTime = resolveEndTime(input.startTime, input.endTime)
   return {
     allDay: false,
-    start: compactDateTime(input.startDate, input.startTime),
-    end: compactDateTime(input.startDate, endTime),
+    start: compactUtc(input.startDate, input.startTime),
+    end: compactUtc(input.startDate, endTime),
   }
 }
 
@@ -95,24 +97,19 @@ export function googleCalendarUrl(input: CalendarEventInput): string {
   const details = joinDetails(input)
   if (details) params.set('details', details)
   if (input.location) params.set('location', input.location)
-  // Only matters for a timed event (an all-day `dates` value has no time
-  // component to interpret) — see this file's header comment on floating
-  // times.
-  params.set('ctz', 'America/Chicago')
   return `https://calendar.google.com/calendar/render?${params.toString()}`
 }
 
 export function outlookCalendarUrl(input: CalendarEventInput): string {
   const { allDay } = resolveRange(input)
   const endDate = input.endDate ?? input.startDate
-  const startTime = input.startTime ?? '00:00:00'
   const endTime = allDay ? '00:00:00' : resolveEndTime(input.startTime as string, input.endTime)
   const params = new URLSearchParams({
     path: '/calendar/action/compose',
     rru: 'addevent',
     subject: input.title,
-    startdt: allDay ? input.startDate : `${input.startDate}T${startTime}`,
-    enddt: allDay ? addDays(endDate, 1) : `${input.startDate}T${endTime}`,
+    startdt: allDay ? input.startDate : isoUtc(input.startDate, input.startTime as string),
+    enddt: allDay ? addDays(endDate, 1) : isoUtc(input.startDate, endTime),
     allday: String(allDay),
   })
   const details = joinDetails(input)

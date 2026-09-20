@@ -33,7 +33,8 @@ import { Avatar } from '../uploads/Avatar'
 import { createCamp, fetchCampsByBreak, type BreakBucket, type Camp, type InterestStatus } from './api'
 import { CampFilterChips } from './CampFilterChips'
 import { CampForm } from './CampForm'
-import { bookingStatusChipStyle, bookingStatusLabel, campDetailsLine, distanceLabel, formatDateRange, locationLabel, timeLabel } from './format'
+import { bookingStatusChipStyle, bookingStatusLabel, campDetailsLine, distanceLabel, formatDateRange, locationLabel } from './format'
+import { localTimeLabel } from './localTime'
 import { matchesCampAgeFilter } from './filters'
 import { applyInterestUpdateAcrossBuckets } from './grouping'
 import { InterestedBadge } from './InterestedBadge'
@@ -117,7 +118,7 @@ function CampRow({
             )}
           </h2>
           {showDate && <p>{formatDateRange(camp.start_date, camp.end_date)}</p>}
-          <p>{timeLabel(camp.start_time, camp.end_time)}</p>
+          <p>{localTimeLabel(camp.start_date, camp.start_time, camp.end_time)}</p>
           {/* Booking status (feedback #68) always gets its own line, below
               the time (fixed 2026-08-13 twice: first for a screenshot
               showing the address text wrapping around a bare inline badge —
