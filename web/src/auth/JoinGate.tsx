@@ -21,7 +21,7 @@ import {
   IonToolbar,
 } from '@ionic/react'
 import { chevronDownOutline } from 'ionicons/icons'
-import { type ReactNode, useEffect, useState } from 'react'
+import { type ReactNode, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 
 import { API_URL } from '../config'
@@ -30,8 +30,7 @@ import { unstyledButtonStyle } from '../theme/layout'
 import { Avatar } from '../uploads/Avatar'
 import { CropModal } from '../uploads/CropModal'
 import { useImageUpload } from '../uploads/useImageUpload'
-import { AboutPage } from './AboutPage'
-import { fetchInviteInfo, updateProfile, type Grade, type InviteInfo } from './api'
+import { updateProfile, type Grade, type InviteInfo } from './api'
 import { useAuth } from './AuthContext'
 import { MosaicMotif } from './MosaicMotif'
 import {

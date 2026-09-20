@@ -23,7 +23,6 @@ import { useRequireLogin } from '../auth/LoginPrompt'
 import { addOutline, eyeOffOutline, filterOutline, star } from 'ionicons/icons'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
-import { useAuth } from '../auth/AuthContext'
 import { InstitutionBanner } from '../app/InstitutionBanner'
 import { API_URL } from '../config'
 import { Avatar } from '../uploads/Avatar'
@@ -116,7 +115,6 @@ export function EventRow({
 }
 
 export function EventsPage() {
-  const { user } = useAuth()
   const [events, setEvents] = useState<Event[] | null>(null)
   const [error, setError] = useState(false)
   const [swipeToast, setSwipeToast] = useState<SwipeToast | null>(null)
