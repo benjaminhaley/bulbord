@@ -2,6 +2,9 @@
 // many VEVENTs, unlike web/src/calendar/calendarLinks.ts's single-event
 // "Add to Calendar" download. Same "floating local time" convention as that
 // file (every date/time in this app is timezone-less; no offset is emitted).
+// Unlike that file, timed events here carry an explicit TZID: Google Calendar
+// (and others) interpret a floating time in a *subscribed* feed as UTC, which
+// shifted every event ~5 hours early. All-day events stay date-only.
 // UIDs are stable per item so a subscribed calendar updates a listing in
 // place on refresh instead of duplicating it.
 
@@ -17,6 +20,29 @@ export interface FeedEntry {
   endTime?: string | null // HH:MM:SS — defaults to one hour after startTime
   allDay?: boolean
 }
+
+const TZID = 'America/Chicago'
+
+// Current US DST rules (second Sunday of March → first Sunday of November).
+const VTIMEZONE = [
+  'BEGIN:VTIMEZONE',
+  `TZID:${TZID}`,
+  'BEGIN:DAYLIGHT',
+  'TZOFFSETFROM:-0600',
+  'TZOFFSETTO:-0500',
+  'TZNAME:CDT',
+  'DTSTART:20070311T020000',
+  'RRULE:FREQ=YEARLY;BYMONTH=3;BYDAY=2SU',
+  'END:DAYLIGHT',
+  'BEGIN:STANDARD',
+  'TZOFFSETFROM:-0500',
+  'TZOFFSETTO:-0600',
+  'TZNAME:CST',
+  'DTSTART:20071104T020000',
+  'RRULE:FREQ=YEARLY;BYMONTH=11;BYDAY=1SU',
+  'END:STANDARD',
+  'END:VTIMEZONE',
+]
 
 function pad(n: number): string {
   return String(n).padStart(2, '0')
@@ -80,8 +106,8 @@ function entryLines(entry: FeedEntry, now: Date): string[] {
     lines.push(`DTEND;VALUE=DATE:${compactDate(nextDay(entry.endDate ?? entry.startDate))}`)
   } else {
     const startTime = entry.startTime as string
-    lines.push(`DTSTART:${compactDateTime(entry.startDate, startTime)}`)
-    lines.push(`DTEND:${compactDateTime(entry.startDate, entry.endTime ?? defaultEnd(startTime))}`)
+    lines.push(`DTSTART;TZID=${TZID}:${compactDateTime(entry.startDate, startTime)}`)
+    lines.push(`DTEND;TZID=${TZID}:${compactDateTime(entry.startDate, entry.endTime ?? defaultEnd(startTime))}`)
   }
   lines.push(`SUMMARY:${escapeText(entry.title)}`)
   const details = [entry.description, entry.url].filter((v): v is string => Boolean(v)).join('\n\n')
@@ -102,6 +128,8 @@ export function buildIcsFeed(entries: FeedEntry[], calendarName: string, now = n
     // Hint (Apple Calendar / Google honor it loosely) at how often to re-poll.
     'REFRESH-INTERVAL;VALUE=DURATION:PT6H',
     'X-PUBLISHED-TTL:PT6H',
+    `X-WR-TIMEZONE:${TZID}`,
+    ...VTIMEZONE,
     ...entries.flatMap((entry) => entryLines(entry, now)),
     'END:VCALENDAR',
   ]

@@ -8,8 +8,9 @@ describe('buildIcsFeed', () => {
   it('emits a timed event with a one-hour default end and stable UID', () => {
     const ics = buildIcsFeed([{ uid: 'event-1@bulbord.com', title: 'Bike Bus', startDate: '2026-09-25', startTime: '08:00:00' }], 'Cal', NOW)
     expect(ics).toContain('UID:event-1@bulbord.com')
-    expect(ics).toContain('DTSTART:20260925T080000')
-    expect(ics).toContain('DTEND:20260925T090000')
+    expect(ics).toContain('DTSTART;TZID=America/Chicago:20260925T080000')
+    expect(ics).toContain('DTEND;TZID=America/Chicago:20260925T090000')
+    expect(ics).toContain('BEGIN:VTIMEZONE')
     expect(ics.endsWith('END:VCALENDAR\r\n')).toBe(true)
   })
 
