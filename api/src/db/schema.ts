@@ -34,15 +34,31 @@ export const events = pgTable('events', {
   id: uuid('id').primaryKey().defaultRandom(),
   title: text('title').notNull(),
   description: text('description'),
-  startDate: date('start_date').notNull(),
-  startTime: time('start_time'), // null = no specific time
+  // The real point in time the event starts, stored as a UTC instant
+  // (timestamptz) — the single source of truth (2026-09-20, after a
+  // subscribed Google calendar showed events ~5h early). A date-only event
+  // (all_day = true) is stored as Chicago midnight of its date.
+  startsAt: timestamp('starts_at', { withTimezone: true }).notNull(),
+  // Null = no specific end.
+  endsAt: timestamp('ends_at', { withTimezone: true }),
+  // Derived, read-only Chicago wall-clock views of starts_at/ends_at (Postgres
+  // GENERATED columns — never write these; write starts_at/ends_at). Kept so
+  // date grouping, dedup, and the Hours filter can query a plain date/time.
+  startDate: date('start_date').notNull().generatedAlwaysAs(sql`((starts_at AT TIME ZONE 'America/Chicago')::date)`),
+  startTime: time('start_time').generatedAlwaysAs(
+    sql`(CASE WHEN all_day THEN NULL ELSE (starts_at AT TIME ZONE 'America/Chicago')::time END)`,
+  ), // null = no specific time (all_day)
   // Added 2026-08-23 (feedback: a poster gave a clear "11am-3pm" range,
   // and the app had nowhere to put the end) — mirrors camps.endTime/
   // sports_clubs.endTime's existing shape exactly. Null means either no
   // specific end was given, or the event only ever had a single start time
   // to begin with — same "null = unknown/not applicable" posture as
   // startTime itself.
-  endTime: time('end_time'),
+  endTime: time('end_time').generatedAlwaysAs(
+    sql`(CASE WHEN all_day OR ends_at IS NULL THEN NULL ELSE (ends_at AT TIME ZONE 'America/Chicago')::time END)`,
+  ),
+  // True for a date-only event (no clock time) — starts_at is then Chicago
+  // midnight and only the date is meaningful.
   allDay: boolean('all_day').notNull().default(false),
   address: text('address'),
   // A human-friendly place name ("Merlo Library") shown in place of the raw
@@ -581,6 +597,9 @@ export const camps = pgTable('camps', {
   // optional camp field.
   startTime: time('start_time'),
   endTime: time('end_time'),
+  // The IANA zone startTime/endTime (daily hours at the venue — not an
+  // instant, since a multi-day camp repeats them each day) are read in.
+  timeZone: text('time_zone').notNull().default('America/Chicago'),
   address: text('address'),
   locationName: text('location_name'),
   latitude: numeric('latitude', { precision: 9, scale: 6 }),
@@ -856,9 +875,19 @@ export const sportsClubOccurrences = pgTable('sports_club_occurrences', {
   sportsClubId: uuid('sports_club_id')
     .notNull()
     .references(() => sportsClubs.id),
-  date: date('date').notNull(),
-  startTime: time('start_time'),
-  endTime: time('end_time'),
+  // Real UTC instants (see events.startsAt); date/start_time/end_time below
+  // are derived, read-only Chicago wall-clock views. A date-only occurrence
+  // (all_day) is Chicago midnight.
+  startsAt: timestamp('starts_at', { withTimezone: true }).notNull(),
+  endsAt: timestamp('ends_at', { withTimezone: true }),
+  allDay: boolean('all_day').notNull().default(false),
+  date: date('date').notNull().generatedAlwaysAs(sql`((starts_at AT TIME ZONE 'America/Chicago')::date)`),
+  startTime: time('start_time').generatedAlwaysAs(
+    sql`(CASE WHEN all_day THEN NULL ELSE (starts_at AT TIME ZONE 'America/Chicago')::time END)`,
+  ),
+  endTime: time('end_time').generatedAlwaysAs(
+    sql`(CASE WHEN all_day OR ends_at IS NULL THEN NULL ELSE (ends_at AT TIME ZONE 'America/Chicago')::time END)`,
+  ),
   // Escape hatch for a specific deviation from the normal cadence — "make-up
   // session", "moved from Tuesday" — since the actual date/time columns
   // above are already the ground truth for when it really happens.

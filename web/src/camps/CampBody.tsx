@@ -187,6 +187,8 @@ export interface CampBodyFields {
   end_date: string
   start_time: string | null
   end_time: string | null
+  // Absent on older history snapshots — treated as Chicago.
+  time_zone?: string
   address: string | null
   location_name: string | null
   distance_miles: string | null
@@ -289,7 +291,7 @@ export function CampBody({
           editing={editing}
           hasValue
           highlighted={isHighlighted('start_time') || isHighlighted('end_time')}
-          readContent={localTimeLabel(camp.start_date, camp.start_time, camp.end_time)}
+          readContent={localTimeLabel(camp.start_date, camp.start_time, camp.end_time, camp.time_zone)}
           editContent={
             draft && (
               <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>

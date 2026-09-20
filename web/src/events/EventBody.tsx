@@ -136,7 +136,7 @@ export function EventBody({
         hasValue={true}
         highlighted={isHighlighted('start_date') || isHighlighted('start_time') || isHighlighted('end_time') || isHighlighted('all_day')}
         readContent={formatWhen(
-          localEventTiming(event.start_date, event.start_time, event.end_time ?? null, event.all_day),
+          localEventTiming(event),
           undefined,
           'detailed',
         )}

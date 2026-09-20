@@ -1,5 +1,5 @@
 import 'dotenv/config'
-import { eq } from 'drizzle-orm'
+import { eq, sql } from 'drizzle-orm'
 
 import { db } from '../db/client.js'
 import { events, eventsLog } from '../db/schema.js'
@@ -18,7 +18,7 @@ async function main() {
   const [row] = await db
     .update(events)
     .set({
-      startTime: '20:00',
+      startsAt: sql`((${events.startDate} + time '20:00') AT TIME ZONE 'America/Chicago')`,
       allDay: false,
       address: '3514 N Halsted St, Chicago, IL 60613',
       locationName: 'UPark-it Lot',

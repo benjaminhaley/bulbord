@@ -4,6 +4,7 @@ import { eq } from 'drizzle-orm'
 
 import { db } from '../db/client.js'
 import { eventsLog, sportsClubOccurrences, sportsClubs } from '../db/schema.js'
+import { withOccurrenceTimes } from './occurrence-times.js'
 
 // Feedback #107 (2026-08-19): "let's just make this three separate listings
 // one for each schedule. Please apply that to this case and all cases."
@@ -218,7 +219,7 @@ async function main() {
 
       const occurrences = rollingWeeklyOccurrences(section.daysOfWeek, section.startTime, section.endTime)
       if (occurrences.length > 0) {
-        await db.insert(sportsClubOccurrences).values(occurrences.map((o) => ({ sportsClubId: row.id, ...o })))
+        await db.insert(sportsClubOccurrences).values(occurrences.map((o) => ({ sportsClubId: row.id, ...withOccurrenceTimes(o) })))
         totalOccurrences += occurrences.length
       }
     }

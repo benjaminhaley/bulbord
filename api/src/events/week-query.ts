@@ -1,7 +1,8 @@
-import { and, asc, eq, gte, isNull, lte, sql } from 'drizzle-orm'
+import { and, asc, eq, gte, isNull, lt, lte, or, sql } from 'drizzle-orm'
 
 import { db } from '../db/client.js'
 import { events, eventInterests } from '../db/schema.js'
+import { wallClockToInstantMs } from '../timezone-core.js'
 import { buildEventFilterConditions } from './filters.js'
 import { interestedCountExpr, interestedPeopleExpr, serializeEvent, submittedByExpr, type InterestStatus } from './serialize.js'
 
@@ -32,6 +33,7 @@ export async function getEventsForWeek(
   topics: string[],
   beforeTime: string | null,
   afterTime: string | null,
+  timeZone: string,
   currentUser: { id: string; roles: string[] } | null,
 ) {
   const userId = currentUser?.id ?? null
@@ -40,18 +42,29 @@ export async function getEventsForWeek(
   const conditions = [
     eq(events.status, 'approved'),
     isNull(events.deletedAt),
-    gte(events.startDate, weekStart),
-    lte(events.startDate, weekEnd),
-    ...buildEventFilterConditions(topics, beforeTime, afterTime),
+    // The viewer's Sunday-Saturday week, in their own zone: a timed event
+    // matches on its real instant; a date-only one (stored at Chicago
+    // midnight) matches on its calendar date, so it never slides into a
+    // neighbouring day for a viewer outside Chicago.
+    or(
+      and(
+        eq(events.allDay, false),
+        gte(events.startsAt, new Date(wallClockToInstantMs(weekStart, '00:00:00', timeZone))),
+        lt(events.startsAt, new Date(wallClockToInstantMs(toISODate(addDays(parseISODate(weekEnd), 1)), '00:00:00', timeZone))),
+      ),
+      and(eq(events.allDay, true), gte(events.startDate, weekStart), lte(events.startDate, weekEnd)),
+    ),
+    ...buildEventFilterConditions(topics, beforeTime, afterTime, timeZone),
   ]
 
-  const sortTimeExpr = sql`coalesce(${events.startTime}, '23:59:59'::time)`
 
   const rows = await db
     .select({
       id: events.id,
       title: events.title,
       description: events.description,
+      startsAt: events.startsAt,
+      endsAt: events.endsAt,
       startDate: events.startDate,
       startTime: events.startTime,
       endTime: events.endTime,
@@ -78,7 +91,7 @@ export async function getEventsForWeek(
         : sql`false`,
     )
     .where(and(...conditions))
-    .orderBy(asc(events.startDate), asc(sortTimeExpr), asc(events.id))
+    .orderBy(asc(sql`(CASE WHEN ${events.allDay} THEN ${events.startDate} ELSE (${events.startsAt} AT TIME ZONE ${timeZone})::date END)`), asc(sql`(CASE WHEN ${events.allDay} THEN '23:59:59'::time ELSE (${events.startsAt} AT TIME ZONE ${timeZone})::time END)`), asc(events.id))
 
   return rows.map((row) =>
     serializeEvent(

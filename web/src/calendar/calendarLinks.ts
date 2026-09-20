@@ -1,12 +1,10 @@
 // Shared "Add to Calendar" link/file builders (feedback #76) — generic
 // across Events and Camps (see CLAUDE.md's Camps section: "no imports from
 // events/", so this lives at the top level, not inside either feature
-// folder). Stored times are Chicago wall-clock values (see timezone.ts); a
-// timed event is converted to a real UTC instant here, so every calendar
-// app shows it at the right local time wherever the viewer is. All-day
-// events stay date-only.
-
-import { chicagoWallClockToInstantMs, instantToUtcParts } from '../timezone'
+// folder). A timed entry is a real instant (`startsAt`/`endsAt`, what the
+// database stores), emitted in UTC so every calendar app shows it at the
+// right local time wherever the viewer is; an all-day entry is a plain
+// inclusive date range.
 
 export interface CalendarEventInput {
   title: string
@@ -15,11 +13,14 @@ export interface CalendarEventInput {
   // Appended to the description as a link back to the listing — optional
   // since a downloaded .ics has nowhere else to point back at the app.
   url?: string
-  startDate: string // YYYY-MM-DD
-  endDate?: string // YYYY-MM-DD, inclusive; defaults to startDate
-  startTime?: string | null // HH:MM:SS, 24h
-  endTime?: string | null // HH:MM:SS — defaults to one hour after startTime
+  // Date-only entry: an inclusive YYYY-MM-DD range (endDate defaults to
+  // startDate).
   allDay?: boolean
+  startDate: string
+  endDate?: string
+  // Timed entry: real instants. endsAt defaults to one hour after startsAt.
+  startsAt?: Date | null
+  endsAt?: Date | null
 }
 
 const ONE_HOUR_MS = 60 * 60 * 1000
@@ -34,31 +35,26 @@ function addDays(dateStr: string, days: number): string {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
 }
 
-// A timed event with no explicit end time gets a one-hour block — the same
-// reasonable default most calendar apps' own "quick add" flows use, since
-// this app doesn't always know a real end time (events have no end_time
-// field at all; camps' end_time is frequently unset).
-function resolveEndTime(startTime: string, endTime: string | null | undefined): string {
-  if (endTime) return endTime
-  const [h, m, s] = startTime.split(':').map(Number)
-  const end = new Date(2000, 0, 1, h, m, s || 0)
-  end.setTime(end.getTime() + ONE_HOUR_MS)
-  return `${pad(end.getHours())}:${pad(end.getMinutes())}:${pad(end.getSeconds())}`
-}
-
 function compactDate(dateStr: string): string {
   return dateStr.replace(/-/g, '')
 }
 
-// Chicago wall-clock -> compact UTC instant ("20260816T143000Z").
-function compactUtc(dateStr: string, time: string): string {
-  const { date, time: t } = instantToUtcParts(chicagoWallClockToInstantMs(dateStr, time))
-  return `${compactDate(date)}T${t.replace(/:/g, '')}Z`
+// "20260816T143000Z"
+function compactUtc(date: Date): string {
+  return `${date.toISOString().replace(/[-:]/g, '').split('.')[0]}Z`
 }
 
-function isoUtc(dateStr: string, time: string): string {
-  const { date, time: t } = instantToUtcParts(chicagoWallClockToInstantMs(dateStr, time))
-  return `${date}T${t}Z`
+// "2026-08-16T14:30:00Z"
+function isoUtc(date: Date): string {
+  return `${date.toISOString().split('.')[0]}Z`
+}
+
+// A timed event with no explicit end gets a one-hour block — the same
+// reasonable default most calendar apps' own "quick add" flows use, since
+// this app doesn't always know a real end time.
+function resolveInstants(input: CalendarEventInput): { start: Date; end: Date } | null {
+  if (input.allDay || !input.startsAt) return null
+  return { start: input.startsAt, end: input.endsAt ?? new Date(input.startsAt.getTime() + ONE_HOUR_MS) }
 }
 
 interface ResolvedRange {
@@ -69,21 +65,13 @@ interface ResolvedRange {
   end: string
 }
 
-// A timed event has no explicit end date in this app's data model (events
-// are single-date; a camp's end_date is the whole multi-day range's end,
-// not a per-day event end) — a timed calendar block always ends the same
-// day it starts.
 function resolveRange(input: CalendarEventInput): ResolvedRange {
-  if (input.allDay || !input.startTime) {
+  const instants = resolveInstants(input)
+  if (!instants) {
     const endDate = input.endDate ?? input.startDate
     return { allDay: true, start: compactDate(input.startDate), end: compactDate(addDays(endDate, 1)) }
   }
-  const endTime = resolveEndTime(input.startTime, input.endTime)
-  return {
-    allDay: false,
-    start: compactUtc(input.startDate, input.startTime),
-    end: compactUtc(input.startDate, endTime),
-  }
+  return { allDay: false, start: compactUtc(instants.start), end: compactUtc(instants.end) }
 }
 
 function joinDetails(input: CalendarEventInput): string | null {
@@ -101,16 +89,15 @@ export function googleCalendarUrl(input: CalendarEventInput): string {
 }
 
 export function outlookCalendarUrl(input: CalendarEventInput): string {
-  const { allDay } = resolveRange(input)
+  const instants = resolveInstants(input)
   const endDate = input.endDate ?? input.startDate
-  const endTime = allDay ? '00:00:00' : resolveEndTime(input.startTime as string, input.endTime)
   const params = new URLSearchParams({
     path: '/calendar/action/compose',
     rru: 'addevent',
     subject: input.title,
-    startdt: allDay ? input.startDate : isoUtc(input.startDate, input.startTime as string),
-    enddt: allDay ? addDays(endDate, 1) : isoUtc(input.startDate, endTime),
-    allday: String(allDay),
+    startdt: instants ? isoUtc(instants.start) : input.startDate,
+    enddt: instants ? isoUtc(instants.end) : addDays(endDate, 1),
+    allday: String(!instants),
   })
   const details = joinDetails(input)
   if (details) params.set('body', details)
@@ -123,10 +110,6 @@ function escapeIcsText(value: string): string {
   return value.replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\n/g, '\\n')
 }
 
-function icsUtcStamp(date: Date): string {
-  return `${date.toISOString().replace(/[-:]/g, '').split('.')[0]}Z`
-}
-
 export function buildIcs(input: CalendarEventInput): string {
   const { start, end, allDay } = resolveRange(input)
   const details = joinDetails(input)
@@ -136,7 +119,7 @@ export function buildIcs(input: CalendarEventInput): string {
     'PRODID:-//Bulbord//Add to Calendar//EN',
     'BEGIN:VEVENT',
     `UID:${crypto.randomUUID()}@bulbord.com`,
-    `DTSTAMP:${icsUtcStamp(new Date())}`,
+    `DTSTAMP:${compactUtc(new Date())}`,
     allDay ? `DTSTART;VALUE=DATE:${start}` : `DTSTART:${start}`,
     allDay ? `DTEND;VALUE=DATE:${end}` : `DTEND:${end}`,
     `SUMMARY:${escapeIcsText(input.title)}`,

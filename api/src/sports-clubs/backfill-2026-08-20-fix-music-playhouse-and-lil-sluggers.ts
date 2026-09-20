@@ -4,6 +4,7 @@ import { eq } from 'drizzle-orm'
 
 import { db } from '../db/client.js'
 import { eventsLog, sportsClubOccurrences, sportsClubs } from '../db/schema.js'
+import { withOccurrenceTimes } from './occurrence-times.js'
 
 // Feedback (2026-08-20) prompted a full re-audit of every single-row
 // sports-clubs listing. Unlike Dance on Broadway/Tutu School/A Fairytale
@@ -45,7 +46,7 @@ async function main() {
     { day: 4, start: '10:30:00', end: '11:15:00' }, // Thu
   ]
   const musicOccurrences = generateOccurrences('2026-09-16', '2026-11-19', musicSlots)
-  await db.insert(sportsClubOccurrences).values(musicOccurrences.map((o) => ({ sportsClubId: musicPlayhouse.id, ...o })))
+  await db.insert(sportsClubOccurrences).values(musicOccurrences.map((o) => ({ sportsClubId: musicPlayhouse.id, ...withOccurrenceTimes(o) })))
 
   const [lilSluggers] = await db
     .update(sportsClubs)
@@ -70,7 +71,7 @@ async function main() {
     { day: 6, start: '11:30:00', end: '12:15:00' },
   ]
   const sluggersOccurrences = generateOccurrences('2026-09-05', '2026-10-24', sluggersSlots)
-  await db.insert(sportsClubOccurrences).values(sluggersOccurrences.map((o) => ({ sportsClubId: lilSluggers.id, ...o })))
+  await db.insert(sportsClubOccurrences).values(sluggersOccurrences.map((o) => ({ sportsClubId: lilSluggers.id, ...withOccurrenceTimes(o) })))
 
   await db.insert(eventsLog).values({
     actor: 'system:backfill-2026-08-20-fix-music-playhouse-and-lil-sluggers',

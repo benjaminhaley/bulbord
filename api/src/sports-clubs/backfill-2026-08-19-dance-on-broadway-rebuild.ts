@@ -4,6 +4,7 @@ import { eq } from 'drizzle-orm'
 
 import { db } from '../db/client.js'
 import { eventsLog, sportsClubOccurrences, sportsClubs, sportsClubSources, type SportsClubOptionLine } from '../db/schema.js'
+import { withOccurrenceTimes } from './occurrence-times.js'
 import { uploadPlaceholderImage } from '../uploads/placeholder.js'
 import { haversineMiles, NETTELHORST_COORDS } from './geo.js'
 import { enrichSportsClubSourceImage } from './image-enrichment.js'
@@ -407,7 +408,7 @@ async function main() {
 
     const occurrences = buildOccurrences(spec.classes)
     if (occurrences.length > 0) {
-      await db.insert(sportsClubOccurrences).values(occurrences.map((o) => ({ sportsClubId: row.id, ...o })))
+      await db.insert(sportsClubOccurrences).values(occurrences.map((o) => ({ sportsClubId: row.id, ...withOccurrenceTimes(o) })))
       occurrenceCount += occurrences.length
     }
   }
@@ -445,7 +446,7 @@ async function main() {
     .returning({ id: sportsClubs.id })
   insertedCount++
   const teamOccurrences = weeklyOccurrences(TEAM_TRAINING.day, `${TEAM_TRAINING.start}:00`, `${TEAM_TRAINING.end}:00`)
-  await db.insert(sportsClubOccurrences).values(teamOccurrences.map((o) => ({ sportsClubId: teamRow.id, ...o })))
+  await db.insert(sportsClubOccurrences).values(teamOccurrences.map((o) => ({ sportsClubId: teamRow.id, ...withOccurrenceTimes(o) })))
   occurrenceCount += teamOccurrences.length
 
   await db.insert(eventsLog).values({

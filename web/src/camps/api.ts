@@ -41,6 +41,8 @@ export interface Camp {
   // omitted (see camps/format.ts timeLabel).
   start_time: string | null
   end_time: string | null
+  // IANA zone start_time/end_time are read in (daily venue hours).
+  time_zone: string
   address: string | null
   location_name: string | null
   distance_miles: string | null

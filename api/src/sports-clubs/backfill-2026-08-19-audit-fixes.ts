@@ -4,6 +4,7 @@ import { eq } from 'drizzle-orm'
 
 import { db } from '../db/client.js'
 import { eventsLog, sportsClubOccurrences, sportsClubs, type SportsClubOptionLine } from '../db/schema.js'
+import { withOccurrenceTimes } from './occurrence-times.js'
 
 // Feedback (2026-08-19), following the Dance on Broadway rebuild: a genuine
 // full-rigor audit of every other sports-clubs source — re-verifying real
@@ -216,7 +217,7 @@ async function rebuildI9Sports() {
       .returning({ id: sportsClubs.id })
 
     const occurrences = i9SaturdayOccurrences(row.id)
-    await db.insert(sportsClubOccurrences).values(occurrences)
+    await db.insert(sportsClubOccurrences).values(occurrences.map(withOccurrenceTimes))
     occurrenceCount += occurrences.length
   }
 

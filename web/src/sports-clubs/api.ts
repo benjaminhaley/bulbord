@@ -9,6 +9,11 @@ export type ScheduleType = 'fixed_session' | 'ongoing'
 // for the full rationale: a series' ages/cost/signup-status can't safely be
 // duplicated across N rows the way events' flat recurring listings can).
 export interface SportsClubOccurrence {
+  // Real UTC instants (all_day = a date-only occurrence) — render in the
+  // viewer's zone. date/start_time/end_time are the derived Chicago views.
+  starts_at?: string
+  ends_at?: string | null
+  all_day?: boolean
   date: string
   start_time: string | null
   end_time: string | null

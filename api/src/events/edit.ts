@@ -10,15 +10,13 @@ import { events } from '../db/schema.js'
 import { recordEdit } from '../edit-history/service.js'
 import { uploadPlaceholderImage } from '../uploads/placeholder.js'
 import { enrichEventImage } from './image-enrichment.js'
+import { type Times, chicagoWallClock } from '../timezone.js'
 import { snapshotEventForHistory } from './serialize.js'
 
 export interface EventEditableFields {
   title: string
   description: string | null
-  start_date: string
-  start_time: string | null
-  end_time: string | null
-  all_day: boolean
+  times: Times
   location_name: string | null
   address: string
   source_url: string | null
@@ -38,6 +36,8 @@ export async function applyEventEdit(eventId: string, fields: EventEditableField
     .select({
       title: events.title,
       description: events.description,
+      startsAt: events.startsAt,
+      endsAt: events.endsAt,
       startDate: events.startDate,
       startTime: events.startTime,
       endTime: events.endTime,
@@ -59,18 +59,19 @@ export async function applyEventEdit(eventId: string, fields: EventEditableField
       ? { imageUrl: fields.image_url, thumbnailUrl: fields.thumbnail_url }
       : await uploadPlaceholderImage(fields.title, 'events')
 
-  const startTime = fields.all_day ? null : fields.start_time
-  const endTime = fields.all_day ? null : fields.end_time
+  const { times } = fields
+  const startWall = chicagoWallClock(times.startsAt)
+  const startTime = times.allDay ? null : startWall.time
+  const endTime = times.allDay || !times.endsAt ? null : chicagoWallClock(times.endsAt).time
 
   await db
     .update(events)
     .set({
       title: fields.title,
       description: fields.description,
-      startDate: fields.start_date,
-      startTime,
-      endTime,
-      allDay: fields.all_day,
+      startsAt: times.startsAt,
+      endsAt: times.endsAt,
+      allDay: times.allDay,
       locationName: fields.location_name,
       address: fields.address,
       sourceUrl: fields.source_url,
@@ -89,10 +90,12 @@ export async function applyEventEdit(eventId: string, fields: EventEditableField
     after: snapshotEventForHistory({
       title: fields.title,
       description: fields.description,
-      startDate: fields.start_date,
+      startsAt: times.startsAt,
+      endsAt: times.endsAt,
+      startDate: startWall.date,
       startTime,
       endTime,
-      allDay: fields.all_day,
+      allDay: times.allDay,
       locationName: fields.location_name,
       address: fields.address,
       sourceUrl: fields.source_url,

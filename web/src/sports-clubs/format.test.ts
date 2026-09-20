@@ -248,9 +248,10 @@ describe('calendarEventForSportsClub', () => {
       description: base.description,
       location: base.address,
       startDate: '2026-09-14',
-      startTime: '16:30:00',
-      endTime: '17:45:00',
       allDay: false,
+      // 4:30 pm / 5:45 pm Chicago (CDT) as real instants
+      startsAt: new Date('2026-09-14T21:30:00Z'),
+      endsAt: new Date('2026-09-14T22:45:00Z'),
     })
   })
 

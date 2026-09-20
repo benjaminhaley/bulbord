@@ -11,12 +11,12 @@ describe('googleCalendarUrl', () => {
   })
 
   it('builds a timed range, defaulting to a one-hour block when no end time is given', () => {
-    const url = googleCalendarUrl({ title: 'Story Time', startDate: '2026-08-16', startTime: '09:30:00' })
+    const url = googleCalendarUrl({ title: 'Story Time', startDate: '2026-08-16', startsAt: new Date('2026-08-16T14:30:00Z') })
     expect(new URL(url).searchParams.get('dates')).toBe('20260816T143000Z/20260816T153000Z')
   })
 
   it('uses a given end time over the one-hour default', () => {
-    const url = googleCalendarUrl({ title: 'Camp', startDate: '2026-08-16', startTime: '09:00:00', endTime: '15:00:00' })
+    const url = googleCalendarUrl({ title: 'Camp', startDate: '2026-08-16', startsAt: new Date('2026-08-16T14:00:00Z'), endsAt: new Date('2026-08-16T20:00:00Z') })
     expect(new URL(url).searchParams.get('dates')).toBe('20260816T140000Z/20260816T200000Z')
   })
 
@@ -50,7 +50,7 @@ describe('outlookCalendarUrl', () => {
   })
 
   it('builds a timed start/end datetime', () => {
-    const url = outlookCalendarUrl({ title: 'Story Time', startDate: '2026-08-16', startTime: '09:30:00' })
+    const url = outlookCalendarUrl({ title: 'Story Time', startDate: '2026-08-16', startsAt: new Date('2026-08-16T14:30:00Z') })
     const params = new URL(url).searchParams
     expect(params.get('allday')).toBe('false')
     expect(params.get('startdt')).toBe('2026-08-16T14:30:00Z')
@@ -66,8 +66,8 @@ describe('buildIcs', () => {
     expect(ics).toContain('SUMMARY:Movie Night')
   })
 
-  it('converts a Chicago wall-clock timed DTSTART/DTEND to UTC', () => {
-    const ics = buildIcs({ title: 'Story Time', startDate: '2026-08-16', startTime: '09:30:00', endTime: '11:00:00' })
+  it('emits a timed DTSTART/DTEND as UTC instants', () => {
+    const ics = buildIcs({ title: 'Story Time', startDate: '2026-08-16', startsAt: new Date('2026-08-16T14:30:00Z'), endsAt: new Date('2026-08-16T16:00:00Z') })
     expect(ics).toContain('DTSTART:20260816T143000Z')
     expect(ics).toContain('DTEND:20260816T160000Z')
   })

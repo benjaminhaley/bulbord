@@ -2,6 +2,7 @@ import 'dotenv/config'
 
 import { db } from '../db/client.js'
 import { eventsLog, sportsClubOccurrences, sportsClubs, sportsClubSources, type SportsClubOptionLine } from '../db/schema.js'
+import { withOccurrenceTimes } from './occurrence-times.js'
 import { uploadPlaceholderImage } from '../uploads/placeholder.js'
 import { haversineMiles, NETTELHORST_COORDS } from './geo.js'
 import { enrichSportsClubSourceImage } from './image-enrichment.js'
@@ -954,7 +955,7 @@ async function main() {
   })
 
   if (occurrenceValues.length > 0) {
-    await db.insert(sportsClubOccurrences).values(occurrenceValues)
+    await db.insert(sportsClubOccurrences).values(occurrenceValues.map(withOccurrenceTimes))
   }
 
   await db.insert(eventsLog).values({

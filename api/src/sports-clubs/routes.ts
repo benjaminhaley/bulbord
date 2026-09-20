@@ -15,7 +15,9 @@ type InterestStatus = 'interested' | 'dismissed'
 type InterestedPersonSummary = { name: string; avatar_url: string | null }
 type SubmitterSummary = { name: string; avatar_url: string | null }
 type SourceSummary = { id: string; name: string }
-type OccurrenceSummary = { date: string; start_time: string | null; end_time: string | null; note: string | null }
+// starts_at/ends_at are the real UTC instants; date/start_time/end_time are the
+// derived Chicago wall-clock views (all_day = a date-only occurrence).
+type OccurrenceSummary = { starts_at: string; ends_at: string | null; all_day: boolean; date: string; start_time: string | null; end_time: string | null; note: string | null }
 
 type SerializableSportsClub = Pick<
   typeof sportsClubs.$inferSelect,
@@ -136,7 +138,7 @@ function nextOccurrenceDateExpr(sportsClubId: SQLWrapper, today: string) {
 // json_agg, since json_agg itself has no LIMIT of its own.
 function occurrencesExpr(sportsClubId: SQLWrapper, today: string, limit: number | null) {
   const limitClause = limit !== null ? sql`limit ${limit}` : sql``
-  return sql<OccurrenceSummary[]>`(select coalesce(json_agg(row_to_json(o)), '[]'::json) from (select ${sportsClubOccurrences.date} as date, ${sportsClubOccurrences.startTime} as start_time, ${sportsClubOccurrences.endTime} as end_time, ${sportsClubOccurrences.note} as note from ${sportsClubOccurrences} where ${sportsClubOccurrences.sportsClubId} = ${sportsClubId} and ${sportsClubOccurrences.date} >= ${today} and ${sportsClubOccurrences.deletedAt} is null order by ${sportsClubOccurrences.date} asc ${limitClause}) o)`
+  return sql<OccurrenceSummary[]>`(select coalesce(json_agg(row_to_json(o)), '[]'::json) from (select ${sportsClubOccurrences.startsAt} as starts_at, ${sportsClubOccurrences.endsAt} as ends_at, ${sportsClubOccurrences.allDay} as all_day, ${sportsClubOccurrences.date} as date, ${sportsClubOccurrences.startTime} as start_time, ${sportsClubOccurrences.endTime} as end_time, ${sportsClubOccurrences.note} as note from ${sportsClubOccurrences} where ${sportsClubOccurrences.sportsClubId} = ${sportsClubId} and ${sportsClubOccurrences.date} >= ${today} and ${sportsClubOccurrences.deletedAt} is null order by ${sportsClubOccurrences.date} asc ${limitClause}) o)`
 }
 
 const STALE_THRESHOLD_MS = 30 * 24 * 60 * 60 * 1000

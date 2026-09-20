@@ -118,7 +118,7 @@ function CampRow({
             )}
           </h2>
           {showDate && <p>{formatDateRange(camp.start_date, camp.end_date)}</p>}
-          <p>{localTimeLabel(camp.start_date, camp.start_time, camp.end_time)}</p>
+          <p>{localTimeLabel(camp.start_date, camp.start_time, camp.end_time, camp.time_zone)}</p>
           {/* Booking status (feedback #68) always gets its own line, below
               the time (fixed 2026-08-13 twice: first for a screenshot
               showing the address text wrapping around a bare inline badge —

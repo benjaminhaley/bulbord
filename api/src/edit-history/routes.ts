@@ -7,6 +7,7 @@
 import type { FastifyInstance } from 'fastify'
 
 import { requireAuth } from '../auth/plugin.js'
+import { timesFromFields, type TimeFields } from '../timezone.js'
 import { applyEventEdit, type EventEditableFields } from '../events/edit.js'
 import { applyCampEdit, type CampEditableFields } from '../camps/edit.js'
 import { applySportsClubEdit, type SportsClubEditableFields } from '../sports-clubs/edit.js'
@@ -58,7 +59,13 @@ export async function editHistoryRoutes(app: FastifyInstance) {
     const after = raw.after as Record<string, unknown>
     let error: 'not_found' | null = null
     if (raw.entityType === 'event') {
-      error = await applyEventEdit(raw.entityId, after as unknown as EventEditableFields, currentUser.id)
+      // A snapshot carries real instants (starts_at/ends_at) when recorded
+      // after the UTC migration, or only Chicago wall-clock fields before it —
+      // timesFromFields handles both.
+      const times = timesFromFields(after as TimeFields)
+      error = times
+        ? await applyEventEdit(raw.entityId, { ...(after as unknown as Omit<EventEditableFields, 'times'>), times }, currentUser.id)
+        : 'not_found'
     } else if (raw.entityType === 'camp') {
       error = await applyCampEdit(raw.entityId, after as unknown as CampEditableFields, currentUser.id)
     } else if (raw.entityType === 'sports_club') {

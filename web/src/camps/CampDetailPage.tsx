@@ -5,6 +5,7 @@ import { useHistory, useParams } from 'react-router-dom'
 
 import { track } from '../analytics/api'
 import { AddToCalendarButton } from '../calendar/AddToCalendarButton'
+import { wallClockInstants } from '../timezone'
 import { InlineImageEditor } from '../edit-history/InlineField'
 import { factLineStyle, leadingButtonGap } from '../theme/layout'
 import { Avatar } from '../uploads/Avatar'
@@ -234,9 +235,8 @@ export function CampDetailPage() {
                     url: window.location.href,
                     startDate: camp.start_date,
                     endDate: camp.end_date,
-                    startTime: camp.start_date === camp.end_date ? camp.start_time : null,
-                    endTime: camp.start_date === camp.end_date ? camp.end_time : null,
-                    allDay: camp.start_date !== camp.end_date,
+                    ...(camp.start_date === camp.end_date ? wallClockInstants(camp.start_date, camp.start_time, camp.end_time, camp.time_zone) : {}),
+                    allDay: camp.start_date !== camp.end_date || !camp.start_time,
                   }}
                   filename={`${camp.title}.ics`}
                   style={camp.source_url ? leadingButtonGap : { ...leadingButtonGap, marginBottom: 72 }}

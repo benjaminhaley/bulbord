@@ -25,6 +25,8 @@ function makeEvent(overrides: Partial<Event> = {}): Event {
     id: 'event-1',
     title: 'Test Event',
     description: null,
+    starts_at: '2026-09-10T05:00:00.000Z',
+    ends_at: null,
     start_date: '2026-09-10',
     start_time: null,
     end_time: null,

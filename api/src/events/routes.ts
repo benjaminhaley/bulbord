@@ -12,7 +12,7 @@ import { addDays, todayInChicago } from '../dates.js'
 // newsletter-specific — see that file's own header).
 import { formatWhen, locationLabel } from '../newsletter/format.js'
 import { uploadPlaceholderImage } from '../uploads/placeholder.js'
-import { buildEventFilterConditions, parseAfterTimeParam, parseBeforeTimeParam, parseTopicsParam } from './filters.js'
+import { buildEventFilterConditions, parseAfterTimeParam, parseTimeZoneParam, parseBeforeTimeParam, parseTopicsParam } from './filters.js'
 import { getEventsForWeek } from './week-query.js'
 import { canDeleteEvent, canEditEvent } from './permissions.js'
 import { applyEventEdit } from './edit.js'
@@ -23,6 +23,7 @@ import { extractEventFieldsFromPhoto, findEventSource, type ExtractedEventFields
 import { fetchPageText } from './resourcing.js'
 import { registerDiscoveredEventSource } from './source-registration.js'
 import { recordRetryNote } from './retry-strategies.js'
+import { chicagoWallClock, timesFromChicagoWallClock, timesFromFields } from '../timezone.js'
 import { expandRecurrence, isRecurrencePattern, RECURRENCE_PATTERNS, type RecurrencePattern } from './recurrence.js'
 import {
   interestedCountExpr,
@@ -286,6 +287,12 @@ export async function eventsRoutes(app: FastifyInstance) {
     const body = request.body as {
       title?: string
       description?: string
+      // Real instants (ISO 8601 with offset) — what the app sends from the
+      // viewer's own zone. The Chicago wall-clock start_date/start_time/
+      // end_time fields below are still accepted (legacy clients) and
+      // interpreted as Chicago local time. See ../timezone.ts.
+      starts_at?: string
+      ends_at?: string
       start_date?: string
       start_time?: string
       end_time?: string
@@ -307,17 +314,24 @@ export async function eventsRoutes(app: FastifyInstance) {
     }
     const title = body.title?.trim()
     const address = body.address?.trim()
-    const startDate = body.start_date?.trim()
-    if (!title || !address || !startDate) {
-      return reply.code(400).send({ error: { message: 'title, address, and start_date are required' } })
+    const times = timesFromFields({ ...body, start_date: body.start_date?.trim(), all_day: !!body.all_day })
+    if (!title || !address || !times) {
+      return reply.code(400).send({ error: { message: 'title, address, and a start time (starts_at or start_date) are required' } })
     }
     if (body.repeat && !isRecurrencePattern(body.repeat)) {
       return reply.code(400).send({ error: { message: `repeat must be one of: ${RECURRENCE_PATTERNS.join(', ')}` } })
     }
+    // A repeating post recurs on Chicago calendar dates at the same Chicago
+    // wall-clock time (so "every Friday 8am" survives a DST change), each
+    // occurrence then stored as its own real instant.
+    const firstWall = chicagoWallClock(times.startsAt)
+    const startDate = firstWall.date
+    const startTimeWall = times.allDay ? null : firstWall.time
+    const endTimeWall = times.allDay || !times.endsAt ? null : chicagoWallClock(times.endsAt).time
     const laterDates = body.repeat ? expandRecurrence(startDate, body.repeat as RecurrencePattern).slice(1) : []
 
     const currentUser = request.currentUser!
-    const allDay = !!body.all_day
+    const allDay = times.allDay
     // events.image_url/thumbnail_url are NOT NULL — a member who doesn't
     // attach a photo still gets a generated placeholder (uploads/placeholder.ts),
     // same as every other insert path.
@@ -330,9 +344,8 @@ export async function eventsRoutes(app: FastifyInstance) {
       .values({
         title,
         description: body.description?.trim() || null,
-        startDate,
-        startTime: allDay ? null : body.start_time?.trim() || null,
-        endTime: allDay ? null : body.end_time?.trim() || null,
+        startsAt: times.startsAt,
+        endsAt: times.endsAt,
         allDay,
         address,
         locationName: body.location_name?.trim() || null,
@@ -364,10 +377,7 @@ export async function eventsRoutes(app: FastifyInstance) {
               laterDates.map((date) => ({
                 title,
                 description: body.description?.trim() || null,
-                startDate: date,
-                startTime: allDay ? null : body.start_time?.trim() || null,
-                endTime: allDay ? null : body.end_time?.trim() || null,
-                allDay,
+                ...timesFromChicagoWallClock({ date, startTime: startTimeWall, endTime: endTimeWall, allDay }),
                 address,
                 locationName: body.location_name?.trim() || null,
                 sourceUrl: body.source_url?.trim() || null,
@@ -433,7 +443,7 @@ export async function eventsRoutes(app: FastifyInstance) {
         const checks: PipelineChecks = {
           ...textChecks,
           dateQuality: checkDateQuality(startDate, todayInChicago()),
-          timeQuality: checkTimeQuality(allDay ? undefined : body.start_time?.trim() || undefined, allDay),
+          timeQuality: checkTimeQuality(startTimeWall ?? undefined, allDay),
           imageQuality,
           imageRelevance,
           duplicateCheck: buildDuplicateCheck(),
@@ -486,6 +496,12 @@ export async function eventsRoutes(app: FastifyInstance) {
     const body = request.body as {
       title?: string
       description?: string
+      // Real instants (ISO 8601 with offset) — what the app sends from the
+      // viewer's own zone. The Chicago wall-clock start_date/start_time/
+      // end_time fields below are still accepted (legacy clients) and
+      // interpreted as Chicago local time. See ../timezone.ts.
+      starts_at?: string
+      ends_at?: string
       start_date?: string
       start_time?: string
       end_time?: string
@@ -518,12 +534,10 @@ export async function eventsRoutes(app: FastifyInstance) {
 
     const title = body.title?.trim()
     const address = body.address?.trim()
-    const startDate = body.start_date?.trim()
-    if (!title || !address || !startDate) {
-      return reply.code(400).send({ error: { message: 'title, address, and start_date are required' } })
+    const times = timesFromFields({ ...body, start_date: body.start_date?.trim(), all_day: !!body.all_day })
+    if (!title || !address || !times) {
+      return reply.code(400).send({ error: { message: 'title, address, and a start time (starts_at or start_date) are required' } })
     }
-
-    const allDay = !!body.all_day
     // The shared write path (edit.ts) also used by the edit-history restore
     // endpoint — computes the placeholder-image fallback, writes the row,
     // records the edit-history entry, and re-triggers the same fire-and-
@@ -533,10 +547,7 @@ export async function eventsRoutes(app: FastifyInstance) {
       {
         title,
         description: body.description?.trim() || null,
-        start_date: startDate,
-        start_time: allDay ? null : body.start_time?.trim() || null,
-        end_time: allDay ? null : body.end_time?.trim() || null,
-        all_day: allDay,
+        times,
         location_name: body.location_name?.trim() || null,
         address,
         source_url: body.source_url?.trim() || null,
@@ -847,6 +858,7 @@ export async function eventsRoutes(app: FastifyInstance) {
       topics?: string
       before_time?: string
       after_time?: string
+      tz?: string
     }
     const limit = Math.min(Number(query.limit) || 20, 100)
     const userId = request.currentUser?.id ?? null
@@ -860,6 +872,7 @@ export async function eventsRoutes(app: FastifyInstance) {
     const topics = parseTopicsParam(query.topics)
     const beforeTime = parseBeforeTimeParam(query.before_time)
     const afterTime = parseAfterTimeParam(query.after_time)
+    const timeZone = parseTimeZoneParam(query.tz)
 
     let cursorStartDate: string | null = null
     let cursorSortTime: string | null = null
@@ -885,7 +898,7 @@ export async function eventsRoutes(app: FastifyInstance) {
       eq(events.status, 'approved'),
       isNull(events.deletedAt),
       gte(events.startDate, today),
-      ...buildEventFilterConditions(topics, beforeTime, afterTime),
+      ...buildEventFilterConditions(topics, beforeTime, afterTime, timeZone),
     ]
 
     // Events with no specific start_time (null = no specific time, distinct
@@ -955,6 +968,8 @@ export async function eventsRoutes(app: FastifyInstance) {
           id: nextOccurrence.id,
           title: nextOccurrence.title,
           description: nextOccurrence.description,
+          startsAt: nextOccurrence.startsAt,
+          endsAt: nextOccurrence.endsAt,
           startDate: nextOccurrence.startDate,
           startTime: nextOccurrence.startTime,
           endTime: nextOccurrence.endTime,
@@ -1046,7 +1061,7 @@ export async function eventsRoutes(app: FastifyInstance) {
   // list above shows; see week-query.ts's own header for why this is a
   // deliberate parallel query rather than a variant of the CTE above.
   app.get('/events/week', { preHandler: requireAuth }, async (request, reply) => {
-    const query = request.query as { start?: string; topics?: string; before_time?: string; after_time?: string }
+    const query = request.query as { start?: string; topics?: string; before_time?: string; after_time?: string; tz?: string }
     const weekStart = query.start
     if (!weekStart || !/^\d{4}-\d{2}-\d{2}$/.test(weekStart)) {
       return reply.code(400).send({ error: { message: 'start (YYYY-MM-DD) is required' } })
@@ -1055,7 +1070,7 @@ export async function eventsRoutes(app: FastifyInstance) {
     const beforeTime = parseBeforeTimeParam(query.before_time)
     const afterTime = parseAfterTimeParam(query.after_time)
 
-    const weekEvents = await getEventsForWeek(weekStart, topics, beforeTime, afterTime, request.currentUser)
+    const weekEvents = await getEventsForWeek(weekStart, topics, beforeTime, afterTime, parseTimeZoneParam(query.tz), request.currentUser)
     return reply.send({ data: weekEvents })
   })
 }

@@ -96,7 +96,7 @@ export function EventRow({
             {dimmed && <IonNote style={{ marginLeft: 6, fontSize: '0.75em', textTransform: 'uppercase' }}>Dismissed</IonNote>}
           </h2>
           <p>
-            {formatWhen(localEventTiming(event.start_date, event.start_time, event.end_time, event.all_day))}
+            {formatWhen(localEventTiming(event))}
           </p>
           {location && <IonNote>{location}</IonNote>}
           {description && <p className="teaser">{description}</p>}

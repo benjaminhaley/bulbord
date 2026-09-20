@@ -26,6 +26,7 @@ type SerializableCamp = Pick<
   | 'startDate'
   | 'endDate'
   | 'startTime'
+  | 'timeZone'
   | 'endTime'
   | 'address'
   | 'locationName'
@@ -71,6 +72,8 @@ function serializeCamp(c: HydratedCamp, currentUser: { id: string; roles: string
     // confirmed/fixed (e.g. a flexible drop-in pass), shown as "Time: not
     // specified" rather than omitted (see camps/format.ts timeLabel).
     start_time: c.startTime,
+    // IANA zone start_time/end_time (daily venue hours) are read in.
+    time_zone: c.timeZone,
     end_time: c.endTime,
     address: c.address,
     location_name: c.locationName,

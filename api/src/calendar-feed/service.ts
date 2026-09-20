@@ -14,6 +14,7 @@ import {
 } from '../db/schema.js'
 import { addDays, todayInChicago } from '../dates.js'
 import { requireEnv } from '../env.js'
+import { wallClockToInstantMs } from '../timezone-core.js'
 import { buildIcsFeed, type FeedEntry } from './ics.js'
 
 interface FeedTokenPayload {
@@ -107,9 +108,9 @@ async function getInterestedEntries(userId: string): Promise<FeedEntry[]> {
       location: location(e.locationName, e.address),
       url: `${webUrl}/events/${e.id}`,
       startDate: e.startDate,
-      startTime: e.startTime,
-      endTime: e.endTime,
       allDay: e.allDay,
+      startsAt: e.startsAt,
+      endsAt: e.endsAt,
     })
   }
   for (const { c } of campRows) {
@@ -125,9 +126,10 @@ async function getInterestedEntries(userId: string): Promise<FeedEntry[]> {
       url: `${webUrl}/camps/${c.id}`,
       startDate: c.startDate,
       endDate: c.endDate,
-      startTime: multiDay ? null : c.startTime,
-      endTime: multiDay ? null : c.endTime,
-      allDay: multiDay,
+      allDay: multiDay || !c.startTime,
+      // A camp's hours are venue-local wall-clock in the camp's own zone.
+      startsAt: !multiDay && c.startTime ? new Date(wallClockToInstantMs(c.startDate, c.startTime, c.timeZone)) : null,
+      endsAt: !multiDay && c.startTime && c.endTime ? new Date(wallClockToInstantMs(c.startDate, c.endTime, c.timeZone)) : null,
     })
   }
   for (const { club, occ } of clubRows) {
@@ -138,8 +140,9 @@ async function getInterestedEntries(userId: string): Promise<FeedEntry[]> {
       location: location(club.locationName, club.address),
       url: `${webUrl}/sports-clubs/${club.id}`,
       startDate: occ.date,
-      startTime: occ.startTime,
-      endTime: occ.endTime,
+      allDay: occ.allDay,
+      startsAt: occ.startsAt,
+      endsAt: occ.endsAt,
     })
   }
 

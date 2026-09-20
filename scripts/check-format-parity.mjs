@@ -58,6 +58,8 @@ checkIdentical('dayLabel.test.ts', 'web/src/dayLabel.test.ts', 'api/src/dayLabel
   normalize: stripJsExtensionFromImports,
 })
 
+checkIdentical('timezone-core.ts', 'web/src/timezone-core.ts', 'api/src/timezone-core.ts')
+
 if (failed) {
   process.exit(1)
 }

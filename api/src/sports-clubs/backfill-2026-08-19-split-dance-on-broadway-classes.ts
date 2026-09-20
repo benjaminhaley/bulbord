@@ -4,6 +4,7 @@ import { eq } from 'drizzle-orm'
 
 import { db } from '../db/client.js'
 import { eventsLog, sportsClubOccurrences, sportsClubs, sportsClubSources } from '../db/schema.js'
+import { withOccurrenceTimes } from './occurrence-times.js'
 
 // Feedback #107 (2026-08-19), from a live screenshot of "Dance on Broadway
 // — Lovebug Tots": that one listing bundled 3 genuinely distinct weekly
@@ -895,7 +896,7 @@ async function main() {
 
     const occurrences = weeklyOccurrences(section.day, `${section.start}:00`, `${section.end}:00`)
     if (occurrences.length > 0) {
-      await db.insert(sportsClubOccurrences).values(occurrences.map((o) => ({ sportsClubId: row.id, ...o })))
+      await db.insert(sportsClubOccurrences).values(occurrences.map((o) => ({ sportsClubId: row.id, ...withOccurrenceTimes(o) })))
       occurrenceCount += occurrences.length
     }
   }

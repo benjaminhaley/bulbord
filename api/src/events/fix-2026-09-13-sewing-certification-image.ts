@@ -3,6 +3,7 @@ import { eq } from 'drizzle-orm'
 
 import { db } from '../db/client.js'
 import { events } from '../db/schema.js'
+import { timesFromChicagoWallClock } from '../timezone.js'
 import { applyEventEdit } from './edit.js'
 import { isLowQualityImage } from '../uploads/image-quality.js'
 import type { PipelineChecks } from './candidate-checks.js'
@@ -73,10 +74,7 @@ async function main() {
     {
       title: existing.title,
       description: existing.description,
-      start_date: existing.startDate,
-      start_time: existing.startTime,
-      end_time: existing.endTime,
-      all_day: existing.allDay,
+      times: timesFromChicagoWallClock({ date: existing.startDate, startTime: existing.startTime, endTime: existing.endTime, allDay: existing.allDay }),
       location_name: existing.locationName,
       address: existing.address ?? '',
       source_url: existing.sourceUrl,

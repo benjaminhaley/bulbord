@@ -22,6 +22,7 @@ import { factLineStyle } from '../theme/layout'
 import { Avatar } from '../uploads/Avatar'
 import { deleteEvent, fetchEvent, updateEvent, type Event } from './api'
 import { CommentsSection } from './CommentsSection'
+import { localTiming } from '../timezone'
 import type { EventBodyDraft } from './EventBody'
 import { EventPostView } from './EventPostView'
 import { InterestedBadge } from './InterestedBadge'
@@ -29,12 +30,15 @@ import { useEventImageUpload } from './useEventImageUpload'
 import { useEventInterest } from './useEventInterest'
 
 function draftFromEvent(event: Event): EventBodyDraft {
+  // The edit inputs show (and are saved from) the member's own local time —
+  // the API stores real instants; see ../timezone.ts.
+  const local = localTiming(event)
   return {
     title: event.title,
     description: event.description ?? '',
-    start_date: event.start_date,
-    start_time: event.start_time?.slice(0, 5) ?? '',
-    end_time: event.end_time?.slice(0, 5) ?? '',
+    start_date: local.date,
+    start_time: local.startTime?.slice(0, 5) ?? '',
+    end_time: local.endTime?.slice(0, 5) ?? '',
     all_day: event.all_day,
     location_name: event.location_name ?? '',
     address: event.address ?? '',

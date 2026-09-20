@@ -1,3 +1,4 @@
+import { chicagoWallClockToLocal } from '../timezone'
 import {
   IonButton,
   IonCheckbox,
@@ -174,8 +175,12 @@ export function EventForm({
     }
     applyIfEmpty(setTitle, title, s.title)
     applyIfEmpty(setDescription, description, s.description)
-    applyIfEmpty(setStartDate, startDate, s.start_date)
-    applyIfEmpty(setEndTime, endTime, s.end_time)
+    // Suggestions arrive as Chicago-local wall-clock; the form is in the
+    // member's own zone.
+    const suggestedStart = s.start_date ? chicagoWallClockToLocal(s.start_date, s.start_time) : null
+    const suggestedEnd = s.start_date ? chicagoWallClockToLocal(s.start_date, s.end_time) : null
+    applyIfEmpty(setStartDate, startDate, suggestedStart?.date)
+    applyIfEmpty(setEndTime, endTime, suggestedEnd?.time ?? s.end_time)
     applyIfEmpty(setLocationName, locationName, s.location_name)
     applyIfEmpty(setAddress, address, s.address)
     applyIfEmpty(setSourceUrl, sourceUrl, s.source_url)
@@ -185,7 +190,7 @@ export function EventForm({
     // suggesting a real time and leaving allDay untouched would silently
     // fill in a field the member can't even see.
     if (s.start_time && !startTime.trim()) {
-      setStartTime(s.start_time)
+      setStartTime(suggestedStart?.time ?? s.start_time)
       setAllDay(false)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps

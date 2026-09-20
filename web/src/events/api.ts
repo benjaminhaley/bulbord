@@ -1,6 +1,7 @@
 import { API_URL } from '../config'
 import { authHeaders } from '../auth/token'
 import type { UploadedImage } from '../uploads/api'
+import { localToInstantIso, viewerTimeZone } from '../timezone'
 import type { RepeatPattern } from './repeat'
 
 export type InterestStatus = 'interested' | 'dismissed'
@@ -9,6 +10,12 @@ export interface Event {
   id: string
   title: string
   description: string | null
+  // The real UTC instants — render these in the viewer's own zone (see
+  // ../timezone.ts's localTiming). start_date/start_time/end_time are the
+  // derived Chicago wall-clock views; start_date is what an all-day event
+  // shows, since it has no clock time to convert.
+  starts_at: string
+  ends_at: string | null
   start_date: string
   start_time: string | null
   end_time: string | null
@@ -44,6 +51,8 @@ export interface Event {
 // Fields a member supplies when submitting or editing their own event
 // (feedback #46). Only title, address ("location"), and start_date are
 // required — enforced both here (disabled submit button) and server-side.
+// start_date/start_time/end_time are the member's own local wall-clock
+// entry; eventRequestBody() below turns them into real instants on send.
 export interface EventInput {
   title: string
   description: string
@@ -169,7 +178,22 @@ export interface EventFilters {
   beforeTime?: string // 'HH:MM'
 }
 
+// Local wall-clock entry -> the request body the API stores: real UTC
+// instants for a timed event, or just the calendar date for an all-day one.
+function eventRequestBody(input: EventInput) {
+  const { start_time, end_time, start_date, ...rest } = input
+  if (input.all_day || !start_time) return { ...rest, start_date, all_day: true }
+  return {
+    ...rest,
+    all_day: false,
+    starts_at: localToInstantIso(start_date, start_time),
+    ends_at: end_time ? localToInstantIso(start_date, end_time) : null,
+  }
+}
+
 function applyFilterParams(url: URL, filters?: EventFilters) {
+  // Hours filters and the week's day boundaries are read in the viewer's zone.
+  url.searchParams.set('tz', viewerTimeZone())
   if (filters?.topics?.length) url.searchParams.set('topics', filters.topics.join(','))
   if (filters?.afterTime) url.searchParams.set('after_time', filters.afterTime)
   if (filters?.beforeTime) url.searchParams.set('before_time', filters.beforeTime)
@@ -234,7 +258,7 @@ export async function createEvent(input: EventInput): Promise<Event> {
   const response = await fetch(`${API_URL}/events`, {
     method: 'POST',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
-    body: JSON.stringify(input),
+    body: JSON.stringify(eventRequestBody(input)),
   })
   if (!response.ok) {
     throw new Error(`Failed to create event: ${response.status}`)
@@ -434,7 +458,7 @@ export async function updateEvent(id: string, input: EventInput): Promise<Event>
   const response = await fetch(`${API_URL}/events/${id}`, {
     method: 'PATCH',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
-    body: JSON.stringify(input),
+    body: JSON.stringify(eventRequestBody(input)),
   })
   if (!response.ok) {
     throw new Error(`Failed to update event: ${response.status}`)

@@ -1,5 +1,5 @@
 import 'dotenv/config'
-import { eq } from 'drizzle-orm'
+import { eq, sql } from 'drizzle-orm'
 
 import { db } from '../db/client.js'
 import { events, eventsLog } from '../db/schema.js'
@@ -38,7 +38,8 @@ async function main() {
   for (const fix of fixes) {
     await db
       .update(events)
-      .set({ startDate: fix.correctDate, sourceUrl: MOMMYPOPPINS_URL, updatedAt: new Date() })
+      .set({ // startDate is a derived column now; keep the event's existing Chicago clock time on the corrected date.
+        startsAt: sql`((${fix.correctDate}::date + coalesce(${events.startTime}, '00:00:00'::time)) AT TIME ZONE 'America/Chicago')`, sourceUrl: MOMMYPOPPINS_URL, updatedAt: new Date() })
       .where(eq(events.id, fix.id))
 
     const result = await enrichEventImage(fix.id, { sourceUrl: null, overrideImageUrl: GALLAGHER_LOGO_IMAGE })

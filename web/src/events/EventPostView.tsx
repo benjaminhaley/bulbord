@@ -2,6 +2,7 @@ import { IonButton } from '@ionic/react'
 import type { ReactNode } from 'react'
 
 import { AddToCalendarButton } from '../calendar/AddToCalendarButton'
+import { instantsOf } from '../timezone'
 import { leadingButtonGap } from '../theme/layout'
 import { EventBody, type EventBodyDraft, type EventBodyFields, type EventBodySlots } from './EventBody'
 
@@ -76,8 +77,8 @@ export function EventPostView({
               location: event.location_name ?? event.address,
               url: calendarUrl,
               startDate: event.start_date,
-              startTime: event.start_time,
               allDay: event.all_day,
+              ...instantsOf(event),
             }}
             filename={`${event.title}.ics`}
             style={leadingButtonGap}

@@ -19,16 +19,20 @@ import {
   type EventInput,
   type ExtractedEventFields,
 } from './api'
+import { chicagoWallClockToLocal, localTiming } from '../timezone'
 import { EventForm, type EventFieldSuggestions, type EventFormInitialValues } from './EventForm'
 
 function toInitialValues(extracted: ExtractedEventFields | null, image: UploadedImage | null): EventFormInitialValues {
+  // Extraction reads Chicago-local wall-clock; the form works in the member's own zone.
+  const start = chicagoWallClockToLocal(extracted?.start_date ?? '', extracted?.start_time)
+  const end = chicagoWallClockToLocal(extracted?.start_date ?? '', extracted?.end_time)
   return {
     title: extracted?.title ?? '',
     description: extracted?.description ?? null,
-    start_date: extracted?.start_date ?? '',
+    start_date: start.date,
     all_day: extracted?.all_day ?? false,
-    start_time: extracted?.start_time ?? null,
-    end_time: extracted?.end_time ?? null,
+    start_time: start.time,
+    end_time: end.time,
     // Kept as two real, separate fields (feedback, 2026-08-23: "make sure
     // the location has both a location name and a location address... the
     // name is the quick interpretable name... the address is a specific
@@ -100,13 +104,19 @@ function hasSomethingToAdd(event: Event, found: DiscoveredEventDetails): boolean
 
 async function patchDiscoveredDetails(event: Event, found: DiscoveredEventDetails): Promise<void> {
   try {
-    const startTime = event.start_time?.slice(0, 5) || found.start_time || ''
+    // The event's own fields are already real instants (shown in the member's
+    // zone); what stage 2 found is Chicago-local wall-clock — bring both to the
+    // member's local zone, which is what updateEvent takes.
+    const local = localTiming(event)
+    const foundStart = chicagoWallClockToLocal(found.start_date ?? '', found.start_time)
+    const foundEnd = chicagoWallClockToLocal(found.start_date ?? '', found.end_time)
+    const startTime = local.startTime?.slice(0, 5) || foundStart.time || ''
     await updateEvent(event.id, {
       title: event.title || found.title || '',
       description: event.description ?? found.description ?? '',
-      start_date: event.start_date || found.start_date || '',
+      start_date: event.start_date ? local.date : foundStart.date,
       start_time: startTime,
-      end_time: event.end_time?.slice(0, 5) || found.end_time || '',
+      end_time: local.endTime?.slice(0, 5) || foundEnd.time || '',
       // A newly-arrived real start_time means this can no longer be an
       // all-day event, even if it was created as one for lack of anything
       // better — same "a stated time wins" rule EventForm's own

@@ -4,6 +4,7 @@ import { eq } from 'drizzle-orm'
 
 import { db } from '../db/client.js'
 import { eventsLog, sportsClubOccurrences, sportsClubs, sportsClubSources } from '../db/schema.js'
+import { withOccurrenceTimes } from './occurrence-times.js'
 import { uploadPlaceholderImage } from '../uploads/placeholder.js'
 import { haversineMiles, NETTELHORST_COORDS } from './geo.js'
 import { enrichSportsClubSourceImage } from './image-enrichment.js'
@@ -269,7 +270,7 @@ async function main() {
 
     const occurrences = spec.slots.flatMap((slot) => rollingOccurrences(today, slot))
     if (occurrences.length > 0) {
-      await db.insert(sportsClubOccurrences).values(occurrences.map((o) => ({ sportsClubId: row.id, ...o })))
+      await db.insert(sportsClubOccurrences).values(occurrences.map((o) => ({ sportsClubId: row.id, ...withOccurrenceTimes(o) })))
       occurrenceCount += occurrences.length
     }
   }

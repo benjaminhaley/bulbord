@@ -7,6 +7,7 @@
 // no round-trip needed to apply either filter. Own file, not format.ts,
 // since filtering (which rows survive) is a different concern from
 // formatting (how a surviving row's text reads).
+import { occurrenceTiming } from './format'
 import { matchesAgeFilter } from '../gradeAges'
 import type { SportsClubOccurrence } from './api'
 
@@ -100,8 +101,11 @@ export function matchesScheduleFilter(club: ScheduleFilterable, days: ScheduleDa
   const dayMatches =
     days.length === 0
       ? club.occurrences
-      : club.occurrences.filter((o) => days.includes(new Date(`${o.date}T00:00:00`).getDay() as ScheduleDay))
+      : club.occurrences.filter((o) => days.includes(new Date(`${occurrenceTiming(o).date}T00:00:00`).getDay() as ScheduleDay))
   if (dayMatches.length === 0) return false
   if (times.length === 0) return true
-  return dayMatches.some((o) => o.start_time != null && times.includes(timeOfDayBucket(o.start_time)))
+  return dayMatches.some((o) => {
+    const startTime = occurrenceTiming(o).startTime
+    return startTime != null && times.includes(timeOfDayBucket(startTime))
+  })
 }

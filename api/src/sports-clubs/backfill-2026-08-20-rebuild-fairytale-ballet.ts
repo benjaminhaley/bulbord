@@ -4,6 +4,7 @@ import { eq } from 'drizzle-orm'
 
 import { db } from '../db/client.js'
 import { eventsLog, sportsClubOccurrences, sportsClubs, sportsClubSources } from '../db/schema.js'
+import { withOccurrenceTimes } from './occurrence-times.js'
 
 // Feedback (2026-08-20): "A Fairytale Ballet clearly has multiple specific
 // classes... hold yourself to a higher standard like you did for Dance on
@@ -240,7 +241,7 @@ async function main() {
 
     const occurrences = spec.slots.flatMap((slot) => weeklyOccurrences(spec.firstDate, spec.lastDate, slot))
     if (occurrences.length > 0) {
-      await db.insert(sportsClubOccurrences).values(occurrences.map((o) => ({ sportsClubId: row.id, ...o })))
+      await db.insert(sportsClubOccurrences).values(occurrences.map((o) => ({ sportsClubId: row.id, ...withOccurrenceTimes(o) })))
       occurrenceCount += occurrences.length
     }
   }

@@ -18,6 +18,7 @@ import { ingestEvents } from './ingest.js'
 import { enrichEventImage } from './image-enrichment.js'
 import { fetchPageText } from './resourcing.js'
 import { recordRetryNote } from './retry-strategies.js'
+import { timesFromChicagoWallClock } from '../timezone.js'
 import { snapshotEventForHistory } from './serialize.js'
 
 export interface KeptReviewItem {
@@ -278,6 +279,15 @@ export async function editKeptCandidate(eventId: string, fields: EditableFields,
   if (!existing) return 'not_found'
 
   const merged = { ...existing, ...fields }
+  // startDate/startTime are derived (Chicago wall-clock) columns — a date/time
+  // correction is written as real instants instead.
+  const { startDate: _sd, startTime: _st, allDay: _ad, ...textFields } = fields
+  const timeColumns =
+    fields.startDate !== undefined || fields.startTime !== undefined || fields.allDay !== undefined
+      ? (({ startsAt, endsAt, allDay }) => ({ startsAt, endsAt, allDay }))(
+          timesFromChicagoWallClock({ date: merged.startDate, startTime: merged.startTime, endTime: existing.endTime, allDay: merged.allDay }),
+        )
+      : {}
   const priorChecks = existing.checks as PipelineChecks | null
   const [textChecks] = (await scoreTextChecks([{ title: merged.title, description: merged.description ?? undefined, address: merged.address ?? undefined, locationName: merged.locationName ?? undefined }])) ?? []
 
@@ -294,7 +304,7 @@ export async function editKeptCandidate(eventId: string, fields: EditableFields,
   }
   const pipelineChecksPassed = Object.values(checks).every((c) => c.pass)
 
-  await db.update(events).set({ ...fields, pipelineQualityChecks: checks, pipelineChecksPassed, updatedAt: new Date() }).where(eq(events.id, eventId))
+  await db.update(events).set({ ...textFields, ...timeColumns, pipelineQualityChecks: checks, pipelineChecksPassed, updatedAt: new Date() }).where(eq(events.id, eventId))
 
   await recordEdit({
     entityType: 'event',

@@ -5,7 +5,7 @@
 // infra, same as it is for camps/events, so it comes from ../dayLabel
 // rather than a third diverging copy.
 import { dayLabel } from '../dayLabel'
-import { localizeWallClock } from '../timezone'
+import { instantsOf, localTiming } from '../timezone'
 import type { ScheduleType, SportsClubOccurrence } from './api'
 
 export const CATEGORY_OPTIONS = [
@@ -89,8 +89,14 @@ function formatTimeRange(startTime: string, endTime: string | null): string {
 // inconsistency (see CLAUDE.md's intentionality principle). This is
 // specific to a multi-row list, where every row needs to read as the same
 // kind of fact: full weekday name, month, and day, every time.
+// The viewer-zone date/time of one occurrence (real instants when the API
+// sent them, else Chicago wall-clock fields).
+export function occurrenceTiming(o: SportsClubOccurrence) {
+  return localTiming({ starts_at: o.starts_at, ends_at: o.ends_at, start_date: o.date, start_time: o.start_time, end_time: o.end_time, all_day: o.all_day ?? !o.start_time })
+}
+
 export function occurrenceLabel(occurrence: SportsClubOccurrence): string {
-  const local = localizeWallClock(occurrence.date, occurrence.start_time, occurrence.end_time)
+  const local = { ...occurrenceTiming(occurrence) }
   const weekdayDate = new Date(`${local.date}T00:00:00`).toLocaleDateString('en-US', {
     weekday: 'long',
     month: 'short',
@@ -119,7 +125,7 @@ const RECURRING_WEEKDAY_NAMES = ['Sundays', 'Mondays', 'Tuesdays', 'Wednesdays',
 export function nextOccurrenceDayTimeLabel(occurrences: SportsClubOccurrence[]): string | null {
   const next = occurrences[0]
   if (!next) return null
-  const local = localizeWallClock(next.date, next.start_time, next.end_time)
+  const local = occurrenceTiming(next)
   const weekday = RECURRING_WEEKDAY_NAMES[new Date(`${local.date}T00:00:00`).getDay()]
   if (!local.startTime) return weekday
   return `${weekday}, ${formatTimeRange(local.startTime, local.endTime)}`
@@ -342,8 +348,8 @@ export interface CalendarEvent {
   location: string | null
   startDate: string
   endDate?: string
-  startTime?: string | null
-  endTime?: string | null
+  startsAt?: Date | null
+  endsAt?: Date | null
   allDay?: boolean
 }
 
@@ -364,9 +370,8 @@ export function calendarEventForSportsClub(club: CalendarSportsClub): CalendarEv
       description: club.description,
       location,
       startDate: next.date,
-      startTime: next.start_time,
-      endTime: next.end_time,
       allDay: !next.start_time,
+      ...instantsOf({ starts_at: next.starts_at, ends_at: next.ends_at, start_date: next.date, start_time: next.start_time, end_time: next.end_time, all_day: next.all_day ?? !next.start_time }),
     }
   }
   if (club.first_date) {

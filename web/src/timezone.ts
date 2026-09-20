@@ -1,85 +1,71 @@
-// Every event/camp/club date and time is stored as a plain Chicago
-// wall-clock value (see CLAUDE.md, "Time zones") — this is the one place that
-// knows that, and converts it to a real instant / the viewer's own zone at
-// display time (feedback #166 follow-up: a subscribed Google calendar
-// showed events 5 hours early). Chicago viewers see no change.
-const SOURCE_TIME_ZONE = 'America/Chicago'
+// The database stores every point in time as a real UTC instant (see
+// timezone-core.ts and CLAUDE.md, "Time zones"): the API sends `starts_at`/
+// `ends_at` ISO strings, and everything here renders them in the viewer's own
+// zone and turns viewer-entered date/time back into instants on save.
+// Chicago-viewing members see no change from before.
+import { CHICAGO_TIME_ZONE, instantToWallClock, wallClockToInstantMs } from './timezone-core'
 
-function pad(n: number): string {
-  return String(n).padStart(2, '0')
+export function viewerTimeZone(): string {
+  return Intl.DateTimeFormat().resolvedOptions().timeZone
 }
 
-// Offset (ms, local minus UTC) that `timeZone` has at the given instant.
-function zoneOffsetMs(instantMs: number, timeZone: string): number {
-  const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone,
-    hourCycle: 'h23',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-  }).formatToParts(new Date(instantMs))
-  const get = (type: string) => Number(parts.find((p) => p.type === type)?.value)
-  const asUtc = Date.UTC(get('year'), get('month') - 1, get('day'), get('hour'), get('minute'), get('second'))
-  return asUtc - Math.floor(instantMs / 1000) * 1000
-}
-
-// The real instant (epoch ms) a Chicago wall-clock date+time refers to.
-export function chicagoWallClockToInstantMs(date: string, time: string): number {
-  const [y, mo, d] = date.split('-').map(Number)
-  const [h, mi, s] = time.split(':').map(Number)
-  const naiveUtc = Date.UTC(y, mo - 1, d, h, mi, s || 0)
-  // Two passes so a time near a DST switch resolves against the right offset.
-  let instant = naiveUtc - zoneOffsetMs(naiveUtc, SOURCE_TIME_ZONE)
-  instant = naiveUtc - zoneOffsetMs(instant, SOURCE_TIME_ZONE)
-  return instant
-}
-
-export function instantToUtcParts(instantMs: number): { date: string; time: string } {
-  const d = new Date(instantMs)
-  return {
-    date: `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`,
-    time: `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}`,
-  }
-}
-
-// The viewer's own zone, or an explicit one (tests).
-function localParts(instantMs: number, timeZone?: string): { date: string; time: string } {
-  const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone,
-    hourCycle: 'h23',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-  }).formatToParts(new Date(instantMs))
-  const get = (type: string) => parts.find((p) => p.type === type)?.value ?? '00'
-  return { date: `${get('year')}-${get('month')}-${get('day')}`, time: `${get('hour')}:${get('minute')}:${get('second')}` }
-}
-
-export interface LocalizedTimes {
+export interface LocalTiming {
+  // The calendar date to show: the viewer-local date for a timed entry, the
+  // stored calendar date for an all-day one (which has no clock to shift).
   date: string
   startTime: string | null
   endTime: string | null
+  allDay: boolean
 }
 
-// Converts a Chicago date + optional start/end time into the viewer's zone.
-// `date` follows the start time (it can roll over a midnight for a viewer far
-// from Chicago); a missing start time (an all-day / no-time listing) has no
-// clock to shift, so the date is returned untouched.
+// Anything with a point in time: the real instants when the API sent them
+// (`starts_at`/`ends_at`), else Chicago wall-clock fields (older edit-history
+// snapshots, admin candidate data) treated as America/Chicago.
+export interface TimedThing {
+  starts_at?: string | null
+  ends_at?: string | null
+  start_date: string
+  start_time: string | null
+  end_time?: string | null
+  all_day: boolean
+}
+
+export function localTiming(thing: TimedThing, timeZone?: string): LocalTiming {
+  if (thing.all_day || (!thing.starts_at && !thing.start_time)) {
+    return { date: thing.start_date, startTime: null, endTime: null, allDay: true }
+  }
+  const startMs = thing.starts_at ? Date.parse(thing.starts_at) : wallClockToInstantMs(thing.start_date, thing.start_time as string)
+  const endMs = thing.ends_at ? Date.parse(thing.ends_at) : thing.end_time ? wallClockToInstantMs(thing.start_date, thing.end_time) : null
+  const start = instantToWallClock(startMs, timeZone)
+  return { date: start.date, startTime: start.time, endTime: endMs === null ? null : instantToWallClock(endMs, timeZone).time, allDay: false }
+}
+
+// A Chicago wall-clock date/time (what LLM extraction and other Chicago-local
+// producers speak) as the viewer's local date/time, for prefilling a form.
+export function chicagoWallClockToLocal(date: string, time: string | null | undefined, timeZone?: string): { date: string; time: string | null } {
+  if (!date || !time) return { date, time: time || null }
+  const local = instantToWallClock(wallClockToInstantMs(date, time, CHICAGO_TIME_ZONE), timeZone)
+  return { date: local.date, time: local.time.slice(0, 5) }
+}
+
+// Viewer-entered local date + time -> the ISO instant the API stores.
+export function localToInstantIso(date: string, time: string, timeZone: string = viewerTimeZone()): string {
+  return new Date(wallClockToInstantMs(date, time.length === 5 ? `${time}:00` : time, timeZone)).toISOString()
+}
+
+// A camp's daily hours are wall-clock in the camp's own zone (a multi-day camp
+// repeats them each day); this shows them in the viewer's zone, against the
+// camp's first day so the right DST offset applies.
 export function localizeWallClock(
   date: string,
   startTime: string | null,
   endTime: string | null,
-  timeZone?: string,
-): LocalizedTimes {
+  sourceTimeZone: string = CHICAGO_TIME_ZONE,
+  viewerZone?: string,
+): { date: string; startTime: string | null; endTime: string | null } {
   if (!startTime) return { date, startTime: null, endTime: null }
-  const start = localParts(chicagoWallClockToInstantMs(date, startTime), timeZone)
-  const end = endTime ? localParts(chicagoWallClockToInstantMs(date, endTime), timeZone).time : null
+  const start = instantToWallClock(wallClockToInstantMs(date, startTime, sourceTimeZone), viewerZone)
+  const end = endTime ? instantToWallClock(wallClockToInstantMs(date, endTime, sourceTimeZone), viewerZone).time : null
   return { date: start.date, startTime: start.time, endTime: end }
 }
 
@@ -87,11 +73,32 @@ export function localizeWallClock(
 // timezone knowledge itself — it's byte-mirrored into the server-side
 // newsletter, which is deliberately Chicago-only).
 export function localEventTiming(
+  thing: TimedThing,
+  timeZone?: string,
+): { startDate: string; startTime: string | null; endTime: string | null; allDay: boolean } {
+  const t = localTiming(thing, timeZone)
+  return { startDate: t.date, startTime: t.startTime, endTime: t.endTime, allDay: t.allDay }
+}
+
+// The real instants of a timed thing (null for an all-day / no-time one),
+// for calendar exports.
+export function instantsOf(thing: TimedThing): { startsAt: Date | null; endsAt: Date | null } {
+  if (thing.all_day || (!thing.starts_at && !thing.start_time)) return { startsAt: null, endsAt: null }
+  const startMs = thing.starts_at ? Date.parse(thing.starts_at) : wallClockToInstantMs(thing.start_date, thing.start_time as string)
+  const endMs = thing.ends_at ? Date.parse(thing.ends_at) : thing.end_time ? wallClockToInstantMs(thing.start_date, thing.end_time) : null
+  return { startsAt: new Date(startMs), endsAt: endMs === null ? null : new Date(endMs) }
+}
+
+// A camp's daily hours on one date, in the camp's own zone, as real instants.
+export function wallClockInstants(
   date: string,
   startTime: string | null,
   endTime: string | null,
-  allDay: boolean,
-): { startDate: string; startTime: string | null; endTime: string | null; allDay: boolean } {
-  const local = localizeWallClock(date, allDay ? null : startTime, allDay ? null : endTime)
-  return { startDate: allDay ? date : local.date, startTime: local.startTime, endTime: local.endTime, allDay }
+  timeZone: string = CHICAGO_TIME_ZONE,
+): { startsAt: Date | null; endsAt: Date | null } {
+  if (!startTime) return { startsAt: null, endsAt: null }
+  return {
+    startsAt: new Date(wallClockToInstantMs(date, startTime, timeZone)),
+    endsAt: endTime ? new Date(wallClockToInstantMs(date, endTime, timeZone)) : null,
+  }
 }

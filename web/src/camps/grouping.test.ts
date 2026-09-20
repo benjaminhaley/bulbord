@@ -12,6 +12,7 @@ function camp(overrides: Partial<Camp> = {}): Camp {
     end_date: '2026-06-19',
     start_time: null,
     end_time: null,
+    time_zone: 'America/Chicago',
     address: null,
     location_name: null,
     distance_miles: null,

@@ -3,6 +3,7 @@ import { and, eq, isNull } from 'drizzle-orm'
 import { db } from '../db/client.js'
 import { events, eventsLog, rejectedEventCandidates } from '../db/schema.js'
 import { todayInChicago } from '../dates.js'
+import { timesFromChicagoWallClock } from '../timezone.js'
 import { uploadPlaceholderImage } from '../uploads/placeholder.js'
 import { checkDateQuality, checkTimeQuality, buildDuplicateCheck, runTextChecksWithRetry, scoreTextChecks, type PipelineChecks } from './candidate-checks.js'
 import { findLikelyDuplicateEvent } from './duplicate-detection.js'
@@ -144,9 +145,7 @@ export async function ingestEvents(candidates: CandidateEvent[], { sourceId, act
       .values({
         title,
         description: candidate.description,
-        startDate: candidate.startDate,
-        startTime: candidate.startTime,
-        allDay: candidate.allDay,
+        ...timesFromChicagoWallClock({ date: candidate.startDate, startTime: candidate.startTime, allDay: candidate.allDay }),
         address: candidate.address,
         locationName: candidate.locationName,
         latitude: candidate.latitude,

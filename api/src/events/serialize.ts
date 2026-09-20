@@ -10,6 +10,8 @@ export type SerializableEvent = Pick<
   | 'id'
   | 'title'
   | 'description'
+  | 'startsAt'
+  | 'endsAt'
   | 'startDate'
   | 'startTime'
   | 'endTime'
@@ -50,6 +52,12 @@ export function serializeEvent(
     id: e.id,
     title: e.title,
     description: e.description,
+    // starts_at/ends_at are the real UTC instants (the app renders these in
+    // the viewer's zone). start_date/start_time/end_time are the derived
+    // Chicago wall-clock views; start_date is the one to show for an all-day
+    // event, which has no clock time to convert.
+    starts_at: e.startsAt.toISOString(),
+    ends_at: e.endsAt ? e.endsAt.toISOString() : null,
     start_date: e.startDate,
     start_time: e.startTime,
     end_time: e.endTime,
@@ -99,7 +107,7 @@ export function serializeEvent(
 export type EventHistorySnapshotFields = Pick<
   SerializableEvent,
   'title' | 'description' | 'startDate' | 'startTime' | 'endTime' | 'allDay' | 'locationName' | 'address' | 'sourceUrl' | 'topic' | 'imageUrl' | 'thumbnailUrl'
->
+> & Partial<Pick<SerializableEvent, 'startsAt' | 'endsAt'>>
 
 export function snapshotEventForHistory(e: EventHistorySnapshotFields): Record<string, unknown> {
   return {
@@ -109,6 +117,10 @@ export function snapshotEventForHistory(e: EventHistorySnapshotFields): Record<s
     start_time: e.startTime,
     end_time: e.endTime,
     all_day: e.allDay,
+    // Exact instants, when the caller has them — what a restore replays.
+    // start_date/start_time/end_time above are the Chicago wall-clock views
+    // (and what older history entries recorded).
+    ...(e.startsAt ? { starts_at: e.startsAt.toISOString(), ends_at: e.endsAt ? e.endsAt.toISOString() : null } : {}),
     location_name: e.locationName,
     address: e.address,
     source_url: e.sourceUrl,

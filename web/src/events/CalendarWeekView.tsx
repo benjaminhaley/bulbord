@@ -1,3 +1,4 @@
+import { localTiming } from '../timezone'
 import { IonButton, IonIcon, IonItem, IonLabel, IonList, IonSpinner, IonToast } from '@ionic/react'
 import { chevronBack, chevronForward, closeOutline } from 'ionicons/icons'
 import { useEffect, useMemo, useState } from 'react'
@@ -99,7 +100,7 @@ export function CalendarWeekView({
     const map = new Map<string, Event[]>()
     for (const day of days) map.set(day, [])
     for (const event of weekEvents ?? []) {
-      map.get(event.start_date)?.push(event)
+      map.get(localTiming(event).date)?.push(event)
     }
     return map
   }, [weekEvents, days])

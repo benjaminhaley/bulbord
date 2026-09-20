@@ -1,6 +1,7 @@
 import 'dotenv/config'
 import { db } from '../db/client.js'
 import { sportsClubs, sportsClubSources, sportsClubOccurrences, eventsLog } from '../db/schema.js'
+import { withOccurrenceTimes } from './occurrence-times.js'
 import { eq } from 'drizzle-orm'
 
 const DUPLICATE_LISTING_ID = '19e2074b-8dd3-4239-852f-9571c01aa996' // "i9 Sports Flag Football" — accidental dupe
@@ -53,13 +54,13 @@ async function main() {
   // fabricated" posture as every other honesty gap in this pass).
   const playmakersDates = weeklyDates('2026-08-25', ESTIMATED_SEASON_END, [2, 6])
   await db.insert(sportsClubOccurrences).values(
-    playmakersDates.map((date) => ({ sportsClubId: YSI_PLAYMAKERS_ID, date, startTime: null, endTime: null, note: null })),
+    playmakersDates.map((date) => ({ sportsClubId: YSI_PLAYMAKERS_ID, ...withOccurrenceTimes({ date, startTime: null, endTime: null }), note: null })),
   )
 
   // First Touch: Saturdays only, with the two real confirmed times.
   const firstTouchDates = weeklyDates('2026-08-29', ESTIMATED_SEASON_END, [6])
   await db.insert(sportsClubOccurrences).values(
-    firstTouchDates.map((date) => ({ sportsClubId: YSI_FIRST_TOUCH_ID, date, startTime: '09:00', endTime: '11:00', note: null })),
+    firstTouchDates.map((date) => ({ sportsClubId: YSI_FIRST_TOUCH_ID, ...withOccurrenceTimes({ date, startTime: '09:00', endTime: '11:00' }), note: null })),
   )
 
   console.log(`Playmakers: ${playmakersDates.length} occurrence rows. First Touch: ${firstTouchDates.length} occurrence rows.`)
