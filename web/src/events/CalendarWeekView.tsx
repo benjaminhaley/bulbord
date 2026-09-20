@@ -1,4 +1,5 @@
 import { localTiming } from '../timezone'
+import { useRequireLogin } from '../auth/LoginPrompt'
 import { IonButton, IonIcon, IonItem, IonLabel, IonList, IonSpinner, IonToast } from '@ionic/react'
 import { chevronBack, chevronForward, closeOutline } from 'ionicons/icons'
 import { useEffect, useMemo, useState } from 'react'
@@ -81,6 +82,7 @@ export function CalendarWeekView({
   const [error, setError] = useState(false)
   const [swipeToast, setSwipeToast] = useState<SwipeToast | null>(null)
   const [selectedDay, setSelectedDay] = useState<string | null>(null)
+  const requireLogin = useRequireLogin()
   const { setInterest, clearInterest } = useEventInterest(updateEvent)
 
   const topicsKey = filters.topics?.join(',') ?? ''
@@ -111,6 +113,7 @@ export function CalendarWeekView({
 
   function handleSwipe(e: { target: EventTarget | null }, event: Event, status: InterestStatus) {
     closeSliding(e.target)
+    if (!requireLogin('Sign in to mark events you’re interested in')) return
     setSwipeToast({ event, previousStatus: event.interest_status, newStatus: status })
     setInterest(event, status)
   }

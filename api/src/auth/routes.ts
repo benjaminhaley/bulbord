@@ -1,7 +1,8 @@
 import type { FastifyInstance, FastifyReply } from 'fastify'
 
 import { getUnseenNotificationCount } from '../notifications/service.js'
-import { bearerToken, requireAuth } from './plugin.js'
+import { bearerToken, requireSession } from './plugin.js'
+import { notifyAdminsOfPendingSignup } from './signup-approval.js'
 import { getPublicInviteInfo, listUserChildren, revokeSession, updateProfile, validateProfileUpdate, type Grade, type UserRole } from './service.js'
 import {
   createAuthenticationOptions,
@@ -51,8 +52,8 @@ export async function authRoutes(app: FastifyInstance) {
 
   app.post('/auth/webauthn/login/verify', (request, reply) => handleVerify(reply, request.body, verifyAuthentication))
 
-  app.get('/auth/me', { preHandler: requireAuth }, async (request, reply) => {
-    const user = request.currentUser!
+  app.get('/auth/me', { preHandler: requireSession }, async (request, reply) => {
+    const user = request.sessionUser!
     const [kids, unseenNotificationCount] = await Promise.all([listUserChildren(user.id), getUnseenNotificationCount(user.id)])
     return reply.send({
       data: {
@@ -62,6 +63,7 @@ export async function authRoutes(app: FastifyInstance) {
         avatarUrl: user.avatarUrl,
         profileComplete: user.profileComplete,
         friendsStepComplete: user.friendsStepComplete,
+        approved: user.approved,
         role: user.role,
         roleOther: user.roleOther,
         newsletterSubscribed: user.newsletterSubscribed,
@@ -72,7 +74,7 @@ export async function authRoutes(app: FastifyInstance) {
     })
   })
 
-  app.patch('/auth/me', { preHandler: requireAuth }, async (request, reply) => {
+  app.patch('/auth/me', { preHandler: requireSession }, async (request, reply) => {
     const body = request.body as {
       name?: string
       email?: string
@@ -82,12 +84,17 @@ export async function authRoutes(app: FastifyInstance) {
       roleOther?: string
       kids?: { grade: Grade }[]
     }
-    const result = validateProfileUpdate({ profileComplete: request.currentUser!.profileComplete }, body)
+    const result = validateProfileUpdate({ profileComplete: request.sessionUser!.profileComplete }, body)
     if (!result.ok) {
       return reply.code(400).send({ error: { message: result.message } })
     }
 
-    const updated = await updateProfile(request.currentUser!.id, result.updates)
+    const updated = await updateProfile(request.sessionUser!.id, result.updates)
+    // Feedback #175: the first completed profile of a still-unapproved
+    // account is the moment an admin has enough to judge it by.
+    if (!request.sessionUser!.profileComplete && updated.profileCompletedAt && !updated.approvedAt) {
+      notifyAdminsOfPendingSignup(updated.id).catch((err) => request.log.error(err, 'pending-signup notification failed'))
+    }
     return reply.send({
       data: {
         id: updated.id,
@@ -99,7 +106,7 @@ export async function authRoutes(app: FastifyInstance) {
     })
   })
 
-  app.post('/auth/logout', { preHandler: requireAuth }, async (request, reply) => {
+  app.post('/auth/logout', { preHandler: requireSession }, async (request, reply) => {
     await revokeSession(bearerToken(request)!)
     return reply.code(204).send()
   })

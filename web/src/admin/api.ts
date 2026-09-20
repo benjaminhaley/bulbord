@@ -10,6 +10,9 @@ export interface AdminUser {
   newsletter_subscribed: boolean
   role: 'staff' | 'family' | 'other' | null
   role_other: string | null
+  email: string | null
+  // Null = signed up, waiting on approval (feedback #175).
+  approved_at: string | null
 }
 
 export async function fetchAdminUsers(): Promise<AdminUser[]> {
@@ -102,6 +105,15 @@ export async function impersonateUser(userId: string): Promise<ImpersonationLink
   }
   const body = (await response.json()) as { data: ImpersonationLink }
   return body.data
+}
+
+// Feedback #175: approve a pending signup. Rejecting is deleteMember below.
+export async function approveMember(userId: string): Promise<void> {
+  const response = await fetch(`${API_URL}/admin/users/${userId}/approve`, { method: 'POST', headers: authHeaders() })
+  if (!response.ok) {
+    const body = (await response.json().catch(() => null)) as { error?: { message?: string } } | null
+    throw new Error(body?.error?.message ?? `Failed to approve member: ${response.status}`)
+  }
 }
 
 // Feedback #92: lets an admin remove a member, for testing (cleaning up

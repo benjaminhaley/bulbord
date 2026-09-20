@@ -21,6 +21,7 @@ import {
   IonToolbar,
   useIonViewWillEnter,
 } from '@ionic/react'
+import { useRequireLogin } from '../auth/LoginPrompt'
 import { addOutline, closeOutline, eyeOffOutline, filterOutline, star, starOutline } from 'ionicons/icons'
 import { useMemo, useState } from 'react'
 
@@ -179,6 +180,7 @@ export function CampsPage() {
   const [swipeToast, setSwipeToast] = useState<SwipeToast | null>(null)
   const [multiTouch, setMultiTouch] = useState(false)
   const [showForm, setShowForm] = useState(false)
+  const requireLogin = useRequireLogin()
   // Feedback #103 (2026-08-19): Camps' first filter at all — Age, defaulted
   // on to the viewer's own kids' permissive ages (see ../gradeAges.ts)
   // rather than starting empty/off the way Events'/Sports & Clubs' chips do.
@@ -243,6 +245,9 @@ export function CampsPage() {
 
   function handleSwipe(e: { target: EventTarget | null }, camp: Camp, status: InterestStatus) {
     closeSliding(e.target)
+    // The toast/undo below would otherwise fire for a visitor whose interest
+    // never got saved (setInterest prompts for login instead).
+    if (!requireLogin('Sign in to mark camps you’re interested in')) return
     setSwipeToast({ camp, previousStatus: camp.interest_status, newStatus: status })
     setInterest(camp, status)
   }
@@ -301,11 +306,10 @@ export function CampsPage() {
             <IonButton onClick={() => setFiltersOpen((v) => !v)} aria-label="Toggle filters">
               <IonIcon slot="icon-only" icon={filterOutline} color={ages.length > 0 || filtersOpen ? 'primary' : undefined} />
             </IonButton>
-            {user && (
-              <IonButton onClick={() => setShowForm((v) => !v)}>
-                <IonIcon slot="icon-only" icon={showForm ? closeOutline : addOutline} />
-              </IonButton>
-            )}
+            {/* Visible to visitors too (feedback #175) — tapping it asks them to sign in. */}
+            <IonButton onClick={() => (showForm || requireLogin('Sign in to post a camp')) && setShowForm((v) => !v)}>
+              <IonIcon slot="icon-only" icon={showForm ? closeOutline : addOutline} />
+            </IonButton>
           </IonButtons>
         </IonToolbar>
         {filtersOpen && <CampFilterChips ages={ages} onChange={setAges} />}

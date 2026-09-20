@@ -5,6 +5,10 @@ import { MemoryRouter } from 'react-router-dom'
 import { CommentsSection } from './CommentsSection'
 import type { CampComment, SourceNote } from './api'
 
+let mockUser: { id: string } | null = { id: 'u1' }
+vi.mock('../auth/AuthContext', () => ({ useAuth: () => ({ user: mockUser }) }))
+vi.mock('../auth/LoginPrompt', () => ({ useRequireLogin: () => vi.fn() }))
+
 const mockFetch = vi.fn()
 const mockFetchNotes = vi.fn()
 const mockCreate = vi.fn()

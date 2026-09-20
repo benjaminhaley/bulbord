@@ -4,7 +4,13 @@ import { track } from '../analytics/api'
 import { fetchCurrentUser, logout as apiLogout, type CurrentUser } from './api'
 
 interface AuthState {
+  // The approved, signed-in member — null for an anonymous visitor AND for a
+  // signed-up account still waiting on admin approval, so every existing
+  // `if (user)` check keeps meaning "may use member features" (feedback #175).
   user: CurrentUser | null
+  // Set only for that waiting-on-approval account (JoinGate finishes its
+  // profile setup; LoginPrompt tells it to wait).
+  pendingUser: CurrentUser | null
   isLoading: boolean
   isAdmin: boolean
   refresh: () => Promise<void>
@@ -14,9 +20,12 @@ interface AuthState {
 const AuthContext = createContext<AuthState | null>(null)
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<CurrentUser | null>(null)
+  const [signedIn, setSignedIn] = useState<CurrentUser | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const trackedAppOpen = useRef(false)
+
+  const user = signedIn?.approved ? signedIn : null
+  const pendingUser = signedIn && !signedIn.approved ? signedIn : null
 
   // `isLoading` gates JoinGate's whole-app spinner (see JoinGate.tsx) — only
   // meaningful while we don't yet know who's signed in (true app boot, or
@@ -29,10 +38,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // re-triggered it, forever — an infinite unmount/remount loop that ended
   // with the user logged out once a request in the storm happened to 401.
   async function refresh() {
-    const isInitialLoad = user === null
+    const isInitialLoad = signedIn === null
     if (isInitialLoad) setIsLoading(true)
     try {
-      setUser(await fetchCurrentUser())
+      setSignedIn(await fetchCurrentUser())
     } finally {
       if (isInitialLoad) setIsLoading(false)
     }
@@ -40,7 +49,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   async function logout() {
     await apiLogout()
-    setUser(null)
+    setSignedIn(null)
   }
 
   useEffect(() => {
@@ -64,7 +73,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const isAdmin = user?.roles.includes('admin') ?? false
 
-  return <AuthContext.Provider value={{ user, isLoading, isAdmin, refresh, logout }}>{children}</AuthContext.Provider>
+  return <AuthContext.Provider value={{ user, pendingUser, isLoading, isAdmin, refresh, logout }}>{children}</AuthContext.Provider>
 }
 
 export function useAuth(): AuthState {

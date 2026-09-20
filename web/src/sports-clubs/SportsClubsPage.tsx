@@ -21,6 +21,7 @@ import {
   IonToolbar,
   useIonViewWillEnter,
 } from '@ionic/react'
+import { useRequireLogin } from '../auth/LoginPrompt'
 import { addOutline, closeOutline, eyeOffOutline, filterOutline, star, starOutline } from 'ionicons/icons'
 import { useMemo, useState } from 'react'
 
@@ -162,6 +163,7 @@ export function SportsClubsPage() {
   const [swipeToast, setSwipeToast] = useState<SwipeToast | null>(null)
   const [multiTouch, setMultiTouch] = useState(false)
   const [showForm, setShowForm] = useState(false)
+  const requireLogin = useRequireLogin()
   const [showStarted, setShowStarted] = useState(false)
   const [filtersOpen, setFiltersOpen] = useState(false)
   // Age defaults on to the viewer's own kids' permissive ages (feedback
@@ -233,6 +235,9 @@ export function SportsClubsPage() {
 
   function handleSwipe(e: { target: EventTarget | null }, club: SportsClubListItem, status: InterestStatus) {
     closeSliding(e.target)
+    // The toast/undo below would otherwise fire for a visitor whose interest
+    // never got saved (setInterest prompts for login instead).
+    if (!requireLogin('Sign in to mark clubs you’re interested in')) return
     setSwipeToast({ club, previousStatus: club.interest_status, newStatus: status })
     setInterest(club, status)
   }
@@ -281,11 +286,10 @@ export function SportsClubsPage() {
             <IonButton onClick={() => setFiltersOpen((v) => !v)} aria-label="Toggle filters">
               <IonIcon slot="icon-only" icon={filterOutline} color={hasActiveFilters || filtersOpen ? 'primary' : undefined} />
             </IonButton>
-            {user && (
-              <IonButton onClick={() => setShowForm((v) => !v)}>
-                <IonIcon slot="icon-only" icon={showForm ? closeOutline : addOutline} />
-              </IonButton>
-            )}
+            {/* Visible to visitors too (feedback #175) — tapping it asks them to sign in. */}
+            <IonButton onClick={() => (showForm || requireLogin('Sign in to post a club or sport')) && setShowForm((v) => !v)}>
+              <IonIcon slot="icon-only" icon={showForm ? closeOutline : addOutline} />
+            </IonButton>
           </IonButtons>
         </IonToolbar>
         {filtersOpen && (

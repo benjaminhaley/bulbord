@@ -1,4 +1,6 @@
 import { IonButton, IonIcon, IonItem, IonSpinner, IonTextarea } from '@ionic/react'
+import { useAuth } from '../auth/AuthContext'
+import { CommentsLoginRow } from '../auth/CommentsLoginRow'
 import { addOutline, trashOutline } from 'ionicons/icons'
 import { useEffect, useState } from 'react'
 
@@ -99,7 +101,7 @@ function CommentItem({
   )
 }
 
-export function CommentsSection({ eventId }: { eventId: string }) {
+function MemberComments({ eventId }: { eventId: string }) {
   const [comments, setComments] = useState<EventComment[] | null>(null)
   const [error, setError] = useState(false)
   const [newBody, setNewBody] = useState('')
@@ -185,4 +187,11 @@ export function CommentsSection({ eventId }: { eventId: string }) {
       </div>
     </div>
   )
+}
+
+// Comments carry member names/photos, so they're login-only (feedback #175):
+// an anonymous or still-pending visitor gets a sign-in row instead.
+export function CommentsSection(props: { eventId: string }) {
+  const { user } = useAuth()
+  return user ? <MemberComments {...props} /> : <CommentsLoginRow />
 }

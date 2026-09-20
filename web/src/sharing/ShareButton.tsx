@@ -14,22 +14,22 @@ import { useState } from 'react'
 import { useLocation } from 'react-router-dom'
 
 import { track } from '../analytics/api'
-import { useAuth } from '../auth/AuthContext'
 import { useQrDataUrl } from './useQrDataUrl'
 
 // Persistent, always-visible share entry point (see CLAUDE.md "Sharing"):
 // encodes whatever page the visitor is currently on, since sharing here means
-// showing someone the QR in person, not distributing a link remotely. Doubles
-// as the app's only invite mechanism — a logged-in member's QR always carries
-// `?invite=<their user id>`, so scanning it as a non-member both takes you to
-// that page AND records who invited you once you join (see JoinGate.tsx).
+// showing someone the QR in person, not distributing a link remotely. It's a
+// plain link to the page now (feedback #175): signup is open with admin
+// approval, so a share no longer carries an invite — whoever scans it just
+// lands on that page, publicly browsable.
 export function ShareButton() {
   const location = useLocation()
-  const { user } = useAuth()
   const [open, setOpen] = useState(false)
 
   const params = new URLSearchParams(location.search)
-  if (user) params.set('invite', user.id)
+  // Strip a stale invite param a visitor may have arrived with, so it isn't
+  // re-shared onward.
+  params.delete('invite')
   const query = params.toString()
   const shareUrl = `${window.location.origin}${location.pathname}${query ? `?${query}` : ''}`
 
@@ -79,7 +79,7 @@ export function ShareButton() {
                 Login section): naming both the community and the platform
                 it runs on. */}
             <p style={{ fontWeight: 600, textAlign: 'center', margin: 0 }}>
-              Have your friend scan this QR code to join Nettelhorst Bulbord
+              Have your friend scan this QR code to open this page on Nettelhorst Bulbord
             </p>
             {/* Feature-detected (feedback #58: "make it easy to share over
                 text or email") — opens the phone's own share sheet with this

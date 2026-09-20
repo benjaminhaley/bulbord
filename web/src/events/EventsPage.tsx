@@ -19,6 +19,7 @@ import {
   IonToolbar,
   useIonViewWillEnter,
 } from '@ionic/react'
+import { useRequireLogin } from '../auth/LoginPrompt'
 import { addOutline, eyeOffOutline, filterOutline, star } from 'ionicons/icons'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
@@ -126,6 +127,7 @@ export function EventsPage() {
   // content pushed above the list. The modal owns its own choice/
   // processing/form staging internally.
   const [showForm, setShowForm] = useState(false)
+  const requireLogin = useRequireLogin()
   // Occurrences the next-occurrence collapse is currently suppressing
   // (feedback #48) — 0 once revealHidden() below has fetched everything.
   const [hiddenCount, setHiddenCount] = useState(0)
@@ -216,6 +218,9 @@ export function EventsPage() {
 
   function handleSwipe(e: { target: EventTarget | null }, event: Event, status: InterestStatus) {
     closeSliding(e.target)
+    // The toast/undo below would otherwise fire for a visitor whose interest
+    // never got saved (setInterest prompts for login instead).
+    if (!requireLogin('Sign in to mark events you’re interested in')) return
     setSwipeToast({ event, previousStatus: event.interest_status, newStatus: status })
     setInterest(event, status)
   }
@@ -268,11 +273,10 @@ export function EventsPage() {
                 close button is how it closes now, not this icon (feedback,
                 2026-08-23: the add flow is a real modal, not inline content
                 on this page). */}
-            {user && (
-              <IonButton onClick={() => setShowForm(true)}>
-                <IonIcon slot="icon-only" icon={addOutline} />
-              </IonButton>
-            )}
+            {/* Visible to visitors too (feedback #175) — tapping it asks them to sign in. */}
+            <IonButton onClick={() => requireLogin('Sign in to post an event') && setShowForm(true)}>
+              <IonIcon slot="icon-only" icon={addOutline} />
+            </IonButton>
           </IonButtons>
         </IonToolbar>
         {/* Feedback (2026-08-16): "filters are clunky... base it on a more

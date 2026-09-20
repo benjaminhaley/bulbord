@@ -2,6 +2,7 @@ import { and, asc, eq, getTableColumns, gte, inArray, isNull, lte, or, sql } fro
 import type { FastifyInstance } from 'fastify'
 
 import { requireAuth, requireRole } from '../auth/plugin.js'
+import { publicRead } from '../auth/public-read.js'
 import { db } from '../db/client.js'
 import { events, eventSources, eventInterests, eventsLog, users } from '../db/schema.js'
 import { addDays, todayInChicago } from '../dates.js'
@@ -141,7 +142,7 @@ export async function eventsRoutes(app: FastifyInstance) {
     })
   })
 
-  app.get('/events/:id', { preHandler: requireAuth }, async (request, reply) => {
+  app.get('/events/:id', publicRead, async (request, reply) => {
     const { id } = request.params as { id: string }
     const userId = request.currentUser?.id ?? null
 
@@ -850,7 +851,7 @@ export async function eventsRoutes(app: FastifyInstance) {
     })
   })
 
-  app.get('/events', { preHandler: requireAuth }, async (request, reply) => {
+  app.get('/events', publicRead, async (request, reply) => {
     const query = request.query as {
       limit?: string
       cursor?: string
@@ -1060,7 +1061,7 @@ export async function eventsRoutes(app: FastifyInstance) {
   // Sunday-Saturday week, not the next-occurrence-collapsed set the main
   // list above shows; see week-query.ts's own header for why this is a
   // deliberate parallel query rather than a variant of the CTE above.
-  app.get('/events/week', { preHandler: requireAuth }, async (request, reply) => {
+  app.get('/events/week', publicRead, async (request, reply) => {
     const query = request.query as { start?: string; topics?: string; before_time?: string; after_time?: string; tz?: string }
     const weekStart = query.start
     if (!weekStart || !/^\d{4}-\d{2}-\d{2}$/.test(weekStart)) {

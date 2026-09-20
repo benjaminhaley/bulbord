@@ -4,6 +4,7 @@ import { useHistory } from 'react-router-dom'
 
 import { useDataFreshness } from '../admin/DataFreshnessContext'
 import { useAuth } from '../auth/AuthContext'
+import { useRequireLogin } from '../auth/LoginPrompt'
 import { unstyledButtonStyle } from '../theme/layout'
 import { Avatar } from '../uploads/Avatar'
 import { BadgeDot } from './BadgeDot'
@@ -30,7 +31,8 @@ const bannerButtonStyle = { ...unstyledButtonStyle, '--color': 'var(--banner-ink
 // position: absolute/inset: 0 layout (see index.css's tab-bar-disappearing
 // history) makes a truly global fixed banner risky to introduce.
 export function InstitutionBanner() {
-  const { user } = useAuth()
+  const { user, pendingUser } = useAuth()
+  const requireLogin = useRequireLogin()
   const { alertMessage } = useDataFreshness()
   const history = useHistory()
   // Feedback #69/#119: a quiet nudge that events/camps data has gone stale,
@@ -86,17 +88,27 @@ export function InstitutionBanner() {
         </span>
       </IonButton>
       <div slot="end" style={{ display: 'flex', alignItems: 'center', gap: 8, paddingInlineEnd: 8 }}>
-        <IonButton fill="clear" aria-label="Notifications" onClick={() => history.push('/notifications')} style={bannerButtonStyle}>
-          <span style={{ display: 'flex', alignItems: 'center', position: 'relative' }}>
-            <IonIcon icon={notificationsOutline} style={{ fontSize: '1.5rem' }} />
-            {showNotificationBadge && <BadgeDot label="Alerts" count={unseenNotificationCount} />}
-          </span>
-        </IonButton>
-        <IonButton fill="clear" aria-label="Account" onClick={() => history.push('/account')} style={bannerButtonStyle}>
-          <span style={{ display: 'flex', alignItems: 'center', position: 'relative' }}>
-            {user && <Avatar url={user.avatarUrl} name={user.name} size={32} />}
-          </span>
-        </IonButton>
+        {user ? (
+          <>
+            <IonButton fill="clear" aria-label="Notifications" onClick={() => history.push('/notifications')} style={bannerButtonStyle}>
+              <span style={{ display: 'flex', alignItems: 'center', position: 'relative' }}>
+                <IonIcon icon={notificationsOutline} style={{ fontSize: '1.5rem' }} />
+                {showNotificationBadge && <BadgeDot label="Alerts" count={unseenNotificationCount} />}
+              </span>
+            </IonButton>
+            <IonButton fill="clear" aria-label="Account" onClick={() => history.push('/account')} style={bannerButtonStyle}>
+              <span style={{ display: 'flex', alignItems: 'center', position: 'relative' }}>
+                <Avatar url={user.avatarUrl} name={user.name} size={32} />
+              </span>
+            </IonButton>
+          </>
+        ) : (
+          // Anonymous, or signed up but still waiting on approval (feedback
+          // #175) — either way the way in is the same sheet.
+          <IonButton fill="clear" onClick={() => requireLogin()} style={bannerButtonStyle}>
+            {pendingUser ? 'Pending approval' : 'Sign in'}
+          </IonButton>
+        )}
       </div>
     </IonToolbar>
   )

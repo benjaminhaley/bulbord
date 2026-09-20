@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify'
 
-import { requireAuth } from '../auth/plugin.js'
+import { requireSession } from '../auth/plugin.js'
 import { getImageObject, imageUrl, uploadImage } from './storage.js'
 
 // Bucket objects are private (Railway buckets have no public-URL mode), so
@@ -19,7 +19,7 @@ export async function uploadsRoutes(app: FastifyInstance) {
   // images still bypass this route entirely — populated directly via
   // uploadImage() from the ingestion pipeline, which has no HTTP request to
   // attach a file to.
-  app.post('/uploads', { preHandler: requireAuth }, async (request, reply) => {
+  app.post('/uploads', { preHandler: requireSession }, async (request, reply) => {
     const file = await request.file()
     if (!file) {
       return reply.code(400).send({ error: { message: 'file is required' } })

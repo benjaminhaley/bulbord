@@ -283,6 +283,12 @@ export const users = pgTable('users', {
   // visible in the admin /admin/users list, which is meant to show every
   // account that exists, not just real members.
   isServiceAccount: boolean('is_service_account').notNull().default(false),
+  // Null means "signed up but not yet approved by an admin" (feedback #175:
+  // open signup with admin approval replaced invite-only). A pending account
+  // can finish its profile and browse the public tabs but every requireAuth
+  // route rejects it — see auth/plugin.ts. Existing members were backfilled
+  // to their created_at by migration 0051.
+  approvedAt: timestamp('approved_at', { withTimezone: true }),
   // Per-type email toggles for the unified notification center (feedback
   // #100, 2026-08-17) — replaces the old friendsSeenAt/feedbackRepliesSeenAt
   // "real timestamp gates a UI reveal" pair (superseded by
@@ -322,7 +328,7 @@ export const notifications = pgTable('notifications', {
   userId: uuid('user_id')
     .notNull()
     .references(() => users.id), // the recipient
-  type: text('type').notNull(), // 'friend_added' | 'friend_request_accepted' | 'feedback_reply' | 'event_comment' | 'camp_comment' | 'sports_club_comment'
+  type: text('type').notNull(), // 'friend_added' | 'friend_request_accepted' | 'signup_pending' | 'feedback_reply' | 'event_comment' | 'camp_comment' | 'sports_club_comment'
   actorUserId: uuid('actor_user_id').references(() => users.id), // who triggered it, for the avatar shown in the list
   message: text('message').notNull(),
   targetPath: text('target_path').notNull(), // e.g. '/friends', '/feedback/:id', '/events/:id', '/camps/:id'

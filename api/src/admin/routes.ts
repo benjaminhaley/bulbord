@@ -36,6 +36,7 @@ import {
 } from '../events/resourcing.js'
 import { sendTestNewsletterEmail } from '../newsletter/service.js'
 import { impersonateUser } from './impersonation.js'
+import { approveMember } from '../auth/signup-approval.js'
 import { deleteMember } from './memberDeletion.js'
 import { computeDataFreshness } from './staleness.js'
 
@@ -80,6 +81,8 @@ export async function adminRoutes(app: FastifyInstance) {
         newsletter_subscribed: row.newsletterSubscribed,
         role: row.role,
         role_other: row.roleOther,
+        email: row.email,
+        approved_at: row.approvedAt,
       })),
       has_more: false,
       next_cursor: null,
@@ -222,6 +225,18 @@ export async function adminRoutes(app: FastifyInstance) {
       return reply.code(404).send({ error: { message: 'User not found' } })
     }
     return reply.send({ data: { url: result.url, expires_at: result.expiresAt } })
+  })
+
+  // Feedback #175: open signup with admin approval. Reject is the existing
+  // soft-delete (DELETE /admin/users/:id) — a rejected applicant can sign up
+  // again later.
+  app.post('/admin/users/:id/approve', { preHandler: requireRole('admin') }, async (request, reply) => {
+    const { id } = request.params as { id: string }
+    const result = await approveMember(id, request.currentUser!.id)
+    if ('error' in result) {
+      return reply.code(404).send({ error: { message: 'User not found' } })
+    }
+    return reply.send({ data: { approved: true } })
   })
 
   // Feedback #92: lets an admin remove a member, for testing (cleaning up

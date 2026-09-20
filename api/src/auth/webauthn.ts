@@ -58,6 +58,7 @@ interface RegisterChallengePayload {
   challenge: string
   newUserId: string
   inviterUserId: string | null
+  autoApprove: boolean
   issuedAt: number
 }
 
@@ -67,10 +68,17 @@ interface LoginChallengePayload {
   issuedAt: number
 }
 
-export type InvitationResolution = { ok: true; inviterUserId: string | null } | { ok: false; message: string }
+// `autoApprove` is true only for the root-secret bootstrap — every other
+// signup, invited or not, waits for an admin's approval (feedback #175).
+export type InvitationResolution =
+  | { ok: true; inviterUserId: string | null; autoApprove: boolean }
+  | { ok: false; message: string }
 
-// The only place "you need an invitation to join Nettelhorst" is enforced — see
-// CLAUDE.md's Login section. Resolved once here, at options-generation time,
+// Signup is open with admin approval (feedback #175): an `?invite=` param, when
+// it still resolves to a real member, is just recorded as `invited_by_user_id`
+// for the social graph (old shared QR links still carry one) — it no longer
+// gates or fast-tracks anything. Only a valid root secret skips approval.
+// Resolved once here, at options-generation time,
 // then signed into the challenge token so /verify trusts the signature rather
 // than re-validating client-supplied ids (no TOCTOU gap between the calls).
 // Exported directly (rather than only indirectly via createRegistrationOptions)
@@ -83,7 +91,7 @@ export async function resolveInvitation(
     if (!env.rootInviteSecret || !secretsMatch(input.rootSecret, env.rootInviteSecret)) {
       return { ok: false, message: 'Invalid root invite secret' }
     }
-    return { ok: true, inviterUserId: null }
+    return { ok: true, inviterUserId: null, autoApprove: true }
   }
 
   if (input.inviterUserId) {
@@ -92,11 +100,10 @@ export async function resolveInvitation(
       .from(users)
       .where(and(eq(users.id, input.inviterUserId), isNull(users.deletedAt)))
       .limit(1)
-    if (!inviter) return { ok: false, message: 'Invalid invite link' }
-    return { ok: true, inviterUserId: inviter.id }
+    return { ok: true, inviterUserId: inviter?.id ?? null, autoApprove: false }
   }
 
-  return { ok: false, message: 'An invitation is required to join Nettelhorst' }
+  return { ok: true, inviterUserId: null, autoApprove: false }
 }
 
 export async function createRegistrationOptions(input: { inviterUserId?: string; rootSecret?: string }) {
@@ -130,6 +137,7 @@ export async function createRegistrationOptions(input: { inviterUserId?: string;
     challenge: options.challenge,
     newUserId,
     inviterUserId: resolution.inviterUserId,
+    autoApprove: resolution.autoApprove,
     issuedAt: Date.now(),
   }
 
@@ -158,7 +166,7 @@ export async function verifyRegistration(input: { response: RegistrationResponse
 
   const [user] = await db
     .insert(users)
-    .values({ id: payload.newUserId, name: 'New Nettelhorst member', invitedByUserId: payload.inviterUserId })
+    .values({ id: payload.newUserId, name: 'New Nettelhorst member', invitedByUserId: payload.inviterUserId, approvedAt: payload.autoApprove ? new Date() : null })
     .returning()
 
   // Independent writes — none reads another's result — so they run concurrently.
@@ -173,7 +181,7 @@ export async function verifyRegistration(input: { response: RegistrationResponse
       transports,
     }),
     db.insert(eventsLog).values([
-      { actor: user.id, action: 'user_created', metadata: { invitedByUserId: payload.inviterUserId } },
+      { actor: user.id, action: 'user_created', metadata: { invitedByUserId: payload.inviterUserId, autoApproved: payload.autoApprove } },
       { actor: user.id, action: 'passkey_registered', metadata: { credentialId: credential.id } },
     ]),
     createSession(user.id),

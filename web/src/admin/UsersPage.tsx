@@ -15,13 +15,13 @@ import {
   IonToast,
   IonToolbar,
 } from '@ionic/react'
-import { logInOutline, trashOutline } from 'ionicons/icons'
+import { checkmarkOutline, closeOutline, logInOutline, trashOutline } from 'ionicons/icons'
 import { useEffect, useState } from 'react'
 
 import { useAuth } from '../auth/AuthContext'
 import { formatDate } from '../format'
 import { Avatar } from '../uploads/Avatar'
-import { deleteMember, fetchAdminUsers, impersonateUser, type AdminUser } from './api'
+import { approveMember, deleteMember, fetchAdminUsers, impersonateUser, type AdminUser } from './api'
 import { ImpersonateModal, type ImpersonationTarget } from './ImpersonateModal'
 
 function roleLabel(user: AdminUser): string | null {
@@ -39,6 +39,7 @@ export function UsersPage() {
   const [error, setError] = useState(false)
   const [impersonating, setImpersonating] = useState<string | null>(null)
   const [deleting, setDeleting] = useState<string | null>(null)
+  const [deciding, setDeciding] = useState<string | null>(null)
   const [impersonateTarget, setImpersonateTarget] = useState<ImpersonationTarget | null>(null)
   const [toast, setToast] = useState<string | null>(null)
 
@@ -78,6 +79,38 @@ export function UsersPage() {
     }
   }
 
+  // Feedback #175: approving flips the row to a normal member in place;
+  // rejecting is the same soft-delete as removing a member (the applicant
+  // can sign up again later).
+  async function approve(user: AdminUser) {
+    setDeciding(user.id)
+    try {
+      await approveMember(user.id)
+      setUsers((prev) => prev?.map((u) => (u.id === user.id ? { ...u, approved_at: new Date().toISOString() } : u)) ?? prev)
+      setToast(`${user.name} approved`)
+    } catch (err) {
+      setToast(err instanceof Error ? err.message : 'Could not approve')
+    } finally {
+      setDeciding(null)
+    }
+  }
+
+  async function reject(user: AdminUser) {
+    if (!window.confirm(`Reject ${user.name}? Their signup is removed; they can apply again later.`)) return
+    setDeciding(user.id)
+    try {
+      await deleteMember(user.id)
+      setUsers((prev) => prev?.filter((u) => u.id !== user.id) ?? prev)
+    } catch (err) {
+      setToast(err instanceof Error ? err.message : 'Could not reject')
+    } finally {
+      setDeciding(null)
+    }
+  }
+
+  const pending = users?.filter((u) => !u.approved_at) ?? []
+  const members = users?.filter((u) => u.approved_at) ?? []
+
   return (
     <IonPage>
       <IonHeader>
@@ -99,9 +132,36 @@ export function UsersPage() {
             <p>Could not load members</p>
           </div>
         )}
+        {pending.length > 0 && (
+          <IonList>
+            <IonItem lines="none">
+              <IonLabel>
+                <h2>Waiting for approval ({pending.length})</h2>
+              </IonLabel>
+            </IonItem>
+            {pending.map((user) => (
+              <IonItem key={user.id} lines="full">
+                <Avatar slot="start" url={user.avatar_url} name={user.name} />
+                <IonLabel className="ion-text-wrap">
+                  <h2>{user.name}</h2>
+                  <IonNote className="ion-text-wrap" style={{ display: 'block' }}>
+                    {[user.email ?? 'no email yet', roleLabel(user), `signed up ${formatDate(user.created_at)}`].filter(Boolean).join(' · ')}
+                  </IonNote>
+                </IonLabel>
+                <IonButton slot="end" fill="clear" color="danger" disabled={deciding === user.id} onClick={() => void reject(user)} title={`Reject ${user.name}`}>
+                  <IonIcon slot="icon-only" icon={closeOutline} />
+                </IonButton>
+                <IonButton slot="end" fill="solid" disabled={deciding === user.id} onClick={() => void approve(user)} title={`Approve ${user.name}`}>
+                  <IonIcon slot="start" icon={checkmarkOutline} />
+                  Approve
+                </IonButton>
+              </IonItem>
+            ))}
+          </IonList>
+        )}
         {users !== null && (
           <IonList>
-            {users.map((user) => (
+            {members.map((user) => (
               <IonItem key={user.id} lines="full">
                 <Avatar slot="start" url={user.avatar_url} name={user.name} />
                 <IonLabel className="ion-text-wrap">

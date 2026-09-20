@@ -273,26 +273,40 @@ export function InviteAcceptCard({
   error,
   onAccept,
   onSignIn,
+  heading,
 }: {
   invite: InviteInfo | null
   busy: boolean
   error: string | null
   onAccept: () => void
   onSignIn: () => void
+  // Optional line explaining *why* the prompt appeared ("Sign in to star
+  // events") — shown above the generic join copy.
+  heading?: string
 }) {
+  const { refresh } = useAuth()
   return (
     <CenteredMessage mosaic>
       <Avatar url={invite?.avatarUrl ?? null} name={invite?.name} size={72} />
-      <h2 style={{ fontSize: '1.4rem' }}>{invite ? `${invite.name} invited you` : 'Join Nettelhorst Bulbord'}</h2>
+      <h2 style={{ fontSize: '1.4rem' }}>
+        {invite ? `${invite.name} invited you` : (heading ?? 'Join Nettelhorst Bulbord')}
+      </h2>
+      {!invite && (
+        <p style={{ color: 'var(--ion-color-medium)', margin: '0 0 12px' }}>
+          Anyone from the Nettelhorst community can sign up. A new member is approved by an administrator before getting
+          in.
+        </p>
+      )}
       {error && (
         <IonText color="danger">
           <p>{error}</p>
         </IonText>
       )}
       <IonButton expand="block" disabled={busy} onClick={onAccept}>
-        {invite ? 'Accept Invite' : 'Continue'}
+        {invite ? 'Accept Invite' : 'Create Account'}
       </IonButton>
       <SignInLink busy={busy} onSignIn={onSignIn} />
+      {!invite && <ManualSignInEntry onSignedIn={refresh} />}
     </CenteredMessage>
   )
 }
@@ -317,33 +331,29 @@ function PasskeySettingUpScreen() {
   )
 }
 
-// Always offers a "sign in" path regardless of whether an invite/rootSecret
-// param is present — a returning member who cleared localStorage or opened
-// the app on a new device has neither in their URL bar, but still has a real
-// passkey the browser can find (it's a discoverable credential). Without
-// this, that person would be stuck at the "you need an invitation" dead end
-// with no way back into their own account.
-function JoinScreen() {
+// The "sign in or create an account" card — shown inside LoginPrompt's modal
+// and as the body of a gated route (feedback #175: the app is browsable
+// without an account, so this is what a protected tap leads to, not a wall
+// in front of everything). Always offers a "sign in" path: a returning member
+// who cleared localStorage or opened the app on a new device still has a
+// real passkey the browser can find (it's a discoverable credential).
+// A `?invite=`/`?rootSecret=` param, if present, still rides along into
+// registration — `invite` only records who referred you (no longer gates or
+// fast-tracks anything), `rootSecret` is the bootstrap that skips approval.
+export function LoginCard({ reason }: { reason?: string }) {
   const location = useLocation()
-  const { refresh } = useAuth()
+  const { refresh, pendingUser } = useAuth()
   const params = new URLSearchParams(location.search)
   const inviterUserId = params.get('invite') ?? undefined
   const rootSecret = params.get('rootSecret') ?? undefined
-  const hasInvite = Boolean(inviterUserId || rootSecret)
 
-  const [invite, setInvite] = useState<InviteInfo | null | undefined>(inviterUserId ? undefined : null)
   const [busy, setBusy] = useState(false)
   // Distinct from `busy` (which also covers signIn()) — only true for the
-  // real Accept Invite ceremony, so PasskeySettingUpScreen doesn't also
+  // real registration ceremony, so PasskeySettingUpScreen doesn't also
   // replace the whole screen during an existing member's much quicker
   // sign-in tap (see PasskeySettingUpScreen's own comment).
   const [acceptInFlight, setAcceptInFlight] = useState(false)
   const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    if (!inviterUserId) return
-    fetchInviteInfo(inviterUserId).then(setInvite)
-  }, [inviterUserId])
 
   async function accept() {
     setBusy(true)
@@ -375,46 +385,44 @@ function JoinScreen() {
     }
   }
 
-  const signInSection = <SignInLink busy={busy} onSignIn={signIn} />
-
-  if (inviterUserId && invite === undefined) {
-    return (
-      <CenteredMessage>
-        <IonSpinner name="dots" />
-      </CenteredMessage>
-    )
-  }
-
-  if (!hasInvite || (inviterUserId && invite === null)) {
-    return (
-      <CenteredMessage>
-        {!hasInvite ? (
-          <>
-            <h2>You need an invitation to join Nettelhorst Bulbord</h2>
-            <p>Ask someone already using Nettelhorst Bulbord to share their invite QR code with you.</p>
-          </>
-        ) : (
-          <>
-            <h2>This invite link isn't valid</h2>
-            <p>Ask for a fresh invite QR code from someone already using Nettelhorst Bulbord.</p>
-          </>
-        )}
-        {error && (
-          <IonText color="danger">
-            <p>{error}</p>
-          </IonText>
-        )}
-        {signInSection}
-        <ManualSignInEntry onSignedIn={refresh} />
-      </CenteredMessage>
-    )
+  if (pendingUser) {
+    return <PendingApprovalCard />
   }
 
   if (acceptInFlight) {
     return <PasskeySettingUpScreen />
   }
 
-  return <InviteAcceptCard invite={invite ?? null} busy={busy} error={error} onAccept={accept} onSignIn={signIn} />
+  return (
+    <>
+      <InviteAcceptCard
+        invite={null}
+        busy={busy}
+        error={error}
+        onAccept={accept}
+        onSignIn={signIn}
+        heading={reason}
+      />
+    </>
+  )
+}
+
+// Shown to a signed-up account an admin hasn't approved yet — both as the
+// LoginPrompt body and as a slim banner's tap target (see JoinGate).
+function PendingApprovalCard() {
+  const { logout } = useAuth()
+  return (
+    <CenteredMessage>
+      <h2 style={{ fontSize: '1.3rem' }}>You're on the list</h2>
+      <p style={{ color: 'var(--ion-color-medium)' }}>
+        An administrator needs to approve your account before you can join in. You'll get an email as soon as that
+        happens. In the meantime you can keep browsing events, camps, and clubs.
+      </p>
+      <IonButton fill="clear" size="small" onClick={() => void logout()}>
+        Sign out
+      </IonButton>
+    </CenteredMessage>
+  )
 }
 
 // A custom modal picker, not IonSelect — feedback (2026-08-06): the
@@ -810,14 +818,16 @@ export function ProfileSetupScreen({
   )
 }
 
-// The whole app is invite-only (see CLAUDE.md, Product shape): every route
-// renders behind this gate instead of the previous "no route guarding at
-// all" model. Because this component only conditionally renders `children`
-// rather than redirecting, whatever path was already in the URL bar (e.g.
-// from a shared `/events/:id?invite=...` link) renders immediately once the
-// user is fully signed in — no separate navigation step needed.
+// Feedback #175: the app is browsable without an account. This gate no
+// longer blocks anything for an anonymous visitor or an approved member —
+// what it still owns is the mid-signup steps: a brand-new account (pending
+// or approved) finishes profile setup first, and an approved one then does
+// the choose-friends step once. Everything else renders `children`
+// immediately, so a shared `/events/:id` link opens straight to that event.
+// A pending account whose profile is complete just browses like a visitor,
+// with a slim "waiting for approval" strip (PendingBanner) on top.
 export function JoinGate({ children }: { children: ReactNode }) {
-  const { user, isLoading } = useAuth()
+  const { user, pendingUser, isLoading } = useAuth()
   const location = useLocation()
 
   if (isLoading) {
@@ -830,62 +840,21 @@ export function JoinGate({ children }: { children: ReactNode }) {
     )
   }
 
-  // A pending invite/rootSecret always wins over any route-specific,
-  // pre-auth "peek" content — checked once, here, before any such bypass
-  // exists in the function below, rather than inside each one individually.
-  // ShareButton always encodes "whatever page you're on" as the invite link
-  // (see Sharing in CLAUDE.md), so a real invite can arrive pointed at
-  // *any* route, not just the ones anyone thought to special-case at the
-  // time. Putting this check first makes it structurally impossible for a
-  // future bypass to repeat the mistake below: by the time that bypass's
-  // own code runs, reaching it at all already proves there's no pending
-  // invite left to honor.
-  //
-  // Real incident, 2026-08-22: the /about "Learn more" bypass (feedback
-  // #85) used to sit where this check now sits, gated only on pathname.
-  // ShareButton encodes whatever page the sharer is on, so a member who hit
-  // Share while sitting on /about produced an invite link shaped exactly
-  // like `/about?invite=<id>`. The old bypass swallowed that unconditionally
-  // — a real invitee landed on the plain About page with no Accept-Invite
-  // affordance at all, and its only interactive element (a back button with
-  // a bare `defaultHref="/events"`, dropping the invite param) then showed
-  // "you need an invitation" on top of it. Scoped only `!user` (not
-  // `!user.profileComplete` too): once a session exists at all, the visitor
-  // has already registered — re-showing JoinScreen would try to register a
-  // second passkey instead of letting ProfileSetupWizard/ChooseFriendsScreen
-  // pick up where they left off, so a stray invite param on an
-  // already-started account is correctly ignored past this point.
-  const searchParams = new URLSearchParams(location.search)
-  const hasPendingInvite = searchParams.has('invite') || searchParams.has('rootSecret')
-  if (hasPendingInvite && !user) {
+  // The bootstrap link (`?rootSecret=`) exists to create the very first
+  // account, so it must reach the signup card even though the rest of the
+  // app is now open — checked before anything else, and only while nobody is
+  // signed in.
+  const hasRootSecret = new URLSearchParams(location.search).has('rootSecret')
+  if (hasRootSecret && !user && !pendingUser) {
     return (
       <IonPage>
-        <JoinScreen />
+        <LoginCard />
       </IonPage>
     )
   }
 
-  // The invite screen's "Learn more" link (feedback #85) points at the real
-  // About page, which normally only renders once already a member (see
-  // App.tsx's own /about Route, inside these `children`). Special-cased
-  // here so a not-yet-a-member visitor can read it too, without duplicating
-  // its content into a second copy just for the logged-out state. Safe from
-  // the incident above by construction: reaching this line already means
-  // `hasPendingInvite && !user` was false, i.e. there's nothing this bypass
-  // could be swallowing.
-  if (location.pathname === '/about' && (!user || !user.profileComplete)) {
-    return <AboutPage />
-  }
-
-  if (!user) {
-    return (
-      <IonPage>
-        <JoinScreen />
-      </IonPage>
-    )
-  }
-
-  if (!user.profileComplete) {
+  const signingUp = user ?? pendingUser
+  if (signingUp && !signingUp.profileComplete) {
     return (
       <IonPage>
         <ProfileSetupWizard />
@@ -893,7 +862,7 @@ export function JoinGate({ children }: { children: ReactNode }) {
     )
   }
 
-  if (!user.friendsStepComplete) {
+  if (user && !user.friendsStepComplete) {
     return (
       <IonPage>
         <ChooseFriendsScreen />

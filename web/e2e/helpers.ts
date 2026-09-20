@@ -75,6 +75,9 @@ export async function fillProfileAndContinue(
   lastName: string,
   email: string,
   photoPath: string = FIXTURE_PHOTO_PATH,
+  // A pending (unapproved) signup skips the friends step and lands in the
+  // browsable app instead (feedback #175).
+  { pending = false }: { pending?: boolean } = {},
 ) {
   await expect(page.getByRole('heading', { name: 'What should we call you?' })).toBeVisible({ timeout: 15000 })
   await page.getByLabel('First name').fill(firstName)
@@ -130,8 +133,12 @@ export async function fillProfileAndContinue(
   // Local "You're all set" completion screen (feedback #88) — not a route,
   // just this same component's own next internal phase; Continue here is
   // what actually advances past profile setup (refreshes auth state).
-  await expect(page.getByRole('heading', { name: /You're all set/ })).toBeVisible({ timeout: 15000 })
-  await page.getByRole('button', { name: 'Continue' }).click()
+  await expect(page.getByRole('heading', { name: pending ? /^Thanks/ : /You're all set/ })).toBeVisible({ timeout: 15000 })
+  await page.getByRole('button', { name: pending ? 'Start browsing' : 'Continue' }).click()
+  if (pending) {
+    await page.waitForSelector('ion-tab-bar', { timeout: 15000 })
+    return
+  }
 
   // Choose-friends onboarding step (feedback #83) — new after profile setup,
   // before the real app renders. Picking anyone is optional; this e2e spec

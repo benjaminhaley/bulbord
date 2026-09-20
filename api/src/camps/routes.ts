@@ -2,6 +2,7 @@ import { and, asc, eq, getTableColumns, gte, isNull, sql, type SQLWrapper } from
 import type { FastifyInstance } from 'fastify'
 
 import { requireAuth, requireRole } from '../auth/plugin.js'
+import { publicRead } from '../auth/public-read.js'
 import { db } from '../db/client.js'
 import { campComments, campInterests, campSources, camps, eventsLog, schoolBreaks, users, type CampOptionLine, type CampPrepLine } from '../db/schema.js'
 import { todayInChicago } from '../dates.js'
@@ -249,7 +250,7 @@ export async function campsRoutes(app: FastifyInstance) {
     })
   })
 
-  app.get('/camps/:id', { preHandler: requireAuth }, async (request, reply) => {
+  app.get('/camps/:id', publicRead, async (request, reply) => {
     const { id } = request.params as { id: string }
     const userId = request.currentUser?.id ?? null
 
@@ -522,7 +523,7 @@ export async function campsRoutes(app: FastifyInstance) {
   // The Camps tab's one primary-view fetch — every upcoming camp, grouped by
   // which school break(s) it overlaps (summer split into weekly buckets). See
   // grouping.ts for why this is computed in TypeScript rather than SQL.
-  app.get('/camps/by-break', { preHandler: requireAuth }, async (request, reply) => {
+  app.get('/camps/by-break', publicRead, async (request, reply) => {
     const userId = request.currentUser?.id ?? null
     const today = todayInChicago()
 

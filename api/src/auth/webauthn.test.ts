@@ -31,26 +31,26 @@ describe('resolveInvitation', () => {
     mockState.activeUserIds = []
   })
 
-  it('rejects when neither an inviter nor a root secret is given', async () => {
+  it('allows open signup (pending approval) when neither an inviter nor a root secret is given', async () => {
     const result = await resolveInvitation(baseEnv, {})
-    expect(result).toEqual({ ok: false, message: 'An invitation is required to join Nettelhorst' })
+    expect(result).toEqual({ ok: true, inviterUserId: null, autoApprove: false })
   })
 
-  it('accepts a valid, active inviter', async () => {
+  it('records a valid, active inviter but still requires approval', async () => {
     mockState.activeUserIds = ['user-123']
     const result = await resolveInvitation(baseEnv, { inviterUserId: 'user-123' })
-    expect(result).toEqual({ ok: true, inviterUserId: 'user-123' })
+    expect(result).toEqual({ ok: true, inviterUserId: 'user-123', autoApprove: false })
   })
 
-  it('rejects an inviter id that does not resolve to an active user', async () => {
+  it('ignores an inviter id that does not resolve to an active user', async () => {
     mockState.activeUserIds = []
     const result = await resolveInvitation(baseEnv, { inviterUserId: 'someone-deleted-or-fake' })
-    expect(result).toEqual({ ok: false, message: 'Invalid invite link' })
+    expect(result).toEqual({ ok: true, inviterUserId: null, autoApprove: false })
   })
 
   it('accepts the correct root secret with no inviter', async () => {
     const result = await resolveInvitation(baseEnv, { rootSecret: 'the-root-secret' })
-    expect(result).toEqual({ ok: true, inviterUserId: null })
+    expect(result).toEqual({ ok: true, inviterUserId: null, autoApprove: true })
   })
 
   it('rejects an incorrect root secret', async () => {
@@ -66,6 +66,6 @@ describe('resolveInvitation', () => {
   it('prefers the root secret over an inviter id if both are somehow present', async () => {
     mockState.activeUserIds = ['user-123']
     const result = await resolveInvitation(baseEnv, { rootSecret: 'the-root-secret', inviterUserId: 'user-123' })
-    expect(result).toEqual({ ok: true, inviterUserId: null })
+    expect(result).toEqual({ ok: true, inviterUserId: null, autoApprove: true })
   })
 })

@@ -197,7 +197,7 @@ function RoleStepCards({ value, onSelect }: { value: Role | undefined; onSelect:
 }
 
 export function ProfileSetupWizard({ preview = false, onSaved }: { preview?: boolean; onSaved?: () => void } = {}) {
-  const { refresh } = useAuth()
+  const { refresh, pendingUser } = useAuth()
   const [firstName, setFirstName] = useState('')
   const [lastName, setLastName] = useState('')
   const [email, setEmail] = useState('')
@@ -303,12 +303,18 @@ export function ProfileSetupWizard({ preview = false, onSaved }: { preview?: boo
           >
             <IonIcon icon={checkmark} style={{ fontSize: 36, color: '#fff' }} />
           </div>
-          <h2 style={{ fontSize: '1.5rem', fontWeight: 700 }}>You're all set{firstName ? `, ${firstName}` : ''}!</h2>
+          {/* Feedback #175: a signup nobody has approved yet doesn't go on to
+              choose friends — it waits, and browses in the meantime. */}
+          <h2 style={{ fontSize: '1.5rem', fontWeight: 700 }}>
+            {pendingUser ? `Thanks${firstName ? `, ${firstName}` : ''}!` : `You're all set${firstName ? `, ${firstName}` : ''}!`}
+          </h2>
           <p style={{ color: 'var(--ion-color-medium)', maxWidth: '30ch' }}>
-            Your profile is ready. One last thing — want to find some friends?
+            {pendingUser
+              ? "An administrator will review your account. You'll get an email as soon as you're approved — until then you can browse events, camps, and clubs."
+              : 'Your profile is ready. One last thing — want to find some friends?'}
           </p>
           <IonButton expand="block" style={{ width: '100%', marginTop: 24, marginBottom: 72 }} onClick={continueFromComplete}>
-            Continue
+            {pendingUser ? 'Start browsing' : 'Continue'}
           </IonButton>
         </div>
       </IonContent>

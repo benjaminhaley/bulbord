@@ -2,6 +2,7 @@ import { and, asc, eq, getTableColumns, isNull, sql, type SQLWrapper } from 'dri
 import type { FastifyInstance } from 'fastify'
 
 import { requireAuth, requireRole } from '../auth/plugin.js'
+import { publicRead } from '../auth/public-read.js'
 import { db } from '../db/client.js'
 import { eventsLog, sportsClubComments, sportsClubInterests, sportsClubOccurrences, sportsClubs, sportsClubSources, users, type SportsClubOptionLine } from '../db/schema.js'
 import { todayInChicago } from '../dates.js'
@@ -260,7 +261,7 @@ function sportsClubWriteValues(body: SportsClubBody, image: { imageUrl: string; 
 }
 
 export async function sportsClubsRoutes(app: FastifyInstance) {
-  app.get('/sports-clubs/:id', { preHandler: requireAuth }, async (request, reply) => {
+  app.get('/sports-clubs/:id', publicRead, async (request, reply) => {
     const { id } = request.params as { id: string }
     const userId = request.currentUser?.id ?? null
 
@@ -467,7 +468,7 @@ export async function sportsClubsRoutes(app: FastifyInstance) {
   // `include_hidden` — hidden_started_count is always returned so the
   // frontend can render its reveal row regardless of which mode was
   // requested.
-  app.get('/sports-clubs', { preHandler: requireAuth }, async (request, reply) => {
+  app.get('/sports-clubs', publicRead, async (request, reply) => {
     const userId = request.currentUser?.id ?? null
     const { include_started } = request.query as { include_started?: string }
     const includeStarted = include_started === 'true'

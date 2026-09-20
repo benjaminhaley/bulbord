@@ -11,6 +11,8 @@ export interface CurrentUser {
   avatarUrl: string | null
   profileComplete: boolean
   friendsStepComplete: boolean
+  // False for a signed-up account still waiting on an admin (feedback #175).
+  approved: boolean
   role: 'staff' | 'family' | 'other' | null
   roleOther: string | null
   newsletterSubscribed: boolean

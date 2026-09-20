@@ -4,6 +4,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { CommentsSection } from './CommentsSection'
 import type { EventComment } from './api'
 
+let mockUser: { id: string } | null = { id: 'u1' }
+vi.mock('../auth/AuthContext', () => ({ useAuth: () => ({ user: mockUser }) }))
+vi.mock('../auth/LoginPrompt', () => ({ useRequireLogin: () => vi.fn() }))
+
 const mockFetch = vi.fn()
 const mockCreate = vi.fn()
 const mockUpdate = vi.fn()
@@ -146,5 +150,15 @@ describe('CommentsSection', () => {
 
     expect(mockDelete).not.toHaveBeenCalled()
     expect(screen.getByText('Looking forward to this!')).toBeInTheDocument()
+  })
+
+  // Feedback #175: comment authors are member PII, so an anonymous visitor
+  // gets a sign-in row and no comment request is made at all.
+  it('shows a sign-in row instead of comments for a visitor without an account', () => {
+    mockUser = null
+    render(<CommentsSection eventId="e1" />)
+    expect(screen.getByText('Sign in to see comments')).toBeInTheDocument()
+    expect(mockFetch).not.toHaveBeenCalled()
+    mockUser = { id: 'u1' }
   })
 })

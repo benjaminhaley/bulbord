@@ -16,6 +16,7 @@ import {
 import { closeOutline } from 'ionicons/icons'
 import { useState } from 'react'
 
+import { useRequireLogin } from '../auth/LoginPrompt'
 import { unstyledButtonStyle } from '../theme/layout'
 import { Avatar } from '../uploads/Avatar'
 import { fetchInterestedCampUsers, type InterestedUser } from './api'
@@ -43,12 +44,15 @@ export function InterestedBadge({
   people: { name: string; avatar_url: string | null }[]
   emphasized?: boolean
 }) {
+  const requireLogin = useRequireLogin()
   const [open, setOpen] = useState(false)
   const [users, setUsers] = useState<InterestedUser[] | null>(null)
 
   function show(e: React.MouseEvent) {
     e.preventDefault()
     e.stopPropagation()
+    // The count is public; who's behind it is not (feedback #175).
+    if (!requireLogin('Sign in to see who’s interested')) return
     setOpen(true)
     if (!users) {
       fetchInterestedCampUsers(campId)
@@ -58,7 +62,8 @@ export function InterestedBadge({
   }
 
   const shown = people.slice(0, MAX_STACKED_ICONS)
-  const overflow = count - shown.length
+  // An anonymous visitor gets no avatars, so "+N" would just repeat the count.
+  const overflow = shown.length > 0 ? count - shown.length : 0
 
   return (
     <>
@@ -71,7 +76,7 @@ export function InterestedBadge({
       >
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
           <IonNote style={emphasized ? { color: 'var(--ion-text-color)', fontSize: 'var(--type-body-size)' } : undefined}>
-            {count} interested:
+            {count} interested{shown.length > 0 ? ':' : ''}
           </IonNote>
           {shown.map((person, i) => (
             <span key={i} style={{ display: 'inline-flex', marginInlineStart: i === 0 ? 0 : -8, border: '2px solid var(--ion-background-color)', borderRadius: '50%' }}>

@@ -13,6 +13,7 @@ import { notifications, users } from '../db/schema.js'
 // drift apart.
 export type NotificationType =
   | 'friend_added' // a friend request landed — see connections/service.ts's notifyConnectionRequested
+  | 'signup_pending' // feedback #175: a new applicant is waiting for admin approval
   | 'friend_request_accepted' // feedback #127: a request you sent was accepted
   | 'feedback_reply'
   | 'event_comment'

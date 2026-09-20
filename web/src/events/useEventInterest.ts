@@ -1,6 +1,7 @@
 import { useState } from 'react'
 
 import { useAuth } from '../auth/AuthContext'
+import { useRequireLogin } from '../auth/LoginPrompt'
 import { clearEventInterest, setEventInterest, type Event, type InterestStatus } from './api'
 
 // Feedback #145 (2026-09-04): marking (or clearing) interest used to only
@@ -36,9 +37,11 @@ function withOptimisticInterest(event: Event, status: InterestStatus | null, vie
 
 export function useEventInterest(onChanged: (event: Event) => void) {
   const { user } = useAuth()
+  const requireLogin = useRequireLogin()
   const [pending, setPending] = useState(false)
 
   async function setInterest(event: Event, status: InterestStatus) {
+    if (!requireLogin('Sign in to mark events you’re interested in')) return
     setPending(true)
     try {
       await setEventInterest(event.id, status)
@@ -49,6 +52,7 @@ export function useEventInterest(onChanged: (event: Event) => void) {
   }
 
   async function clearInterest(event: Event) {
+    if (!requireLogin('Sign in to mark events you’re interested in')) return
     setPending(true)
     try {
       await clearEventInterest(event.id)

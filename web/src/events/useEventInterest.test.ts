@@ -7,7 +7,11 @@ const setEventInterestMock = vi.fn()
 const clearEventInterestMock = vi.fn()
 let mockUser: { avatarUrl: string | null } | null = { avatarUrl: 'https://example.com/me.jpg' }
 
+let mockLoggedIn = true
+const requireLoginMock = vi.fn((_reason?: string) => mockLoggedIn)
+
 vi.mock('../auth/AuthContext', () => ({ useAuth: () => ({ user: mockUser }) }))
+vi.mock('../auth/LoginPrompt', () => ({ useRequireLogin: () => requireLoginMock }))
 vi.mock('./api', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./api')>()),
   setEventInterest: (...args: unknown[]) => setEventInterestMock(...args),
@@ -128,5 +132,24 @@ describe('useEventInterest', () => {
     await waitFor(() => expect(updated).not.toBeNull())
     expect(updated!.interested_people).toEqual([{ name: 'You', avatar_url: null }])
     mockUser = { avatarUrl: 'https://example.com/me.jpg' }
+  })
+
+  // Feedback #175: a visitor without an account is prompted to log in, and
+  // nothing is sent to the server or shown optimistically.
+  it('prompts for login instead of saving when the visitor is not a member', async () => {
+    mockLoggedIn = false
+    setEventInterestMock.mockClear()
+    clearEventInterestMock.mockClear()
+    const onChanged = vi.fn()
+    const { result } = renderHook(() => useEventInterest(onChanged))
+
+    await result.current.setInterest(makeEvent(), 'interested')
+    await result.current.clearInterest(makeEvent({ interest_status: 'interested' }))
+
+    expect(requireLoginMock).toHaveBeenCalled()
+    expect(setEventInterestMock).not.toHaveBeenCalled()
+    expect(clearEventInterestMock).not.toHaveBeenCalled()
+    expect(onChanged).not.toHaveBeenCalled()
+    mockLoggedIn = true
   })
 })

@@ -72,17 +72,20 @@ describe('ShareButton', () => {
     await closeShareModal()
   })
 
-  it('appends ?invite=<user id> to the shared URL when logged in', async () => {
+  // Feedback #175: signup is open with admin approval, so a share is just a
+  // link to the page — never an invite, even from a logged-in member, and a
+  // stale invite param the sharer arrived with isn't passed along.
+  it('shares a plain page link with no invite param, even when logged in', async () => {
     mockUseAuth.mockReturnValue({ user: { id: 'user-42', name: 'Sam Rivera' } })
     const { container } = render(
-      <MemoryRouter initialEntries={['/events/abc123']}>
+      <MemoryRouter initialEntries={['/events/abc123?invite=someone-else']}>
         <ShareButton />
       </MemoryRouter>,
     )
     openShareModal(container)
 
     await waitFor(() => {
-      expect(screen.getByAltText(/\/events\/abc123\?invite=user-42$/)).toBeInTheDocument()
+      expect(screen.getByAltText(/\/events\/abc123$/)).toBeInTheDocument()
     })
     await closeShareModal()
   })
