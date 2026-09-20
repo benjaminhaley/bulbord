@@ -22,6 +22,10 @@
 	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Bulbord uses your camera so you can take a photo of an event poster or flyer, or a profile photo.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Bulbord uses your photos so you can attach an event poster, flyer, or profile photo.</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>UIApplicationSceneManifest</key>
