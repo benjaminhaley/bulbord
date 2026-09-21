@@ -112,6 +112,7 @@ export function AnalyticsPage() {
                 <StatTile value={summary.active_this_week} label="Active this week" />
                 <StatTile value={summary.event_viewers_7d} label="Viewing events (7d)" />
                 <StatTile value={summary.camp_viewers_7d} label="Viewing camps (7d)" />
+                <StatTile value={summary.sports_club_viewers_7d} label="Viewing clubs (7d)" />
                 <StatTile value={summary.sharers_7d} label="Sharing (7d)" />
                 <StatTile value={summary.anonymous_visitors_7d} label="Logged out (7d)" />
               </IonRow>

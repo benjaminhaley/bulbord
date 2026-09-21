@@ -5,6 +5,7 @@ import { checkmarkOutline, closeOutline, createOutline, ellipsisVerticalOutline,
 import { useEffect, useState } from 'react'
 import { useHistory, useParams } from 'react-router-dom'
 
+import { track } from '../analytics/api'
 import { AddToCalendarButton } from '../calendar/AddToCalendarButton'
 import { InlineImageEditor } from '../edit-history/InlineField'
 import { factLineStyle, leadingButtonGap } from '../theme/layout'
@@ -124,6 +125,10 @@ export function SportsClubDetailPage() {
       setInterest(club, 'interested')
     }
   }
+
+  useEffect(() => {
+    track('sports_club_viewed', { sportsClubId: id }).catch(() => {})
+  }, [id])
 
   useEffect(() => {
     setClub(null)

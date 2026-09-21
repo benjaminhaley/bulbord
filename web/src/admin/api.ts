@@ -276,6 +276,7 @@ export interface AnalyticsSummary {
   active_this_week: number
   event_viewers_7d: number
   camp_viewers_7d: number
+  sports_club_viewers_7d: number
   sharers_7d: number
   anonymous_visitors_7d: number
   dau: { date: string; count: number }[]

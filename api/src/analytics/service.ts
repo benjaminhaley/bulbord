@@ -16,7 +16,7 @@ import { eventsLog, users } from '../db/schema.js'
 // "daily active" without a separate session/heartbeat mechanism.
 // "Last active by member" is a different, broader query — see its own
 // comment below for why it isn't scoped to `app_opened`.
-const TRACKABLE_ACTIONS = ['app_opened', 'event_viewed', 'camp_viewed', 'share_opened'] as const
+const TRACKABLE_ACTIONS = ['app_opened', 'event_viewed', 'camp_viewed', 'sports_club_viewed', 'share_opened'] as const
 export type TrackableAction = (typeof TRACKABLE_ACTIONS)[number]
 
 export function isTrackableAction(action: string): action is TrackableAction {
@@ -101,6 +101,7 @@ export interface AnalyticsSummary {
   activeThisWeek: number
   eventViewers7d: number
   campViewers7d: number
+  sportsClubViewers7d: number
   sharers7d: number
   // Distinct anonymous visitors (no account) who opened the app in the last
   // 7 days — already included in activeThisWeek/the DAU chart; broken out so
@@ -168,7 +169,7 @@ export async function getAnalyticsSummary(actorFilter?: ActorFilter): Promise<An
     db
       .select({ action: eventsLog.action, count: sql<number>`count(distinct ${eventsLog.actor})::int` })
       .from(eventsLog)
-      .where(and(inArray(eventsLog.action, ['event_viewed', 'camp_viewed', 'share_opened']), gte(eventsLog.createdAt, aggSince)))
+      .where(and(inArray(eventsLog.action, ['event_viewed', 'camp_viewed', 'sports_club_viewed', 'share_opened']), gte(eventsLog.createdAt, aggSince)))
       .groupBy(eventsLog.action),
     db
       .select({ id: eventsLog.id, actor: eventsLog.actor, action: eventsLog.action, metadata: eventsLog.metadata, createdAt: eventsLog.createdAt })
@@ -224,6 +225,7 @@ export async function getAnalyticsSummary(actorFilter?: ActorFilter): Promise<An
     activeThisWeek: activeWeekRow[0]?.count ?? 0,
     eventViewers7d: countFor('event_viewed'),
     campViewers7d: countFor('camp_viewed'),
+    sportsClubViewers7d: countFor('sports_club_viewed'),
     sharers7d: countFor('share_opened'),
     anonymousVisitors7d: anonWeekRow[0]?.count ?? 0,
     dau: dauRows.map((r) => ({ date: r.day, count: r.count })),
