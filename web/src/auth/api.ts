@@ -65,13 +65,6 @@ export interface InviteInfo {
   avatarUrl: string | null
 }
 
-export async function fetchInviteInfo(inviterUserId: string): Promise<InviteInfo | null> {
-  const response = await fetch(`${API_URL}/invites/${inviterUserId}`)
-  if (!response.ok) return null
-  const body = (await response.json()) as { data: InviteInfo }
-  return body.data
-}
-
 export async function logout(): Promise<void> {
   const token = getToken()
   if (token) {

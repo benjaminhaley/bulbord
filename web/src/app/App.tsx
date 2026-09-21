@@ -17,7 +17,7 @@ import { AboutPage } from '../auth/AboutPage'
 import { AccountPage } from '../auth/AccountPage'
 import { EditProfilePage } from '../auth/EditProfilePage'
 import { JoinGate } from '../auth/JoinGate'
-import { LoginPromptProvider, requiresLogin } from '../auth/LoginPrompt'
+import { LoginPage, requiresLogin } from '../auth/LoginPrompt'
 import { LabsPage } from '../labs/LabsPage'
 import { AddFriendsPage } from '../connections/AddFriendsPage'
 import { FriendsPage } from '../connections/FriendsPage'
@@ -68,7 +68,6 @@ export function App() {
       <AuthProvider>
         <DataFreshnessProvider>
           <IonReactRouter>
-            <LoginPromptProvider>
             <JoinGate>
               <IonTabs>
                 <IonRouterOutlet>
@@ -97,6 +96,7 @@ export function App() {
                   <Route exact path="/account/notification-settings" component={GatedNotificationSettingsPage} />
                   <Route exact path="/account/calendar-sync" component={GatedCalendarSyncPage} />
                   <Route exact path="/about" component={AboutPage} />
+                  <Route exact path="/login" component={LoginPage} />
                   <Route exact path="/labs" component={LabsPage} />
                   <Route exact path="/friends" component={GatedFriendsPage} />
                   <Route exact path="/friends/add" component={GatedAddFriendsPage} />
@@ -131,7 +131,6 @@ export function App() {
               </IonTabs>
               <ShareButton />
             </JoinGate>
-            </LoginPromptProvider>
           </IonReactRouter>
         </DataFreshnessProvider>
       </AuthProvider>

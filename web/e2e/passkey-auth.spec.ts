@@ -18,8 +18,13 @@ test('open signup with admin approval: browse as a visitor, bootstrap, sign out/
     await page.waitForSelector('ion-tab-bar', { timeout: 15000 })
     await expect(page.getByText('Sign in', { exact: true })).toBeVisible()
     await page.locator('ion-tab-button[tab="feedback"]').click()
+    // Sign-in is its own page with its own URL, and back returns to the tab
+    // the visitor came from.
+    await expect(page).toHaveURL(/\/login\?/)
     await expect(page.getByRole('heading', { name: 'Sign in to read and post feedback' })).toBeVisible()
-    await expect(page.locator('ion-tab-bar')).toBeVisible()
+    await expect(page.getByText('A bulletin board for the Nettelhorst community')).not.toBeVisible()
+    await page.goBack()
+    await expect(page).toHaveURL(/\/events/)
   })
 
   await test.step('root registration via the bootstrap secret', async () => {
@@ -38,12 +43,14 @@ test('open signup with admin approval: browse as a visitor, bootstrap, sign out/
   await test.step('signing out returns to browsing, and passkey sign-in still works', async () => {
     await page.evaluate(() => localStorage.removeItem('bulbord_session_token'))
     await page.goto('/feedback')
+    await expect(page).toHaveURL(/\/login\?/)
     await expect(page.getByRole('heading', { name: 'Sign in to read and post feedback' })).toBeVisible()
 
     // De-emphasized to plain text (feedback #84) — no longer a real
     // ion-button, so it's found by its text/link role instead.
     await page.getByText('Sign In', { exact: true }).click()
-    await expect(page.getByRole('heading', { name: 'Sign in to read and post feedback' })).not.toBeVisible({ timeout: 15000 })
+    // Signed in — sent back to where they were headed (/feedback).
+    await expect(page).toHaveURL(/\/feedback/, { timeout: 15000 })
   })
 
   await test.step('a second person signs up from a plain shared link and waits for approval', async () => {
@@ -55,11 +62,14 @@ test('open signup with admin approval: browse as a visitor, bootstrap, sign out/
     // No ?invite= — a shared link is just a page now (feedback #175).
     await guestPage.goto(`${baseURL}/events`)
     await guestPage.getByText('Sign in', { exact: true }).click()
+    await expect(guestPage).toHaveURL(/\/login/)
     await guestPage.getByRole('button', { name: 'Create Account' }).click()
     await fillProfileAndContinue(guestPage, 'Anna', 'Haley', 'anna-e2e@example.com', undefined, { pending: true })
 
     // Browsable, but not a member: banner says so, and a member-only tab
     // still asks instead of opening.
+    await expect(guestPage.getByRole('heading', { name: "You're on the list" })).toBeVisible()
+    await guestPage.getByRole('button', { name: 'Keep browsing' }).click()
     await expect(guestPage.getByText('Pending approval')).toBeVisible()
     await guestPage.locator('ion-tab-button[tab="feedback"]').click()
     await expect(guestPage.getByRole('heading', { name: "You're on the list" })).toBeVisible()

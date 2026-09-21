@@ -18,7 +18,6 @@ import '@ionic/react/css/display.css'
 import '../src/theme/tokens.css'
 import '../src/index.css'
 import { AuthProvider } from '../src/auth/AuthContext'
-import { LoginPromptProvider } from '../src/auth/LoginPrompt'
 import { EVENT_CARD_SECONDARY_TEXT_COLOR } from '../src/events/theme'
 
 // Mirrors main.tsx's real app bootstrap — same mode, same CSS, same
@@ -60,9 +59,7 @@ const preview: Preview = {
               with a real DOM position but gets visually clipped out — every
               story looked broken in Chromatic until this was added. */}
           <IonApp>
-            <LoginPromptProvider>
-              <Story />
-            </LoginPromptProvider>
+            <Story />
           </IonApp>
         </AuthProvider>
       </MemoryRouter>

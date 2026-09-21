@@ -233,10 +233,24 @@ function ManualSignInEntry({ onSignedIn }: { onSignedIn: () => Promise<void> }) 
 // InviteAcceptCard state specifically (see below), not the generic
 // spinner/dead-end states JoinScreen also renders through this same shell,
 // which stay plain on purpose.
-function CenteredMessage({ children, mosaic = false }: { children: ReactNode; mosaic?: boolean }) {
+function CenteredMessage({
+  children,
+  mosaic = false,
+  brand = true,
+}: {
+  children: ReactNode
+  mosaic?: boolean
+  // false = the /login page (feedback #175): no logo/name/tagline block —
+  // the reason for being here is the first thing on the page, with only a
+  // small "Learn more" link at the bottom.
+  brand?: boolean
+}) {
   return (
     <IonContent fullscreen className="ion-padding">
-      <div className="account-fallback" style={{ height: '100%', justifyContent: 'center', position: 'relative' }}>
+      <div
+        className="account-fallback"
+        style={{ height: '100%', justifyContent: brand ? 'center' : 'flex-start', paddingTop: brand ? undefined : 24, position: 'relative' }}
+      >
         {mosaic && <MosaicMotif />}
         <div
           style={{
@@ -248,8 +262,15 @@ function CenteredMessage({ children, mosaic = false }: { children: ReactNode; mo
             width: '100%',
           }}
         >
-          <BrandHeader />
+          {brand && <BrandHeader />}
           {children}
+          {!brand && (
+            <p style={{ margin: '24px 0 0', fontSize: '0.75rem' }}>
+              <Link to="/about" style={{ color: 'var(--ion-color-medium)', textDecoration: 'underline' }}>
+                Learn more
+              </Link>
+            </p>
+          )}
         </div>
       </div>
     </IonContent>
@@ -273,6 +294,7 @@ export function InviteAcceptCard({
   onAccept,
   onSignIn,
   heading,
+  brand = true,
 }: {
   invite: InviteInfo | null
   busy: boolean
@@ -282,11 +304,12 @@ export function InviteAcceptCard({
   // Optional line explaining *why* the prompt appeared ("Sign in to star
   // events") — shown above the generic join copy.
   heading?: string
+  brand?: boolean
 }) {
   const { refresh } = useAuth()
   return (
-    <CenteredMessage mosaic>
-      <Avatar url={invite?.avatarUrl ?? null} name={invite?.name} size={72} />
+    <CenteredMessage mosaic brand={brand}>
+      {invite && <Avatar url={invite.avatarUrl} name={invite.name} size={72} />}
       <h2 style={{ fontSize: '1.4rem' }}>
         {invite ? `${invite.name} invited you` : (heading ?? 'Join Nettelhorst Bulbord')}
       </h2>
@@ -320,7 +343,7 @@ export function InviteAcceptCard({
 // loading state in this app.
 function PasskeySettingUpScreen() {
   return (
-    <CenteredMessage>
+    <CenteredMessage brand={false}>
       <IonSpinner name="dots" />
       <h2 style={{ fontSize: '1.2rem', marginTop: 8 }}>Setting up your passkey</h2>
       <p style={{ color: 'var(--ion-color-medium)' }}>
@@ -339,7 +362,7 @@ function PasskeySettingUpScreen() {
 // A `?invite=`/`?rootSecret=` param, if present, still rides along into
 // registration — `invite` only records who referred you (no longer gates or
 // fast-tracks anything), `rootSecret` is the bootstrap that skips approval.
-export function LoginCard({ reason }: { reason?: string }) {
+export function LoginCard({ reason, onBrowse }: { reason?: string; onBrowse?: () => void }) {
   const location = useLocation()
   const { refresh, pendingUser } = useAuth()
   const params = new URLSearchParams(location.search)
@@ -385,7 +408,7 @@ export function LoginCard({ reason }: { reason?: string }) {
   }
 
   if (pendingUser) {
-    return <PendingApprovalCard />
+    return <PendingApprovalCard onBrowse={onBrowse} />
   }
 
   if (acceptInFlight) {
@@ -401,6 +424,7 @@ export function LoginCard({ reason }: { reason?: string }) {
         onAccept={accept}
         onSignIn={signIn}
         heading={reason}
+        brand={false}
       />
     </>
   )
@@ -408,15 +432,20 @@ export function LoginCard({ reason }: { reason?: string }) {
 
 // Shown to a signed-up account an admin hasn't approved yet — both as the
 // LoginPrompt body and as a slim banner's tap target (see JoinGate).
-function PendingApprovalCard() {
+function PendingApprovalCard({ onBrowse }: { onBrowse?: () => void }) {
   const { logout } = useAuth()
   return (
-    <CenteredMessage>
+    <CenteredMessage brand={false}>
       <h2 style={{ fontSize: '1.3rem' }}>You're on the list</h2>
       <p style={{ color: 'var(--ion-color-medium)' }}>
         An administrator needs to approve your account before you can join in. You'll get an email as soon as that
         happens. In the meantime you can keep browsing events, camps, and clubs.
       </p>
+      {onBrowse && (
+        <IonButton expand="block" onClick={onBrowse}>
+          Keep browsing
+        </IonButton>
+      )}
       <IonButton fill="clear" size="small" onClick={() => void logout()}>
         Sign out
       </IonButton>
