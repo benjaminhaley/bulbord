@@ -64,12 +64,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // first time a real signed-in user is resolved (the server dedupes this
   // to once per member per Chicago calendar day, so a page reload firing it
   // again is harmless, just wasted).
+  // Feedback #175: anonymous visitors count too — fires once auth has
+  // resolved (member, pending, or nobody), attributed server-side to the
+  // member's id or the browser's anonymous visitor id.
   useEffect(() => {
-    if (user && !trackedAppOpen.current) {
+    if (!isLoading && !trackedAppOpen.current) {
       trackedAppOpen.current = true
       track('app_opened').catch(() => {})
     }
-  }, [user])
+  }, [isLoading])
 
   const isAdmin = user?.roles.includes('admin') ?? false
 

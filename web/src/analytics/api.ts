@@ -1,5 +1,6 @@
 import { API_URL } from '../config'
 import { authHeaders } from '../auth/token'
+import { getVisitorId } from './visitor'
 
 export type TrackableAction = 'app_opened' | 'event_viewed' | 'camp_viewed' | 'share_opened'
 
@@ -11,6 +12,8 @@ export async function track(action: TrackableAction, metadata?: Record<string, u
   await fetch(`${API_URL}/analytics/track`, {
     method: 'POST',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
-    body: JSON.stringify({ action, metadata }),
+    // visitor_id only matters when not signed in — the server records an
+    // approved member under their user id and ignores it (feedback #175).
+    body: JSON.stringify({ action, metadata, visitor_id: getVisitorId() }),
   })
 }

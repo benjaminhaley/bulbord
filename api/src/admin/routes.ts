@@ -268,6 +268,7 @@ export async function adminRoutes(app: FastifyInstance) {
         event_viewers_7d: summary.eventViewers7d,
         camp_viewers_7d: summary.campViewers7d,
         sharers_7d: summary.sharers7d,
+        anonymous_visitors_7d: summary.anonymousVisitors7d,
         dau: summary.dau,
         last_active_by_member: summary.lastActiveByMember.map((m) => ({
           user_id: m.userId,

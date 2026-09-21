@@ -23,6 +23,20 @@ export function isTrackableAction(action: string): action is TrackableAction {
   return (TRACKABLE_ACTIONS as readonly string[]).includes(action)
 }
 
+const VISITOR_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+const ANON_PREFIX = 'anon:'
+
+// events_log.actor for a visitor with no account (feedback #175) — the
+// browser's random id, validated so a client can't stuff arbitrary strings
+// into the actor column. Returns null for anything that isn't a UUID.
+export function anonymousActor(visitorId: string): string | null {
+  return VISITOR_ID_RE.test(visitorId) ? `${ANON_PREFIX}${visitorId.toLowerCase()}` : null
+}
+
+function isAnonymousActor(actor: string): boolean {
+  return actor.startsWith(ANON_PREFIX)
+}
+
 export async function trackAnalyticsEvent(actor: string, action: TrackableAction, metadata?: Record<string, unknown>) {
   if (action === 'app_opened') {
     const today = todayInChicago()
@@ -88,6 +102,10 @@ export interface AnalyticsSummary {
   eventViewers7d: number
   campViewers7d: number
   sharers7d: number
+  // Distinct anonymous visitors (no account) who opened the app in the last
+  // 7 days — already included in activeThisWeek/the DAU chart; broken out so
+  // the admin can see how much of the traffic is logged-out.
+  anonymousVisitors7d: number
   dau: { date: string; count: number }[]
   lastActiveByMember: { userId: string; name: string; avatarUrl: string | null; lastActiveAt: Date }[]
   recentLog: { id: string; actor: string; actorName: string; action: string; metadata: unknown; createdAt: Date }[]
@@ -110,11 +128,15 @@ export async function getAnalyticsSummary(actorFilter?: ActorFilter): Promise<An
   const aggSince = new Date(Date.now() - AGGREGATE_WINDOW_DAYS * 24 * 60 * 60 * 1000)
   const dayExpr = sql<string>`(${eventsLog.createdAt} AT TIME ZONE 'America/Chicago')::date`
 
-  const [activeWeekRow, dauRows, lastActiveRows, viewerCounts, recentLogRows] = await Promise.all([
+  const [activeWeekRow, anonWeekRow, dauRows, lastActiveRows, viewerCounts, recentLogRows] = await Promise.all([
     db
       .select({ count: sql<number>`count(distinct ${eventsLog.actor})::int` })
       .from(eventsLog)
       .where(and(eq(eventsLog.action, 'app_opened'), gte(eventsLog.createdAt, aggSince))),
+    db
+      .select({ count: sql<number>`count(distinct ${eventsLog.actor})::int` })
+      .from(eventsLog)
+      .where(and(eq(eventsLog.action, 'app_opened'), gte(eventsLog.createdAt, aggSince), sql`${eventsLog.actor} like ${ANON_PREFIX + '%'}`)),
     // `app_opened` is deduped to one row per actor per Chicago day at
     // insert time (see trackAnalyticsEvent), so count(*) per day already
     // equals a distinct-actor count — and, since this window always
@@ -203,12 +225,13 @@ export async function getAnalyticsSummary(actorFilter?: ActorFilter): Promise<An
     eventViewers7d: countFor('event_viewed'),
     campViewers7d: countFor('camp_viewed'),
     sharers7d: countFor('share_opened'),
+    anonymousVisitors7d: anonWeekRow[0]?.count ?? 0,
     dau: dauRows.map((r) => ({ date: r.day, count: r.count })),
     lastActiveByMember,
     recentLog: recentLogRows.map((r) => ({
       id: r.id,
       actor: r.actor,
-      actorName: memberById.get(r.actor)?.name ?? r.actor,
+      actorName: isAnonymousActor(r.actor) ? 'Anonymous visitor' : (memberById.get(r.actor)?.name ?? r.actor),
       action: r.action,
       metadata: r.metadata,
       createdAt: r.createdAt,
