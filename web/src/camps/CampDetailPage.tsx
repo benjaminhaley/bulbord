@@ -1,4 +1,6 @@
 import { IonActionSheet, IonBackButton, IonButton, IonButtons, IonContent, IonHeader, IonIcon, IonPage, IonSpinner, IonTitle, IonToast, IonToolbar } from '@ionic/react'
+import { useAuth } from '../auth/AuthContext'
+import { useRequireLogin } from '../auth/LoginPrompt'
 import { checkmarkOutline, closeOutline, createOutline, ellipsisVerticalOutline, star, starOutline, timeOutline, trashOutline } from 'ionicons/icons'
 import { useEffect, useState } from 'react'
 import { useHistory, useParams } from 'react-router-dom'
@@ -44,6 +46,8 @@ function draftFromCamp(camp: Camp): CampBodyDraft {
 export function CampDetailPage() {
   const { id } = useParams<{ id: string }>()
   const history = useHistory()
+  const { user } = useAuth()
+  const requireLogin = useRequireLogin()
   const [camp, setCamp] = useState<Camp | null>(null)
   const [error, setError] = useState(false)
   const [editing, setEditing] = useState(false)
@@ -260,7 +264,14 @@ export function CampDetailPage() {
         buttons={(
           [
             camp && { text: 'History', icon: timeOutline, handler: () => history.push(`/camps/${camp.id}/history`) },
-            camp?.can_edit && { text: 'Edit', icon: createOutline, handler: startEditing },
+            // Shown to visitors too (feedback #175: every button visible, the
+            // ones needing an account send you to sign in) — for a member
+            // `can_edit` is always true.
+            (camp?.can_edit || !user) && {
+              text: 'Edit',
+              icon: createOutline,
+              handler: () => requireLogin('Sign in to edit this camp') && startEditing(),
+            },
             camp?.can_delete && { text: 'Delete', icon: trashOutline, role: 'destructive' as const, handler: remove },
             { text: 'Cancel', icon: closeOutline, role: 'cancel' as const },
           ] as ({ text: string; icon: string; role?: 'destructive' | 'cancel'; handler?: () => void } | false | null)[]
