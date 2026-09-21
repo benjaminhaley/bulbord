@@ -78,7 +78,23 @@ export const leadingButtonGap = { marginTop: 'var(--space-md)' } as const
 // convention. A plain inline `style` object always wins over any external
 // stylesheet regardless of specificity, so this is exported as one to be
 // spread into each call site's own `style` prop, not a CSS class.
+//
+// Why text in these buttons used to lose the bottom of "g", "y", "p" (the
+// descenders — visible as a clipped "Sign in" in the banner): ion-button's
+// inner `.button-native` is hard-coded `line-height: 1` AND
+// `overflow: var(--overflow)` where `--overflow` defaults to `hidden`. With
+// line-height 1 the line box is exactly one font-size tall, but a glyph's
+// descender hangs *below* that box (the em square doesn't include it). A
+// normal Ionic button hides this because its default padding (and 36px
+// height) leave slack around the text; this style removes all of that
+// (height auto, zero padding), so the box is now exactly one em tall and
+// `overflow: hidden` slices the descenders off at its edge. Text-only
+// buttons are the ones affected because they're the ones stripped down to
+// bare text; icon-only ones have nothing that hangs below the box.
+// Fixed at the cause — `--overflow: visible` — rather than by adding
+// padding, which would change every call site's carefully tuned layout.
 export const unstyledButtonStyle = {
+  '--overflow': 'visible',
   margin: 0,
   height: 'auto',
   minHeight: 'auto',
