@@ -25,6 +25,9 @@ import { fetchPageText, resourceEventSource } from './resourcing.js'
 import { registerDiscoveredEventSource } from './source-registration.js'
 import { recordRetryNote } from './retry-strategies.js'
 import { groupSourcesByDomain } from './source-domains.js'
+import { getPipelineReviewCandidatesForRecheck, recheckReviewPath } from './pipeline-review-service.js'
+import { recheckNotificationMessage } from './recheck-message.js'
+import { createNotification } from '../notifications/service.js'
 import { chicagoWallClock, timesFromChicagoWallClock, timesFromFields } from '../timezone.js'
 import { expandRecurrence, isRecurrencePattern, RECURRENCE_PATTERNS, type RecurrencePattern } from './recurrence.js'
 import {
@@ -782,18 +785,36 @@ export async function eventsRoutes(app: FastifyInstance) {
   // creating one — a bad/junk source would otherwise silently feed the
   // Claude-driven "re-run event sourcing" tool.
   // Recheck one source on demand (feedback, 2026-09-27) — the same
-  // extract/ingest path the weekly run uses, for just this source.
+  // extract/ingest/9-check path the weekly run uses, for just this source.
+  // Always notifies the admin who ran it (they may have left the page while
+  // it ran), linking to Pipeline Review filtered to exactly this recheck.
   app.post('/event-sources/:id/recheck', { preHandler: requireRole('admin') }, async (request, reply) => {
     const { id } = request.params as { id: string }
-    const result = await resourceEventSource(id, request.currentUser!.id)
+    const adminId = request.currentUser!.id
+    const result = await resourceEventSource(id, adminId)
     if (!result) return reply.code(404).send({ error: { message: 'Source not found' } })
+
+    const { kept, rejected } = await getPipelineReviewCandidatesForRecheck(id, result.startedAt)
+    const heldBack = kept.filter((k) => k.status === 'pending').length
+    const reviewPath = recheckReviewPath(id, result.startedAt)
+    await createNotification({
+      userId: adminId,
+      type: 'pipeline_review_ready',
+      actorUserId: null,
+      message: recheckNotificationMessage(result.name, { ...result, heldBack, rejected: rejected.length }),
+      targetPath: reviewPath,
+    })
+
     return reply.send({
       data: {
         added: result.added,
         skipped: result.skipped,
+        held_back: heldBack,
+        rejected: rejected.length,
         unchanged: result.unchanged ?? false,
         unreadable: result.unreadable ?? false,
         error: result.error ?? null,
+        review_path: reviewPath,
       },
     })
   })

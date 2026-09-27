@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto'
 
 import * as cheerio from 'cheerio'
-import { and, desc, eq, isNull, sql } from 'drizzle-orm'
+import { and, desc, eq, gt, isNull, sql } from 'drizzle-orm'
 
 import { getAnthropicClient, stripJsonCodeFence } from '../claude.js'
 import { db } from '../db/client.js'
@@ -283,7 +283,10 @@ async function resourceOneSource(
 // `event_sourcing_run` row — that's the whole-run summary Dev Tools and the
 // weekly digest read as "the latest run"; ingestEvents() still logs its own
 // per-source `events_ingested` entry, plus one `event_source_rechecked` here.
-export async function resourceEventSource(sourceId: string, actor: string): Promise<SourceResourceResult | null> {
+export async function resourceEventSource(
+  sourceId: string,
+  actor: string,
+): Promise<(SourceResourceResult & { startedAt: Date }) | null> {
   const [source] = await db
     .select()
     .from(eventSources)
@@ -294,7 +297,7 @@ export async function resourceEventSource(sourceId: string, actor: string): Prom
   const result = await resourceOneSource(source, actor)
   // startedAt feeds getPipelineReviewWindowStart() below.
   await db.insert(eventsLog).values({ actor, action: 'event_source_rechecked', metadata: { ...result, startedAt: startedAt.toISOString() } })
-  return result
+  return { ...result, startedAt }
 }
 
 // Re-runs the ingestion pipeline against every known active source (feedback
@@ -429,7 +432,9 @@ export async function getPipelineReviewWindowStart(): Promise<Date | null> {
     .where(
       and(
         eq(eventsLog.action, 'event_source_rechecked'),
-        previousRunEndedAt ? sql`${eventsLog.createdAt} > ${previousRunEndedAt}` : sql`true`,
+        // gt(), not a raw sql`` fragment: postgres.js can't bind a raw Date
+        // param (a real 500 on Pipeline Review, 2026-09-27).
+        previousRunEndedAt ? gt(eventsLog.createdAt, previousRunEndedAt) : undefined,
       ),
     )
   return reviewWindowStart(

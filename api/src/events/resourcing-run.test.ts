@@ -223,11 +223,15 @@ describe('resourceEventSource', () => {
 
     const result = await resourceEventSource('source-1', 'admin-1')
 
-    expect(result).toEqual({ sourceId: 'source-1', name: 'Merlo Library', added: 2, skipped: 1 })
+    expect(result).toEqual({ sourceId: 'source-1', name: 'Merlo Library', added: 2, skipped: 1, startedAt: expect.any(Date) })
     expect(updateCalls).toHaveLength(1)
     const logRows = insertedRows.filter((r) => r.table === eventsLog).map((r) => r.row)
     expect(logRows).toEqual([
-      { actor: 'admin-1', action: 'event_source_rechecked', metadata: { ...result, startedAt: expect.any(String) } },
+      {
+        actor: 'admin-1',
+        action: 'event_source_rechecked',
+        metadata: { sourceId: 'source-1', name: 'Merlo Library', added: 2, skipped: 1, startedAt: result!.startedAt.toISOString() },
+      },
     ])
   })
 

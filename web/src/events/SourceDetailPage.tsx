@@ -110,8 +110,12 @@ function describeRecheck(result: EventSourceRecheckResult): string {
   if (result.error) return `Recheck failed: ${result.error}`
   if (result.unreadable) return "Couldn't read the source page — it may be down or blocking us."
   if (result.unchanged) return 'Page unchanged since the last check — nothing new to add.'
-  const added = `${result.added} new event${result.added === 1 ? '' : 's'} added`
-  return result.skipped > 0 ? `${added}, ${result.skipped} already known.` : `${added}.`
+  const parts = [`${result.added} new event${result.added === 1 ? '' : 's'} added`]
+  if (result.held_back > 0) parts.push(`${result.held_back} held back for fixes`)
+  // `rejected` already includes duplicates (ingest saves each one as a
+  // rejected candidate), so `skipped` isn't listed separately.
+  if (result.rejected > 0) parts.push(`${result.rejected} rejected (duplicates or not relevant)`)
+  return `${parts.join(', ')}.`
 }
 
 export function SourceDetailPage() {
@@ -123,7 +127,7 @@ export function SourceDetailPage() {
   const [toast, setToast] = useState<string | null>(null)
   const [rechecking, setRechecking] = useState(false)
   const [recheckMessage, setRecheckMessage] = useState<string | null>(null)
-  const [recheckAdded, setRecheckAdded] = useState(0)
+  const [recheckReviewPath, setRecheckReviewPath] = useState<string | null>(null)
 
   useEffect(() => {
     setSource(null)
@@ -139,11 +143,11 @@ export function SourceDetailPage() {
     if (!source) return
     setRechecking(true)
     setRecheckMessage(null)
-    setRecheckAdded(0)
+    setRecheckReviewPath(null)
     try {
       const result = await recheckEventSource(source.id)
       setRecheckMessage(describeRecheck(result))
-      setRecheckAdded(result.added)
+      if (result.added + result.rejected > 0) setRecheckReviewPath(result.review_path)
       setSource(await fetchEventSource(source.id))
     } catch (err) {
       setRecheckMessage(err instanceof Error ? err.message : 'Could not recheck this source')
@@ -224,12 +228,12 @@ export function SourceDetailPage() {
               {rechecking ? 'Rechecking… (up to a minute)' : 'Recheck this source now'}
             </IonButton>
             {recheckMessage && <p style={{ marginTop: 4, marginBottom: 0 }}>{recheckMessage}</p>}
-            {/* New events went through the same 9 checks as a weekly run and
-                land in Pipeline Review's default view (see resourcing.ts's
-                getPipelineReviewWindowStart). */}
-            {recheckAdded > 0 && (
-              <IonButton fill="clear" size="small" routerLink="/admin/pipeline-review" style={{ marginInline: 0 }}>
-                Review them in Pipeline Review
+            {/* Everything this recheck produced went through the same 9 checks
+                as a weekly run; this opens Pipeline Review filtered to just
+                it (the same link the recheck's notification carries). */}
+            {recheckReviewPath && (
+              <IonButton fill="clear" size="small" routerLink={recheckReviewPath} style={{ marginInline: 0 }}>
+                Review this recheck's results
               </IonButton>
             )}
             <IonButton expand="block" fill="outline" color={source.is_active ? 'medium' : 'success'} disabled={togglingActive} onClick={toggleActive}>

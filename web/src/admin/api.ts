@@ -404,9 +404,14 @@ async function throwOnError(response: Response, fallback: string): Promise<void>
 export async function fetchPipelineReview(
   includeReviewed: boolean,
   scope: 'latest_run' | 'all' = 'latest_run',
+  // One single-source recheck's output (the recheck notification's link).
+  recheck: { sourceId: string; since: string } | null = null,
 ): Promise<{ runStartedAt: string | null; kept: PipelineKeptCandidate[]; rejected: PipelineRejectedCandidate[] }> {
   const params = new URLSearchParams({ include_reviewed: String(includeReviewed) })
-  if (scope === 'all') params.set('scope', 'all')
+  if (recheck) {
+    params.set('source_id', recheck.sourceId)
+    params.set('since', recheck.since)
+  } else if (scope === 'all') params.set('scope', 'all')
   const response = await fetch(`${API_URL}/admin/events/pipeline-review?${params}`, {
     headers: authHeaders(),
   })

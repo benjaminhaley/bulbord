@@ -22,6 +22,7 @@ import {
   IonToolbar,
 } from '@ionic/react'
 import { useCallback, useEffect, useState } from 'react'
+import { useHistory, useLocation } from 'react-router-dom'
 
 import { formatRelativeDateTime } from '../format'
 import { EventPostView } from '../events/EventPostView'
@@ -330,6 +331,23 @@ export function PipelineReviewPage() {
   // them from the fetch entirely would leave those sections silently empty
   // by default, defeating their own purpose.
   const [scope, setScope] = useState<'latest_run' | 'all'>('latest_run')
+  // ?source=<id>&since=<iso> narrows to one single-source recheck (its
+  // notification and the source page link here). Only read while this page
+  // is the current route — Ionic keeps it mounted when navigated away, with
+  // useLocation reporting the other page's URL (see CLAUDE.md's Login notes).
+  const location = useLocation()
+  const history = useHistory()
+  const [recheck, setRecheck] = useState<{ sourceId: string; since: string } | null>(null)
+  useEffect(() => {
+    if (location.pathname !== '/admin/pipeline-review') return
+    const params = new URLSearchParams(location.search)
+    const sourceId = params.get('source')
+    const since = params.get('since')
+    setRecheck((prev) => {
+      if (!sourceId || !since) return null
+      return prev?.sourceId === sourceId && prev.since === since ? prev : { sourceId, since }
+    })
+  }, [location.pathname, location.search])
   const [runStartedAt, setRunStartedAt] = useState<string | null>(null)
   const [kept, setKept] = useState<PipelineKeptCandidate[]>([])
   const [rejected, setRejected] = useState<PipelineRejectedCandidate[]>([])
@@ -343,7 +361,7 @@ export function PipelineReviewPage() {
 
   const load = useCallback(() => {
     setLoading(true)
-    fetchPipelineReview(true, scope)
+    fetchPipelineReview(true, scope, recheck)
       .then((data) => {
         setKept(data.kept)
         setRejected(data.rejected)
@@ -352,7 +370,7 @@ export function PipelineReviewPage() {
       })
       .catch((err) => setError(err instanceof Error ? err.message : 'Could not load pipeline review'))
       .finally(() => setLoading(false))
-  }, [scope])
+  }, [scope, recheck])
 
   useEffect(() => {
     load()
@@ -712,7 +730,9 @@ export function PipelineReviewPage() {
 
         <IonItem lines="none" style={{ '--padding-start': 0, marginTop: 16 } as React.CSSProperties}>
           <IonLabel className="ion-text-wrap">
-            {scope === 'latest_run' ? (
+            {recheck ? (
+              `Reviewing the recheck of ${kept[0]?.source_name ?? rejected[0]?.source_name ?? 'one source'} — ${new Date(recheck.since).toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}`
+            ) : scope === 'latest_run' ? (
               // The window starts at the latest weekly run, or earlier to
               // cover single-source rechecks since the run before it.
               <>{runStartedAt ? `Reviewing everything added since ${new Date(runStartedAt).toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}` : 'Reviewing the latest run'}</>
@@ -720,9 +740,15 @@ export function PipelineReviewPage() {
               'Reviewing every unreviewed candidate, all time'
             )}
           </IonLabel>
-          <IonButton slot="end" size="small" fill="clear" onClick={() => setScope(scope === 'latest_run' ? 'all' : 'latest_run')}>
-            {scope === 'latest_run' ? 'See previous runs' : 'Back to latest run'}
-          </IonButton>
+          {recheck ? (
+            <IonButton slot="end" size="small" fill="clear" onClick={() => history.replace('/admin/pipeline-review')}>
+              See everything
+            </IonButton>
+          ) : (
+            <IonButton slot="end" size="small" fill="clear" onClick={() => setScope(scope === 'latest_run' ? 'all' : 'latest_run')}>
+              {scope === 'latest_run' ? 'See previous runs' : 'Back to latest run'}
+            </IonButton>
+          )}
         </IonItem>
         <IonItem lines="none" style={{ '--padding-start': 0 } as React.CSSProperties}>
           <IonButton size="small" disabled={sendingTest} onClick={sendTest}>

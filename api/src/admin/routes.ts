@@ -15,6 +15,7 @@ import {
   editKeptCandidate,
   editRejectedCandidate,
   getPipelineReviewCandidates,
+  getPipelineReviewCandidatesForRecheck,
   getPipelineReviewCandidatesSince,
   rejectEvent,
   rejectRejectedCandidate,
@@ -296,12 +297,22 @@ export async function adminRoutes(app: FastifyInstance) {
   // unreviewed-across-all-time view (still respecting include_reviewed),
   // for looking at a missed week's leftovers.
   app.get('/admin/events/pipeline-review', { preHandler: requireRole('admin') }, async (request, reply) => {
-    const { include_reviewed, scope } = request.query as { include_reviewed?: string; scope?: string }
+    const { include_reviewed, scope, source_id, since } = request.query as {
+      include_reviewed?: string
+      scope?: string
+      source_id?: string
+      since?: string
+    }
     const includeReviewed = include_reviewed === 'true'
+    const recheckSince = since ? new Date(since) : null
 
     let kept, rejected
     let runStartedAt: Date | null = null
-    if (scope === 'all') {
+    if (source_id && recheckSince && !Number.isNaN(recheckSince.getTime())) {
+      // One single-source recheck's output — the recheck notification's link.
+      runStartedAt = recheckSince
+      ;({ kept, rejected } = await getPipelineReviewCandidatesForRecheck(source_id, recheckSince))
+    } else if (scope === 'all') {
       ;({ kept, rejected } = await getPipelineReviewCandidates({ includeReviewed }))
     } else {
       const windowStart = await getPipelineReviewWindowStart()

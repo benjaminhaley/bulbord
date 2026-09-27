@@ -598,6 +598,11 @@ export interface EventSourceUpdateInput {
 export interface EventSourceRecheckResult {
   added: number
   skipped: number
+  // Of `added`, how many failed a check and are held back as pending.
+  held_back: number
+  rejected: number
+  // Pipeline Review filtered to exactly this recheck.
+  review_path: string
   // Page identical to the last check, so extraction was skipped on purpose.
   unchanged: boolean
   unreadable: boolean

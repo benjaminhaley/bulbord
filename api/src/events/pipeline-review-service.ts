@@ -211,6 +211,24 @@ export async function getPipelineReviewCandidatesSince(runStartedAt: Date) {
   return { kept, rejected }
 }
 
+// One single-source recheck's output (see resourcing.ts's
+// resourceEventSource): everything from that source created since the
+// recheck started, reviewed or not. Backs the recheck notification's and the
+// source page's "review this recheck" link.
+export async function getPipelineReviewCandidatesForRecheck(sourceId: string, startedAt: Date) {
+  const [kept, rejected] = await Promise.all([
+    loadKeptItems(and(keptCandidateWhere(true), eq(events.sourceId, sourceId)), startedAt),
+    loadRejectedItems(and(rejectedCandidateWhere(true), eq(rejectedEventCandidates.eventSourceId, sourceId)), startedAt),
+  ])
+  return { kept, rejected }
+}
+
+// Path to Pipeline Review filtered to one recheck — shared by the in-app
+// notification and the recheck endpoint's response.
+export function recheckReviewPath(sourceId: string, startedAt: Date): string {
+  return `/admin/pipeline-review?${new URLSearchParams({ source: sourceId, since: startedAt.toISOString() })}`
+}
+
 export type PipelineReviewActionError = 'not_found'
 
 // Approve always publishes (status='approved'), whether the item was
