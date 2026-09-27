@@ -38,7 +38,7 @@ test('pasting an image works immediately after opening the feedback composer, wi
   await mockPhotoUpload(context)
 
   await page.goto(`/?rootSecret=${rootSecret}`)
-  await page.getByRole('button', { name: 'Continue' }).click()
+  await page.getByRole('button', { name: 'Create Account' }).click()
   await fillProfileAndContinue(page, 'Paste', 'Tester', 'paste-focus-e2e@example.com')
 
   await page.goto('/feedback')

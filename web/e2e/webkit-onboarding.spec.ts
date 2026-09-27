@@ -80,7 +80,7 @@ test('onboarding, including the photo-crop step, works on real WebKit', async ({
     // step (see ProfileSetupWizard.tsx's finish()), so there's nothing to
     // lose by handing off to WebKit at this exact point.
     await chromiumPage.goto(`${baseURL}/?rootSecret=${rootSecret}`)
-    await chromiumPage.getByRole('button', { name: 'Continue' }).click()
+    await chromiumPage.getByRole('button', { name: 'Create Account' }).click()
     await chromiumPage.getByRole('heading', { name: 'What should we call you?' }).waitFor({ timeout: 15000 })
     token = await chromiumPage.evaluate(() => localStorage.getItem('bulbord_session_token'))
 
