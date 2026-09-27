@@ -28,6 +28,7 @@ describe('groupSourcesByDomain', () => {
     url: 'https://example.com/',
     type: 'website',
     isActive: true,
+    lastCheckedAt: null,
     pastCount: 0,
     futureCount: 0,
     ...overrides,

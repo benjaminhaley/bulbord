@@ -23,6 +23,7 @@ import { addOutline, closeOutline } from 'ionicons/icons'
 import { useEffect, useState } from 'react'
 
 import { createEventSource, fetchEventSourceSummary, updateEventSource, type EventSourceSummary, type SourceCounts } from './api'
+import { domainCheckedCell, type CheckedCell } from './sourceChecked'
 import { EVENT_SOURCE_TYPE_OPTIONS } from './sourceTypes'
 
 // Admin-only (see App.tsx's AdminRoute) — sources used to only be added by
@@ -91,19 +92,19 @@ function AddSourceForm({ onCreated, onCancel }: { onCreated: () => void; onCance
   )
 }
 
-// Feedback #178: fixed-width right-aligned number columns so the list
-// reads as a table (Name / Past / Future). A zero is red, since a source
+// Feedback #178: fixed-width right-aligned columns so the list reads as a
+// table (Name / Past / Future / Checked). A zero is red, since a source
 // with nothing past or nothing upcoming may have a problem worth a look.
 const COUNT_COLUMN_WIDTH = 56
 
-function CountCell({ value, bold }: { value: number | string; bold?: boolean }) {
+function CountCell({ value, bold, red }: { value: number | string; bold?: boolean; red?: boolean }) {
   return (
     <span
       style={{
         width: COUNT_COLUMN_WIDTH,
         textAlign: 'right',
         fontWeight: bold ? 600 : undefined,
-        color: value === 0 ? 'var(--ion-color-danger)' : undefined,
+        color: red || value === 0 ? 'var(--ion-color-danger)' : undefined,
       }}
     >
       {value}
@@ -111,11 +112,14 @@ function CountCell({ value, bold }: { value: number | string; bold?: boolean }) 
   )
 }
 
-export function CountColumns({ counts, bold }: { counts: SourceCounts; bold?: boolean }) {
+// `checked` is the "Checked" column (see sourceChecked.ts) — omitted on the
+// Manual/Total rows, which leave that column blank.
+export function CountColumns({ counts, checked, bold }: { counts: SourceCounts; checked?: CheckedCell; bold?: boolean }) {
   return (
     <div slot="end" style={{ display: 'flex', fontSize: 14 }}>
       <CountCell value={counts.past_count} bold={bold} />
       <CountCell value={counts.future_count} bold={bold} />
+      <CountCell value={checked?.label ?? ''} red={checked?.stale} />
     </div>
   )
 }
@@ -129,6 +133,7 @@ export function CountColumnHeaders({ label }: { label: string }) {
       <div slot="end" style={{ display: 'flex', fontSize: 12, color: 'var(--ion-color-medium)' }}>
         <span style={{ width: COUNT_COLUMN_WIDTH, textAlign: 'right' }}>Past</span>
         <span style={{ width: COUNT_COLUMN_WIDTH, textAlign: 'right' }}>Future</span>
+        <span style={{ width: COUNT_COLUMN_WIDTH, textAlign: 'right' }}>Checked</span>
       </div>
     </IonItem>
   )
@@ -162,6 +167,7 @@ export function SourcesPage() {
 
   useEffect(load, [])
 
+  const now = new Date()
   const sumOfRows = summary && {
     past_count: summary.domains.reduce((n, d) => n + d.past_count, summary.manual.past_count),
     future_count: summary.domains.reduce((n, d) => n + d.future_count, summary.manual.future_count),
@@ -227,7 +233,7 @@ export function SourcesPage() {
                     <h2>{group.domain}</h2>
                     <p>{group.sources.map((source) => source.name).join(' · ')}</p>
                   </IonLabel>
-                  <CountColumns counts={group} />
+                  <CountColumns counts={group} checked={domainCheckedCell(group.sources, now)} />
                 </IonItem>
               )
             })}

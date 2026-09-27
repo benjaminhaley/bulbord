@@ -11,6 +11,7 @@ export interface SourceCountRow {
   url: string
   type: string
   isActive: boolean
+  lastCheckedAt: Date | null
   pastCount: number
   futureCount: number
 }

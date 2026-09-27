@@ -535,6 +535,7 @@ interface SummarySource extends SourceCounts {
   url: string
   type: string
   is_active: boolean
+  last_checked_at: string | null
 }
 
 export interface SourceDomain extends SourceCounts {

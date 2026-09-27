@@ -15,6 +15,7 @@ import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 
 import { fetchEventSourceSummary, type SourceDomain } from './api'
+import { sourceCheckedCell } from './sourceChecked'
 import { CountColumnHeaders, CountColumns } from './SourcesPage'
 
 // Feedback #178: the Sources list shows one row per domain; this is where
@@ -68,7 +69,7 @@ export function SourceDomainPage() {
                   <p style={{ wordBreak: 'break-all' }}>{source.url}</p>
                   {!source.is_active && <p>Inactive</p>}
                 </IonLabel>
-                <CountColumns counts={source} />
+                <CountColumns counts={source} checked={sourceCheckedCell(source, new Date())} />
               </IonItem>
             ))}
             <IonItem lines="none">
