@@ -27,7 +27,7 @@ import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 
 import { formatDate } from '../format'
-import { fetchEventSource, updateEventSource, type EventSourceDetail } from './api'
+import { fetchEventSource, recheckEventSource, updateEventSource, type EventSourceDetail, type EventSourceRecheckResult } from './api'
 import { EVENT_SOURCE_TYPE_OPTIONS } from './sourceTypes'
 
 // Feedback #41's last remaining piece ("manage sources... from admin" —
@@ -106,6 +106,14 @@ function EditSourceForm({
   )
 }
 
+function describeRecheck(result: EventSourceRecheckResult): string {
+  if (result.error) return `Recheck failed: ${result.error}`
+  if (result.unreadable) return "Couldn't read the source page — it may be down or blocking us."
+  if (result.unchanged) return 'Page unchanged since the last check — nothing new to add.'
+  const added = `${result.added} new event${result.added === 1 ? '' : 's'} added`
+  return result.skipped > 0 ? `${added}, ${result.skipped} already known.` : `${added}.`
+}
+
 export function SourceDetailPage() {
   const { id } = useParams<{ id: string }>()
   const [source, setSource] = useState<EventSourceDetail | null>(null)
@@ -113,6 +121,8 @@ export function SourceDetailPage() {
   const [editing, setEditing] = useState(false)
   const [togglingActive, setTogglingActive] = useState(false)
   const [toast, setToast] = useState<string | null>(null)
+  const [rechecking, setRechecking] = useState(false)
+  const [recheckMessage, setRecheckMessage] = useState<string | null>(null)
 
   useEffect(() => {
     setSource(null)
@@ -121,6 +131,23 @@ export function SourceDetailPage() {
       .then(setSource)
       .catch(() => setError(true))
   }, [id])
+
+  // Kept on screen (not a toast) since a recheck takes a while and the
+  // answer — especially "unchanged" or an error — is what you came for.
+  async function recheck() {
+    if (!source) return
+    setRechecking(true)
+    setRecheckMessage(null)
+    try {
+      const result = await recheckEventSource(source.id)
+      setRecheckMessage(describeRecheck(result))
+      setSource(await fetchEventSource(source.id))
+    } catch (err) {
+      setRecheckMessage(err instanceof Error ? err.message : 'Could not recheck this source')
+    } finally {
+      setRechecking(false)
+    }
+  }
 
   async function toggleActive() {
     if (!source) return
@@ -190,10 +217,15 @@ export function SourceDetailPage() {
             <IonButton expand="block" href={source.url} target="_blank" rel="noreferrer">
               Visit source
             </IonButton>
+            <IonButton expand="block" fill="outline" disabled={rechecking} onClick={recheck}>
+              {rechecking ? 'Rechecking… (up to a minute)' : 'Recheck this source now'}
+            </IonButton>
+            {recheckMessage && <p style={{ marginTop: 4 }}>{recheckMessage}</p>}
             <IonButton expand="block" fill="outline" color={source.is_active ? 'medium' : 'success'} disabled={togglingActive} onClick={toggleActive}>
               {togglingActive ? <IonSpinner name="dots" /> : source.is_active ? 'Deactivate this source' : 'Activate this source'}
             </IonButton>
-            <IonList inset>
+            {/* 72px bottom margin clears the persistent share FAB (index.css's .share-fab). */}
+            <IonList inset style={{ marginBottom: 72 }}>
               <IonListHeader>
                 <IonLabel>Upcoming events from this source ({source.events.length})</IonLabel>
               </IonListHeader>

@@ -175,7 +175,7 @@ describe('extractCandidateEventsFromSource', () => {
 
     const result = await extractCandidateEventsFromSource('https://example.com/events', null)
 
-    expect(result).toEqual({ candidates: [], rejectedCandidates: [], contentHash: null, pageText: null })
+    expect(result).toEqual({ candidates: [], rejectedCandidates: [], contentHash: null, pageText: null, pageUnreadable: true })
     expect(createMock).not.toHaveBeenCalled()
   })
 

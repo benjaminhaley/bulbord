@@ -593,6 +593,27 @@ export interface EventSourceUpdateInput {
   is_active?: boolean
 }
 
+// Recheck one source on demand — POST /event-sources/:id/recheck. Runs the
+// full extraction (can take a minute), so callers should show progress.
+export interface EventSourceRecheckResult {
+  added: number
+  skipped: number
+  // Page identical to the last check, so extraction was skipped on purpose.
+  unchanged: boolean
+  unreadable: boolean
+  error: string | null
+}
+
+export async function recheckEventSource(id: string): Promise<EventSourceRecheckResult> {
+  const response = await fetch(`${API_URL}/event-sources/${id}/recheck`, { method: 'POST', headers: authHeaders() })
+  if (!response.ok) {
+    const body = await response.json().catch(() => null)
+    throw new Error(body?.error?.message ?? `Failed to recheck event source: ${response.status}`)
+  }
+  const body = (await response.json()) as { data: EventSourceRecheckResult }
+  return body.data
+}
+
 export interface EventSourceUpdateResult {
   id: string
   name: string

@@ -68,6 +68,9 @@ function toCandidateEvent(raw: ExtractedEvent, sourceUrl: string): CandidateEven
 
 export interface ExtractionResult {
   candidates: CandidateEvent[]
+  // Set only when fetching the source page itself failed (not for a missing
+  // API key or a model error) — lets a recheck say "couldn't read the page".
+  pageUnreadable?: true
   // Candidates the second-pass validator (candidate-validation.ts) already
   // dropped, with its own stated reason — carried on this result so the
   // caller can log them into ingestEvents()'s own events_ingested row
@@ -136,7 +139,7 @@ export async function extractCandidateEventsFromSource(
   if (!anthropic) return { candidates: [], rejectedCandidates: [], contentHash: null, pageText: null }
 
   const pageText = await fetchPageText(sourceUrl)
-  if (!pageText) return { candidates: [], rejectedCandidates: [], contentHash: null, pageText: null }
+  if (!pageText) return { candidates: [], rejectedCandidates: [], contentHash: null, pageText: null, pageUnreadable: true }
 
   try {
     const contentHash = hashPageText(pageText)
@@ -187,6 +190,12 @@ interface SourceResourceResult {
   added: number
   skipped: number
   error?: string
+  // Page text identical to the last successful check, so extraction was
+  // skipped (see extractCandidateEventsFromSource) — reported so a manual
+  // single-source recheck can say why nothing was added.
+  unchanged?: boolean
+  // The page couldn't be fetched/read at all.
+  unreadable?: boolean
 }
 
 export interface ResourceReport {
@@ -228,6 +237,64 @@ export interface ResourceSampleOptions {
   maxCandidates?: number
 }
 
+// One source's extract → ingest → mark-checked step, shared by the batch
+// run below and the per-source "Recheck" button (feedback, 2026-09-27:
+// "recheck one source a la carte") so both go through the exact same path.
+// Never throws — an error is reported on the result, same as in a batch run.
+async function resourceOneSource(
+  source: typeof eventSources.$inferSelect,
+  actor: string,
+  // Shared across a batch run's concurrent workers and charged right after
+  // extraction, before the slower ingest, so a sampled run can't overspend.
+  budget: { remaining: number } = { remaining: Infinity },
+): Promise<SourceResourceResult> {
+  try {
+    const { candidates, rejectedCandidates, contentHash, pageText, pageUnreadable } = await extractCandidateEventsFromSource(
+      source.url,
+      source.notes,
+      source.lastContentHash,
+    )
+    const sampledCandidates = candidates.slice(0, budget.remaining)
+    budget.remaining -= sampledCandidates.length
+    const { inserted, skipped } = await ingestEvents(sampledCandidates, {
+      sourceId: source.id,
+      actor,
+      filteredOut: rejectedCandidates,
+      sourceText: pageText ?? undefined,
+    })
+    await db
+      .update(eventSources)
+      .set({ lastCheckedAt: new Date(), ...(contentHash ? { lastContentHash: contentHash } : {}) })
+      .where(eq(eventSources.id, source.id))
+    return {
+      sourceId: source.id,
+      name: source.name,
+      added: inserted,
+      skipped,
+      ...(pageUnreadable ? { unreadable: true } : {}),
+      ...(contentHash !== null && contentHash === source.lastContentHash ? { unchanged: true } : {}),
+    }
+  } catch (err) {
+    return { sourceId: source.id, name: source.name, added: 0, skipped: 0, error: err instanceof Error ? err.message : 'Unknown error' }
+  }
+}
+
+// Rechecks one source on demand (active or not). Doesn't write an
+// `event_sourcing_run` row — that's the whole-run summary Dev Tools and the
+// weekly digest read as "the latest run"; ingestEvents() still logs its own
+// per-source `events_ingested` entry, plus one `event_source_rechecked` here.
+export async function resourceEventSource(sourceId: string, actor: string): Promise<SourceResourceResult | null> {
+  const [source] = await db
+    .select()
+    .from(eventSources)
+    .where(and(eq(eventSources.id, sourceId), isNull(eventSources.deletedAt)))
+    .limit(1)
+  if (!source) return null
+  const result = await resourceOneSource(source, actor)
+  await db.insert(eventsLog).values({ actor, action: 'event_source_rechecked', metadata: { ...result } })
+  return result
+}
+
 // Re-runs the ingestion pipeline against every known active source (feedback
 // #41) — deliberately re-scrapes sources already in event_sources rather
 // than also discovering brand-new ones, which stays a separate, occasional
@@ -243,44 +310,17 @@ export async function resourceActiveEventSources(actor: string, sample: Resource
 
   const results: SourceResourceResult[] = new Array(sources.length)
   let index = 0
-  let remainingCandidateBudget = sample.maxCandidates ?? Infinity
+  const budget = { remaining: sample.maxCandidates ?? Infinity }
 
   async function worker() {
     while (index < sources.length) {
       const i = index++
       const source = sources[i]
-      if (remainingCandidateBudget <= 0) {
+      if (budget.remaining <= 0) {
         results[i] = { sourceId: source.id, name: source.name, added: 0, skipped: 0 }
         continue
       }
-      try {
-        const { candidates, rejectedCandidates, contentHash, pageText } = await extractCandidateEventsFromSource(
-          source.url,
-          source.notes,
-          source.lastContentHash,
-        )
-        const sampledCandidates = candidates.slice(0, remainingCandidateBudget)
-        remainingCandidateBudget -= sampledCandidates.length
-        const { inserted, skipped } = await ingestEvents(sampledCandidates, {
-          sourceId: source.id,
-          actor,
-          filteredOut: rejectedCandidates,
-          sourceText: pageText ?? undefined,
-        })
-        await db
-          .update(eventSources)
-          .set({ lastCheckedAt: new Date(), ...(contentHash ? { lastContentHash: contentHash } : {}) })
-          .where(eq(eventSources.id, source.id))
-        results[i] = { sourceId: source.id, name: source.name, added: inserted, skipped }
-      } catch (err) {
-        results[i] = {
-          sourceId: source.id,
-          name: source.name,
-          added: 0,
-          skipped: 0,
-          error: err instanceof Error ? err.message : 'Unknown error',
-        }
-      }
+      results[i] = await resourceOneSource(source, actor, budget)
     }
   }
 

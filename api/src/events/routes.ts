@@ -21,7 +21,7 @@ import { buildDuplicateCheck, checkDateQuality, checkTimeQuality, runTextChecksW
 import { extractEventFieldsFromDescription, findEventDetailsFromDescription } from './description-extraction.js'
 import { enrichEventImage, findCandidateEventImage, scoreStoredEventImage } from './image-enrichment.js'
 import { extractEventFieldsFromPhoto, findEventSource, type ExtractedEventFields } from './photo-extraction.js'
-import { fetchPageText } from './resourcing.js'
+import { fetchPageText, resourceEventSource } from './resourcing.js'
 import { registerDiscoveredEventSource } from './source-registration.js'
 import { recordRetryNote } from './retry-strategies.js'
 import { groupSourcesByDomain } from './source-domains.js'
@@ -781,6 +781,23 @@ export async function eventsRoutes(app: FastifyInstance) {
   // the destructive step of deleting it). Admin-only, same posture as
   // creating one — a bad/junk source would otherwise silently feed the
   // Claude-driven "re-run event sourcing" tool.
+  // Recheck one source on demand (feedback, 2026-09-27) — the same
+  // extract/ingest path the weekly run uses, for just this source.
+  app.post('/event-sources/:id/recheck', { preHandler: requireRole('admin') }, async (request, reply) => {
+    const { id } = request.params as { id: string }
+    const result = await resourceEventSource(id, request.currentUser!.id)
+    if (!result) return reply.code(404).send({ error: { message: 'Source not found' } })
+    return reply.send({
+      data: {
+        added: result.added,
+        skipped: result.skipped,
+        unchanged: result.unchanged ?? false,
+        unreadable: result.unreadable ?? false,
+        error: result.error ?? null,
+      },
+    })
+  })
+
   app.patch('/event-sources/:id', { preHandler: requireRole('admin') }, async (request, reply) => {
     const { id } = request.params as { id: string }
     const body = request.body as { name?: string; url?: string; type?: string; notes?: string | null; is_active?: boolean }

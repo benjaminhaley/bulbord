@@ -30,7 +30,8 @@ vi.mock('../db/client.js', () => {
           // Call 1: the full active-sources list. Call 2 (inside
           // getSourcesLastCheckedAt): the scalar max(last_checked_at) row.
           if (sourceSelectCallCount === 1) {
-            return { where: () => Promise.resolve(sourceRows) }
+            // .limit() for resourceEventSource's single-source lookup.
+            return { where: () => Object.assign(Promise.resolve(sourceRows), { limit: () => Promise.resolve(sourceRows) }) }
           }
           return { where: () => Promise.resolve([{ lastCheckedAt: lastCheckedAtValue }]) }
         }
@@ -176,5 +177,44 @@ describe('getLatestEventSourcingRun', () => {
     const summary = await getLatestEventSourcingRun()
 
     expect(summary!.report.startedAt).toEqual(ranAt)
+  })
+})
+
+describe('resourceEventSource', () => {
+  beforeEach(() => {
+    ingestEventsMock.mockReset()
+    sourceSelectCallCount = 0
+    insertedRows.length = 0
+    updateCalls.length = 0
+  })
+
+  it('returns null for a source that does not exist', async () => {
+    sourceRows = []
+    const { resourceEventSource } = await import('./resourcing.js')
+    expect(await resourceEventSource('missing', 'admin-1')).toBeNull()
+    expect(ingestEventsMock).not.toHaveBeenCalled()
+  })
+
+  it('rechecks just that source, marks it checked, and logs one event_source_rechecked entry', async () => {
+    sourceRows = [{ id: 'source-1', name: 'Merlo Library', url: 'https://example.com/1', notes: null }]
+    ingestEventsMock.mockResolvedValueOnce({ inserted: 2, skipped: 1 })
+    const { resourceEventSource } = await import('./resourcing.js')
+
+    const result = await resourceEventSource('source-1', 'admin-1')
+
+    expect(result).toEqual({ sourceId: 'source-1', name: 'Merlo Library', added: 2, skipped: 1 })
+    expect(updateCalls).toHaveLength(1)
+    const logRows = insertedRows.filter((r) => r.table === eventsLog).map((r) => r.row)
+    expect(logRows).toEqual([{ actor: 'admin-1', action: 'event_source_rechecked', metadata: result }])
+  })
+
+  it('reports an ingest failure on the result instead of throwing', async () => {
+    sourceRows = [{ id: 'source-1', name: 'Merlo Library', url: 'https://example.com/1', notes: null }]
+    ingestEventsMock.mockRejectedValueOnce(new Error('insert failed'))
+    const { resourceEventSource } = await import('./resourcing.js')
+
+    const result = await resourceEventSource('source-1', 'admin-1')
+
+    expect(result).toMatchObject({ added: 0, skipped: 0, error: 'insert failed' })
   })
 })
