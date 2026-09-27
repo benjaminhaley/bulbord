@@ -6,6 +6,7 @@
 # still on Sep 9 code and failed inserts after the Sep 20 timestamptz schema
 # change). Always deploy api changes with this script.
 set -euo pipefail
+"$(dirname "$0")/check-ci.sh"
 cd "$(dirname "$0")/../api"
 for service in api event-sourcing-cron camp-reminder-cron newsletter-cron; do
   echo "== Deploying $service"
