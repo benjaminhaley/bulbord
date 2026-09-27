@@ -16,6 +16,7 @@ import { useParams } from 'react-router-dom'
 
 import { fetchEventSourceSummary, type SourceDomain } from './api'
 import { sourceCheckedCell } from './sourceChecked'
+import { tableDetailStyle, tableNameStyle } from '../theme/layout'
 import { CountColumnHeaders, CountColumns } from './SourcesPage'
 
 // Feedback #178: the Sources list shows one row per domain; this is where
@@ -65,16 +66,16 @@ export function SourceDomainPage() {
             {group.sources.map((source) => (
               <IonItem key={source.id} button routerLink={`/event-sources/${source.id}`}>
                 <IonLabel className="ion-text-wrap">
-                  <h2>{source.name}</h2>
-                  <p style={{ wordBreak: 'break-all' }}>{source.url}</p>
-                  {!source.is_active && <p>Inactive</p>}
+                  <h2 style={tableNameStyle}>{source.name}</h2>
+                  <p style={{ ...tableDetailStyle, wordBreak: 'break-all' }}>{source.url}</p>
+                  {!source.is_active && <p style={tableDetailStyle}>Inactive</p>}
                 </IonLabel>
                 <CountColumns counts={source} checked={sourceCheckedCell(source, new Date())} />
               </IonItem>
             ))}
             <IonItem lines="none">
               <IonLabel>
-                <h2>
+                <h2 style={tableNameStyle}>
                   <strong>Total</strong>
                 </h2>
               </IonLabel>

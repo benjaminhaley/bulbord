@@ -22,7 +22,8 @@ import {
 import { addOutline, closeOutline } from 'ionicons/icons'
 import { useEffect, useState } from 'react'
 
-import { createEventSource, fetchEventSourceSummary, updateEventSource, type EventSourceSummary, type SourceCounts } from './api'
+import { createEventSource, fetchEventSourceSummary, updateEventSource, type EventSourceSummary, type SourceCounts, type SourceDomain } from './api'
+import { tableDetailStyle, tableNameStyle } from '../theme/layout'
 import { domainCheckedCell, type CheckedCell } from './sourceChecked'
 import { EVENT_SOURCE_TYPE_OPTIONS } from './sourceTypes'
 
@@ -95,13 +96,16 @@ function AddSourceForm({ onCreated, onCancel }: { onCreated: () => void; onCance
 // Feedback #178: fixed-width right-aligned columns so the list reads as a
 // table (Name / Past / Future / Checked). A zero is red, since a source
 // with nothing past or nothing upcoming may have a problem worth a look.
-const COUNT_COLUMN_WIDTH = 56
+const COUNT_COLUMN_WIDTH = 44
+// Wider: fits the "Checked" header and "today"/"never" on one line.
+const CHECKED_COLUMN_WIDTH = 56
 
-function CountCell({ value, bold, red }: { value: number | string; bold?: boolean; red?: boolean }) {
+function CountCell({ value, bold, red, width = COUNT_COLUMN_WIDTH }: { value: number | string; bold?: boolean; red?: boolean; width?: number }) {
   return (
     <span
       style={{
-        width: COUNT_COLUMN_WIDTH,
+        width,
+        whiteSpace: 'nowrap',
         textAlign: 'right',
         fontWeight: bold ? 600 : undefined,
         color: red || value === 0 ? 'var(--ion-color-danger)' : undefined,
@@ -119,7 +123,7 @@ export function CountColumns({ counts, checked, bold }: { counts: SourceCounts; 
     <div slot="end" style={{ display: 'flex', fontSize: 14 }}>
       <CountCell value={counts.past_count} bold={bold} />
       <CountCell value={counts.future_count} bold={bold} />
-      <CountCell value={checked?.label ?? ''} red={checked?.stale} />
+      <CountCell value={checked?.label ?? ''} red={checked?.stale} width={CHECKED_COLUMN_WIDTH} />
     </div>
   )
 }
@@ -131,12 +135,20 @@ export function CountColumnHeaders({ label }: { label: string }) {
         {label}
       </IonLabel>
       <div slot="end" style={{ display: 'flex', fontSize: 12, color: 'var(--ion-color-medium)' }}>
-        <span style={{ width: COUNT_COLUMN_WIDTH, textAlign: 'right' }}>Past</span>
-        <span style={{ width: COUNT_COLUMN_WIDTH, textAlign: 'right' }}>Future</span>
-        <span style={{ width: COUNT_COLUMN_WIDTH, textAlign: 'right' }}>Checked</span>
+        <span style={{ width: COUNT_COLUMN_WIDTH, textAlign: 'right', whiteSpace: 'nowrap' }}>Past</span>
+        <span style={{ width: COUNT_COLUMN_WIDTH, textAlign: 'right', whiteSpace: 'nowrap' }}>Future</span>
+        <span style={{ width: CHECKED_COLUMN_WIDTH, textAlign: 'right', whiteSpace: 'nowrap' }}>Checked</span>
       </div>
     </IonItem>
   )
+}
+
+// One row per domain, titled by its source name(s) (deduped — a domain can
+// hold two same-named sources), sorted by that title.
+function rowsByName(domains: SourceDomain[]): { group: SourceDomain; title: string }[] {
+  return domains
+    .map((group) => ({ group, title: [...new Set(group.sources.map((source) => source.name))].join(' · ') }))
+    .sort((a, b) => a.title.localeCompare(b.title))
 }
 
 export function SourcesPage() {
@@ -221,7 +233,10 @@ export function SourcesPage() {
         {summary && (
           <IonList>
             <CountColumnHeaders label="Source" />
-            {summary.domains.map((group) => {
+            {/* Rows show only the source name(s) — the domain appears once
+                tapped through (SourceDomainPage's title). Sorted by the name
+                shown, not the hidden domain. */}
+            {rowsByName(summary.domains).map(({ group, title }) => {
               const only = group.sources.length === 1 ? group.sources[0] : null
               return (
                 <IonItem
@@ -230,8 +245,7 @@ export function SourcesPage() {
                   routerLink={only ? `/event-sources/${only.id}` : `/event-sources/domain/${encodeURIComponent(group.domain)}`}
                 >
                   <IonLabel className="ion-text-wrap">
-                    <h2>{group.domain}</h2>
-                    <p>{group.sources.map((source) => source.name).join(' · ')}</p>
+                    <h2 style={tableNameStyle}>{title}</h2>
                   </IonLabel>
                   <CountColumns counts={group} checked={domainCheckedCell(group.sources, now)} />
                 </IonItem>
@@ -239,17 +253,17 @@ export function SourcesPage() {
             })}
             <IonItem>
               <IonLabel className="ion-text-wrap">
-                <h2>Manual</h2>
-                <p>Posted in the app with no source</p>
+                <h2 style={tableNameStyle}>Manual</h2>
+                <p style={tableDetailStyle}>Posted in the app with no source</p>
               </IonLabel>
               <CountColumns counts={summary.manual} />
             </IonItem>
             <IonItem lines="none">
               <IonLabel className="ion-text-wrap">
-                <h2>
+                <h2 style={tableNameStyle}>
                   <strong>Total</strong>
                 </h2>
-                <p>
+                <p style={tableDetailStyle}>
                   {rowsMatchTotals
                     ? 'Every approved event, each date counted once'
                     : `Rows add up to ${sumOfRows!.past_count} / ${sumOfRows!.future_count} — some events aren't accounted for`}

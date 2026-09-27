@@ -113,3 +113,10 @@ export const unstyledButtonStyle = {
   '--background-activated': 'transparent',
   '--box-shadow': 'none',
 } as const
+
+// STYLE_GUIDE.md's "Table type": a dense data table sits one step below body
+// text — 14px cells, 12px secondary lines (the Camps Options table's sizes).
+// For a table built from IonItem rows (e.g. events/SourcesPage.tsx), whose
+// h2/p would otherwise take full list-item sizes.
+export const tableNameStyle = { fontSize: 14 } as const
+export const tableDetailStyle = { fontSize: 12 } as const
