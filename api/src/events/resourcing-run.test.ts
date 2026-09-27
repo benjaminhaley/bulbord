@@ -180,6 +180,27 @@ describe('getLatestEventSourcingRun', () => {
   })
 })
 
+describe('reviewWindowStart', () => {
+  it('is the latest run start when there were no rechecks', async () => {
+    const { reviewWindowStart } = await import('./resourcing.js')
+    const run = new Date('2026-09-30T12:00:00Z')
+    expect(reviewWindowStart(run, [])).toEqual(run)
+  })
+
+  it('reaches back to the earliest recheck before the run', async () => {
+    const { reviewWindowStart } = await import('./resourcing.js')
+    const run = new Date('2026-09-30T12:00:00Z')
+    const early = new Date('2026-09-27T15:34:00Z')
+    expect(reviewWindowStart(run, [new Date('2026-09-28T10:00:00Z'), early])).toEqual(early)
+  })
+
+  it('ignores a recheck made after the run started', async () => {
+    const { reviewWindowStart } = await import('./resourcing.js')
+    const run = new Date('2026-09-30T12:00:00Z')
+    expect(reviewWindowStart(run, [new Date('2026-10-01T09:00:00Z')])).toEqual(run)
+  })
+})
+
 describe('resourceEventSource', () => {
   beforeEach(() => {
     ingestEventsMock.mockReset()
@@ -205,7 +226,9 @@ describe('resourceEventSource', () => {
     expect(result).toEqual({ sourceId: 'source-1', name: 'Merlo Library', added: 2, skipped: 1 })
     expect(updateCalls).toHaveLength(1)
     const logRows = insertedRows.filter((r) => r.table === eventsLog).map((r) => r.row)
-    expect(logRows).toEqual([{ actor: 'admin-1', action: 'event_source_rechecked', metadata: result }])
+    expect(logRows).toEqual([
+      { actor: 'admin-1', action: 'event_source_rechecked', metadata: { ...result, startedAt: expect.any(String) } },
+    ])
   })
 
   it('reports an ingest failure on the result instead of throwing', async () => {

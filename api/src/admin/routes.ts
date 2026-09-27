@@ -25,6 +25,7 @@ import {
 } from '../events/pipeline-review-service.js'
 import {
   getLatestEventSourcingRun,
+  getPipelineReviewWindowStart,
   getSourcesLastCheckedAt,
   resourceActiveEventSources,
   type ResourceReport,
@@ -303,9 +304,9 @@ export async function adminRoutes(app: FastifyInstance) {
     if (scope === 'all') {
       ;({ kept, rejected } = await getPipelineReviewCandidates({ includeReviewed }))
     } else {
-      const lastRun = await getLatestEventSourcingRun()
-      if (lastRun) {
-        runStartedAt = lastRun.report.startedAt
+      const windowStart = await getPipelineReviewWindowStart()
+      if (windowStart) {
+        runStartedAt = windowStart
         ;({ kept, rejected } = await getPipelineReviewCandidatesSince(runStartedAt))
       } else {
         // No run has ever been logged — nothing to scope to yet, so fall

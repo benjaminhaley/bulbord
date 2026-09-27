@@ -290,8 +290,10 @@ export async function resourceEventSource(sourceId: string, actor: string): Prom
     .where(and(eq(eventSources.id, sourceId), isNull(eventSources.deletedAt)))
     .limit(1)
   if (!source) return null
+  const startedAt = new Date()
   const result = await resourceOneSource(source, actor)
-  await db.insert(eventsLog).values({ actor, action: 'event_source_rechecked', metadata: { ...result } })
+  // startedAt feeds getPipelineReviewWindowStart() below.
+  await db.insert(eventsLog).values({ actor, action: 'event_source_rechecked', metadata: { ...result, startedAt: startedAt.toISOString() } })
   return result
 }
 
@@ -398,4 +400,53 @@ export async function getLatestEventSourcingRun(): Promise<EventSourcingRunSumma
       lastCheckedAt: metadata.lastCheckedAt ? new Date(metadata.lastCheckedAt) : null,
     },
   }
+}
+
+// A recheck log written before startedAt was recorded: the log row lands
+// just after the recheck finishes, and one source takes well under this.
+const LEGACY_RECHECK_LOOKBACK_MS = 15 * 60 * 1000
+
+// Where Pipeline Review's default view (and the weekly digest) starts: the
+// latest full run's start, pulled earlier to cover any single-source
+// recheck done since the run before it. Without this, a recheck's
+// unreviewed output would silently drop out of the default view the moment
+// the next weekly run happened. Null when no full run has ever happened.
+export async function getPipelineReviewWindowStart(): Promise<Date | null> {
+  const runs = await db
+    .select({ createdAt: eventsLog.createdAt, metadata: eventsLog.metadata })
+    .from(eventsLog)
+    .where(eq(eventsLog.action, 'event_sourcing_run'))
+    .orderBy(desc(eventsLog.createdAt))
+    .limit(2)
+  const latest = runs[0]
+  if (!latest) return null
+  const latestStartedAt = startedAtOf(latest)
+  const previousRunEndedAt = runs[1]?.createdAt ?? null
+
+  const rechecks = await db
+    .select({ createdAt: eventsLog.createdAt, metadata: eventsLog.metadata })
+    .from(eventsLog)
+    .where(
+      and(
+        eq(eventsLog.action, 'event_source_rechecked'),
+        previousRunEndedAt ? sql`${eventsLog.createdAt} > ${previousRunEndedAt}` : sql`true`,
+      ),
+    )
+  return reviewWindowStart(
+    latestStartedAt,
+    rechecks.map((r) => {
+      const started = (r.metadata as { startedAt?: string }).startedAt
+      return started ? new Date(started) : new Date(new Date(r.createdAt).getTime() - LEGACY_RECHECK_LOOKBACK_MS)
+    }),
+  )
+}
+
+function startedAtOf(row: { createdAt: Date; metadata: unknown }): Date {
+  const started = (row.metadata as { startedAt?: string }).startedAt
+  return started ? new Date(started) : row.createdAt
+}
+
+// Pure core of the above, for unit tests.
+export function reviewWindowStart(latestRunStartedAt: Date, recheckStartedAts: Date[]): Date {
+  return recheckStartedAts.reduce((min, d) => (d < min ? d : min), latestRunStartedAt)
 }

@@ -713,7 +713,9 @@ export function PipelineReviewPage() {
         <IonItem lines="none" style={{ '--padding-start': 0, marginTop: 16 } as React.CSSProperties}>
           <IonLabel className="ion-text-wrap">
             {scope === 'latest_run' ? (
-              <>Reviewing the latest run{runStartedAt ? ` — ${new Date(runStartedAt).toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}` : ''}</>
+              // The window starts at the latest weekly run, or earlier to
+              // cover single-source rechecks since the run before it.
+              <>{runStartedAt ? `Reviewing everything added since ${new Date(runStartedAt).toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}` : 'Reviewing the latest run'}</>
             ) : (
               'Reviewing every unreviewed candidate, all time'
             )}

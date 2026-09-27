@@ -123,6 +123,7 @@ export function SourceDetailPage() {
   const [toast, setToast] = useState<string | null>(null)
   const [rechecking, setRechecking] = useState(false)
   const [recheckMessage, setRecheckMessage] = useState<string | null>(null)
+  const [recheckAdded, setRecheckAdded] = useState(0)
 
   useEffect(() => {
     setSource(null)
@@ -138,9 +139,11 @@ export function SourceDetailPage() {
     if (!source) return
     setRechecking(true)
     setRecheckMessage(null)
+    setRecheckAdded(0)
     try {
       const result = await recheckEventSource(source.id)
       setRecheckMessage(describeRecheck(result))
+      setRecheckAdded(result.added)
       setSource(await fetchEventSource(source.id))
     } catch (err) {
       setRecheckMessage(err instanceof Error ? err.message : 'Could not recheck this source')
@@ -220,7 +223,15 @@ export function SourceDetailPage() {
             <IonButton expand="block" fill="outline" disabled={rechecking} onClick={recheck}>
               {rechecking ? 'Rechecking… (up to a minute)' : 'Recheck this source now'}
             </IonButton>
-            {recheckMessage && <p style={{ marginTop: 4 }}>{recheckMessage}</p>}
+            {recheckMessage && <p style={{ marginTop: 4, marginBottom: 0 }}>{recheckMessage}</p>}
+            {/* New events went through the same 9 checks as a weekly run and
+                land in Pipeline Review's default view (see resourcing.ts's
+                getPipelineReviewWindowStart). */}
+            {recheckAdded > 0 && (
+              <IonButton fill="clear" size="small" routerLink="/admin/pipeline-review" style={{ marginInline: 0 }}>
+                Review them in Pipeline Review
+              </IonButton>
+            )}
             <IonButton expand="block" fill="outline" color={source.is_active ? 'medium' : 'success'} disabled={togglingActive} onClick={toggleActive}>
               {togglingActive ? <IonSpinner name="dots" /> : source.is_active ? 'Deactivate this source' : 'Activate this source'}
             </IonButton>

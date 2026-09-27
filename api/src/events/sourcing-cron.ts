@@ -3,7 +3,7 @@ import 'dotenv/config'
 import { db } from '../db/client.js'
 import { eventsLog } from '../db/schema.js'
 import { sendPipelineReviewEmailForRun } from './pipeline-review-email.js'
-import { resourceActiveEventSources } from './resourcing.js'
+import { getPipelineReviewWindowStart, resourceActiveEventSources } from './resourcing.js'
 
 // Invoked weekly by a dedicated Railway cron service (feedback #131: "Should
 // be a weekly job"; retimed to Wednesday morning by feedback #138), same
@@ -34,7 +34,10 @@ async function main() {
     }
   }
 
-  const { recipientCount } = await sendPipelineReviewEmailForRun(runStartedAt)
+  // Widened past this run's own start to cover any single-source rechecks
+  // since the previous run, so the email matches Pipeline Review's page.
+  const windowStart = (await getPipelineReviewWindowStart()) ?? runStartedAt
+  const { recipientCount } = await sendPipelineReviewEmailForRun(windowStart)
   console.log(`Pipeline review email sent to ${recipientCount} admin(s).`)
   await db.insert(eventsLog).values({
     actor: 'system:event-sourcing-cron',

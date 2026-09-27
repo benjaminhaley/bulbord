@@ -11,7 +11,7 @@ import { userRoles, users } from '../db/schema.js'
 import { requireEnv } from '../env.js'
 import { sendEmail } from '../newsletter/mailer.js'
 import { createNotification } from '../notifications/service.js'
-import { getLatestEventSourcingRun } from './resourcing.js'
+import { getLatestEventSourcingRun, getPipelineReviewWindowStart } from './resourcing.js'
 import { getPipelineReviewCandidatesSince } from './pipeline-review-service.js'
 import { pipelineReviewSubject, renderPipelineReviewHtml } from './pipeline-review-template.js'
 
@@ -68,9 +68,9 @@ export async function sendPipelineReviewEmailForRun(runStartedAt: Date): Promise
 // mutated, no notification created, so a preview still can't be mistaken
 // for the real thing landing in the review page's own history.
 export async function sendTestPipelineReviewEmail(recipient: { name: string; email: string }): Promise<void> {
-  const lastRun = await getLatestEventSourcingRun()
+  const [lastRun, windowStart] = await Promise.all([getLatestEventSourcingRun(), getPipelineReviewWindowStart()])
   // No run has ever happened yet (a fresh install) — nothing to preview.
-  const since = lastRun?.report.startedAt ?? new Date()
+  const since = windowStart ?? new Date()
   const { kept, rejected } = await getPipelineReviewCandidatesSince(since)
   const webUrl = requireEnv('PUBLIC_WEB_URL')
   const runDate = lastRun?.ranAt ?? new Date()
