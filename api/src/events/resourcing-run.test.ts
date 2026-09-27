@@ -11,14 +11,24 @@ let latestLogRows: { actor: string; createdAt: Date; metadata: unknown }[] = []
 const insertedRows: { table: unknown; row: Record<string, unknown> }[] = []
 const updateCalls: { where: unknown }[] = []
 
+// A successful extraction that finds nothing new: a readable page and a
+// model reply of `[]` — enough for resourceOneSource to count the check as a
+// success (contentHash set) and hand ingestEvents() its (mocked) result.
+// `extractionWorks = false` simulates a model failure instead: no client.
+let extractionWorks = true
 vi.mock('../claude.js', () => ({
-  // Short-circuits extractCandidateEventsFromSource to `[]` without a real
-  // network/model call — this file only cares about how
-  // resourceActiveEventSources aggregates and persists ingestEvents' own
-  // (mocked) return values, not extraction itself (already covered by
-  // resourcing.test.ts).
-  getAnthropicClient: () => null,
+  getAnthropicClient: () =>
+    extractionWorks
+      ? { messages: { create: async () => ({ stop_reason: 'end_turn', content: [{ type: 'text', text: '[]' }] }) } }
+      : null,
   stripJsonCodeFence: (s: string) => s,
+}))
+vi.mock('../uploads/fetch-with-timeout.js', () => ({
+  fetchWithTimeout: async () => ({
+    ok: true,
+    headers: new Map([['content-type', 'text/html']]),
+    text: async () => '<body>Some events page</body>',
+  }),
 }))
 vi.mock('./ingest.js', () => ({ ingestEvents: ingestEventsMock }))
 vi.mock('../db/client.js', () => {
@@ -203,6 +213,7 @@ describe('reviewWindowStart', () => {
 
 describe('resourceEventSource', () => {
   beforeEach(() => {
+    extractionWorks = true
     ingestEventsMock.mockReset()
     sourceSelectCallCount = 0
     insertedRows.length = 0
@@ -233,6 +244,18 @@ describe('resourceEventSource', () => {
         metadata: { sourceId: 'source-1', name: 'Merlo Library', added: 2, skipped: 1, startedAt: result!.startedAt.toISOString() },
       },
     ])
+  })
+
+  it('treats a failed extraction as a failed check: error reported, last_checked_at untouched', async () => {
+    extractionWorks = false
+    sourceRows = [{ id: 'source-1', name: 'Merlo Library', url: 'https://example.com/1', notes: null }]
+    const { resourceEventSource } = await import('./resourcing.js')
+
+    const result = await resourceEventSource('source-1', 'admin-1')
+
+    expect(result).toMatchObject({ added: 0, skipped: 0, error: expect.stringContaining('extraction failed') })
+    expect(updateCalls).toHaveLength(0)
+    expect(ingestEventsMock).not.toHaveBeenCalled()
   })
 
   it('reports an ingest failure on the result instead of throwing', async () => {

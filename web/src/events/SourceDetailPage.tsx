@@ -106,6 +106,42 @@ function EditSourceForm({
   )
 }
 
+function SourceEventList({
+  title,
+  empty,
+  events,
+  marginBottom,
+}: {
+  title: string
+  empty: string
+  events: EventSourceDetail['events']
+  marginBottom?: number
+}) {
+  return (
+    <IonList inset style={marginBottom ? { marginBottom } : undefined}>
+      <IonListHeader>
+        <IonLabel>
+          {title} ({events.length})
+        </IonLabel>
+      </IonListHeader>
+      {events.length === 0 && (
+        <IonItem lines="none">
+          <IonLabel color="medium">{empty}</IonLabel>
+        </IonItem>
+      )}
+      {events.map((event) => (
+        <IonItem key={event.id} routerLink={`/events/${event.id}`}>
+          <IonLabel>
+            <h2>{event.title}</h2>
+            <IonNote>{formatDate(event.start_date)}</IonNote>
+          </IonLabel>
+          {event.status !== 'approved' && <IonBadge color="medium">{event.status}</IonBadge>}
+        </IonItem>
+      ))}
+    </IonList>
+  )
+}
+
 function describeRecheck(result: EventSourceRecheckResult): string {
   if (result.error) return `Recheck failed: ${result.error}`
   if (result.unreadable) return "Couldn't read the source page — it may be down or blocking us."
@@ -239,26 +275,9 @@ export function SourceDetailPage() {
             <IonButton expand="block" fill="outline" color={source.is_active ? 'medium' : 'success'} disabled={togglingActive} onClick={toggleActive}>
               {togglingActive ? <IonSpinner name="dots" /> : source.is_active ? 'Deactivate this source' : 'Activate this source'}
             </IonButton>
+            <SourceEventList title="Upcoming events from this source" empty="Nothing upcoming" events={source.events} />
             {/* 72px bottom margin clears the persistent share FAB (index.css's .share-fab). */}
-            <IonList inset style={{ marginBottom: 72 }}>
-              <IonListHeader>
-                <IonLabel>Upcoming events from this source ({source.events.length})</IonLabel>
-              </IonListHeader>
-              {source.events.length === 0 && (
-                <IonItem lines="none">
-                  <IonLabel color="medium">Nothing upcoming</IonLabel>
-                </IonItem>
-              )}
-              {source.events.map((event) => (
-                <IonItem key={event.id} routerLink={`/events/${event.id}`}>
-                  <IonLabel>
-                    <h2>{event.title}</h2>
-                    <IonNote>{formatDate(event.start_date)}</IonNote>
-                  </IonLabel>
-                  {event.status !== 'approved' && <IonBadge color="medium">{event.status}</IonBadge>}
-                </IonItem>
-              ))}
-            </IonList>
+            <SourceEventList title="Past events from this source" empty="No past events" events={source.past_events} marginBottom={72} />
           </>
         )}
       </IonContent>

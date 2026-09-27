@@ -35,8 +35,27 @@ export function renderPipelineReviewHtml(options: {
   kept: KeptReviewItem[]
   rejected: RejectedReviewItem[]
   webUrl: string
+  // Sources whose check failed (resourcing.ts's getSourceFailuresSince) — a
+  // failed source produces no candidates, so without this it's invisible.
+  sourceFailures?: { name: string; error: string; resolved: boolean }[]
 }): string {
   const { runDate, kept, rejected, webUrl } = options
+  const sourceFailures = options.sourceFailures ?? []
+  const openFailures = sourceFailures.filter((f) => !f.resolved).length
+  const failuresRow =
+    sourceFailures.length === 0
+      ? ''
+      : `<tr>
+              <td style="padding:8px 24px 0;">
+                <p style="color:${openFailures > 0 ? '#b3261e' : '#111111'};font-size:15px;margin:0;"><strong>${sourceFailures.length}</strong> source${sourceFailures.length === 1 ? '' : 's'} failed to check${openFailures < sourceFailures.length ? ` (${sourceFailures.length - openFailures} since fixed)` : ''}</p>
+                ${exampleListHtml(
+                  sourceFailures.map(
+                    (f) =>
+                      `<strong>${escapeHtml(f.name)}</strong>${f.resolved ? ' (fixed since)' : ''} — ${escapeHtml(f.error.length > 200 ? `${f.error.slice(0, 200)}…` : f.error)}`,
+                  ),
+                )}
+              </td>
+            </tr>`
   const dateLabel = runDate.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric', timeZone: 'America/Chicago' })
   const relevanceRejected = rejected.filter((r) => r.rejectionType === 'relevance')
   const duplicateRejected = rejected.filter((r) => r.rejectionType === 'duplicate')
@@ -80,6 +99,7 @@ export function renderPipelineReviewHtml(options: {
                 <p style="color:#111111;font-size:16px;margin:0;">${introLine}</p>
               </td>
             </tr>
+            ${failuresRow}
             <tr>
               <td style="padding:8px 24px 0;">
                 <p style="color:#111111;font-size:15px;margin:0;"><strong>${kept.length}</strong> event${kept.length === 1 ? '' : 's'} added${heldBack > 0 ? ` (<strong>${heldBack}</strong> held back — a check failed)` : ''}</p>

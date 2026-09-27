@@ -396,6 +396,18 @@ async function throwOnError(response: Response, fallback: string): Promise<void>
   throw new Error(body?.error?.message ?? `${fallback}: ${response.status}`)
 }
 
+// A source whose check failed in the reviewed window (Ben, 2026-09-27: "be
+// sure the pipeline review notes any sources which had run failures").
+// `resolved` = a later successful check of that source has happened since.
+export interface PipelineSourceFailure {
+  source_id: string
+  name: string
+  error: string
+  at: string
+  via: 'run' | 'recheck'
+  resolved: boolean
+}
+
 // scope defaults to 'latest_run' — exactly what the digest email itself
 // describes (Ben: "each pipeline review should be fixed on just that
 // pipeline"), via the same startedAt scoping the email uses. 'all' is the
@@ -406,7 +418,12 @@ export async function fetchPipelineReview(
   scope: 'latest_run' | 'all' = 'latest_run',
   // One single-source recheck's output (the recheck notification's link).
   recheck: { sourceId: string; since: string } | null = null,
-): Promise<{ runStartedAt: string | null; kept: PipelineKeptCandidate[]; rejected: PipelineRejectedCandidate[] }> {
+): Promise<{
+  runStartedAt: string | null
+  sourceFailures: PipelineSourceFailure[]
+  kept: PipelineKeptCandidate[]
+  rejected: PipelineRejectedCandidate[]
+}> {
   const params = new URLSearchParams({ include_reviewed: String(includeReviewed) })
   if (recheck) {
     params.set('source_id', recheck.sourceId)
@@ -416,8 +433,15 @@ export async function fetchPipelineReview(
     headers: authHeaders(),
   })
   await throwOnError(response, 'Failed to load pipeline review')
-  const body = (await response.json()) as { data: { run_started_at: string | null; kept: PipelineKeptCandidate[]; rejected: PipelineRejectedCandidate[] } }
-  return { runStartedAt: body.data.run_started_at, kept: body.data.kept, rejected: body.data.rejected }
+  const body = (await response.json()) as {
+    data: {
+      run_started_at: string | null
+      source_failures: PipelineSourceFailure[]
+      kept: PipelineKeptCandidate[]
+      rejected: PipelineRejectedCandidate[]
+    }
+  }
+  return { runStartedAt: body.data.run_started_at, sourceFailures: body.data.source_failures, kept: body.data.kept, rejected: body.data.rejected }
 }
 
 async function postPipelineAction(path: string, body?: object): Promise<void> {

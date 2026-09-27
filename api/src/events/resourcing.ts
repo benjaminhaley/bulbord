@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto'
 
 import * as cheerio from 'cheerio'
-import { and, desc, eq, gt, isNull, sql } from 'drizzle-orm'
+import { and, desc, eq, gt, gte, isNull, ne, sql } from 'drizzle-orm'
 
 import { getAnthropicClient, stripJsonCodeFence } from '../claude.js'
 import { db } from '../db/client.js'
@@ -254,6 +254,22 @@ async function resourceOneSource(
       source.notes,
       source.lastContentHash,
     )
+    // contentHash is set only when extraction genuinely succeeded (page read
+    // and parsed, or unchanged since the last success). Anything else — page
+    // unreadable, model error/refusal, malformed output, no API key — is a
+    // failed check: reported as an error, and last_checked_at is left alone
+    // so the Sources page's Checked column only counts real successes
+    // (Ben, 2026-09-27).
+    if (contentHash === null) {
+      return {
+        sourceId: source.id,
+        name: source.name,
+        added: 0,
+        skipped: 0,
+        error: pageUnreadable ? "Couldn't read the source page" : 'Event extraction failed (model error or unreadable output)',
+        ...(pageUnreadable ? { unreadable: true } : {}),
+      }
+    }
     const sampledCandidates = candidates.slice(0, budget.remaining)
     budget.remaining -= sampledCandidates.length
     const { inserted, skipped } = await ingestEvents(sampledCandidates, {
@@ -262,17 +278,13 @@ async function resourceOneSource(
       filteredOut: rejectedCandidates,
       sourceText: pageText ?? undefined,
     })
-    await db
-      .update(eventSources)
-      .set({ lastCheckedAt: new Date(), ...(contentHash ? { lastContentHash: contentHash } : {}) })
-      .where(eq(eventSources.id, source.id))
+    await db.update(eventSources).set({ lastCheckedAt: new Date(), lastContentHash: contentHash }).where(eq(eventSources.id, source.id))
     return {
       sourceId: source.id,
       name: source.name,
       added: inserted,
       skipped,
-      ...(pageUnreadable ? { unreadable: true } : {}),
-      ...(contentHash !== null && contentHash === source.lastContentHash ? { unchanged: true } : {}),
+      ...(contentHash === source.lastContentHash ? { unchanged: true } : {}),
     }
   } catch (err) {
     return { sourceId: source.id, name: source.name, added: 0, skipped: 0, error: err instanceof Error ? err.message : 'Unknown error' }
@@ -294,7 +306,10 @@ export async function resourceEventSource(
     .limit(1)
   if (!source) return null
   const startedAt = new Date()
-  const result = await resourceOneSource(source, actor)
+  const result: SourceResourceResult =
+    source.type === 'email'
+      ? { sourceId: source.id, name: source.name, added: 0, skipped: 0, error: 'Email sources are fed by inbound email and can’t be rechecked' }
+      : await resourceOneSource(source, actor)
   // startedAt feeds getPipelineReviewWindowStart() below.
   await db.insert(eventsLog).values({ actor, action: 'event_source_rechecked', metadata: { ...result, startedAt: startedAt.toISOString() } })
   return { ...result, startedAt }
@@ -310,7 +325,9 @@ export async function resourceActiveEventSources(actor: string, sample: Resource
   const allSources = await db
     .select()
     .from(eventSources)
-    .where(and(eq(eventSources.isActive, true), isNull(eventSources.deletedAt)))
+    // Email sources are fed by inbound mail (email-ingest.ts); there's no
+    // page to scrape, so checking them would only ever "fail".
+    .where(and(eq(eventSources.isActive, true), isNull(eventSources.deletedAt), ne(eventSources.type, 'email')))
   const sources = sample.maxSources ? allSources.slice(0, sample.maxSources) : allSources
 
   const results: SourceResourceResult[] = new Array(sources.length)
@@ -454,4 +471,53 @@ function startedAtOf(row: { createdAt: Date; metadata: unknown }): Date {
 // Pure core of the above, for unit tests.
 export function reviewWindowStart(latestRunStartedAt: Date, recheckStartedAts: Date[]): Date {
   return recheckStartedAts.reduce((min, d) => (d < min ? d : min), latestRunStartedAt)
+}
+
+export interface SourceFailure {
+  sourceId: string
+  name: string
+  error: string
+  at: Date
+  via: 'run' | 'recheck'
+  // A later successful check of the same source (last_checked_at only moves
+  // on success) means this failure has since been fixed.
+  resolved: boolean
+}
+
+// Every source whose check failed since `since` — from full sourcing runs'
+// per-source results and from single-source rechecks — for Pipeline Review
+// (Ben, 2026-09-27: "be sure the pipeline review notes any sources which had
+// run failures"). Newest first; optionally narrowed to one source.
+export async function getSourceFailuresSince(since: Date, sourceId?: string): Promise<SourceFailure[]> {
+  const rows = await db
+    .select({ action: eventsLog.action, createdAt: eventsLog.createdAt, metadata: eventsLog.metadata })
+    .from(eventsLog)
+    .where(and(sql`${eventsLog.action} in ('event_sourcing_run', 'event_source_rechecked')`, gte(eventsLog.createdAt, since)))
+    .orderBy(desc(eventsLog.createdAt))
+
+  const failures: Omit<SourceFailure, 'resolved'>[] = []
+  for (const row of rows) {
+    const results: SourceResourceResult[] =
+      row.action === 'event_sourcing_run'
+        ? ((row.metadata as { results?: SourceResourceResult[] }).results ?? [])
+        : [row.metadata as SourceResourceResult]
+    for (const r of results) {
+      if (!r.error || (sourceId && r.sourceId !== sourceId)) continue
+      failures.push({
+        sourceId: r.sourceId,
+        name: r.name,
+        error: r.error,
+        at: new Date(row.createdAt),
+        via: row.action === 'event_sourcing_run' ? 'run' : 'recheck',
+      })
+    }
+  }
+  if (failures.length === 0) return []
+
+  const checked = await db.select({ id: eventSources.id, lastCheckedAt: eventSources.lastCheckedAt }).from(eventSources)
+  const lastChecked = new Map(checked.map((c) => [c.id, c.lastCheckedAt]))
+  return failures.map((f) => {
+    const last = lastChecked.get(f.sourceId)
+    return { ...f, resolved: !!last && new Date(last) > f.at }
+  })
 }

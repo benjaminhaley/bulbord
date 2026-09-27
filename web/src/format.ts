@@ -2,8 +2,13 @@
 // "Mon Day, Year" rendering of an ISO timestamp. Events has its own richer
 // formatWhen() (start_time/all_day-aware) in web/src/events/format.ts; this
 // is the plain one for everything else.
+// A bare "YYYY-MM-DD" is a calendar date, not an instant: `new Date()` would
+// read it as UTC midnight, which is the previous evening anywhere west of
+// UTC (2026-09-27: every Saturday French Market showed as Friday on the
+// source page). Parse it as local midnight instead.
 export function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
+  const date = /^\d{4}-\d{2}-\d{2}$/.test(iso) ? new Date(`${iso}T00:00:00`) : new Date(iso)
+  return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
 }
 
 // "Today at 4:57 PM" / "Yesterday" / "Aug 3, 2026" — for a "when did this

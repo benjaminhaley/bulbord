@@ -27,6 +27,7 @@ import {
 import {
   getLatestEventSourcingRun,
   getPipelineReviewWindowStart,
+  getSourceFailuresSince,
   getSourcesLastCheckedAt,
   resourceActiveEventSources,
   type ResourceReport,
@@ -326,9 +327,23 @@ export async function adminRoutes(app: FastifyInstance) {
       }
     }
 
+    // Sources whose check failed in the same window (or in this one recheck).
+    const failures = runStartedAt
+      ? await getSourceFailuresSince(runStartedAt, source_id && recheckSince ? source_id : undefined)
+      : []
+
     return reply.send({
       data: {
         run_started_at: runStartedAt,
+        source_failures: failures.map((f) => ({
+          source_id: f.sourceId,
+          name: f.name,
+          // Raw DB errors run to thousands of characters (the full SQL).
+          error: f.error.length > 240 ? `${f.error.slice(0, 240)}…` : f.error,
+          at: f.at,
+          via: f.via,
+          resolved: f.resolved,
+        })),
         kept: kept.map((k) => ({
           id: k.id,
           title: k.title,

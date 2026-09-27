@@ -158,4 +158,25 @@ describe('renderPipelineReviewHtml', () => {
     expect(html).toContain('<strong>0</strong> events added')
     expect(html).toContain('<strong>0</strong> candidates rejected (0 not relevant, 0 duplicate)')
   })
+
+  it('lists sources that failed to check, noting ones fixed since', () => {
+    const html = renderPipelineReviewHtml({
+      runDate: new Date('2026-09-23T12:00:00Z'),
+      kept: [],
+      rejected: [],
+      webUrl: 'https://example.com',
+      sourceFailures: [
+        { name: 'Merlo Library', error: 'Failed query: insert into "events"', resolved: true },
+        { name: 'Nature Museum', error: "Couldn't read the source page", resolved: false },
+      ],
+    })
+    expect(html).toContain('<strong>2</strong> sources failed to check (1 since fixed)')
+    expect(html).toContain('<strong>Merlo Library</strong> (fixed since)')
+    expect(html).toContain("<strong>Nature Museum</strong> — Couldn't read the source page")
+  })
+
+  it('omits the failures section when every source checked fine', () => {
+    const html = renderPipelineReviewHtml({ runDate: new Date('2026-09-23T12:00:00Z'), kept: [], rejected: [], webUrl: 'https://example.com' })
+    expect(html).not.toContain('failed to check')
+  })
 })

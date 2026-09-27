@@ -885,11 +885,10 @@ export async function eventsRoutes(app: FastifyInstance) {
     const { id } = request.params as { id: string }
     // last_event_added_at/is_stale (below) look at every event ever ingested
     // from this source, all statuses/dates — that's what tells you whether
-    // ingestion has gone quiet. The enumerated event list is deliberately
-    // narrower: next-upcoming-first, past events excluded, since it's meant
-    // to answer "what's coming up from this source," not "what's its history."
+    // ingestion has gone quiet. The event list is split into upcoming and
+    // past below.
+    const today = todayInChicago()
     const allSourceConditions = and(eq(events.sourceId, id), isNull(events.deletedAt))
-    const upcomingSourceConditions = and(allSourceConditions, gte(events.startDate, todayInChicago()))
 
     const [[source], sourceEvents, [{ lastEventAddedAt }]] = await Promise.all([
       db
@@ -900,7 +899,7 @@ export async function eventsRoutes(app: FastifyInstance) {
       db
         .select({ id: events.id, title: events.title, startDate: events.startDate, status: events.status })
         .from(events)
-        .where(upcomingSourceConditions)
+        .where(allSourceConditions)
         .orderBy(asc(events.startDate)),
       // The postgres.js driver returns a raw, untyped `sql` aggregate as a
       // string rather than a Date, unlike drizzle-mapped table columns.
@@ -912,7 +911,7 @@ export async function eventsRoutes(app: FastifyInstance) {
     }
 
     // sourceEvents is already upcoming-only (query above), so just check status.
-    const eventCount = sourceEvents.filter((e) => e.status === 'approved').length
+    const eventCount = sourceEvents.filter((e) => e.status === 'approved' && e.startDate >= today).length
 
     return reply.send({
       data: {
@@ -926,7 +925,15 @@ export async function eventsRoutes(app: FastifyInstance) {
         last_event_added_at: lastEventAddedAt,
         is_stale: isSourceStale(lastEventAddedAt ? new Date(lastEventAddedAt) : null),
         event_count: eventCount,
-        events: sourceEvents.map((e) => ({ id: e.id, title: e.title, start_date: e.startDate, status: e.status })),
+        // Upcoming soonest-first, past most-recent-first (Ben, 2026-09-27:
+        // the source page should show both).
+        events: sourceEvents
+          .filter((e) => e.startDate >= today)
+          .map((e) => ({ id: e.id, title: e.title, start_date: e.startDate, status: e.status })),
+        past_events: sourceEvents
+          .filter((e) => e.startDate < today)
+          .reverse()
+          .map((e) => ({ id: e.id, title: e.title, start_date: e.startDate, status: e.status })),
       },
     })
   })

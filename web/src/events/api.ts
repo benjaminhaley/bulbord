@@ -117,9 +117,11 @@ export interface EventSourceDetail extends EventSource {
   last_checked_at: string | null
   last_event_added_at: string | null
   is_stale: boolean
-  // Every event ever ingested from this source, regardless of status/date —
-  // event_count (inherited above) is the approved+upcoming subset of these.
+  // Upcoming events from this source (any status), soonest first —
+  // event_count (inherited above) is the approved subset of these.
   events: SourceEvent[]
+  // Past events from this source (any status), most recent first.
+  past_events: SourceEvent[]
 }
 
 interface EventsResponse {

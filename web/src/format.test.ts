@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { formatRelativeDateTime, mapUrl, shortAddress } from './format'
+import { formatDate, formatRelativeDateTime, mapUrl, shortAddress } from './format'
 
 describe('formatRelativeDateTime', () => {
   const now = new Date('2026-08-03T22:00:00')
@@ -33,5 +33,17 @@ describe('mapUrl', () => {
     expect(mapUrl('3231 N Broadway, Chicago, IL 60657')).toBe(
       'https://www.google.com/maps/search/?api=1&query=3231%20N%20Broadway%2C%20Chicago%2C%20IL%2060657',
     )
+  })
+})
+
+describe('formatDate', () => {
+  // Web tests pin TZ=America/Chicago (vitest.config.ts), west of UTC — the
+  // exact case where reading "2026-10-03" as UTC midnight showed Oct 2.
+  it('renders a bare calendar date as that same date', () => {
+    expect(formatDate('2026-10-03')).toBe('Oct 3, 2026')
+  })
+
+  it('still renders a full timestamp in local time', () => {
+    expect(formatDate('2026-10-03T12:00:00Z')).toBe('Oct 3, 2026')
   })
 })

@@ -43,6 +43,7 @@ import {
   type PipelineChecks,
   type PipelineEditableFields,
   type PipelineKeptCandidate,
+  type PipelineSourceFailure,
   type PipelineRejectedCandidate,
 } from './api'
 
@@ -317,6 +318,34 @@ function noteField(value: string, onChange: (v: string) => void) {
   )
 }
 
+// Sources whose check failed in this window — shown above the candidates so
+// a failed source (which produced no candidates at all) can't go unnoticed.
+function SourceFailuresList({ failures }: { failures: PipelineSourceFailure[] }) {
+  const open = failures.filter((f) => !f.resolved).length
+  return (
+    <IonList>
+      <IonListHeader>
+        <IonLabel color={open > 0 ? 'danger' : 'medium'}>
+          Source failures ({failures.length}
+          {open < failures.length ? `, ${failures.length - open} since fixed` : ''})
+        </IonLabel>
+      </IonListHeader>
+      {failures.map((f) => (
+        <IonItem key={`${f.source_id}-${f.at}`} button routerLink={`/event-sources/${f.source_id}`}>
+          <IonLabel className="ion-text-wrap">
+            <h2>{f.name}</h2>
+            <p>
+              {f.via === 'run' ? 'Sourcing run' : 'Recheck'} · {formatRelativeDateTime(f.at)}
+              {f.resolved ? ' · fixed by a later successful check' : ''}
+            </p>
+            <p style={{ color: f.resolved ? undefined : 'var(--ion-color-danger)', wordBreak: 'break-word' }}>{f.error}</p>
+          </IonLabel>
+        </IonItem>
+      ))}
+    </IonList>
+  )
+}
+
 // Pipeline Review (feedback #138, 2026-09-06; extended to a real gate + full
 // checklist 2026-09-06 v2 after Ben's first live look): a candidate that
 // fails a check is held back until fixed or explicitly Approved — a clean
@@ -349,6 +378,7 @@ export function PipelineReviewPage() {
     })
   }, [location.pathname, location.search])
   const [runStartedAt, setRunStartedAt] = useState<string | null>(null)
+  const [sourceFailures, setSourceFailures] = useState<PipelineSourceFailure[]>([])
   const [kept, setKept] = useState<PipelineKeptCandidate[]>([])
   const [rejected, setRejected] = useState<PipelineRejectedCandidate[]>([])
   const [loading, setLoading] = useState(true)
@@ -363,6 +393,7 @@ export function PipelineReviewPage() {
     setLoading(true)
     fetchPipelineReview(true, scope, recheck)
       .then((data) => {
+        setSourceFailures(data.sourceFailures)
         setKept(data.kept)
         setRejected(data.rejected)
         setRunStartedAt(data.runStartedAt)
@@ -767,6 +798,7 @@ export function PipelineReviewPage() {
         {!loading && !error && (
           <>
             <hr style={sectionDividerStyle} />
+            {sourceFailures.length > 0 && <SourceFailuresList failures={sourceFailures} />}
             <IonAccordionGroup multiple value={['needs-review']}>
               <IonAccordion value="needs-review">
                 <IonItem slot="header">

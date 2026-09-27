@@ -11,7 +11,7 @@ import { userRoles, users } from '../db/schema.js'
 import { requireEnv } from '../env.js'
 import { sendEmail } from '../newsletter/mailer.js'
 import { createNotification } from '../notifications/service.js'
-import { getLatestEventSourcingRun, getPipelineReviewWindowStart } from './resourcing.js'
+import { getLatestEventSourcingRun, getPipelineReviewWindowStart, getSourceFailuresSince } from './resourcing.js'
 import { getPipelineReviewCandidatesSince } from './pipeline-review-service.js'
 import { pipelineReviewSubject, renderPipelineReviewHtml } from './pipeline-review-template.js'
 
@@ -29,14 +29,15 @@ async function getAdminRecipients(): Promise<{ id: string; name: string; email: 
 // hardcoded to Ben, so a future delegated/automated approver is covered
 // without a schema change (CLAUDE.md's Product shape).
 export async function sendPipelineReviewEmailForRun(runStartedAt: Date): Promise<{ recipientCount: number }> {
-  const [recipients, { kept, rejected }] = await Promise.all([
+  const [recipients, { kept, rejected }, sourceFailures] = await Promise.all([
     getAdminRecipients(),
     getPipelineReviewCandidatesSince(runStartedAt),
+    getSourceFailuresSince(runStartedAt),
   ])
 
   const webUrl = requireEnv('PUBLIC_WEB_URL')
   const runDate = new Date()
-  const html = renderPipelineReviewHtml({ runDate, kept, rejected, webUrl })
+  const html = renderPipelineReviewHtml({ runDate, kept, rejected, webUrl, sourceFailures })
   const subject = pipelineReviewSubject(runDate, kept.length, rejected.length)
   const message = `${kept.length} event${kept.length === 1 ? '' : 's'} added, ${rejected.length} rejected — ready to review`
 
@@ -71,9 +72,9 @@ export async function sendTestPipelineReviewEmail(recipient: { name: string; ema
   const [lastRun, windowStart] = await Promise.all([getLatestEventSourcingRun(), getPipelineReviewWindowStart()])
   // No run has ever happened yet (a fresh install) — nothing to preview.
   const since = windowStart ?? new Date()
-  const { kept, rejected } = await getPipelineReviewCandidatesSince(since)
+  const [{ kept, rejected }, sourceFailures] = await Promise.all([getPipelineReviewCandidatesSince(since), getSourceFailuresSince(since)])
   const webUrl = requireEnv('PUBLIC_WEB_URL')
   const runDate = lastRun?.ranAt ?? new Date()
-  const html = renderPipelineReviewHtml({ runDate, kept, rejected, webUrl })
+  const html = renderPipelineReviewHtml({ runDate, kept, rejected, webUrl, sourceFailures })
   await sendEmail(recipient.email, pipelineReviewSubject(runDate, kept.length, rejected.length, '[Test] '), html)
 }
