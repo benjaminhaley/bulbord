@@ -256,7 +256,9 @@ export function SourcesPage() {
             source" button brings it back. */}
         {summary && summary.deactivated.length > 0 && (
           <IonAccordionGroup>
-            <IonAccordion value="deactivated">
+            {/* Chevron on the start side so the header's counts line up with
+                the table's columns instead of being pushed left by it. */}
+            <IonAccordion value="deactivated" toggleIconSlot="start">
               <IonItem slot="header">
                 <IonLabel className="ion-text-wrap">
                   <h2 style={tableNameStyle}>Deactivated ({summary.deactivated.length})</h2>
