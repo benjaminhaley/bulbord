@@ -26,6 +26,11 @@ export const eventSources = pgTable('event_sources', {
   // only robust fix is to not re-run extraction at all when nothing on
   // the page has changed.
   lastContentHash: text('last_content_hash'),
+  // Always fetch this source through a real headless browser
+  // (uploads/render-page.ts) — for pages that have some static text but load
+  // their events with JavaScript. Otherwise the browser is only a fallback
+  // for a failed or near-empty plain fetch.
+  renderJs: boolean('render_js').notNull().default(false),
   notes: text('notes'),
   ...timestamps,
 })

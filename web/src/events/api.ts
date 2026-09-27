@@ -114,6 +114,8 @@ interface SourceEvent {
 export interface EventSourceDetail extends EventSource {
   notes: string | null
   is_active: boolean
+  // Always fetch through a headless browser (JavaScript-built pages).
+  render_js: boolean
   last_checked_at: string | null
   last_event_added_at: string | null
   is_stale: boolean
@@ -594,6 +596,7 @@ export interface EventSourceUpdateInput {
   type?: string
   notes?: string | null
   is_active?: boolean
+  render_js?: boolean
 }
 
 // Recheck one source on demand — POST /event-sources/:id/recheck. Runs the

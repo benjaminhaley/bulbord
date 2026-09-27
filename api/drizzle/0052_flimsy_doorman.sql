@@ -1,0 +1,1 @@
+ALTER TABLE "event_sources" ADD COLUMN "render_js" boolean DEFAULT false NOT NULL;

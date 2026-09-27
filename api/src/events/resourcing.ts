@@ -8,6 +8,7 @@ import { db } from '../db/client.js'
 import { todayInChicago } from '../dates.js'
 import { eventSources, eventsLog } from '../db/schema.js'
 import { fetchWithTimeout } from '../uploads/fetch-with-timeout.js'
+import { renderPageHtml } from '../uploads/render-page.js'
 import { filterFamilyRelevantCandidates } from './candidate-validation.js'
 import { AUDIENCE_RELEVANCE_RULES } from './extraction-filters.js'
 import { ingestEvents, type CandidateEvent } from './ingest.js'
@@ -107,21 +108,35 @@ function hashPageText(pageText: string): string {
 // cheerio-strip logic. Returns null on any failure (unreachable page,
 // non-HTML response, empty body) — same best-effort posture as everything
 // else in this file.
-export async function fetchPageText(sourceUrl: string): Promise<string | null> {
-  const response = await fetchWithTimeout(sourceUrl, FETCH_TIMEOUT_MS)
-  if (!response || !response.ok) return null
-  const contentType = response.headers.get('content-type') ?? ''
-  if (!contentType.includes('html')) return null
+// Below this much visible text, a page is almost certainly a JavaScript
+// shell (or an error page) rather than real content.
+const MIN_STATIC_TEXT_CHARS = 500
 
-  try {
-    const html = await response.text()
-    const $ = cheerio.load(html)
-    $('script, style, nav, footer, noscript').remove()
-    const pageText = $('body').text().replace(/\s+/g, ' ').trim().slice(0, MAX_PAGE_TEXT_CHARS)
-    return pageText || null
-  } catch {
-    return null
+function visibleText(html: string): string {
+  const $ = cheerio.load(html)
+  $('script, style, nav, footer, noscript').remove()
+  return $('body').text().replace(/\s+/g, ' ').trim().slice(0, MAX_PAGE_TEXT_CHARS)
+}
+
+// A page's visible text: a plain fetch first, falling back to a real headless
+// browser (uploads/render-page.ts) when that fails or comes back nearly empty
+// — or always, for a source flagged `render_js` whose events are loaded by
+// JavaScript even though the static page has some text (e.g. Chicago Kids).
+export async function fetchPageText(sourceUrl: string, options: { alwaysRender?: boolean } = {}): Promise<string | null> {
+  let staticText: string | null = null
+  const response = await fetchWithTimeout(sourceUrl, FETCH_TIMEOUT_MS)
+  if (response?.ok && (response.headers.get('content-type') ?? '').includes('html')) {
+    try {
+      staticText = visibleText(await response.text()) || null
+    } catch {
+      staticText = null
+    }
   }
+  if (!options.alwaysRender && staticText && staticText.length >= MIN_STATIC_TEXT_CHARS) return staticText
+
+  const renderedHtml = await renderPageHtml(sourceUrl)
+  const renderedText = renderedHtml ? visibleText(renderedHtml) : ''
+  return renderedText.length > (staticText?.length ?? 0) ? renderedText : staticText
 }
 
 // Fetches a known source's page and asks Claude to pull out any real,
@@ -134,11 +149,12 @@ export async function extractCandidateEventsFromSource(
   sourceUrl: string,
   notes: string | null,
   previousContentHash: string | null = null,
+  alwaysRender = false,
 ): Promise<ExtractionResult> {
   const anthropic = getAnthropicClient()
   if (!anthropic) return { candidates: [], rejectedCandidates: [], contentHash: null, pageText: null }
 
-  const pageText = await fetchPageText(sourceUrl)
+  const pageText = await fetchPageText(sourceUrl, { alwaysRender })
   if (!pageText) return { candidates: [], rejectedCandidates: [], contentHash: null, pageText: null, pageUnreadable: true }
 
   try {
@@ -253,6 +269,7 @@ async function resourceOneSource(
       source.url,
       source.notes,
       source.lastContentHash,
+      source.renderJs,
     )
     // contentHash is set only when extraction genuinely succeeded (page read
     // and parsed, or unchanged since the last success). Anything else — page

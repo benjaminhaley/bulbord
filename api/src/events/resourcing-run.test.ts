@@ -23,6 +23,9 @@ vi.mock('../claude.js', () => ({
       : null,
   stripJsonCodeFence: (s: string) => s,
 }))
+// The fake page is short, which would otherwise trigger the real headless
+// browser fallback (uploads/render-page.ts).
+vi.mock('../uploads/render-page.js', () => ({ renderPageHtml: async () => null }))
 vi.mock('../uploads/fetch-with-timeout.js', () => ({
   fetchWithTimeout: async () => ({
     ok: true,

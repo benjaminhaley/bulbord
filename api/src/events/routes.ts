@@ -678,9 +678,7 @@ export async function eventsRoutes(app: FastifyInstance) {
   // past and upcoming approved-event counts, plus a "manual" row for events
   // with no source. `totals` is counted independently of the per-source
   // join, so the page can show the rows genuinely add up to every event.
-  // Includes inactive/deleted sources only when they still have events,
-  // so nothing drops out of the sum. `deactivated` lists every inactive
-  // (non-deleted) source separately so it can be reactivated.
+  // `domains` holds active sources only; `deactivated` holds the rest.
   app.get('/event-sources/summary', { preHandler: requireRole('admin') }, async (_request, reply) => {
     const today = todayInChicago()
     const pastExpr = sql<number>`count(${events.id}) filter (where ${events.startDate} < ${today})::int`
@@ -705,10 +703,14 @@ export async function eventsRoutes(app: FastifyInstance) {
       db.select({ pastCount: pastExpr, futureCount: futureExpr }).from(events).where(and(liveEvent, isNull(events.sourceId))),
       db.select({ pastCount: pastExpr, futureCount: futureExpr }).from(events).where(liveEvent),
     ])
-    const shown = sourceRows.filter((r) => (r.isActive && !r.isDeleted) || r.pastCount + r.futureCount > 0)
-    // Listed explicitly (with a Reactivate button) since a deactivated source
-    // with no events otherwise doesn't appear anywhere on the page.
-    const deactivated = sourceRows.filter((r) => !r.isActive && !r.isDeleted).sort((a, b) => a.name.localeCompare(b.name))
+    // Active sources make up the main table; every other source that's
+    // either still around (deactivated) or still has events (deleted) goes
+    // in the Deactivated group, so each source shows once and the rows
+    // still add up to `totals`.
+    const shown = sourceRows.filter((r) => r.isActive && !r.isDeleted)
+    const deactivated = sourceRows
+      .filter((r) => !(r.isActive && !r.isDeleted) && (!r.isDeleted || r.pastCount + r.futureCount > 0))
+      .sort((a, b) => a.name.localeCompare(b.name))
     return reply.send({
       data: {
         domains: groupSourcesByDomain(shown).map((group) => ({
@@ -824,7 +826,7 @@ export async function eventsRoutes(app: FastifyInstance) {
 
   app.patch('/event-sources/:id', { preHandler: requireRole('admin') }, async (request, reply) => {
     const { id } = request.params as { id: string }
-    const body = request.body as { name?: string; url?: string; type?: string; notes?: string | null; is_active?: boolean }
+    const body = request.body as { name?: string; url?: string; type?: string; notes?: string | null; is_active?: boolean; render_js?: boolean }
 
     const updates: Partial<typeof eventSources.$inferInsert> = {}
     if (body.name !== undefined) {
@@ -846,6 +848,7 @@ export async function eventsRoutes(app: FastifyInstance) {
     }
     if (body.notes !== undefined) updates.notes = body.notes?.trim() || null
     if (body.is_active !== undefined) updates.isActive = body.is_active
+    if (body.render_js !== undefined) updates.renderJs = body.render_js
 
     if (Object.keys(updates).length === 0) {
       return reply.code(400).send({ error: { message: 'No fields to update' } })
@@ -921,6 +924,7 @@ export async function eventsRoutes(app: FastifyInstance) {
         type: source.type,
         notes: source.notes,
         is_active: source.isActive,
+        render_js: source.renderJs,
         last_checked_at: source.lastCheckedAt,
         last_event_added_at: lastEventAddedAt,
         is_stale: isSourceStale(lastEventAddedAt ? new Date(lastEventAddedAt) : null),

@@ -11,6 +11,8 @@ vi.mock('@anthropic-ai/sdk', () => {
 })
 
 vi.mock('../uploads/fetch-with-timeout.js', () => ({ fetchWithTimeout: fetchWithTimeoutMock }))
+const renderPageHtmlMock = vi.fn()
+vi.mock('../uploads/render-page.js', () => ({ renderPageHtml: renderPageHtmlMock }))
 vi.mock('../db/client.js', () => ({ db: {} }))
 // ingest.js -> image-enrichment.js -> uploads/storage.js constructs a real S3
 // client from env vars at module load — irrelevant to this file's tests, but
@@ -197,5 +199,52 @@ describe('extractCandidateEventsFromSource', () => {
     const result = await extractCandidateEventsFromSource('https://example.com/events', null)
 
     expect(result).toEqual({ candidates: [], rejectedCandidates: [], contentHash: null, pageText: 'Event' })
+  })
+})
+
+// The headless-browser fallback (2026-09-27): a plain fetch is tried first,
+// and Chromium only when that fails, comes back nearly empty (a JavaScript
+// shell), or the source is flagged to always render.
+describe('fetchPageText browser fallback', () => {
+  const longText = 'Family Movie Night on Aug 10 at 6pm in the park. '.repeat(20)
+
+  beforeEach(() => {
+    fetchWithTimeoutMock.mockReset()
+    renderPageHtmlMock.mockReset()
+  })
+
+  it('uses the plain fetch when it has real content, without launching a browser', async () => {
+    fetchWithTimeoutMock.mockResolvedValue(htmlResponse(`<body>${longText}</body>`))
+    const { fetchPageText } = await import('./resourcing.js')
+    expect(await fetchPageText('https://example.com/events')).toContain('Family Movie Night')
+    expect(renderPageHtmlMock).not.toHaveBeenCalled()
+  })
+
+  it('renders a near-empty JavaScript shell with the browser', async () => {
+    fetchWithTimeoutMock.mockResolvedValue(htmlResponse('<body><div id="root"></div>Loading</body>'))
+    renderPageHtmlMock.mockResolvedValue(`<body>${longText}</body>`)
+    const { fetchPageText } = await import('./resourcing.js')
+    expect(await fetchPageText('https://example.com/events')).toContain('Family Movie Night')
+  })
+
+  it('renders when the plain fetch fails outright', async () => {
+    fetchWithTimeoutMock.mockResolvedValue(null)
+    renderPageHtmlMock.mockResolvedValue('<body>Volunteer Night, Oct 7</body>')
+    const { fetchPageText } = await import('./resourcing.js')
+    expect(await fetchPageText('https://example.com/events')).toBe('Volunteer Night, Oct 7')
+  })
+
+  it('always renders a source flagged render_js, keeping the richer text', async () => {
+    fetchWithTimeoutMock.mockResolvedValue(htmlResponse(`<body>${longText}</body>`))
+    renderPageHtmlMock.mockResolvedValue(`<body>${longText} Plus the calendar that JavaScript loaded.</body>`)
+    const { fetchPageText } = await import('./resourcing.js')
+    expect(await fetchPageText('https://example.com/events', { alwaysRender: true })).toContain('Plus the calendar')
+  })
+
+  it('keeps the plain text when the browser fails too', async () => {
+    fetchWithTimeoutMock.mockResolvedValue(htmlResponse('<body>Short page</body>'))
+    renderPageHtmlMock.mockResolvedValue(null)
+    const { fetchPageText } = await import('./resourcing.js')
+    expect(await fetchPageText('https://example.com/events')).toBe('Short page')
   })
 })

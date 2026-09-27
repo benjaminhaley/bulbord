@@ -3,6 +3,7 @@ import {
   IonBadge,
   IonButton,
   IonButtons,
+  IonCheckbox,
   IonContent,
   IonHeader,
   IonIcon,
@@ -42,13 +43,14 @@ function EditSourceForm({
   onCancel,
 }: {
   source: EventSourceDetail
-  onSaved: (patch: { name: string; url: string; type: string; notes: string | null }) => void
+  onSaved: (patch: { name: string; url: string; type: string; notes: string | null; render_js: boolean }) => void
   onCancel: () => void
 }) {
   const [name, setName] = useState(source.name)
   const [url, setUrl] = useState(source.url)
   const [type, setType] = useState(source.type)
   const [notes, setNotes] = useState(source.notes ?? '')
+  const [renderJs, setRenderJs] = useState(source.render_js)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -60,8 +62,8 @@ function EditSourceForm({
     setError(null)
     try {
       const trimmedNotes = notes.trim() || null
-      await updateEventSource(source.id, { name: name.trim(), url: url.trim(), type, notes: trimmedNotes })
-      onSaved({ name: name.trim(), url: url.trim(), type, notes: trimmedNotes })
+      await updateEventSource(source.id, { name: name.trim(), url: url.trim(), type, notes: trimmedNotes, render_js: renderJs })
+      onSaved({ name: name.trim(), url: url.trim(), type, notes: trimmedNotes, render_js: renderJs })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not save changes')
     } finally {
@@ -85,6 +87,11 @@ function EditSourceForm({
             </IonSelectOption>
           ))}
         </IonSelect>
+      </IonItem>
+      <IonItem>
+        <IonCheckbox checked={renderJs} onIonChange={(e) => setRenderJs(e.detail.checked)} labelPlacement="end" justify="start">
+          <span className="ion-text-wrap">Always load with a browser (for pages that build their events with JavaScript)</span>
+        </IonCheckbox>
       </IonItem>
       <IonItem lines="none">
         <IonTextarea label="Notes" labelPlacement="stacked" placeholder="Optional" value={notes} onIonInput={(e) => setNotes(e.detail.value ?? '')} />
