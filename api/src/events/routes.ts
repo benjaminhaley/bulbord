@@ -24,6 +24,7 @@ import { extractEventFieldsFromPhoto, findEventSource, type ExtractedEventFields
 import { fetchPageText } from './resourcing.js'
 import { registerDiscoveredEventSource } from './source-registration.js'
 import { recordRetryNote } from './retry-strategies.js'
+import { groupSourcesByDomain } from './source-domains.js'
 import { chicagoWallClock, timesFromChicagoWallClock, timesFromFields } from '../timezone.js'
 import { expandRecurrence, isRecurrencePattern, RECURRENCE_PATTERNS, type RecurrencePattern } from './recurrence.js'
 import {
@@ -670,30 +671,55 @@ export async function eventsRoutes(app: FastifyInstance) {
     return reply.code(204).send()
   })
 
-  app.get('/event-sources', { preHandler: requireAuth }, async (_request, reply) => {
-    // A genuine join + GROUP BY, not a correlated subquery referencing the
-    // outer eventSources.id — drizzle only qualifies a raw sql`` column
-    // interpolation with its table name when the surrounding query already
-    // involves more than one table, so a correlated subquery here silently
-    // (and wrongly) resolved the outer id against events' own id column.
-    const rows = await db
-      .select({
-        id: eventSources.id,
-        name: eventSources.name,
-        url: eventSources.url,
-        type: eventSources.type,
-        eventCount: sql<number>`count(*) filter (where ${events.status} = 'approved' and ${events.startDate} >= ${todayInChicago()})::int`,
-      })
-      .from(eventSources)
-      .leftJoin(events, and(eq(events.sourceId, eventSources.id), isNull(events.deletedAt)))
-      .where(and(eq(eventSources.isActive, true), isNull(eventSources.deletedAt)))
-      .groupBy(eventSources.id, eventSources.name, eventSources.url, eventSources.type)
-      .orderBy(asc(eventSources.name))
-
+  // Feedback #178: one row per source domain (see source-domains.ts) with
+  // past and upcoming approved-event counts, plus a "manual" row for events
+  // with no source. `totals` is counted independently of the per-source
+  // join, so the page can show the rows genuinely add up to every event.
+  // Includes inactive/deleted sources only when they still have events,
+  // so nothing drops out of the sum.
+  app.get('/event-sources/summary', { preHandler: requireRole('admin') }, async (_request, reply) => {
+    const today = todayInChicago()
+    const pastExpr = sql<number>`count(${events.id}) filter (where ${events.startDate} < ${today})::int`
+    const futureExpr = sql<number>`count(${events.id}) filter (where ${events.startDate} >= ${today})::int`
+    const liveEvent = and(eq(events.status, 'approved'), isNull(events.deletedAt))
+    const [sourceRows, [manual], [totals]] = await Promise.all([
+      db
+        .select({
+          id: eventSources.id,
+          name: eventSources.name,
+          url: eventSources.url,
+          type: eventSources.type,
+          isActive: eventSources.isActive,
+          isDeleted: sql<boolean>`${eventSources.deletedAt} is not null`,
+          pastCount: pastExpr,
+          futureCount: futureExpr,
+        })
+        .from(eventSources)
+        .leftJoin(events, and(eq(events.sourceId, eventSources.id), liveEvent))
+        .groupBy(eventSources.id),
+      db.select({ pastCount: pastExpr, futureCount: futureExpr }).from(events).where(and(liveEvent, isNull(events.sourceId))),
+      db.select({ pastCount: pastExpr, futureCount: futureExpr }).from(events).where(liveEvent),
+    ])
+    const shown = sourceRows.filter((r) => (r.isActive && !r.isDeleted) || r.pastCount + r.futureCount > 0)
     return reply.send({
-      data: rows.map((row) => ({ id: row.id, name: row.name, url: row.url, type: row.type, event_count: row.eventCount })),
-      has_more: false,
-      next_cursor: null,
+      data: {
+        domains: groupSourcesByDomain(shown).map((group) => ({
+          domain: group.domain,
+          past_count: group.pastCount,
+          future_count: group.futureCount,
+          sources: group.sources.map((source) => ({
+            id: source.id,
+            name: source.name,
+            url: source.url,
+            type: source.type,
+            is_active: source.isActive,
+            past_count: source.pastCount,
+            future_count: source.futureCount,
+          })),
+        })),
+        manual: { past_count: manual!.pastCount, future_count: manual!.futureCount },
+        totals: { past_count: totals!.pastCount, future_count: totals!.futureCount },
+      },
     })
   })
 

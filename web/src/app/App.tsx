@@ -27,6 +27,7 @@ import { EventDetailPage } from '../events/EventDetailPage'
 import { EventHistoryPage } from '../events/EventHistoryPage'
 import { EventHistoryVersionPage } from '../events/EventHistoryVersionPage'
 import { SourcesPage } from '../events/SourcesPage'
+import { SourceDomainPage } from '../events/SourceDomainPage'
 import { SourceDetailPage } from '../events/SourceDetailPage'
 import { CampsPage } from '../camps/CampsPage'
 import { CampDetailPage } from '../camps/CampDetailPage'
@@ -74,6 +75,7 @@ export function App() {
                 <IonRouterOutlet>
                   <Route exact path="/events" component={EventsPage} />
                   <AdminRoute exact path="/event-sources" component={SourcesPage} />
+                  <AdminRoute exact path="/event-sources/domain/:domain" component={SourceDomainPage} />
                   <AdminRoute exact path="/event-sources/:id" component={SourceDetailPage} />
                   <Route exact path="/events/:id" component={EventDetailPage} />
                   <Route exact path="/events/:id/history" component={GatedEventHistoryPage} />

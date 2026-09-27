@@ -9,7 +9,6 @@ import {
   IonItem,
   IonLabel,
   IonList,
-  IonNote,
   IonPage,
   IonSelect,
   IonSelectOption,
@@ -22,7 +21,7 @@ import {
 import { addOutline, closeOutline } from 'ionicons/icons'
 import { useEffect, useState } from 'react'
 
-import { createEventSource, fetchEventSources, type EventSource } from './api'
+import { createEventSource, fetchEventSourceSummary, type EventSourceSummary, type SourceCounts } from './api'
 import { EVENT_SOURCE_TYPE_OPTIONS } from './sourceTypes'
 
 // Admin-only (see App.tsx's AdminRoute) — sources used to only be added by
@@ -30,7 +29,7 @@ import { EVENT_SOURCE_TYPE_OPTIONS } from './sourceTypes'
 // moved off the member-facing Events toolbar into Developer Tools, and kept
 // admin-only since a junk source would otherwise silently feed the
 // Claude-driven "re-run event sourcing" tool).
-function AddSourceForm({ onCreated, onCancel }: { onCreated: (source: EventSource) => void; onCancel: () => void }) {
+function AddSourceForm({ onCreated, onCancel }: { onCreated: () => void; onCancel: () => void }) {
   const [name, setName] = useState('')
   const [url, setUrl] = useState('')
   const [type, setType] = useState('website')
@@ -45,8 +44,8 @@ function AddSourceForm({ onCreated, onCancel }: { onCreated: (source: EventSourc
     setSubmitting(true)
     setError(null)
     try {
-      const created = await createEventSource({ name: name.trim(), url: url.trim(), type, notes: notes.trim() })
-      onCreated(created)
+      await createEventSource({ name: name.trim(), url: url.trim(), type, notes: notes.trim() })
+      onCreated()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not add this source')
     } finally {
@@ -91,16 +90,68 @@ function AddSourceForm({ onCreated, onCancel }: { onCreated: (source: EventSourc
   )
 }
 
+// Feedback #178: fixed-width right-aligned number columns so the list
+// reads as a table (Name / Past / Future). A zero is red, since a source
+// with nothing past or nothing upcoming may have a problem worth a look.
+const COUNT_COLUMN_WIDTH = 56
+
+function CountCell({ value, bold }: { value: number | string; bold?: boolean }) {
+  return (
+    <span
+      style={{
+        width: COUNT_COLUMN_WIDTH,
+        textAlign: 'right',
+        fontWeight: bold ? 600 : undefined,
+        color: value === 0 ? 'var(--ion-color-danger)' : undefined,
+      }}
+    >
+      {value}
+    </span>
+  )
+}
+
+export function CountColumns({ counts, bold }: { counts: SourceCounts; bold?: boolean }) {
+  return (
+    <div slot="end" style={{ display: 'flex', fontSize: 14 }}>
+      <CountCell value={counts.past_count} bold={bold} />
+      <CountCell value={counts.future_count} bold={bold} />
+    </div>
+  )
+}
+
+export function CountColumnHeaders({ label }: { label: string }) {
+  return (
+    <IonItem lines="full">
+      <IonLabel color="medium" style={{ fontSize: 12 }}>
+        {label}
+      </IonLabel>
+      <div slot="end" style={{ display: 'flex', fontSize: 12, color: 'var(--ion-color-medium)' }}>
+        <span style={{ width: COUNT_COLUMN_WIDTH, textAlign: 'right' }}>Past</span>
+        <span style={{ width: COUNT_COLUMN_WIDTH, textAlign: 'right' }}>Future</span>
+      </div>
+    </IonItem>
+  )
+}
+
 export function SourcesPage() {
-  const [sources, setSources] = useState<EventSource[] | null>(null)
+  const [summary, setSummary] = useState<EventSourceSummary | null>(null)
   const [error, setError] = useState(false)
   const [showForm, setShowForm] = useState(false)
 
-  useEffect(() => {
-    fetchEventSources()
-      .then(setSources)
+  function load() {
+    fetchEventSourceSummary()
+      .then(setSummary)
       .catch(() => setError(true))
-  }, [])
+  }
+
+  useEffect(load, [])
+
+  const sumOfRows = summary && {
+    past_count: summary.domains.reduce((n, d) => n + d.past_count, summary.manual.past_count),
+    future_count: summary.domains.reduce((n, d) => n + d.future_count, summary.manual.future_count),
+  }
+  const rowsMatchTotals =
+    !!summary && sumOfRows!.past_count === summary.totals.past_count && sumOfRows!.future_count === summary.totals.future_count
 
   return (
     <IonPage>
@@ -128,14 +179,14 @@ export function SourcesPage() {
         </p>
         {showForm && (
           <AddSourceForm
-            onCreated={(created) => {
-              setSources((prev) => [created, ...(prev ?? [])])
+            onCreated={() => {
               setShowForm(false)
+              load()
             }}
             onCancel={() => setShowForm(false)}
           />
         )}
-        {sources === null && !error && (
+        {summary === null && !error && (
           <div className="coming-soon">
             <IonSpinner name="dots" />
           </div>
@@ -145,17 +196,47 @@ export function SourcesPage() {
             <p>Couldn't load sources</p>
           </div>
         )}
-        {sources !== null && sources.length > 0 && (
-          <IonList>
-            {sources.map((source) => (
-              <IonItem key={source.id} routerLink={`/event-sources/${source.id}`}>
-                <IonLabel>
-                  <h2>{source.name}</h2>
-                  <IonNote>{source.url}</IonNote>
-                </IonLabel>
-                <IonNote slot="end">{source.event_count}</IonNote>
-              </IonItem>
-            ))}
+        {summary && (
+          // 72px bottom margin clears the persistent share FAB (index.css's
+          // .share-fab), which otherwise covers the Total row's numbers.
+          <IonList style={{ marginBottom: 72 }}>
+            <CountColumnHeaders label="Source" />
+            {summary.domains.map((group) => {
+              const only = group.sources.length === 1 ? group.sources[0] : null
+              return (
+                <IonItem
+                  key={group.domain}
+                  button
+                  routerLink={only ? `/event-sources/${only.id}` : `/event-sources/domain/${encodeURIComponent(group.domain)}`}
+                >
+                  <IonLabel className="ion-text-wrap">
+                    <h2>{group.domain}</h2>
+                    <p>{group.sources.map((source) => source.name).join(' · ')}</p>
+                  </IonLabel>
+                  <CountColumns counts={group} />
+                </IonItem>
+              )
+            })}
+            <IonItem>
+              <IonLabel className="ion-text-wrap">
+                <h2>Manual</h2>
+                <p>Posted in the app with no source</p>
+              </IonLabel>
+              <CountColumns counts={summary.manual} />
+            </IonItem>
+            <IonItem lines="none">
+              <IonLabel className="ion-text-wrap">
+                <h2>
+                  <strong>Total</strong>
+                </h2>
+                <p>
+                  {rowsMatchTotals
+                    ? 'Every approved event, each date counted once'
+                    : `Rows add up to ${sumOfRows!.past_count} / ${sumOfRows!.future_count} — some events aren't accounted for`}
+                </p>
+              </IonLabel>
+              <CountColumns counts={summary.totals} bold />
+            </IonItem>
           </IonList>
         )}
       </IonContent>

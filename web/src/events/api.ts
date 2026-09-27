@@ -136,10 +136,6 @@ interface EventResponse {
   data: Event
 }
 
-interface EventSourcesResponse {
-  data: EventSource[]
-}
-
 interface EventSourceResponse {
   data: EventSource
 }
@@ -525,12 +521,39 @@ export async function fetchInterestedUsers(id: string): Promise<InterestedUser[]
   return body.data
 }
 
-export async function fetchEventSources(): Promise<EventSource[]> {
-  const response = await fetch(`${API_URL}/event-sources`, { headers: authHeaders() })
+// Feedback #178: GET /event-sources/summary — sources grouped by domain,
+// with approved past/upcoming event counts, a row for events with no
+// source, and independently counted totals.
+export interface SourceCounts {
+  past_count: number
+  future_count: number
+}
+
+interface SummarySource extends SourceCounts {
+  id: string
+  name: string
+  url: string
+  type: string
+  is_active: boolean
+}
+
+export interface SourceDomain extends SourceCounts {
+  domain: string
+  sources: SummarySource[]
+}
+
+export interface EventSourceSummary {
+  domains: SourceDomain[]
+  manual: SourceCounts
+  totals: SourceCounts
+}
+
+export async function fetchEventSourceSummary(): Promise<EventSourceSummary> {
+  const response = await fetch(`${API_URL}/event-sources/summary`, { headers: authHeaders() })
   if (!response.ok) {
-    throw new Error(`Failed to fetch event sources: ${response.status}`)
+    throw new Error(`Failed to fetch event source summary: ${response.status}`)
   }
-  const body = (await response.json()) as EventSourcesResponse
+  const body = (await response.json()) as { data: EventSourceSummary }
   return body.data
 }
 
