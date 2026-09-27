@@ -9,6 +9,7 @@ import {
   IonItem,
   IonLabel,
   IonList,
+  IonListHeader,
   IonPage,
   IonSelect,
   IonSelectOption,
@@ -21,7 +22,7 @@ import {
 import { addOutline, closeOutline } from 'ionicons/icons'
 import { useEffect, useState } from 'react'
 
-import { createEventSource, fetchEventSourceSummary, type EventSourceSummary, type SourceCounts } from './api'
+import { createEventSource, fetchEventSourceSummary, updateEventSource, type EventSourceSummary, type SourceCounts } from './api'
 import { EVENT_SOURCE_TYPE_OPTIONS } from './sourceTypes'
 
 // Admin-only (see App.tsx's AdminRoute) — sources used to only be added by
@@ -137,6 +138,21 @@ export function SourcesPage() {
   const [summary, setSummary] = useState<EventSourceSummary | null>(null)
   const [error, setError] = useState(false)
   const [showForm, setShowForm] = useState(false)
+  const [reactivatingId, setReactivatingId] = useState<string | null>(null)
+  const [reactivateError, setReactivateError] = useState<string | null>(null)
+
+  async function reactivate(id: string) {
+    setReactivatingId(id)
+    setReactivateError(null)
+    try {
+      await updateEventSource(id, { is_active: true })
+      setSummary(await fetchEventSourceSummary())
+    } catch (err) {
+      setReactivateError(err instanceof Error ? err.message : 'Could not reactivate this source')
+    } finally {
+      setReactivatingId(null)
+    }
+  }
 
   function load() {
     fetchEventSourceSummary()
@@ -197,9 +213,7 @@ export function SourcesPage() {
           </div>
         )}
         {summary && (
-          // 72px bottom margin clears the persistent share FAB (index.css's
-          // .share-fab), which otherwise covers the Total row's numbers.
-          <IonList style={{ marginBottom: 72 }}>
+          <IonList>
             <CountColumnHeaders label="Source" />
             {summary.domains.map((group) => {
               const only = group.sources.length === 1 ? group.sources[0] : null
@@ -237,6 +251,42 @@ export function SourcesPage() {
               </IonLabel>
               <CountColumns counts={summary.totals} bold />
             </IonItem>
+          </IonList>
+        )}
+        {summary && (
+          // 72px bottom margin clears the persistent share FAB (index.css's
+          // .share-fab), which otherwise covers the last row.
+          <IonList style={{ marginBottom: 72 }}>
+            <IonListHeader>
+              <IonLabel>Deactivated</IonLabel>
+            </IonListHeader>
+            {reactivateError && (
+              <IonText color="danger">
+                <p className="ion-padding-horizontal">{reactivateError}</p>
+              </IonText>
+            )}
+            {summary.deactivated.length === 0 && (
+              <IonItem lines="none">
+                <IonLabel color="medium">No deactivated sources</IonLabel>
+              </IonItem>
+            )}
+            {summary.deactivated.map((source) => (
+              <IonItem key={source.id}>
+                <IonLabel className="ion-text-wrap">
+                  <h2>{source.name}</h2>
+                  <p style={{ wordBreak: 'break-all' }}>{source.url}</p>
+                </IonLabel>
+                <IonButton
+                  slot="end"
+                  fill="outline"
+                  size="small"
+                  disabled={reactivatingId !== null}
+                  onClick={() => reactivate(source.id)}
+                >
+                  {reactivatingId === source.id ? <IonSpinner name="dots" /> : 'Reactivate'}
+                </IonButton>
+              </IonItem>
+            ))}
           </IonList>
         )}
       </IonContent>

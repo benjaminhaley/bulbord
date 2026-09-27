@@ -676,7 +676,8 @@ export async function eventsRoutes(app: FastifyInstance) {
   // with no source. `totals` is counted independently of the per-source
   // join, so the page can show the rows genuinely add up to every event.
   // Includes inactive/deleted sources only when they still have events,
-  // so nothing drops out of the sum.
+  // so nothing drops out of the sum. `deactivated` lists every inactive
+  // (non-deleted) source separately so it can be reactivated.
   app.get('/event-sources/summary', { preHandler: requireRole('admin') }, async (_request, reply) => {
     const today = todayInChicago()
     const pastExpr = sql<number>`count(${events.id}) filter (where ${events.startDate} < ${today})::int`
@@ -701,6 +702,9 @@ export async function eventsRoutes(app: FastifyInstance) {
       db.select({ pastCount: pastExpr, futureCount: futureExpr }).from(events).where(liveEvent),
     ])
     const shown = sourceRows.filter((r) => (r.isActive && !r.isDeleted) || r.pastCount + r.futureCount > 0)
+    // Listed explicitly (with a Reactivate button) since a deactivated source
+    // with no events otherwise doesn't appear anywhere on the page.
+    const deactivated = sourceRows.filter((r) => !r.isActive && !r.isDeleted).sort((a, b) => a.name.localeCompare(b.name))
     return reply.send({
       data: {
         domains: groupSourcesByDomain(shown).map((group) => ({
@@ -716,6 +720,15 @@ export async function eventsRoutes(app: FastifyInstance) {
             past_count: source.pastCount,
             future_count: source.futureCount,
           })),
+        })),
+        deactivated: deactivated.map((source) => ({
+          id: source.id,
+          name: source.name,
+          url: source.url,
+          type: source.type,
+          is_active: source.isActive,
+          past_count: source.pastCount,
+          future_count: source.futureCount,
         })),
         manual: { past_count: manual!.pastCount, future_count: manual!.futureCount },
         totals: { past_count: totals!.pastCount, future_count: totals!.futureCount },

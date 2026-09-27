@@ -544,6 +544,7 @@ export interface SourceDomain extends SourceCounts {
 
 export interface EventSourceSummary {
   domains: SourceDomain[]
+  deactivated: SummarySource[]
   manual: SourceCounts
   totals: SourceCounts
 }
