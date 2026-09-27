@@ -1,5 +1,5 @@
 // Pure, unit-tested duplicate-detection logic, split out of ingest.ts the
-// same way recurring-series-health.ts/camps/grouping.ts keep testable logic
+// same way camps/grouping.ts keeps testable logic
 // out of DB plumbing (CLAUDE.md's own convention for this codebase).
 //
 // Added 2026-09-04 (feedback #137): ingestEvents()'s existing dedup key

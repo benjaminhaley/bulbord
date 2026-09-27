@@ -30,9 +30,8 @@ export function reminderDateFor(startDate: string): string {
 // reminder has actually been sent, it's never sent again for that break, no
 // matter how many more times the daily cron runs. Before that, `today >=
 // reminderDateFor(startDate)` fires on the exact due day under normal
-// operation, but also self-heals if a cron run was missed (a deploy outage,
-// same class of gap the recurring-series-health.ts staleness detector
-// exists to catch) — the reminder still goes out on the next run, as long
+// operation, but also self-heals if a cron run was missed (a deploy
+// outage) — the reminder still goes out on the next run, as long
 // as the break itself hasn't already fully passed (see the caller's own
 // endDate >= today filter in query.ts's getCandidateBreaks).
 export function isReminderDue(today: string, startDate: string, remindedAt: Date | null): boolean {

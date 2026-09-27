@@ -14,64 +14,27 @@ import { type DataFreshness } from './api'
 // both, is what actually prevents that class of bug recurring.
 
 export function describeFreshnessAlert(freshness: DataFreshness | null): string | null {
-  if (!freshness) return null
-  const lowCount = freshness.recurring_series_running_low.length
-  const staleBookingCount = freshness.booking_status_needs_check.length
-  const parts: string[] = []
-  if (freshness.is_stale) parts.push('Events/camps data needs a refresh')
-  if (lowCount > 0) {
-    parts.push(`${lowCount} recurring listing${lowCount === 1 ? '' : 's'} running low on confirmed dates`)
-  }
-  if (staleBookingCount > 0) {
-    parts.push(`${staleBookingCount} camp booking status${staleBookingCount === 1 ? '' : 'es'} due for a recheck`)
-  }
-  // Feedback #140: "I don't get directed to anything actionable and I'm not
-  // even sure what I would do" — the alert used to just restate the raw
-  // freshness fact with no hint that tapping it goes anywhere specific.
-  // Paired with freshnessAlertTargetPath's deep link below, so tapping this
-  // now actually scrolls to the flagged content on Dev Tools instead of
-  // landing at the top of a long page.
-  return parts.length > 0 ? `${parts.join(' — ')} — tap for details` : null
+  if (!freshness?.is_stale) return null
+  // Feedback #140: "I don't get directed to anything actionable" — paired
+  // with freshnessAlertTargetPath's deep link below, so tapping this
+  // scrolls to the section on Dev Tools that fixes it.
+  return 'Events/camps data needs a refresh — tap for details'
 }
 
-// Which part of Dev Tools actually explains this alert — a running-low
-// series list is the more specific, more common case (see the "recurring
-// listings running low" section), so it wins when both conditions are
-// true; a bare `is_stale` with nothing running low points at the "Sourcing
-// & Data" section instead, since re-running sourcing from there is the
-// actual fix for staleness. Both anchors are real element ids DevToolsPage
-// scrolls to and briefly highlights on load (see its own hash-handling effect).
+// "#sourcing-and-data" is a real element id DevToolsPage scrolls to and
+// briefly highlights on load (see its own hash-handling effect) — re-running
+// sourcing from there is the actual fix for staleness.
 export function freshnessAlertTargetPath(freshness: DataFreshness | null): string {
-  if (!freshness) return '/admin/dev-tools'
-  if (freshness.recurring_series_running_low.length > 0) return '/admin/dev-tools#recurring-series-health'
-  if (freshness.booking_status_needs_check.length > 0) return '/admin/dev-tools#booking-status-health'
-  if (freshness.is_stale) return '/admin/dev-tools#sourcing-and-data'
-  return '/admin/dev-tools'
+  return freshness?.is_stale ? '/admin/dev-tools#sourcing-and-data' : '/admin/dev-tools'
 }
 
-// Follow-up to feedback #140 (reported directly against an earlier fix: "I
-// clicked the alert and it didn't go away") — the original feedback #132
-// design deliberately never let this row be dismissed at all ("there's
-// nothing to persist or dismiss-via-API... it simply stops appearing once
-// the underlying data is refreshed"), which in practice meant it could
-// never go away by clicking it, only once someone actually fixed the
-// flagged sources/series — day(s) later at best. There's still no real DB
-// row to persist a dismissal against, so this is a client-side (per-
-// browser) "have I already acknowledged *this specific* freshness
-// problem" signature instead: stored in localStorage once dismissed, and
-// the alert stays hidden only as long as the signature doesn't change — a
-// newly-stale source or a newly-flagged series produces a different
-// signature and surfaces as a fresh alert again, the same way a real
-// notification would for a new event.
+// Follow-up to feedback #140 ("I clicked the alert and it didn't go
+// away"): there's no real DB row to persist a dismissal against, so this is
+// a client-side (per-browser) "have I already acknowledged this specific
+// freshness problem" signature, stored in localStorage once dismissed.
 export function freshnessSignature(freshness: DataFreshness | null): string | null {
   if (!freshness) return null
-  const lowSeries = freshness.recurring_series_running_low
-    .map((s) => `${s.source_id ?? s.title}@${s.last_occurrence_date}`)
-    .sort()
-    .join(',')
-  const staleBooking = freshness.booking_status_needs_check
-    .map((s) => `${s.camp_id}@${s.start_date}`)
-    .sort()
-    .join(',')
-  return `${freshness.is_stale ? 'stale' : 'fresh'}|${lowSeries}|${staleBooking}`
+  // oldest_at moves whenever data is refreshed, so a later, separate
+  // staleness episode gets a new signature and surfaces again.
+  return freshness.is_stale ? `stale@${freshness.oldest_at ?? 'never'}` : 'fresh'
 }

@@ -735,9 +735,8 @@ export const schoolBreaks = pgTable('school_breaks', {
   // with zero camps overlapping it — see camp-reminders/window.ts). Prevents
   // a second email for the same break on a later cron run, while still
   // letting the cron catch up automatically if a run was missed on the
-  // exact due date (see the recurring-series-health.ts header above for why
-  // "silently never fires again" is the failure mode this codebase has
-  // learned to design against).
+  // exact due date ("silently never fires again" is the failure mode this
+  // codebase has learned to design against).
   remindedAt: timestamp('reminded_at', { withTimezone: true }),
   ...timestamps,
 })
