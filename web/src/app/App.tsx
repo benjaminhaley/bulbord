@@ -4,6 +4,7 @@ import { Redirect, Route } from 'react-router-dom'
 import { calendarOutline, chatbubbleOutline, ribbonOutline, sunnyOutline } from 'ionicons/icons'
 
 import { AdminRoute } from '../admin/AdminRoute'
+import { AdminTestToolsPage } from '../admin/AdminTestToolsPage'
 import { AnalyticsPage } from '../admin/AnalyticsPage'
 import { DataFreshnessProvider } from '../admin/DataFreshnessContext'
 import { DevToolsPage } from '../admin/DevToolsPage'
@@ -103,6 +104,7 @@ export function App() {
                   <Route exact path="/notifications" component={GatedNotificationsPage} />
                   <AdminRoute exact path="/admin/users" component={UsersPage} />
                   <AdminRoute exact path="/admin/dev-tools" component={DevToolsPage} />
+                  <AdminRoute exact path="/admin/test-tools" component={AdminTestToolsPage} />
                   <AdminRoute exact path="/admin/invite-preview" component={InvitePreviewPage} />
                   <AdminRoute exact path="/admin/profile-setup-preview" component={ProfileSetupPreviewPage} />
                   <AdminRoute exact path="/admin/friends-preview" component={FriendsPreviewPage} />
