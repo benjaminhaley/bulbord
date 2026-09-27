@@ -10,7 +10,6 @@ import {
   IonLabel,
   IonList,
   IonListHeader,
-  IonNote,
   IonPage,
   IonSpinner,
   IonTitle,
@@ -28,12 +27,11 @@ import {
   refreshOutline,
   ribbonOutline,
   sunnyOutline,
-  timeOutline,
 } from 'ionicons/icons'
 import { useEffect, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 
-import { formatDate, formatRelativeDateTime } from '../format'
+import { formatRelativeDateTime } from '../format'
 import { useDataFreshness } from './DataFreshnessContext'
 import {
   fetchEventSourcingStatus,
@@ -51,25 +49,6 @@ import {
 const STALE_AFTER_MS = 7 * 24 * 60 * 60 * 1000
 function isStale(iso: string | null): boolean {
   return iso === null || Date.now() - new Date(iso).getTime() > STALE_AFTER_MS
-}
-
-// Feedback #119: "N days overdue" once the last known occurrence has
-// already passed (the more urgent case — a member could be looking at a
-// gap right now), "due in N days" while there's still a little runway left
-// but less than the series' own typical gap between occurrences.
-function runwayLabel(daysUntilLastOccurrence: number): string {
-  if (daysUntilLastOccurrence < 0) return `${Math.abs(daysUntilLastOccurrence)} day${daysUntilLastOccurrence === -1 ? '' : 's'} overdue`
-  if (daysUntilLastOccurrence === 0) return 'last occurrence is today'
-  return `due in ${daysUntilLastOccurrence} day${daysUntilLastOccurrence === 1 ? '' : 's'}`
-}
-
-// Feedback #167/#168: same "how urgent is this" framing as runwayLabel
-// above, for a camp whose booking_status is still 'not_opened' as its own
-// start date approaches.
-function startsInLabel(daysUntilStart: number): string {
-  if (daysUntilStart === 0) return 'today'
-  if (daysUntilStart === 1) return 'tomorrow'
-  return `in ${daysUntilStart} days`
 }
 
 // See the hash-handling effect in DevToolsPage below — a brief highlight on
@@ -395,93 +374,6 @@ export function DevToolsPage() {
             </IonLabel>
           </IonItem>
         </IonList>
-        {report && (
-          <IonList inset>
-            {report.results.map((r) => (
-              <IonItem key={r.source_id} lines="full">
-                <IonLabel className="ion-text-wrap">
-                  <h2>{r.name}</h2>
-                  <IonNote color={r.error ? 'danger' : 'medium'}>
-                    {r.error ?? `${r.added} added, ${r.skipped} already known`}
-                  </IonNote>
-                </IonLabel>
-              </IonItem>
-            ))}
-            {report.results.length === 0 && (
-              <IonItem lines="none">
-                <IonLabel color="medium">No active sources to check</IonLabel>
-              </IonItem>
-            )}
-          </IonList>
-        )}
-        {/* Feedback #119: auto-surfaced (no button — freshness already loads
-            for every admin via DataFreshnessProvider), rather than something
-            Ben has to remember to click and check. Root cause was the
-            Nettelhorst French Market going silently stale with nothing to
-            notice — see api/src/events/recurring-series-health.ts. */}
-        {(freshness?.recurring_series_running_low.length ?? 0) > 0 && (
-          <IonList inset id="recurring-series-health" style={highlightStyle('recurring-series-health', highlightId)}>
-            <IonListHeader>
-              <IonLabel>Recurring listings running low</IonLabel>
-            </IonListHeader>
-            <IonItem lines="full">
-              <IonNote className="ion-text-wrap" color="medium">
-                These have a real recurring history but no confirmed occurrence coming up soon — worth a re-check.
-              </IonNote>
-            </IonItem>
-            {freshness!.recurring_series_running_low.map((series) => (
-              <IonItem
-                key={series.title}
-                lines="full"
-                button={!!series.source_id}
-                routerLink={series.source_id ? `/event-sources/${series.source_id}` : undefined}
-              >
-                <IonIcon slot="start" icon={timeOutline} color="warning" />
-                <IonLabel className="ion-text-wrap">
-                  <h2>{series.title}</h2>
-                  <IonNote color="medium">
-                    Last: {formatDate(`${series.last_occurrence_date}T00:00:00`)} ({runwayLabel(series.days_until_last_occurrence)}) ·{' '}
-                    {series.occurrence_count} occurrences seen · {series.source_name ?? 'no source'}
-                  </IonNote>
-                </IonLabel>
-              </IonItem>
-            ))}
-          </IonList>
-        )}
-        {/* Feedback #167/#168's root-cause fix: booking_status is a manual
-            snapshot with no automated recheck, so a 'not_opened' camp just
-            sits there until someone notices the real registration system
-            opened. Auto-surfaced the same way as recurring-series-health
-            above, rather than requiring a member to notice and file
-            feedback about it — see camps/booking-status-health.ts. */}
-        {(freshness?.booking_status_needs_check.length ?? 0) > 0 && (
-          <IonList inset id="booking-status-health" style={highlightStyle('booking-status-health', highlightId)}>
-            <IonListHeader>
-              <IonLabel>Camp booking statuses due for a recheck</IonLabel>
-            </IonListHeader>
-            <IonItem lines="full">
-              <IonNote className="ion-text-wrap" color="medium">
-                Still marked "not opened" with their date coming up soon — check the real booking system.
-              </IonNote>
-            </IonItem>
-            {freshness!.booking_status_needs_check.map((camp) => (
-              <IonItem
-                key={camp.camp_id}
-                lines="full"
-                button={!!camp.source_id}
-                routerLink={camp.source_id ? `/camp-sources/${camp.source_id}` : undefined}
-              >
-                <IonIcon slot="start" icon={timeOutline} color="warning" />
-                <IonLabel className="ion-text-wrap">
-                  <h2>{camp.title}</h2>
-                  <IonNote color="medium">
-                    Starts {formatDate(`${camp.start_date}T00:00:00`)} ({startsInLabel(camp.days_until_start)}) · {camp.source_name ?? 'no source'}
-                  </IonNote>
-                </IonLabel>
-              </IonItem>
-            ))}
-          </IonList>
-        )}
       </IonContent>
       <IonToast isOpen={!!toast} message={toast ?? ''} duration={3000} onDidDismiss={() => setToast(null)} />
     </IonPage>
