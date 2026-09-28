@@ -1,0 +1,1 @@
+ALTER TABLE "pipeline_retry_notes" ADD COLUMN "outcome" text;

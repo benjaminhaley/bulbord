@@ -467,6 +467,7 @@ export async function adminRoutes(app: FastifyInstance) {
         image_retried: result.imageRetried,
         image_changed: result.imageChanged,
         image_reason: result.imageReason,
+        note_outcome: result.noteOutcome,
       },
     })
   })

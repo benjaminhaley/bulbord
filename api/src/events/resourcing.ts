@@ -12,6 +12,8 @@ import { renderPageHtml } from '../uploads/render-page.js'
 import { filterFamilyRelevantCandidates } from './candidate-validation.js'
 import { AUDIENCE_RELEVANCE_RULES } from './extraction-filters.js'
 import { ingestEvents, type CandidateEvent } from './ingest.js'
+import { getRetryStrategiesPromptBlock } from './retry-strategies.js'
+import { interpretReviewNote, occurrenceToCandidate } from './review-note-actions.js'
 
 const FETCH_TIMEOUT_MS = 10_000
 // Bounds the LLM call's input size/cost — plenty for a listings page's own
@@ -29,11 +31,23 @@ Rules:
 - description is optional: a short one-sentence description if the page gives useful detail, otherwise omit it.
 - location_name is an optional human-friendly venue name (not a street address) when the page names one; address is an optional street address.
 - If a recurring series lists multiple future occurrences, include each occurrence as its own entry with its own date.
+- If the page only has one umbrella listing for a series of distinct events (e.g. "month-long film series, screenings most nights", "fall class series") without the individual dates, still include it once, but set "series_umbrella": true — it gets split into its real occurrences by a follow-up search. Never set it on a single event, or when the page already lists each occurrence.
 - If you can't confidently identify any real, dated, upcoming events on this page, return an empty array — never invent one.
 ${AUDIENCE_RELEVANCE_RULES}
 
 Respond with ONLY a JSON array, no markdown fences, no explanation. Each element:
-{"title": string, "description"?: string, "start_date": string, "start_time"?: string, "all_day": boolean, "address"?: string, "location_name"?: string}`
+{"title": string, "description"?: string, "start_date": string, "start_time"?: string, "all_day": boolean, "address"?: string, "location_name"?: string, "series_umbrella"?: boolean}`
+
+// Instructions handed to review-note-actions.ts's interpretReviewNote for an
+// umbrella listing the extractor flagged — the same code path a reviewer's
+// "split this into one event per film" note goes through (2026-09-28, the
+// Music Box of Horrors listing that prompted it), so the pipeline does it on
+// its own the first time rather than waiting for a reviewer to ask.
+const AUTO_SPLIT_NOTE =
+  'This listing is an umbrella for a series of distinct events. Split it into one event per individual occurrence (e.g. one per film or per session) with its real date and time. If the individual occurrences are not published anywhere you can find, answer "cannot".'
+// Each split is a web-search call — bounded per source so one aggregator
+// page full of series can't run up a large bill in one pass.
+const MAX_AUTO_SPLITS_PER_SOURCE = 3
 
 interface ExtractedEvent {
   title?: unknown
@@ -43,6 +57,42 @@ interface ExtractedEvent {
   all_day?: unknown
   address?: unknown
   location_name?: unknown
+  series_umbrella?: unknown
+}
+
+// Replaces each flagged umbrella candidate with its real occurrences when
+// they can be found; otherwise keeps the umbrella as-is (no worse than
+// before). Never throws — interpretReviewNote fails to an explained "cannot".
+async function splitUmbrellaCandidates(items: { candidate: CandidateEvent; umbrella: boolean }[], pageText: string): Promise<CandidateEvent[]> {
+  let splitsLeft = MAX_AUTO_SPLITS_PER_SOURCE
+  const out: CandidateEvent[] = []
+  for (const { candidate, umbrella } of items) {
+    if (!umbrella || splitsLeft <= 0) {
+      out.push(candidate)
+      continue
+    }
+    splitsLeft--
+    const decision = await interpretReviewNote(
+      {
+        title: candidate.title,
+        description: candidate.description ?? null,
+        startDate: candidate.startDate,
+        startTime: candidate.startTime ?? null,
+        allDay: candidate.allDay,
+        address: candidate.address ?? null,
+        locationName: candidate.locationName ?? null,
+        sourceUrl: candidate.sourceUrl,
+      },
+      AUTO_SPLIT_NOTE,
+      pageText,
+    )
+    if (decision.action === 'split') {
+      out.push(...decision.occurrences.map((o) => occurrenceToCandidate(o, { sourceUrl: candidate.sourceUrl, address: candidate.address ?? null, locationName: candidate.locationName ?? null })))
+    } else {
+      out.push(candidate)
+    }
+  }
+  return out
 }
 
 function toCandidateEvent(raw: ExtractedEvent, sourceUrl: string): CandidateEvent | null {
@@ -173,7 +223,7 @@ export async function extractCandidateEventsFromSource(
       model: 'claude-opus-5',
       max_tokens: 4000,
       output_config: { effort: 'medium' },
-      system: SYSTEM_PROMPT,
+      system: SYSTEM_PROMPT + (await getRetryStrategiesPromptBlock('extraction')),
       messages: [
         {
           role: 'user',
@@ -190,9 +240,13 @@ export async function extractCandidateEventsFromSource(
     const parsed = JSON.parse(stripJsonCodeFence(raw))
     if (!Array.isArray(parsed)) return { candidates: [], rejectedCandidates: [], contentHash: null, pageText }
 
-    const rawCandidates = parsed
-      .map((item) => toCandidateEvent(item as ExtractedEvent, sourceUrl))
-      .filter((c): c is CandidateEvent => c !== null)
+    const extracted = parsed
+      .map((item) => {
+        const candidate = toCandidateEvent(item as ExtractedEvent, sourceUrl)
+        return candidate ? { candidate, umbrella: (item as ExtractedEvent).series_umbrella === true } : null
+      })
+      .filter((c): c is { candidate: CandidateEvent; umbrella: boolean } => c !== null)
+    const rawCandidates = await splitUmbrellaCandidates(extracted, pageText)
     const { kept: candidates, rejected: rejectedCandidates } = await filterFamilyRelevantCandidates(rawCandidates)
     return { candidates, rejectedCandidates, contentHash, pageText }
   } catch {

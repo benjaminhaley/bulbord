@@ -45,6 +45,7 @@ import {
   type PipelineKeptCandidate,
   type PipelineSourceFailure,
   type PipelineRejectedCandidate,
+  type PipelineRetryResult,
 } from './api'
 
 // What each check actually means and what it takes to pass — this is
@@ -88,7 +89,14 @@ function hasRetryableFailure(checks: PipelineChecks | null): boolean {
 // actually found a different photo — an admin retrying with a note like
 // "look up a better photo" needs to know whether that note actually changed
 // anything, not just whether the checklist stayed green.
-function describeRetryResult(result: { allPassing: boolean; imageRetried?: boolean; imageChanged?: boolean; imageReason?: string }): string {
+//
+// A note's own outcome (2026-09-28) takes precedence: it says what was done
+// with the note — or plainly that it couldn't be done, and why — rather than
+// a checklist status that says nothing about the request itself.
+function describeRetryResult(result: PipelineRetryResult): string {
+  if (result.noteOutcome) {
+    return result.noteOutcome.handled ? `Done: ${result.noteOutcome.message}` : `Couldn't do what the note asked: ${result.noteOutcome.message}`
+  }
   if (result.imageRetried && !result.imageChanged) {
     return result.allPassing
       ? 'Retried — the current photo is still the best match found'
@@ -387,6 +395,7 @@ export function PipelineReviewPage() {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [busyId, setBusyId] = useState<string | null>(null)
   const [toast, setToast] = useState<string | null>(null)
+  const [noteResult, setNoteResult] = useState<string | null>(null)
   const [sendingTest, setSendingTest] = useState(false)
 
   const load = useCallback(() => {
@@ -575,7 +584,10 @@ export function PipelineReviewPage() {
                   setBusyId(item.id)
                   try {
                     const result = await retryPipelineEventChecks(item.id, notes[item.id])
-                    setToast(describeRetryResult(result))
+                    // A note's outcome can be a couple of sentences — kept
+                    // on screen until dismissed rather than a 3s toast.
+                    if (result.noteOutcome) setNoteResult(describeRetryResult(result))
+                    else setToast(describeRetryResult(result))
                     load()
                   } catch (err) {
                     setToast(err instanceof Error ? err.message : 'Could not retry')
@@ -871,6 +883,7 @@ export function PipelineReviewPage() {
         )}
       </IonContent>
       <IonToast isOpen={!!toast} message={toast ?? ''} duration={3000} onDidDismiss={() => setToast(null)} />
+      <IonToast isOpen={!!noteResult} message={noteResult ?? ''} buttons={[{ text: 'OK', role: 'cancel' }]} onDidDismiss={() => setNoteResult(null)} />
     </IonPage>
   )
 }

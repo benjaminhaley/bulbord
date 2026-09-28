@@ -18,6 +18,7 @@ import { ingestEvents } from './ingest.js'
 import { enrichEventImage } from './image-enrichment.js'
 import { fetchPageText } from './resourcing.js'
 import { recordRetryNote } from './retry-strategies.js'
+import { interpretReviewNote, splitEvent, type NoteFieldEdits } from './review-note-actions.js'
 import { timesFromChicagoWallClock } from '../timezone.js'
 import { snapshotEventForHistory } from './serialize.js'
 
@@ -408,11 +409,39 @@ export async function retryEventImageForKeptItem(eventId: string, adminId: strin
 // (see retry-strategies.ts) so it's available to every future retry, not
 // just this one, and also fed straight into this retry's own text-check
 // call via runTextChecksWithRetry's `note` param.
+// What happened to an admin's note on a Retry (2026-09-28) — always
+// reported back, including when it couldn't be done and why, rather than a
+// note silently changing nothing. See review-note-actions.ts.
+interface NoteOutcome {
+  action: 'split' | 'edit' | 'image' | 'cannot'
+  handled: boolean
+  message: string
+}
+
+export interface RetryResult {
+  allPassing: boolean
+  imageRetried: boolean
+  imageChanged: boolean
+  imageReason?: string
+  noteOutcome?: NoteOutcome
+}
+
+const NOTE_FIELD_LABELS: Record<keyof NoteFieldEdits, string> = {
+  title: 'title',
+  description: 'description',
+  locationName: 'venue name',
+  address: 'address',
+  startDate: 'date',
+  startTime: 'time',
+  allDay: 'all-day',
+  sourceUrl: 'source link',
+}
+
 export async function retryPipelineChecks(
   eventId: string,
   adminId: string,
   note?: string,
-): Promise<PipelineReviewActionError | { allPassing: boolean; imageRetried: boolean; imageChanged: boolean; imageReason?: string }> {
+): Promise<PipelineReviewActionError | RetryResult> {
   const [existing] = await db
     .select({
       title: events.title,
@@ -445,28 +474,77 @@ export async function retryPipelineChecks(
   // gives the retry the same real page content the original ingestion had,
   // rather than a bare "null" it has to explain away in its own reason.
   const sourceText = existing.sourceUrl ? (await fetchPageText(existing.sourceUrl)) ?? undefined : undefined
-  const [{ checks: textChecks, correctedFields }] = await runTextChecksWithRetry(
-    [{ title: existing.title, description: existing.description ?? undefined, address: existing.address ?? undefined, locationName: existing.locationName ?? undefined }],
-    sourceText,
-    note,
-  )
-  const merged = { ...existing, ...correctedFields }
+  const trimmedNote = note?.trim() || undefined
 
-  if (note?.trim()) {
-    await recordRetryNote({ note, stage: 'pipeline_review', eventId, contextTitle: existing.title, userId: adminId })
+  // A note is read on its own terms first (review-note-actions.ts) — before
+  // this, it only ever reached checks that were already failing and the
+  // image search, so any other request was silently dropped.
+  let noteOutcome: NoteOutcome | undefined
+  let noteEdits: NoteFieldEdits = {}
+  let noteWantsImage = false
+  if (trimmedNote) {
+    const decision = await interpretReviewNote(existing, trimmedNote, sourceText)
+    if (decision.action === 'split') {
+      const split = await splitEvent(eventId, decision.occurrences, adminId, trimmedNote)
+      if ('error' in split) {
+        noteOutcome = { action: 'cannot', handled: false, message: `Couldn't split it: ${split.error}` }
+      } else {
+        noteOutcome = {
+          action: 'split',
+          handled: true,
+          message: `Split into ${split.inserted} separate events${split.skipped ? ` (${split.skipped} already existed)` : ''}${split.filteredOut ? ` (${split.filteredOut} left out as not family-relevant)` : ''}; the combined listing was removed. ${decision.explanation}`.trim(),
+        }
+        await recordRetryNote({ note: trimmedNote, stage: 'pipeline_review', eventId, contextTitle: existing.title, userId: adminId, outcome: noteOutcome.message })
+        return { allPassing: true, imageRetried: false, imageChanged: false, noteOutcome }
+      }
+    } else if (decision.action === 'edit') {
+      noteEdits = decision.fields
+      const changed = [...new Set(Object.keys(noteEdits).map((k) => NOTE_FIELD_LABELS[k as keyof NoteFieldEdits]))]
+      noteOutcome = { action: 'edit', handled: true, message: `Updated the ${changed.join(', ')}. ${decision.explanation}`.trim() }
+    } else if (decision.action === 'image') {
+      noteWantsImage = true
+      noteOutcome = { action: 'image', handled: false, message: decision.explanation }
+    } else {
+      noteOutcome = { action: 'cannot', handled: false, message: decision.explanation }
+    }
   }
+
+  const edited = {
+    ...existing,
+    ...(noteEdits.title !== undefined && { title: noteEdits.title }),
+    ...(noteEdits.description !== undefined && { description: noteEdits.description }),
+    ...(noteEdits.locationName !== undefined && { locationName: noteEdits.locationName }),
+    ...(noteEdits.address !== undefined && { address: noteEdits.address }),
+    ...(noteEdits.sourceUrl !== undefined && { sourceUrl: noteEdits.sourceUrl }),
+    ...(noteEdits.startDate !== undefined && { startDate: noteEdits.startDate }),
+    ...(noteEdits.startTime !== undefined && { startTime: noteEdits.startTime }),
+    ...(noteEdits.allDay !== undefined && { allDay: noteEdits.allDay }),
+  }
+  const [{ checks: textChecks, correctedFields }] = await runTextChecksWithRetry(
+    [{ title: edited.title, description: edited.description ?? undefined, address: edited.address ?? undefined, locationName: edited.locationName ?? undefined }],
+    sourceText,
+    trimmedNote,
+  )
+  const merged = { ...edited, ...correctedFields }
+  // start_date/start_time are generated from the instants — a date/time
+  // edit is written as startsAt/endsAt (see CLAUDE.md's Time zones).
+  const timeColumns =
+    noteEdits.startDate !== undefined || noteEdits.startTime !== undefined || noteEdits.allDay !== undefined
+      ? (({ startsAt, endsAt, allDay }) => ({ startsAt, endsAt, allDay }))(
+          timesFromChicagoWallClock({ date: merged.startDate, startTime: merged.startTime, endTime: existing.endTime, allDay: merged.allDay }),
+        )
+      : {}
 
   // Re-search the image when it's actually one of the checks currently
   // failing (a passing image has nothing to gain from a fresh search, and
   // re-running it anyway would just burn a real network fetch + vision call
-  // for no reason) — OR when the admin gave an explicit note (feedback #169
-  // follow-up, 2026-09-16, "I should be able to retry again with yet
-  // another note"): once every check passes, the Retry button stays
-  // available (see PipelineReviewPage.tsx) specifically so a note like
-  // "look up a better photo" can keep being tried, and an explicit
-  // instruction always outranks the "don't redo passing work" default.
+  // for no reason) — OR when the admin's note is about the photo (feedback
+  // #169 follow-up, 2026-09-16: a note like "look up a better photo" must
+  // work even once every check passes; since 2026-09-28 interpretReviewNote
+  // decides whether a note is about the photo at all, so a note asking for
+  // something else no longer triggers a pointless image search).
   const imageWasFailing = priorChecks ? !priorChecks.imageQuality.pass || !priorChecks.imageRelevance.pass : false
-  const shouldRetryImage = imageWasFailing || Boolean(note?.trim())
+  const shouldRetryImage = imageWasFailing || noteWantsImage
   let imageQuality = priorChecks?.imageQuality ?? { pass: true, reason: 'Not attempted', attempts: 1 }
   let imageRelevance = priorChecks?.imageRelevance ?? { pass: true, reason: 'Not attempted', attempts: 1 }
   // Whether the retry actually swapped in a different photo (feedback #169
@@ -507,19 +585,33 @@ export async function retryPipelineChecks(
   const pipelineChecksPassed = Object.values(checks).every((c) => c.pass)
 
   await db.update(events).set({
-    ...correctedFields,
+    title: merged.title,
+    description: merged.description,
+    locationName: merged.locationName,
+    address: merged.address,
+    sourceUrl: merged.sourceUrl,
+    ...timeColumns,
     pipelineQualityChecks: checks,
     pipelineChecksPassed,
     status: pipelineChecksPassed && existing.status === 'pending' ? 'approved' : existing.status,
     updatedAt: new Date(),
   }).where(eq(events.id, eventId))
 
+  if (noteOutcome?.action === 'image') {
+    noteOutcome = imageChanged
+      ? { action: 'image', handled: true, message: 'Found a different photo.' }
+      : { action: 'image', handled: false, message: `No better photo found${imageRelevance.reason ? `: ${imageRelevance.reason}` : '.'}` }
+  }
+  if (trimmedNote) {
+    await recordRetryNote({ note: trimmedNote, stage: 'pipeline_review', eventId, contextTitle: existing.title, userId: adminId, outcome: noteOutcome?.message })
+  }
+
   // Only worth a history entry when a text field actually changed — the
   // image side (if retried) already records its own entry inside
   // enrichEventImage, and a retry that found nothing new shouldn't leave a
   // no-op row behind (recordEdit already no-ops on an unchanged diff, but
   // there's no reason to even build the snapshot when nothing was corrected).
-  if (Object.keys(correctedFields).length > 0) {
+  if (Object.keys(correctedFields).length > 0 || Object.keys(noteEdits).length > 0) {
     await recordEdit({
       entityType: 'event',
       entityId: eventId,
@@ -529,7 +621,7 @@ export async function retryPipelineChecks(
     })
   }
 
-  return { allPassing: pipelineChecksPassed, imageRetried: shouldRetryImage, imageChanged, imageReason: shouldRetryImage ? imageRelevance.reason : undefined }
+  return { allPassing: pipelineChecksPassed, imageRetried: shouldRetryImage, imageChanged, imageReason: shouldRetryImage ? imageRelevance.reason : undefined, noteOutcome }
 }
 
 // The rejected-candidate equivalent — reruns the text-check retry against

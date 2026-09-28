@@ -50,6 +50,9 @@ vi.mock('./candidate-checks.js', async () => {
 })
 const recordRetryNoteMock = vi.fn()
 vi.mock('./retry-strategies.js', () => ({ recordRetryNote: recordRetryNoteMock }))
+const interpretReviewNoteMock = vi.fn()
+const splitEventMock = vi.fn()
+vi.mock('./review-note-actions.js', () => ({ interpretReviewNote: interpretReviewNoteMock, splitEvent: splitEventMock }))
 
 const PASSING_CHECK = { pass: true, reason: 'ok', attempts: 1 }
 const PASSING_TEXT_CHECKS = {
@@ -69,6 +72,8 @@ beforeEach(() => {
   recordEditMock.mockReset()
   fetchPageTextMock.mockReset().mockResolvedValue('the real page text')
   recordRetryNoteMock.mockReset()
+  interpretReviewNoteMock.mockReset().mockResolvedValue({ action: 'image', explanation: 'The note is about the photo.' })
+  splitEventMock.mockReset()
 })
 
 describe('approveEvent', () => {
@@ -275,7 +280,7 @@ describe('retryPipelineChecks', () => {
   // can keep being tried — this only works if a note actually forces a
   // fresh search rather than being silently skipped because nothing is
   // currently failing.
-  it('re-searches the image when a note is given, even though every check currently passes', async () => {
+  it('re-searches the image when the note is about the photo, even though every check currently passes', async () => {
     selectResults.push([
       {
         title: 'Film Screening: Some Movie',
@@ -538,6 +543,85 @@ describe('retryPipelineChecks', () => {
       eventId: 'event-1',
       contextTitle: 'Old Title',
       userId: 'admin-1',
+      outcome: expect.any(String),
+    })
+  })
+
+  // 2026-09-28: a note used to be silently dropped unless it was about a
+  // failing check or the photo ("split this into one event per film" did
+  // nothing, and the toast said "now passing").
+  describe('acting on the note itself', () => {
+    const musicBox = {
+      title: 'Music Box of Horrors: The Final Chapter',
+      description: 'Month-long horror film series',
+      address: '3733 N Southport Ave',
+      locationName: 'Music Box Theatre',
+      startDate: '2026-10-01',
+      startTime: '18:00:00',
+      endTime: null,
+      allDay: false,
+      sourceUrl: 'https://chamber.example/events',
+      topic: null,
+      imageUrl: '/uploads/events/a.jpg',
+      thumbnailUrl: '/uploads/events/a-thumb.jpg',
+      checks: priorChecksAllPassing,
+      status: 'approved',
+    }
+    const note = 'this should be multiple events one for each film'
+
+    it('splits the event when the note asks for it, and stops there', async () => {
+      selectResults.push([musicBox])
+      const occurrences = [
+        { title: 'Music Box of Horrors: Halloween', startDate: '2026-10-02', startTime: '19:00', allDay: false },
+        { title: 'Music Box of Horrors: The Thing', startDate: '2026-10-03', startTime: '21:00', allDay: false },
+      ]
+      interpretReviewNoteMock.mockResolvedValue({ action: 'split', explanation: 'Found the screenings on musicboxtheatre.com.', occurrences })
+      splitEventMock.mockResolvedValue({ inserted: 2, skipped: 0, filteredOut: 0 })
+      const { retryPipelineChecks } = await import('./pipeline-review-service.js')
+
+      const result = await retryPipelineChecks('event-1', 'admin-1', note)
+
+      expect(splitEventMock).toHaveBeenCalledWith('event-1', occurrences, 'admin-1', note)
+      expect(result).toEqual(expect.objectContaining({ noteOutcome: expect.objectContaining({ action: 'split', handled: true, message: expect.stringContaining('Split into 2 separate events') }) }))
+      expect(runTextChecksWithRetryMock).not.toHaveBeenCalled()
+      expect(enrichEventImageMock).not.toHaveBeenCalled()
+      expect(recordRetryNoteMock).toHaveBeenCalledWith(expect.objectContaining({ note, outcome: expect.stringContaining('Split into 2') }))
+    })
+
+    it("says explicitly when a split couldn't be done, and why", async () => {
+      selectResults.push([musicBox])
+      interpretReviewNoteMock.mockResolvedValue({ action: 'split', explanation: 'x', occurrences: [{ title: 'a', startDate: '2026-10-02', allDay: true }, { title: 'b', startDate: '2026-10-03', allDay: true }] })
+      splitEventMock.mockResolvedValue({ error: 'All 2 occurrences found already exist as events, so nothing was split.' })
+      const { retryPipelineChecks } = await import('./pipeline-review-service.js')
+
+      const result = await retryPipelineChecks('event-1', 'admin-1', note)
+
+      expect(result).toEqual(expect.objectContaining({ noteOutcome: { action: 'cannot', handled: false, message: expect.stringContaining('already exist') } }))
+    })
+
+    it('reports a "cannot" with its explanation, and does not run a pointless image search', async () => {
+      selectResults.push([musicBox])
+      interpretReviewNoteMock.mockResolvedValue({ action: 'cannot', explanation: "The theatre hasn't published individual dates yet." })
+      const { retryPipelineChecks } = await import('./pipeline-review-service.js')
+
+      const result = await retryPipelineChecks('event-1', 'admin-1', note)
+
+      expect(result).toEqual(expect.objectContaining({ noteOutcome: { action: 'cannot', handled: false, message: "The theatre hasn't published individual dates yet." } }))
+      expect(enrichEventImageMock).not.toHaveBeenCalled()
+    })
+
+    it('applies note-requested edits, writing a new date/time as instants', async () => {
+      selectResults.push([musicBox])
+      interpretReviewNoteMock.mockResolvedValue({ action: 'edit', explanation: 'The venue lists 7pm.', fields: { startTime: '19:00', allDay: false } })
+      const { retryPipelineChecks } = await import('./pipeline-review-service.js')
+
+      const result = await retryPipelineChecks('event-1', 'admin-1', 'it starts at 7pm')
+
+      expect(result).toEqual(expect.objectContaining({ noteOutcome: expect.objectContaining({ action: 'edit', handled: true, message: expect.stringContaining('time') }) }))
+      const set = updateCalls[0].set
+      expect(set.startsAt).toEqual(new Date('2026-10-02T00:00:00.000Z'))
+      expect(set).not.toHaveProperty('startTime')
+      expect(recordEditMock).toHaveBeenCalled()
     })
   })
 

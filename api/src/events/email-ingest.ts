@@ -9,6 +9,7 @@ import { resendClient } from '../newsletter/mailer.js'
 import { filterFamilyRelevantCandidates } from './candidate-validation.js'
 import { AUDIENCE_RELEVANCE_RULES } from './extraction-filters.js'
 import { ingestEvents, type CandidateEvent } from './ingest.js'
+import { getRetryStrategiesPromptBlock } from './retry-strategies.js'
 
 // Feedback #115 (2026-09-03), "how do I add these email based events... I'd
 // like to forward it to Bulbord automatically": a member forwards (or an
@@ -86,7 +87,7 @@ export async function extractCandidateEventsFromEmail(
       model: 'claude-opus-5',
       max_tokens: 4000,
       output_config: { effort: 'medium' },
-      system: SYSTEM_PROMPT,
+      system: SYSTEM_PROMPT + (await getRetryStrategiesPromptBlock('extraction')),
       messages: [{ role: 'user', content: JSON.stringify({ today: todayInChicago(), subject, body_text: trimmedBody }) }],
     })
 

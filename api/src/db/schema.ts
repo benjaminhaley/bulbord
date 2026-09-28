@@ -242,6 +242,11 @@ export const pipelineRetryNotes = pgTable('pipeline_retry_notes', {
   stage: text('stage').notNull(), // 'photo_extraction' | 'description_extraction' | 'pipeline_review'
   note: text('note').notNull(),
   contextTitle: text('context_title'),
+  // What happened when the note was acted on (2026-09-28) — e.g. "Split into
+  // 6 separate events…" or why it couldn't be done. Shown alongside the note
+  // to future extractions/retries so they learn from the result, not just
+  // the request. Null for notes recorded before this existed.
+  outcome: text('outcome'),
   createdByUserId: uuid('created_by_user_id').references(() => users.id),
   ...timestamps,
 })

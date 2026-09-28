@@ -47,13 +47,14 @@ describe('recordRetryNote', () => {
       stage: 'pipeline_review',
       note: 'the price is per week, not per day',
       contextTitle: 'Lake View YMCA',
+      outcome: null,
       createdByUserId: 'admin-1',
     })
     const [, logValues] = insertMock.mock.calls[1]
     expect(logValues).toEqual({
       actor: 'admin-1',
       action: 'pipeline_retry_note_added',
-      metadata: { stage: 'pipeline_review', eventId: 'event-1', note: 'the price is per week, not per day' },
+      metadata: { stage: 'pipeline_review', eventId: 'event-1', note: 'the price is per week, not per day', outcome: null },
     })
   })
 
@@ -76,6 +77,7 @@ describe('recordRetryNote', () => {
       stage: 'photo_extraction',
       note: 'read the QR code in the photo',
       contextTitle: null,
+      outcome: null,
       createdByUserId: 'user-1',
     })
   })
@@ -91,15 +93,22 @@ describe('getRetryStrategiesPromptBlock', () => {
 
   it('formats notes into a prompt block, including context titles when present', async () => {
     selectResults.push([
-      { note: 'read the QR code in the photo', contextTitle: 'Fall Fest' },
-      { note: 'the price is per week, not per day', contextTitle: null },
+      { note: 'read the QR code in the photo', contextTitle: 'Fall Fest', outcome: 'Found the link in the QR code.' },
+      { note: 'the price is per week, not per day', contextTitle: null, outcome: null },
     ])
     const { getRetryStrategiesPromptBlock } = await import('./retry-strategies.js')
 
     const block = await getRetryStrategiesPromptBlock()
 
-    expect(block).toContain('read the QR code in the photo (from retrying "Fall Fest")')
+    expect(block).toContain('read the QR code in the photo (about "Fall Fest") → what was done: Found the link in the QR code.')
     expect(block).toContain('the price is per week, not per day')
-    expect(block).not.toContain('the price is per week, not per day (from')
+    expect(block).not.toContain('the price is per week, not per day (about')
+  })
+
+  it('introduces the block as past mistakes to avoid when used by an initial extraction', async () => {
+    selectResults.push([{ note: 'one event per film, not a generic series', contextTitle: null, outcome: null }])
+    const { getRetryStrategiesPromptBlock } = await import('./retry-strategies.js')
+
+    expect(await getRetryStrategiesPromptBlock('extraction')).toContain('Past reviewer corrections')
   })
 })

@@ -484,18 +484,39 @@ export async function retryPipelineEventImage(eventId: string): Promise<{ found:
 // 2026-09-17, "it should at least provide some sort of response... why it
 // wasn't able to") — undefined for the rejected-candidate retry, which never
 // touches an image at all (see retryRejectedCandidateChecks's own comment).
-async function postPipelineRetry(
-  path: string,
-  note?: string,
-): Promise<{ allPassing: boolean; imageRetried?: boolean; imageChanged?: boolean; imageReason?: string }> {
+// What happened to the Retry note (2026-09-28): split into separate events,
+// fields edited, a photo search, or — explicitly — why it couldn't be done.
+interface PipelineNoteOutcome {
+  action: 'split' | 'edit' | 'image' | 'cannot'
+  handled: boolean
+  message: string
+}
+
+export interface PipelineRetryResult {
+  allPassing: boolean
+  imageRetried?: boolean
+  imageChanged?: boolean
+  imageReason?: string
+  noteOutcome?: PipelineNoteOutcome
+}
+
+async function postPipelineRetry(path: string, note?: string): Promise<PipelineRetryResult> {
   const response = await fetch(`${API_URL}${path}`, {
     method: 'POST',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
     body: JSON.stringify(note ? { note } : {}),
   })
   await throwOnError(response, 'Failed to retry')
-  const body = (await response.json()) as { data: { all_passing: boolean; image_retried?: boolean; image_changed?: boolean; image_reason?: string } }
-  return { allPassing: body.data.all_passing, imageRetried: body.data.image_retried, imageChanged: body.data.image_changed, imageReason: body.data.image_reason }
+  const body = (await response.json()) as {
+    data: { all_passing: boolean; image_retried?: boolean; image_changed?: boolean; image_reason?: string; note_outcome?: PipelineNoteOutcome }
+  }
+  return {
+    allPassing: body.data.all_passing,
+    imageRetried: body.data.image_retried,
+    imageChanged: body.data.image_changed,
+    imageReason: body.data.image_reason,
+    noteOutcome: body.data.note_outcome,
+  }
 }
 
 // `note` (feedback #165, 2026-09-14): an admin's own free-text retry
