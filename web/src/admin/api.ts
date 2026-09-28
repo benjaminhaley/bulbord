@@ -498,6 +498,8 @@ export interface PipelineRetryResult {
   imageChanged?: boolean
   imageReason?: string
   noteOutcome?: PipelineNoteOutcome
+  // The work outlasted the request; the result arrives as a notification.
+  stillRunning?: boolean
 }
 
 async function postPipelineRetry(path: string, note?: string): Promise<PipelineRetryResult> {
@@ -508,8 +510,9 @@ async function postPipelineRetry(path: string, note?: string): Promise<PipelineR
   })
   await throwOnError(response, 'Failed to retry')
   const body = (await response.json()) as {
-    data: { all_passing: boolean; image_retried?: boolean; image_changed?: boolean; image_reason?: string; note_outcome?: PipelineNoteOutcome }
+    data: { all_passing: boolean; image_retried?: boolean; image_changed?: boolean; image_reason?: string; note_outcome?: PipelineNoteOutcome; still_running?: boolean }
   }
+  if (body.data.still_running) return { allPassing: false, stillRunning: true }
   return {
     allPassing: body.data.all_passing,
     imageRetried: body.data.image_retried,

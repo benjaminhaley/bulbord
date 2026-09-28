@@ -94,6 +94,7 @@ function hasRetryableFailure(checks: PipelineChecks | null): boolean {
 // with the note — or plainly that it couldn't be done, and why — rather than
 // a checklist status that says nothing about the request itself.
 function describeRetryResult(result: PipelineRetryResult): string {
+  if (result.stillRunning) return "Still working on this — you'll get a notification with the result."
   if (result.noteOutcome) {
     return result.noteOutcome.handled ? `Done: ${result.noteOutcome.message}` : `Couldn't do what the note asked: ${result.noteOutcome.message}`
   }
@@ -586,7 +587,7 @@ export function PipelineReviewPage() {
                     const result = await retryPipelineEventChecks(item.id, notes[item.id])
                     // A note's outcome can be a couple of sentences — kept
                     // on screen until dismissed rather than a 3s toast.
-                    if (result.noteOutcome) setNoteResult(describeRetryResult(result))
+                    if (result.noteOutcome || result.stillRunning) setNoteResult(describeRetryResult(result))
                     else setToast(describeRetryResult(result))
                     load()
                   } catch (err) {

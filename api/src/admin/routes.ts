@@ -37,6 +37,11 @@ import { impersonateUser } from './impersonation.js'
 import { approveMember } from '../auth/signup-approval.js'
 import { deleteMember } from './memberDeletion.js'
 import { computeDataFreshness } from './staleness.js'
+import { createNotification } from '../notifications/service.js'
+
+// How long Retry waits before answering "still working" and delivering the
+// result as a notification instead — well under Railway's 5-minute limit.
+const RETRY_WAIT_MS = 90_000
 
 // How stale events/camps data can get before Developer Tools and the admin's
 // own avatar flag it red (feedback #69) — a week is long enough that a
@@ -459,7 +464,41 @@ export async function adminRoutes(app: FastifyInstance) {
   app.post('/admin/events/:id/pipeline-review/retry', { preHandler: requireRole('admin') }, async (request, reply) => {
     const { id } = request.params as { id: string }
     const { note } = (request.body ?? {}) as { note?: string }
-    const result = await retryPipelineChecks(id, request.currentUser!.id, note)
+    const adminId = request.currentUser!.id
+    // Acting on a note can take many minutes (a split runs a web search, then
+    // a photo search per new event) — past Railway's 5-minute request limit,
+    // which answered the admin with a bare "upstream error" while the work
+    // quietly finished (2026-09-28). So wait a bounded time; if it's still
+    // going, answer "still working" and send the result as a notification.
+    const work = retryPipelineChecks(id, adminId, note)
+    const settled = await Promise.race([work, new Promise<'still_running'>((resolve) => setTimeout(() => resolve('still_running'), RETRY_WAIT_MS))])
+    if (settled === 'still_running') {
+      void work
+        .then((result) =>
+          result === 'not_found'
+            ? undefined
+            : createNotification({
+                userId: adminId,
+                type: 'pipeline_review_ready',
+                actorUserId: null,
+                message: result.noteOutcome
+                  ? `Retry note ${result.noteOutcome.handled ? 'done' : "couldn't be done"}: ${result.noteOutcome.message}`
+                  : `Retry finished: ${result.allPassing ? 'all checks pass' : 'some checks still fail'}.`,
+                targetPath: '/admin/pipeline-review',
+              }),
+        )
+        .catch((err: unknown) =>
+          createNotification({
+            userId: adminId,
+            type: 'pipeline_review_ready',
+            actorUserId: null,
+            message: `Retry failed: ${err instanceof Error ? err.message : 'unknown error'}`,
+            targetPath: '/admin/pipeline-review',
+          }),
+        )
+      return reply.send({ data: { still_running: true } })
+    }
+    const result = settled
     if (result === 'not_found') return reply.code(404).send({ error: { message: 'Event not found' } })
     return reply.send({
       data: {
