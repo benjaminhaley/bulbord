@@ -60,6 +60,15 @@ test('pasting an image works immediately after opening the feedback composer, wi
   await expect(composer).toBeVisible()
   const thumbnailsBefore = await composer.locator('img').count()
 
+  // The form moves focus into its title field two animation frames after
+  // mounting (FeedbackForm.tsx's double-rAF setFocus) — pasting the instant
+  // the composer is visible raced that and failed intermittently in CI
+  // (2026-09-28), faster than any person could tap then paste. Waiting for
+  // focus to land still fails against the original bug, where it never did.
+  await expect
+    .poll(async () => composer.evaluate((list) => list.contains(document.activeElement)), { timeout: 5000 })
+    .toBe(true)
+
   await putImageOnClipboard(page)
   await page.keyboard.press('Control+V')
 
