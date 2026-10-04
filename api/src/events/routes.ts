@@ -23,6 +23,8 @@ import { enrichEventImage, findCandidateEventImage, scoreStoredEventImage } from
 import { extractEventFieldsFromPhoto, findEventSource, type ExtractedEventFields } from './photo-extraction.js'
 import { fetchPageText, resourceEventSource } from './resourcing.js'
 import { registerDiscoveredEventSource } from './source-registration.js'
+import { withDeadline } from './extraction-shared.js'
+import { interpretReviewNote, serializeNoteDecision, type NoteDecision } from './review-note-actions.js'
 import { recordRetryNote } from './retry-strategies.js'
 import { groupSourcesByDomain } from './source-domains.js'
 import { getPipelineReviewCandidatesForRecheck, recheckReviewPath } from './pipeline-review-service.js'
@@ -52,6 +54,10 @@ const EVENT_SOURCE_TYPES = ['generic_search', 'website', 'facebook_group', 'open
 // from recently — a signal the source may have gone quiet or broken, not a
 // judgment about the events themselves (which can be far in the future).
 const STALE_THRESHOLD_MS = 30 * 24 * 60 * 60 * 1000
+// The member waits on this one (the Retry modal's spinner), so it gets far
+// less room than Pipeline Review's background note work; an address lookup
+// takes well under a minute.
+const RETRY_NOTE_DEADLINE_MS = 120_000
 function isSourceStale(lastEventAddedAt: Date | null): boolean {
   return !lastEventAddedAt || Date.now() - lastEventAddedAt.getTime() > STALE_THRESHOLD_MS
 }
@@ -192,10 +198,50 @@ export async function eventsRoutes(app: FastifyInstance) {
     }
     const note = body.note?.trim() || undefined
     const extracted = await extractEventFieldsFromPhoto(imageUrl, note)
-    if (note) {
-      await recordRetryNote({ note, stage: 'photo_extraction', contextTitle: extracted?.title ?? null, userId: request.currentUser!.id })
-    }
+    // The note itself is recorded by /events/interpret-retry-note (which the
+    // app calls alongside this on every noted retry), with its outcome.
     return reply.send({ data: extracted })
+  })
+
+  // A retry note on the Add Event review screen (feedback #180, 2026-10-04:
+  // "the location is bacinos near the driving range" got no address, because
+  // the photo/description re-read can't search). Runs the same interpreter
+  // Pipeline Review's Retry uses (review-note-actions.ts: web search + page
+  // fetches, one decision — edit / split / image / cannot — always with an
+  // explanation) against the not-yet-posted event the member is looking at,
+  // and records the note with that outcome into the shared library. Nothing is
+  // written to any event; the app applies the decision to its open forms.
+  app.post('/events/interpret-retry-note', { preHandler: requireAuth }, async (request, reply) => {
+    const body = request.body as {
+      note?: string
+      stage?: string
+      event?: { title?: string; description?: string | null; start_date?: string; start_time?: string | null; all_day?: boolean; address?: string | null; location_name?: string | null; source_url?: string | null }
+    }
+    const note = body.note?.trim()
+    const event = body.event
+    if (!note || !event?.title?.trim()) {
+      return reply.code(400).send({ error: { message: 'note and event.title are required' } })
+    }
+    const stage = body.stage === 'description_extraction' ? 'description_extraction' : 'photo_extraction'
+    const decision = await withDeadline<NoteDecision>(
+      interpretReviewNote(
+        {
+          title: event.title.trim(),
+          description: event.description ?? null,
+          startDate: event.start_date ?? '',
+          startTime: event.start_time ?? null,
+          allDay: !!event.all_day,
+          address: event.address ?? null,
+          locationName: event.location_name ?? null,
+          sourceUrl: event.source_url ?? null,
+        },
+        note,
+      ),
+      { action: 'cannot', explanation: 'Researching that note took too long. Try a more specific note, or fill it in yourself.' },
+      RETRY_NOTE_DEADLINE_MS,
+    )
+    await recordRetryNote({ note, stage, contextTitle: event.title.trim(), userId: request.currentUser!.id, outcome: decision.explanation })
+    return reply.send({ data: serializeNoteDecision(decision) })
   })
 
   // Photo-to-listing extraction, stage 2 of 2 — the slower live web search
@@ -234,9 +280,7 @@ export async function eventsRoutes(app: FastifyInstance) {
     }
     const note = body.note?.trim() || undefined
     const extracted = await extractEventFieldsFromDescription(description, note)
-    if (note) {
-      await recordRetryNote({ note, stage: 'description_extraction', contextTitle: extracted?.title ?? null, userId: request.currentUser!.id })
-    }
+    // Recorded by /events/interpret-retry-note, as above.
     return reply.send({ data: extracted })
   })
 

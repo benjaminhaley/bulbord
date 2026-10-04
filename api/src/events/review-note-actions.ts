@@ -161,6 +161,45 @@ export function parseNoteDecision(raw: unknown, today: string): NoteDecision {
   return { action: 'cannot', explanation: explanation || 'The note could not be acted on.' }
 }
 
+// The decision as the web app receives it (snake_case, like every other
+// event payload): POST /events/interpret-retry-note.
+export function serializeNoteDecision(decision: NoteDecision) {
+  if (decision.action === 'edit') {
+    const f = decision.fields
+    return {
+      action: decision.action,
+      explanation: decision.explanation,
+      fields: {
+        title: f.title,
+        description: f.description,
+        location_name: f.locationName,
+        address: f.address,
+        start_date: f.startDate,
+        start_time: f.startTime,
+        all_day: f.allDay,
+        source_url: f.sourceUrl,
+      },
+    }
+  }
+  if (decision.action === 'split') {
+    return {
+      action: decision.action,
+      explanation: decision.explanation,
+      occurrences: decision.occurrences.map((o) => ({
+        title: o.title,
+        description: o.description,
+        start_date: o.startDate,
+        start_time: o.startTime,
+        all_day: o.allDay,
+        location_name: o.locationName,
+        address: o.address,
+        source_url: o.sourceUrl,
+      })),
+    }
+  }
+  return { action: decision.action, explanation: decision.explanation }
+}
+
 // Never throws — any failure comes back as an explained "cannot", which is
 // the whole point: a note must never be dropped without saying so.
 export async function interpretReviewNote(event: NoteEventInput, note: string, sourceText?: string): Promise<NoteDecision> {

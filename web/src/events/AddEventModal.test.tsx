@@ -10,6 +10,7 @@ const mockFindEventSource = vi.fn()
 const mockExtractFromDescription = vi.fn()
 const mockFindEventDetails = vi.fn()
 const mockFindEventImage = vi.fn()
+const mockInterpretRetryNote = vi.fn()
 
 vi.mock('./api', async (importOriginal) => {
   const actual = await importOriginal<typeof import('./api')>()
@@ -22,6 +23,7 @@ vi.mock('./api', async (importOriginal) => {
     extractEventFieldsFromDescription: (...args: unknown[]) => mockExtractFromDescription(...args),
     findEventDetailsFromDescription: (...args: unknown[]) => mockFindEventDetails(...args),
     findEventImage: (...args: unknown[]) => mockFindEventImage(...args),
+    interpretRetryNote: (...args: unknown[]) => mockInterpretRetryNote(...args),
   }
 })
 
@@ -205,6 +207,7 @@ describe('AddEventModal — retry with a note (feedback #165)', () => {
     mockExtractFromDescription.mockResolvedValue({ title: 'Fall Festival', start_date: '2026-10-03', all_day: true })
     mockFindEventDetails.mockResolvedValue(null)
     mockFindEventImage.mockResolvedValue(null)
+    mockInterpretRetryNote.mockResolvedValue({ action: 'cannot', explanation: 'Nothing to change.' })
   })
 
   async function openDescribeItAndSubmit(text = 'the Nettelhorst fall festival this weekend') {
@@ -227,7 +230,7 @@ describe('AddEventModal — retry with a note (feedback #165)', () => {
   // "Retry" text on screen; the modal's own submit button reuses the same
   // label).
   async function openRetryModal() {
-    const triggerButton = await screen.findByText('Retry')
+    const triggerButton = await screen.findByText('Retry with note')
     fireEvent.click(triggerButton.closest('ion-button')!)
     await screen.findByPlaceholderText('Optional note')
   }
@@ -292,6 +295,53 @@ describe('AddEventModal — retry with a note (feedback #165)', () => {
     // original submit — a retry note is instructions for re-reading the
     // description, not a reason to re-search the web.
     expect(mockFindEventDetails).toHaveBeenCalledTimes(1)
+  })
+
+  // Feedback #180 (2026-10-04): a note is also researched by Pipeline Review's
+  // interpreter, which can search the web for what the re-read can't see.
+  it('researches the note and applies what it found, then shows what happened', async () => {
+    await openDescribeItAndSubmit('the Nettelhorst fall festival this weekend')
+    await openRetryModal()
+    mockInterpretRetryNote.mockResolvedValue({
+      action: 'edit',
+      explanation: 'Found the venue address on the park district page.',
+      fields: { address: '3252 N Broadway, Chicago, IL 60657' },
+    })
+    typeIntoIonTextarea(document.querySelector('ion-textarea[placeholder="Optional note"]')!, 'it is at the park on Broadway')
+    fireEvent.click(retrySubmitButton())
+
+    await waitFor(() =>
+      expect(mockInterpretRetryNote).toHaveBeenCalledWith({
+        note: 'it is at the park on Broadway',
+        stage: 'description_extraction',
+        event: expect.objectContaining({ title: 'Fall Festival', start_date: '2026-10-03' }),
+      }),
+    )
+    expect(await screen.findByText(/Found the venue address on the park district page/)).toBeInTheDocument()
+    await waitFor(() =>
+      expect(document.querySelector<HTMLInputElement>('ion-input[placeholder="Street address"]')?.value).toBe('3252 N Broadway, Chicago, IL 60657'),
+    )
+  })
+
+  it('does not research a retry with no note', async () => {
+    await openDescribeItAndSubmit()
+    await openRetryModal()
+    fireEvent.click(retrySubmitButton())
+    await waitFor(() => expect(mockExtractFromDescription).toHaveBeenCalledTimes(2))
+    expect(mockInterpretRetryNote).not.toHaveBeenCalled()
+  })
+
+  it('says the connection dropped instead of "couldn\'t find" when the request never came back', async () => {
+    const { ConnectionLostError } = await import('./api')
+    await openDescribeItAndSubmit()
+    await openRetryModal()
+    mockExtractFromDescription.mockRejectedValue(new ConnectionLostError())
+    mockInterpretRetryNote.mockRejectedValue(new ConnectionLostError())
+    typeIntoIonTextarea(document.querySelector('ion-textarea[placeholder="Optional note"]')!, 'the location is the park')
+    fireEvent.click(retrySubmitButton())
+
+    expect(await screen.findAllByText(/The connection dropped before the answer came back/)).not.toHaveLength(0)
+    expect(screen.queryByText(/Still couldn't find/)).not.toBeInTheDocument()
   })
 })
 

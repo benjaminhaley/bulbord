@@ -27,7 +27,9 @@ import {
   findEventDetailsFromDescription,
   findEventImage,
   findEventSource,
+  interpretRetryNote,
   updateEvent,
+  ConnectionLostError,
   type DiscoveredEventDetails,
   type Event,
   type EventInput,
@@ -35,6 +37,7 @@ import {
 } from './api'
 import { chicagoWallClockToLocal, localTiming } from '../timezone'
 import { EventForm, type EventFieldSuggestions, type EventFormInitialValues } from './EventForm'
+import { applyNoteDecision, toExtractedList } from './retryNote'
 
 // Feedback #180: one photo can list several distinct events (a "Movies in the
 // Park" board with a different film each week). Each gets its own full form,
@@ -50,17 +53,11 @@ interface QueueItem {
 
 // No image on any of them: the poster shows the whole lineup, not one event,
 // so each gets its own background photo search (that film's poster, say),
-// the same as a post with no photo attached. The shared place/source/topic
-// start out on every form; each event's own title/description/time replace
-// the first one's.
-function toQueue(extracted: ExtractedEventFields | null): QueueItem[] {
-  const extras = extracted?.additional_events
-  if (!extracted || !extras) return []
-  const { additional_events: _extras, recurrence: _recurrence, ...shared } = extracted
-  return [extracted, ...extras.map((extra) => ({ ...shared, ...extra }))].map((fields) => ({
-    initial: toInitialValues(fields, null),
-    status: 'pending',
-  }))
+// the same as a post with no photo attached. The list comes from
+// retryNote.ts's toExtractedList (shared place/source/topic on every entry).
+function toQueue(list: ExtractedEventFields[]): QueueItem[] {
+  if (list.length < 2) return []
+  return list.map((fields) => ({ initial: toInitialValues(fields, null), status: 'pending' }))
 }
 
 // The part of each title that differs ("Casper" out of "Movies in the Park:
@@ -129,10 +126,8 @@ function toInitialValues(extracted: ExtractedEventFields | null, image: Uploaded
     source_url: extracted?.source_url ?? null,
     topic: extracted?.topic ?? null,
     recurrence: extracted?.recurrence ?? null,
-    // A poster listing several events isn't the photo of any one of them —
-    // see toQueue.
-    image_url: extracted?.additional_events ? null : (image?.image_url ?? null),
-    thumbnail_url: extracted?.additional_events ? null : (image?.thumbnail_url ?? null),
+    image_url: image?.image_url ?? null,
+    thumbnail_url: image?.thumbnail_url ?? null,
   }
 }
 
@@ -344,6 +339,12 @@ export function AddEventModal({
   const [foundImage, setFoundImage] = useState<UploadedImage | null>(null)
   const [pipeline, setPipeline] = useState<Pipeline>(PIPELINE_IDLE)
   const [queue, setQueue] = useState<QueueItem[]>([])
+  // What was read for each event, as Chicago wall-clock extraction fields —
+  // the context a retry note is researched against (see handleRetry).
+  const [extracted, setExtracted] = useState<ExtractedEventFields[]>([])
+  // What the last retry note led to, always shown (a note is never dropped
+  // silently — same rule as Pipeline Review's Retry).
+  const [noteOutcome, setNoteOutcome] = useState<string | null>(null)
   const [activeIndex, setActiveIndex] = useState(0)
   // The place/source/topic of the last event posted from the queue, offered
   // to the rest (EventForm fills only still-empty fields), so an address
@@ -396,6 +397,8 @@ export function AddEventModal({
     setFoundImage(null)
     setPipeline(PIPELINE_IDLE)
     setQueue([])
+    setExtracted([])
+    setNoteOutcome(null)
     setActiveIndex(0)
     setCarryOver(null)
     setUploadedImage(null)
@@ -465,6 +468,8 @@ export function AddEventModal({
     setFieldSuggestions(null)
     setFoundImage(null)
     setQueue([])
+    setExtracted([])
+    setNoteOutcome(null)
     setActiveIndex(0)
     setCarryOver(null)
     setUploadedImage(null)
@@ -498,8 +503,10 @@ export function AddEventModal({
     }
     if (session.cancelled) return
 
-    setInitialValues(toInitialValues(fields, image))
-    setQueue(toQueue(fields))
+    const list = fields ? toExtractedList(fields) : []
+    setExtracted(list)
+    setInitialValues(toInitialValues(list.length > 1 ? null : fields, list.length > 1 ? null : image))
+    setQueue(toQueue(list))
     setActiveIndex(0)
     setFormNote(fields ? null : "Couldn't read the details from that photo — it's attached below, fill in the rest yourself.")
     setPipeline((prev) => ({ ...prev, stage1: fields ? 'ok' : 'failed' }))
@@ -533,6 +540,8 @@ export function AddEventModal({
     setFieldSuggestions(null)
     setFoundImage(null)
     setQueue([])
+    setExtracted([])
+    setNoteOutcome(null)
     setActiveIndex(0)
     setCarryOver(null)
     setUploadedImage(null)
@@ -571,6 +580,7 @@ export function AddEventModal({
     }
     if (session.cancelled) return
 
+    setExtracted(fields ? [fields] : [])
     setInitialValues(fields ? toInitialValues(fields, null) : null)
     setFormNote(
       fields
@@ -630,31 +640,74 @@ export function AddEventModal({
     const session = activeSessionRef.current
     if (!session || session.cancelled) return
 
+    // Events already posted from a queue are never re-read or changed; with
+    // any posted, a retry only researches the note for the ones still open.
+    const locked = new Set(queue.flatMap((item, i) => (item.status === 'posted' ? [i] : [])))
+    const active = queue.length > 0 ? activeIndex : 0
+    const context = extracted[active] ?? extracted[0]
+
     setRetrying(true)
+    setNoteOutcome(null)
     setPipeline((prev) => ({ ...prev, stage1: 'running' }))
     try {
-      let fields: ExtractedEventFields | null = null
-      if (pinned.kind === 'photo') {
-        if (!uploadedImage) return
-        fields = await extractEventFieldsFromPhoto(uploadedImage.image_url, note).catch(() => null)
-        if (session.cancelled) return
-        if (fields) {
-          setInitialValues(toInitialValues(fields, uploadedImage))
-          setQueue(toQueue(fields))
-          setActiveIndex(0)
+      // Two things at once: re-read the photo/description with the note as
+      // guidance (fast, no search: "read the QR code"), and research the note
+      // with Pipeline Review's interpreter, which can search the web ("the
+      // location is Bacino's near the driving range" → its address).
+      const reread: Promise<ExtractedEventFields | null | undefined> =
+        locked.size > 0
+          ? Promise.resolve(undefined)
+          : pinned.kind === 'photo'
+            ? uploadedImage
+              ? extractEventFieldsFromPhoto(uploadedImage.image_url, note)
+              : Promise.resolve(null)
+            : extractEventFieldsFromDescription(pinned.text, note)
+      const research =
+        note && context
+          ? interpretRetryNote({ note, stage: pinned.kind === 'photo' ? 'photo_extraction' : 'description_extraction', event: context })
+          : Promise.resolve(null)
+      const [rereadResult, researchResult] = await Promise.allSettled([reread, research])
+      if (session.cancelled) return
+
+      const connectionLost = [rereadResult, researchResult].some((r) => r.status === 'rejected' && r.reason instanceof ConnectionLostError)
+      const fields = rereadResult.status === 'fulfilled' ? rereadResult.value : null
+      const decision = researchResult.status === 'fulfilled' ? researchResult.value : null
+
+      let list = fields ? toExtractedList(fields) : extracted
+      const decided = decision ? applyNoteDecision(list, Math.min(active, list.length - 1), decision, locked) : null
+      if (decided) list = decided
+      const changed = !!fields || !!decided
+
+      if (changed) {
+        setExtracted(list)
+        if (list.length > 1) {
+          setQueue(
+            list.map((f, i) => ({
+              initial: toInitialValues(f, null),
+              status: locked.has(i) ? 'posted' : 'pending',
+              postedTitle: locked.has(i) ? queue[i]?.postedTitle : undefined,
+            })),
+          )
+          setActiveIndex(locked.size > 0 ? active : Math.min(active, list.length - 1))
+        } else {
+          setQueue([])
+          setInitialValues(toInitialValues(list[0] ?? null, pinned.kind === 'photo' ? uploadedImage : null))
         }
-      } else {
-        fields = await extractEventFieldsFromDescription(pinned.text, note).catch(() => null)
-        if (session.cancelled) return
-        if (fields) setInitialValues(toInitialValues(fields, null))
-      }
-      setFormNote(fields ? null : "Still couldn't find those details — fill in the rest yourself.")
-      setPipeline((prev) => ({ ...prev, stage1: fields ? 'ok' : 'failed' }))
-      if (fields) {
+        setFormNote(null)
         setRetryVersion((v) => v + 1)
         setRetryNote('')
         setRetryExpanded(false)
+        contentRef.current?.scrollToTop(300).catch(() => undefined)
       }
+      const outcome = [
+        decision?.explanation,
+        connectionLost ? 'The connection dropped before the answer came back. Check your signal and try again.' : null,
+        !changed && !decision && !connectionLost ? "Still couldn't find those details. Fill in the rest yourself." : null,
+      ]
+        .filter(Boolean)
+        .join(' ')
+      setNoteOutcome(outcome || null)
+      setPipeline((prev) => ({ ...prev, stage1: changed || prev.stage1 === 'ok' || extracted.length > 0 ? 'ok' : 'failed' }))
     } finally {
       setRetrying(false)
     }
@@ -721,12 +774,12 @@ export function AddEventModal({
   // — a dedicated button right in the Post/Cancel row (see EventForm.tsx's
   // extraAction prop) opening a small modal is the direct match for that.
   // Only offered when there's something to retry (a photo/description on
-  // file, and stage 1 has actually resolved), and not once part of a queue
-  // is posted (a re-read would rebuild it).
-  const retryButton = pinned && pipeline.stage1 !== 'running' && !queue.some((item) => item.status === 'posted') && (
+  // file, and stage 1 has actually resolved). Labeled "Retry with note"
+  // (Ben: the note box only appeared on tap, and "Retry" didn't say so).
+  const retryButton = pinned && pipeline.stage1 !== 'running' && (
     <IonButton fill="clear" color="medium" onClick={() => setRetryExpanded(true)}>
       <IonIcon slot="start" icon={refreshOutline} />
-      Retry
+      Retry with note
     </IonButton>
   )
 
@@ -955,6 +1008,13 @@ export function AddEventModal({
                 <p style={{ fontSize: '0.8125rem', margin: '12px 16px 8px' }}>{formNote}</p>
               </IonText>
             )}
+            {noteOutcome && (
+              <div
+                style={{ margin: '12px 16px 4px', padding: '10px 14px', borderRadius: 10, background: 'var(--ion-color-light, #f4f4f4)', fontSize: '0.875rem' }}
+              >
+                <strong>Your note:</strong> {noteOutcome}
+              </div>
+            )}
             {queue.length > 0 ? (
               // Every queued form stays mounted (only the open one shown), so
               // edits survive moving between tabs.
@@ -1037,13 +1097,17 @@ export function AddEventModal({
           <IonButton expand="block" style={{ marginTop: 16 }} disabled={retrying} onClick={() => void handleRetry()}>
             {retrying ? <IonSpinner name="dots" /> : 'Retry'}
           </IonButton>
-          {/* A failed retry leaves this modal open (only a success closes
-              it — see handleRetry) so the "still couldn't find it" message
-              is visible right here, not hidden behind the modal the member
-              would otherwise have to close first to see it. */}
-          {!retrying && pipeline.stage1 === 'failed' && formNote && (
+          {retrying && retryNote.trim() && (
             <IonText color="medium">
-              <p style={{ fontSize: '0.8125rem', marginTop: 12 }}>{formNote}</p>
+              <p style={{ fontSize: '0.8125rem', marginTop: 12 }}>Re-reading and researching your note. This can take a minute.</p>
+            </IonText>
+          )}
+          {/* A retry that changed nothing leaves this modal open (only a
+              change closes it — see handleRetry) so what happened is visible
+              right here, not hidden behind it. */}
+          {!retrying && noteOutcome && (
+            <IonText color="medium">
+              <p style={{ fontSize: '0.8125rem', marginTop: 12 }}>{noteOutcome}</p>
             </IonText>
           )}
         </IonContent>

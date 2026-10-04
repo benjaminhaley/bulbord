@@ -7,7 +7,7 @@ vi.mock('./ingest.js', () => ({ ingestEvents: vi.fn() }))
 vi.mock('./candidate-validation.js', () => ({ filterFamilyRelevantCandidates: vi.fn() }))
 vi.mock('./retry-strategies.js', () => ({ getRetryStrategiesPromptBlock: vi.fn() }))
 
-import { MAX_SPLIT_OCCURRENCES, occurrenceToCandidate, parseNoteDecision } from './review-note-actions.js'
+import { MAX_SPLIT_OCCURRENCES, occurrenceToCandidate, parseNoteDecision, serializeNoteDecision } from './review-note-actions.js'
 
 const TODAY = '2026-09-28'
 
@@ -78,5 +78,26 @@ describe('occurrenceToCandidate', () => {
     )
 
     expect(candidate).toEqual(expect.objectContaining({ sourceUrl: 'https://chamber.example/events', address: '3733 N Southport Ave', locationName: 'Music Box Theatre', status: 'approved' }))
+  })
+})
+
+// Feedback #180: what POST /events/interpret-retry-note sends the web app.
+describe('serializeNoteDecision', () => {
+  it('snake_cases an edit', () => {
+    expect(serializeNoteDecision({ action: 'edit', explanation: 'Found it.', fields: { locationName: "Bacino's", address: '141 W Diversey Pkwy', startTime: null, allDay: true } })).toEqual({
+      action: 'edit',
+      explanation: 'Found it.',
+      fields: expect.objectContaining({ location_name: "Bacino's", address: '141 W Diversey Pkwy', start_time: null, all_day: true }),
+    })
+  })
+
+  it('snake_cases split occurrences and passes cannot through', () => {
+    const split = serializeNoteDecision({
+      action: 'split',
+      explanation: 'Split.',
+      occurrences: [{ title: 'A', startDate: '2026-10-06', startTime: '18:00', allDay: false, sourceUrl: 'https://x.org' }],
+    })
+    expect(split).toMatchObject({ occurrences: [{ title: 'A', start_date: '2026-10-06', start_time: '18:00', all_day: false, source_url: 'https://x.org' }] })
+    expect(serializeNoteDecision({ action: 'cannot', explanation: 'No.' })).toEqual({ action: 'cannot', explanation: 'No.' })
   })
 })

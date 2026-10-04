@@ -303,8 +303,33 @@ interface ExtractFromPhotoResponse {
 // for a retry — passed straight through to the extraction call, and also
 // recorded server-side into a shared, growing library of past retry
 // strategies future retries (on any event) get shown too.
+// A dropped connection is not "nothing found" (feedback #180, 2026-10-04: a
+// retry's request died after 5s on cellular, the server finished the work, and
+// the app said "Still couldn't find those details"). The extraction calls are
+// safe to repeat, so a network failure (fetch rejecting, not an HTTP error
+// status) is retried once; if that fails too, ConnectionLostError tells the
+// caller to say so honestly.
+export class ConnectionLostError extends Error {
+  constructor() {
+    super('The connection dropped before the server answered')
+  }
+}
+
+async function fetchRetryingOnDrop(url: string, init: RequestInit): Promise<Response> {
+  try {
+    return await fetch(url, init)
+  } catch {
+    await new Promise((resolve) => setTimeout(resolve, 1500))
+    try {
+      return await fetch(url, init)
+    } catch {
+      throw new ConnectionLostError()
+    }
+  }
+}
+
 export async function extractEventFieldsFromPhoto(imageUrl: string, note?: string): Promise<ExtractedEventFields | null> {
-  const response = await fetch(`${API_URL}/events/extract-from-photo`, {
+  const response = await fetchRetryingOnDrop(`${API_URL}/events/extract-from-photo`, {
     method: 'POST',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
     body: JSON.stringify(note ? { image_url: imageUrl, note } : { image_url: imageUrl }),
@@ -342,7 +367,7 @@ export async function findEventSource(fields: {
   location_name?: string
   address?: string
 }): Promise<DiscoveredEventSource | null> {
-  const response = await fetch(`${API_URL}/events/find-event-source`, {
+  const response = await fetchRetryingOnDrop(`${API_URL}/events/find-event-source`, {
     method: 'POST',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
     body: JSON.stringify(fields),
@@ -369,7 +394,7 @@ interface ExtractFromDescriptionResponse {
 // `note`: same retry-instructions/strategies-library mechanism as
 // extractEventFieldsFromPhoto above.
 export async function extractEventFieldsFromDescription(description: string, note?: string): Promise<ExtractedEventFields | null> {
-  const response = await fetch(`${API_URL}/events/extract-from-description`, {
+  const response = await fetchRetryingOnDrop(`${API_URL}/events/extract-from-description`, {
     method: 'POST',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
     body: JSON.stringify(note ? { description, note } : { description }),
@@ -418,7 +443,7 @@ export async function findEventDetailsFromDescription(
   description: string,
   alreadyKnown: Partial<ExtractedEventFields>,
 ): Promise<DiscoveredEventDetails | null> {
-  const response = await fetch(`${API_URL}/events/find-event-details-from-description`, {
+  const response = await fetchRetryingOnDrop(`${API_URL}/events/find-event-details-from-description`, {
     method: 'POST',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
     body: JSON.stringify({ description, fields: alreadyKnown }),
@@ -697,4 +722,43 @@ export async function deleteEventComment(id: string, commentId: string): Promise
   if (!response.ok) {
     throw new Error(`Failed to delete comment: ${response.status}`)
   }
+}
+
+// What Pipeline Review's note interpreter decided about a retry note on the
+// Add Event review screen (feedback #180) — see the API's
+// review-note-actions.ts. Dates/times are Chicago wall-clock, like every
+// other extraction result.
+export type NoteDecision =
+  | { action: 'edit'; explanation: string; fields: Partial<Pick<ExtractedEventFields, 'title' | 'description' | 'location_name' | 'address' | 'source_url' | 'start_date' | 'all_day'>> & { start_time?: string | null } }
+  | { action: 'split'; explanation: string; occurrences: Omit<ExtractedEventFields, 'topic' | 'recurrence' | 'additional_events'>[] }
+  | { action: 'image' | 'cannot'; explanation: string }
+
+export async function interpretRetryNote(input: {
+  note: string
+  stage: 'photo_extraction' | 'description_extraction'
+  event: ExtractedEventFields
+}): Promise<NoteDecision> {
+  const { event } = input
+  const response = await fetchRetryingOnDrop(`${API_URL}/events/interpret-retry-note`, {
+    method: 'POST',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      note: input.note,
+      stage: input.stage,
+      event: {
+        title: event.title,
+        description: event.description ?? null,
+        start_date: event.start_date,
+        start_time: event.start_time ?? null,
+        all_day: event.all_day,
+        address: event.address ?? null,
+        location_name: event.location_name ?? null,
+        source_url: event.source_url ?? null,
+      },
+    }),
+  })
+  if (!response.ok) {
+    throw new Error(`Failed to interpret retry note: ${response.status}`)
+  }
+  return ((await response.json()) as { data: NoteDecision }).data
 }
