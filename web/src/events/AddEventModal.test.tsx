@@ -33,6 +33,15 @@ function typeIntoIonTextarea(el: Element, value: string) {
   fireEvent(el, new CustomEvent('ionInput', { detail: { value }, bubbles: true }))
 }
 
+// Ionic presents an inline IonModal asynchronously: it renders inside a
+// <template> and only later moves to <body>. A test that ends before that move
+// leaves it pending, and it lands in <body> during the NEXT test, as a dead
+// copy whose React tree is unmounted (feedback #180's test found the previous
+// test's checkbox that way, ~half of CI runs). Every opener waits for the move.
+async function waitUntilModalPresented() {
+  await waitFor(() => expect(screen.getByText('Add Event').closest('ion-modal')?.parentElement).toBe(document.body))
+}
+
 describe('AddEventModal — Describe It flow (feedback #133)', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -56,6 +65,7 @@ describe('AddEventModal — Describe It flow (feedback #133)', () => {
     // as a real toggle would produce.
     const { rerender } = render(<AddEventModal isOpen={false} onClose={vi.fn()} onCreated={vi.fn()} />)
     rerender(<AddEventModal isOpen onClose={vi.fn()} onCreated={vi.fn()} />)
+    await waitUntilModalPresented()
     // present() attaches the portaled content asynchronously, outside this
     // tick — findByText (unlike getByText) polls until it actually exists.
     const describeIt = await screen.findByText('Describe It')
@@ -187,6 +197,7 @@ describe('AddEventModal — retry with a note (feedback #165)', () => {
   async function openDescribeItAndSubmit(text = 'the Nettelhorst fall festival this weekend') {
     const { rerender } = render(<AddEventModal isOpen={false} onClose={vi.fn()} onCreated={vi.fn()} />)
     rerender(<AddEventModal isOpen onClose={vi.fn()} onCreated={vi.fn()} />)
+    await waitUntilModalPresented()
     const describeIt = await screen.findByText('Describe It')
     fireEvent.click(describeIt.closest('ion-button')!)
     const textarea = await screen.findByPlaceholderText(/Fall Festival at Nettelhorst Park/)
@@ -304,6 +315,7 @@ describe('AddEventModal — a photo listing several events (feedback #180)', () 
     const onCreated = vi.fn()
     const { rerender } = render(<AddEventModal isOpen={false} onClose={vi.fn()} onCreated={onCreated} />)
     rerender(<AddEventModal isOpen onClose={vi.fn()} onCreated={onCreated} />)
+    await waitUntilModalPresented()
     await screen.findByText('Add from Photo')
     const input = document.querySelector<HTMLInputElement>('input[type="file"]')!
     fireEvent.change(input, { target: { files: [new File(['x'], 'flyer.jpg', { type: 'image/jpeg' })] } })
