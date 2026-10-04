@@ -77,7 +77,7 @@ export interface ExtractedEventFields {
   additional_events?: AdditionalExtractedEvent[]
 }
 
-export type AdditionalExtractedEvent = Pick<ExtractedEventFields, 'title' | 'description' | 'start_date' | 'start_time' | 'end_time' | 'all_day'>
+type AdditionalExtractedEvent = Pick<ExtractedEventFields, 'title' | 'description' | 'start_date' | 'start_time' | 'end_time' | 'all_day'>
 
 // The most a poster can split into; a limit on what one Post creates.
 const MAX_ADDITIONAL_EVENTS = 19

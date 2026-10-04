@@ -20,6 +20,12 @@ echo "pre-push: api typecheck"
 echo "pre-push: web lint + typecheck"
 (cd web && npm run lint && npm run typecheck)
 
+# Knip used to run only in CI, so an unused export (feedback #180's
+# AdditionalExtractedEvent) left the machine and turned main red.
+echo "pre-push: knip (api, web)"
+(cd api && npm run knip)
+(cd web && npm run knip)
+
 echo "pre-push: api unit tests"
 (cd api && npx vitest run)
 
