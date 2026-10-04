@@ -76,6 +76,14 @@ function extraEventInput(extra: AdditionalExtractedEvent, shared: EventInput): E
   }
 }
 
+// Extraction reads Chicago wall-clock; show it in the viewer's zone, as the
+// form and every posted event do.
+function formatExtraWhen(event: AdditionalExtractedEvent): string {
+  const start = chicagoWallClockToLocal(event.start_date, event.all_day ? null : event.start_time)
+  const end = chicagoWallClockToLocal(event.start_date, event.all_day ? null : event.end_time)
+  return formatWhen({ startDate: start.date, startTime: start.time, endTime: end.time, allDay: event.all_day || !start.time }, new Date(), 'detailed')
+}
+
 function ExtraEventsList({ extras, onToggle }: { extras: ExtraEvent[]; onToggle: (index: number, included: boolean) => void }) {
   const count = extras.filter((x) => x.included).length + 1
   return (
@@ -93,11 +101,7 @@ function ExtraEventsList({ extras, onToggle }: { extras: ExtraEvent[]; onToggle:
             <IonLabel>
               <h3>{event.title}</h3>
               <p>
-                {formatWhen(
-                  { startDate: event.start_date, startTime: event.start_time ?? null, endTime: event.end_time ?? null, allDay: event.all_day },
-                  new Date(),
-                  'detailed',
-                )}
+                {formatExtraWhen(event)}
               </p>
             </IonLabel>
           </IonItem>
