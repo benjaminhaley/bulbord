@@ -321,15 +321,10 @@ describe('AddEventModal — a photo listing several events (feedback #180)', () 
 
   it('posts every checked event, sharing the place but not the poster photo', async () => {
     const onCreated = await pickPhoto()
-    // Uncheck Twitches. Re-dispatched until it takes: on a loaded CI runner
-    // the just-mounted IonCheckbox's React wrapper can attach its ionChange
-    // listener after the first dispatch (seen in CI, never locally).
-    // Unchecking is idempotent, so repeats are harmless.
+    // Uncheck Twitches.
     const twitches = document.querySelector('ion-checkbox[aria-label="Movies in the Park: Twitches"]')!
-    await waitFor(() => {
-      fireEvent(twitches, new CustomEvent('ionChange', { detail: { checked: false }, bubbles: true }))
-      expect(screen.getByText(/Posting 2 events/)).toBeInTheDocument()
-    })
+    fireEvent(twitches, new CustomEvent('ionChange', { detail: { checked: false }, bubbles: true }))
+    expect(await screen.findByText(/Posting 2 events/)).toBeInTheDocument()
 
     fireEvent.click(screen.getByText('Post').closest('ion-button')!)
 
