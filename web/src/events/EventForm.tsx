@@ -116,6 +116,7 @@ export function EventForm({
   imageSuggestion,
   hidePhotoAttach,
   extraAction,
+  hideCancel,
 }: {
   initial?: EventFormInitialValues
   submitLabel: string
@@ -141,6 +142,9 @@ export function EventForm({
   // this today; kept generic/optional rather than named after that one
   // caller.
   extraAction?: React.ReactNode
+  // AddEventModal's one-at-a-time queue (feedback #180) has Skip instead;
+  // its header X still closes the whole flow.
+  hideCancel?: boolean
 }) {
   const [title, setTitle] = useState(initial?.title ?? '')
   const [description, setDescription] = useState(initial?.description ?? '')
@@ -401,9 +405,11 @@ export function EventForm({
         <IonButton fill="outline" disabled={submitting || uploading || !canSubmit} onClick={submit}>
           {submitLabel}
         </IonButton>
-        <IonButton fill="clear" color="medium" disabled={submitting} onClick={onCancel}>
-          Cancel
-        </IonButton>
+        {!hideCancel && (
+          <IonButton fill="clear" color="medium" disabled={submitting} onClick={onCancel}>
+            Cancel
+          </IonButton>
+        )}
         {extraAction}
       </IonItem>
       {!canSubmit && (

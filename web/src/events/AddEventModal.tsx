@@ -1,21 +1,20 @@
 import {
   IonButton,
-  IonCheckbox,
   IonContent,
   IonHeader,
   IonIcon,
-  IonItem,
   IonLabel,
-  IonList,
   IonModal,
+  IonSegment,
+  IonSegmentButton,
   IonSpinner,
   IonText,
   IonTextarea,
   IonTitle,
   IonToolbar,
 } from '@ionic/react'
-import { cameraOutline, checkmarkCircle, chatbubbleEllipsesOutline, closeCircleOutline, closeOutline, refreshOutline } from 'ionicons/icons'
-import { useRef, useState } from 'react'
+import { cameraOutline, checkmarkCircle, chatbubbleEllipsesOutline, closeCircleOutline, closeOutline, refreshOutline, removeCircleOutline } from 'ionicons/icons'
+import { useMemo, useRef, useState } from 'react'
 
 import { API_URL } from '../config'
 import { unstyledButtonStyle } from '../theme/layout'
@@ -29,7 +28,6 @@ import {
   findEventImage,
   findEventSource,
   updateEvent,
-  type AdditionalExtractedEvent,
   type DiscoveredEventDetails,
   type Event,
   type EventInput,
@@ -37,76 +35,66 @@ import {
 } from './api'
 import { chicagoWallClockToLocal, localTiming } from '../timezone'
 import { EventForm, type EventFieldSuggestions, type EventFormInitialValues } from './EventForm'
-import { formatWhen } from './format'
 
 // Feedback #180: one photo can list several distinct events (a "Movies in the
-// Park" board with a different film each week). The form holds the first; the
-// rest are listed under it, each with a checkbox, and Post creates every
-// checked one too.
-interface ExtraEvent {
-  event: AdditionalExtractedEvent
-  included: boolean
+// Park" board with a different film each week). Each gets its own full form,
+// reviewed one at a time (Ben: "approve one then approve the next... easily
+// toggle between them"): tabs move between them, Post posts the open one and
+// moves to the next, Skip moves on without posting.
+type QueueStatus = 'pending' | 'posted' | 'skipped'
+interface QueueItem {
+  initial: EventFormInitialValues
+  status: QueueStatus
+  postedTitle?: string
 }
 
-function toExtraEvents(extracted: ExtractedEventFields | null): ExtraEvent[] {
-  return (extracted?.additional_events ?? []).map((event) => ({ event, included: true }))
+// No image on any of them: the poster shows the whole lineup, not one event,
+// so each gets its own background photo search (that film's poster, say),
+// the same as a post with no photo attached. The shared place/source/topic
+// start out on every form; each event's own title/description/time replace
+// the first one's.
+function toQueue(extracted: ExtractedEventFields | null): QueueItem[] {
+  const extras = extracted?.additional_events
+  if (!extracted || !extras) return []
+  const { additional_events: _extras, recurrence: _recurrence, ...shared } = extracted
+  return [extracted, ...extras.map((extra) => ({ ...shared, ...extra }))].map((fields) => ({
+    initial: toInitialValues(fields, null),
+    status: 'pending',
+  }))
 }
 
-// An extra event as a POST body: the member's submitted form supplies the
-// shared place/source/topic; the extra supplies what's its own. No image —
-// the poster shows the whole lineup, not this one event, so each gets its own
-// background photo search (a film's poster, say), the same as a post with no
-// photo attached. Never a repeat or a source registration (the form's event
-// already carries those).
-function extraEventInput(extra: AdditionalExtractedEvent, shared: EventInput): EventInput {
-  const start = chicagoWallClockToLocal(extra.start_date, extra.start_time)
-  const end = chicagoWallClockToLocal(extra.start_date, extra.end_time)
-  return {
-    ...shared,
-    title: extra.title,
-    description: extra.description ?? '',
-    start_date: start.date,
-    start_time: extra.all_day ? '' : start.time ?? '',
-    end_time: extra.all_day ? '' : end.time ?? '',
-    all_day: extra.all_day || !start.time,
-    image_url: null,
-    thumbnail_url: null,
-    repeat: undefined,
-    source_name: undefined,
-  }
+// The part of each title that differs ("Casper" out of "Movies in the Park:
+// Casper"), when every title shares the same "Series: " prefix.
+function tabLabels(titles: string[]): string[] {
+  const prefix = titles[0]?.match(/^[^:]+:\s*/)?.[0]
+  return prefix && titles.every((t) => t.startsWith(prefix) && t.length > prefix.length) ? titles.map((t) => t.slice(prefix.length)) : titles
 }
 
-// Extraction reads Chicago wall-clock; show it in the viewer's zone, as the
-// form and every posted event do.
-function formatExtraWhen(event: AdditionalExtractedEvent): string {
-  const start = chicagoWallClockToLocal(event.start_date, event.all_day ? null : event.start_time)
-  const end = chicagoWallClockToLocal(event.start_date, event.all_day ? null : event.end_time)
-  return formatWhen({ startDate: start.date, startTime: start.time, endTime: end.time, allDay: event.all_day || !start.time }, new Date(), 'detailed')
+function shortDate(date: string): string {
+  const [y, m, d] = date.split('-').map(Number)
+  return y && m && d ? new Date(y, m - 1, d).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : ''
 }
 
-function ExtraEventsList({ extras, onToggle }: { extras: ExtraEvent[]; onToggle: (index: number, included: boolean) => void }) {
-  const count = extras.filter((x) => x.included).length + 1
+function QueueTabs({ queue, active, onSelect }: { queue: QueueItem[]; active: number; onSelect: (index: number) => void }) {
+  const labels = tabLabels(queue.map((item) => item.initial.title))
+  const posted = queue.filter((item) => item.status === 'posted').length
   return (
-    <div style={{ margin: '12px 0 0' }}>
-      <IonText>
-        <p style={{ fontSize: '0.875rem', margin: '0 32px 4px' }}>
-          This photo lists {extras.length + 1} events. The form below is the first; Post also adds the checked ones here, with the same place and
-          details. {count === 1 ? 'Posting 1 event.' : `Posting ${count} events.`}
-        </p>
-      </IonText>
-      <IonList inset>
-        {extras.map(({ event, included }, index) => (
-          <IonItem key={`${event.title}-${event.start_date}`}>
-            <IonCheckbox slot="start" checked={included} onIonChange={(e) => onToggle(index, e.detail.checked)} aria-label={event.title} />
-            <IonLabel>
-              <h3>{event.title}</h3>
-              <p>
-                {formatExtraWhen(event)}
-              </p>
+    <div style={{ padding: '0 0 8px' }}>
+      <p style={{ fontSize: '0.875rem', margin: '0 32px 6px', color: 'var(--ion-color-medium)' }}>
+        {queue.length} events in this photo · {posted} posted
+      </p>
+      <IonSegment scrollable value={String(active)} onIonChange={(e) => onSelect(Number(e.detail.value))}>
+        {queue.map((item, i) => (
+          <IonSegmentButton key={i} value={String(i)} aria-label={item.initial.title} style={{ maxWidth: 160 }}>
+            <IonLabel style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', textTransform: 'none' }}>
+              {item.status === 'posted' && <IonIcon icon={checkmarkCircle} style={{ color: 'var(--ion-color-success)', verticalAlign: '-2px', marginRight: 4 }} />}
+              {item.status === 'skipped' && <IonIcon icon={removeCircleOutline} style={{ verticalAlign: '-2px', marginRight: 4 }} />}
+              {labels[i]}
+              <div style={{ fontSize: '0.75rem', color: 'var(--ion-color-medium)' }}>{shortDate(item.initial.start_date)}</div>
             </IonLabel>
-          </IonItem>
+          </IonSegmentButton>
         ))}
-      </IonList>
+      </IonSegment>
     </div>
   )
 }
@@ -142,7 +130,7 @@ function toInitialValues(extracted: ExtractedEventFields | null, image: Uploaded
     topic: extracted?.topic ?? null,
     recurrence: extracted?.recurrence ?? null,
     // A poster listing several events isn't the photo of any one of them —
-    // see extraEventInput.
+    // see toQueue.
     image_url: extracted?.additional_events ? null : (image?.image_url ?? null),
     thumbnail_url: extracted?.additional_events ? null : (image?.thumbnail_url ?? null),
   }
@@ -355,7 +343,17 @@ export function AddEventModal({
   const [fieldSuggestions, setFieldSuggestions] = useState<EventFieldSuggestions | null>(null)
   const [foundImage, setFoundImage] = useState<UploadedImage | null>(null)
   const [pipeline, setPipeline] = useState<Pipeline>(PIPELINE_IDLE)
-  const [extraEvents, setExtraEvents] = useState<ExtraEvent[]>([])
+  const [queue, setQueue] = useState<QueueItem[]>([])
+  const [activeIndex, setActiveIndex] = useState(0)
+  // The place/source/topic of the last event posted from the queue, offered
+  // to the rest (EventForm fills only still-empty fields), so an address
+  // typed once doesn't have to be typed for every film.
+  const [carryOver, setCarryOver] = useState<EventFieldSuggestions | null>(null)
+  const contentRef = useRef<HTMLIonContentElement>(null)
+  const queueSuggestions = useMemo(
+    () => (carryOver || fieldSuggestions ? { ...fieldSuggestions, ...carryOver } : null),
+    [carryOver, fieldSuggestions],
+  )
   // The photo flow's own uploaded image, kept around (separately from
   // `pinned`'s blob preview URL) so a retry can re-read stage 1 on the same
   // real image without re-uploading it.
@@ -397,7 +395,9 @@ export function AddEventModal({
     setFieldSuggestions(null)
     setFoundImage(null)
     setPipeline(PIPELINE_IDLE)
-    setExtraEvents([])
+    setQueue([])
+    setActiveIndex(0)
+    setCarryOver(null)
     setUploadedImage(null)
     setRetryNote('')
     setRetrying(false)
@@ -464,7 +464,9 @@ export function AddEventModal({
     setFormNote(null)
     setFieldSuggestions(null)
     setFoundImage(null)
-    setExtraEvents([])
+    setQueue([])
+    setActiveIndex(0)
+    setCarryOver(null)
     setUploadedImage(null)
     setRetryNote('')
     setRetryVersion(0)
@@ -497,7 +499,8 @@ export function AddEventModal({
     if (session.cancelled) return
 
     setInitialValues(toInitialValues(fields, image))
-    setExtraEvents(toExtraEvents(fields))
+    setQueue(toQueue(fields))
+    setActiveIndex(0)
     setFormNote(fields ? null : "Couldn't read the details from that photo — it's attached below, fill in the rest yourself.")
     setPipeline((prev) => ({ ...prev, stage1: fields ? 'ok' : 'failed' }))
 
@@ -529,7 +532,9 @@ export function AddEventModal({
     setFormNote(null)
     setFieldSuggestions(null)
     setFoundImage(null)
-    setExtraEvents([])
+    setQueue([])
+    setActiveIndex(0)
+    setCarryOver(null)
     setUploadedImage(null)
     setRetryNote('')
     setRetryVersion(0)
@@ -635,7 +640,8 @@ export function AddEventModal({
         if (session.cancelled) return
         if (fields) {
           setInitialValues(toInitialValues(fields, uploadedImage))
-          setExtraEvents(toExtraEvents(fields))
+          setQueue(toQueue(fields))
+          setActiveIndex(0)
         }
       } else {
         fields = await extractEventFieldsFromDescription(pinned.text, note).catch(() => null)
@@ -654,7 +660,7 @@ export function AddEventModal({
     }
   }
 
-  async function handleSubmit(input: EventInput) {
+  async function postEvent(input: EventInput): Promise<Event> {
     const session = activeSessionRef.current
     const sourceName =
       session && input.source_url && input.source_url === session.discovered?.source_url ? (session.discovered?.source_name ?? undefined) : undefined
@@ -662,18 +668,67 @@ export function AddEventModal({
     // Deliberately not cleared/reset here — the background search (if still
     // running) needs this to still be reachable once it resolves, so it can
     // patch the now-created event instead of trying to update a form that
-    // no longer exists.
-    if (session) session.createdEvent = created
+    // no longer exists. (From a queue, that's the first event posted.)
+    if (session && !session.createdEvent) session.createdEvent = created
     onCreated(created)
-    // The form's event is already posted, so a failed extra mustn't surface
-    // as "Could not post" (a second Post would duplicate the first). Each
-    // extra is posted independently; one failing doesn't stop the rest.
-    const extras = extraEvents.filter((x) => x.included).map((x) => extraEventInput(x.event, input))
-    const results = await Promise.allSettled(extras.map((extra) => createEvent(extra)))
-    for (const result of results) if (result.status === 'fulfilled') onCreated(result.value)
+    return created
+  }
+
+  async function handleSubmit(input: EventInput) {
+    await postEvent(input)
     resetVisibleState()
     onClose()
   }
+
+  // Opens the next event still waiting (after `from`, wrapping around), or
+  // closes once every one is posted or skipped.
+  function moveOn(from: number, next: QueueItem[]) {
+    const order = [...next.keys()].slice(from + 1).concat([...next.keys()].slice(0, from + 1))
+    const nextPending = order.find((i) => next[i].status === 'pending')
+    if (nextPending === undefined) {
+      resetVisibleState()
+      onClose()
+      return
+    }
+    setActiveIndex(nextPending)
+    // Cosmetic; never let a scroll failure (jsdom has no scrollTo) surface.
+    contentRef.current?.scrollToTop(300).catch(() => undefined)
+  }
+
+  async function postQueued(index: number, input: EventInput) {
+    await postEvent(input)
+    const next = queue.map((item, i) => (i === index ? { ...item, status: 'posted' as const, postedTitle: input.title } : item))
+    setQueue(next)
+    setCarryOver({
+      address: input.address || undefined,
+      location_name: input.location_name || undefined,
+      source_url: input.source_url || undefined,
+      topic: input.topic || undefined,
+    })
+    moveOn(index, next)
+  }
+
+  function skipQueued(index: number) {
+    const next = queue.map((item, i) => (i === index ? { ...item, status: 'skipped' as const } : item))
+    setQueue(next)
+    moveOn(index, next)
+  }
+
+  // Feedback #165 (2026-09-14), then two live follow-ups the same day: (1)
+  // the retry affordance had to live somewhere it couldn't be scrolled past —
+  // tried making it a sticky compact link, but Ben's actual ask was for a
+  // real button "near the post button" that "opens a box with optional note"
+  // — a dedicated button right in the Post/Cancel row (see EventForm.tsx's
+  // extraAction prop) opening a small modal is the direct match for that.
+  // Only offered when there's something to retry (a photo/description on
+  // file, and stage 1 has actually resolved), and not once part of a queue
+  // is posted (a re-read would rebuild it).
+  const retryButton = pinned && pipeline.stage1 !== 'running' && !queue.some((item) => item.status === 'posted') && (
+    <IonButton fill="clear" color="medium" onClick={() => setRetryExpanded(true)}>
+      <IonIcon slot="start" icon={refreshOutline} />
+      Retry
+    </IonButton>
+  )
 
   return (
     <IonModal isOpen={isOpen} onDidDismiss={handleDismiss}>
@@ -685,7 +740,7 @@ export function AddEventModal({
           </IonButton>
         </IonToolbar>
       </IonHeader>
-      <IonContent>
+      <IonContent ref={contentRef}>
         {stage === 'choice' && (
           <div
             style={{
@@ -853,6 +908,7 @@ export function AddEventModal({
                   </div>
                 )}
                 <PipelineStatus pipeline={pipeline} mode={pinned.kind} />
+                {queue.length > 0 && <QueueTabs queue={queue} active={activeIndex} onSelect={setActiveIndex} />}
               </div>
             )}
             {/* The real photo stage 3 found (or, while still searching, a
@@ -899,43 +955,52 @@ export function AddEventModal({
                 <p style={{ fontSize: '0.8125rem', margin: '12px 16px 8px' }}>{formNote}</p>
               </IonText>
             )}
-            {extraEvents.length > 0 && (
-              <ExtraEventsList
-                extras={extraEvents}
-                onToggle={(index, included) => setExtraEvents((prev) => prev.map((x, i) => (i === index ? { ...x, included } : x)))}
+            {queue.length > 0 ? (
+              // Every queued form stays mounted (only the open one shown), so
+              // edits survive moving between tabs.
+              queue.map((item, i) => (
+                <div key={`${retryVersion}-${i}`} data-queue-index={i} style={i === activeIndex ? undefined : { display: 'none' }}>
+                  {item.status === 'posted' ? (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '24px 32px' }}>
+                      <IonIcon icon={checkmarkCircle} style={{ fontSize: 22, color: 'var(--ion-color-success)', flexShrink: 0 }} />
+                      <span>Posted “{item.postedTitle}”.</span>
+                    </div>
+                  ) : (
+                    <EventForm
+                      initial={item.initial}
+                      submitLabel="Post"
+                      errorMessage="Could not post this event"
+                      fieldSuggestions={queueSuggestions}
+                      hidePhotoAttach={pipeline.active}
+                      hideCancel
+                      onSubmit={(input) => postQueued(i, input)}
+                      onCancel={handleDismiss}
+                      extraAction={
+                        <>
+                          <IonButton fill="clear" color="medium" onClick={() => skipQueued(i)}>
+                            Skip
+                          </IonButton>
+                          {retryButton}
+                        </>
+                      }
+                    />
+                  )}
+                </div>
+              ))
+            ) : (
+              <EventForm
+                key={initialValues ? `${pinned?.kind ?? 'manual'}-prefill-${retryVersion}` : 'blank'}
+                initial={initialValues ?? undefined}
+                submitLabel="Post"
+                errorMessage="Could not post this event"
+                fieldSuggestions={fieldSuggestions}
+                imageSuggestion={foundImage}
+                hidePhotoAttach={pipeline.active}
+                onSubmit={handleSubmit}
+                onCancel={handleDismiss}
+                extraAction={retryButton}
               />
             )}
-            <EventForm
-              key={initialValues ? `${pinned?.kind ?? 'manual'}-prefill-${retryVersion}` : 'blank'}
-              initial={initialValues ?? undefined}
-              submitLabel="Post"
-              errorMessage="Could not post this event"
-              fieldSuggestions={fieldSuggestions}
-              imageSuggestion={foundImage}
-              hidePhotoAttach={pipeline.active}
-              onSubmit={handleSubmit}
-              onCancel={handleDismiss}
-              // Feedback #165 (2026-09-14), then two live follow-ups the same
-              // day: (1) the retry affordance had to live somewhere it
-              // couldn't be scrolled past — tried making it a sticky
-              // compact link, but Ben's actual ask was for a real button
-              // "near the post button" that "opens a box with optional
-              // note" — a dedicated third button right in the Post/Cancel
-              // row (see EventForm.tsx's extraAction prop) opening a small
-              // modal is the direct match for that, not a spot picked for
-              // scroll-safety reasons. Only offered when there's something
-              // to retry (a photo/description on file, and stage 1 has
-              // actually resolved).
-              extraAction={
-                pinned &&
-                pipeline.stage1 !== 'running' && (
-                  <IonButton fill="clear" color="medium" onClick={() => setRetryExpanded(true)}>
-                    <IonIcon slot="start" icon={refreshOutline} />
-                    Retry
-                  </IonButton>
-                )
-              }
-            />
           </>
         )}
       </IonContent>

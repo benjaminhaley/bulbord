@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { AddEventModal } from './AddEventModal'
 
@@ -33,14 +33,29 @@ function typeIntoIonTextarea(el: Element, value: string) {
   fireEvent(el, new CustomEvent('ionInput', { detail: { value }, bubbles: true }))
 }
 
-// Ionic presents an inline IonModal asynchronously: it renders inside a
-// <template> and only later moves to <body>. A test that ends before that move
-// leaves it pending, and it lands in <body> during the NEXT test, as a dead
-// copy whose React tree is unmounted (feedback #180's test found the previous
-// test's checkbox that way, ~half of CI runs). Every opener waits for the move.
-async function waitUntilModalPresented() {
+// Ionic presents and dismisses an inline IonModal asynchronously (it renders
+// inside a <template> and moves to <body> on present). A modal still open when
+// a test ends gets dismissed by the unmount, and that async work can attach a
+// dead copy (no React fiber behind it) to <body> during the NEXT test, which
+// querySelector then finds first: feedback #180's tests failed that way in
+// ~half of CI runs, never locally (diagnosed with CI-side logging). So every
+// test opens through openModal(), which waits for the present, and afterEach
+// closes the modal and waits for it to finish dismissing before cleanup.
+let closeOpenModal: (() => void) | null = null
+
+async function openModal(onCreated: (event: unknown) => void = vi.fn()) {
+  const { rerender } = render(<AddEventModal isOpen={false} onClose={vi.fn()} onCreated={onCreated} />)
+  rerender(<AddEventModal isOpen onClose={vi.fn()} onCreated={onCreated} />)
+  closeOpenModal = () => rerender(<AddEventModal isOpen={false} onClose={vi.fn()} onCreated={onCreated} />)
   await waitFor(() => expect(screen.getByText('Add Event').closest('ion-modal')?.parentElement).toBe(document.body))
 }
+
+afterEach(async () => {
+  if (!closeOpenModal) return
+  closeOpenModal()
+  closeOpenModal = null
+  await waitFor(() => expect(screen.queryByText('Add Event')).not.toBeInTheDocument(), { timeout: 3000 })
+})
 
 describe('AddEventModal — Describe It flow (feedback #133)', () => {
   beforeEach(() => {
@@ -63,9 +78,7 @@ describe('AddEventModal — Describe It flow (feedback #133)', () => {
     // does either) throws "framework delegate is missing" and the portaled
     // content never mounts at all. Render closed, then rerender open, same
     // as a real toggle would produce.
-    const { rerender } = render(<AddEventModal isOpen={false} onClose={vi.fn()} onCreated={vi.fn()} />)
-    rerender(<AddEventModal isOpen onClose={vi.fn()} onCreated={vi.fn()} />)
-    await waitUntilModalPresented()
+    await openModal()
     // present() attaches the portaled content asynchronously, outside this
     // tick — findByText (unlike getByText) polls until it actually exists.
     const describeIt = await screen.findByText('Describe It')
@@ -195,9 +208,7 @@ describe('AddEventModal — retry with a note (feedback #165)', () => {
   })
 
   async function openDescribeItAndSubmit(text = 'the Nettelhorst fall festival this weekend') {
-    const { rerender } = render(<AddEventModal isOpen={false} onClose={vi.fn()} onCreated={vi.fn()} />)
-    rerender(<AddEventModal isOpen onClose={vi.fn()} onCreated={vi.fn()} />)
-    await waitUntilModalPresented()
+    await openModal()
     const describeIt = await screen.findByText('Describe It')
     fireEvent.click(describeIt.closest('ion-button')!)
     const textarea = await screen.findByPlaceholderText(/Fall Festival at Nettelhorst Park/)
@@ -313,37 +324,51 @@ describe('AddEventModal — a photo listing several events (feedback #180)', () 
 
   async function pickPhoto() {
     const onCreated = vi.fn()
-    const { rerender } = render(<AddEventModal isOpen={false} onClose={vi.fn()} onCreated={onCreated} />)
-    rerender(<AddEventModal isOpen onClose={vi.fn()} onCreated={onCreated} />)
-    await waitUntilModalPresented()
+    await openModal(onCreated)
     await screen.findByText('Add from Photo')
     const input = document.querySelector<HTMLInputElement>('input[type="file"]')!
     fireEvent.change(input, { target: { files: [new File(['x'], 'flyer.jpg', { type: 'image/jpeg' })] } })
-    await screen.findByText('Movies in the Park: Twitches')
+    await screen.findByText('Twitches')
     return onCreated
   }
 
-  it('lists the other events, each checked, under the first one', async () => {
+  function queueButton(index: number, label: string) {
+    const button = [...document.querySelectorAll(`[data-queue-index="${index}"] ion-button`)].find((b) => b.textContent?.trim() === label)
+    if (!button) throw new Error(`No ${label} button on queued event ${index}`)
+    return button
+  }
+
+  const activeIndex = () => document.querySelector('ion-segment')?.getAttribute('value')
+
+  it('shows one tab per event, labeled by what differs, with the first one open', async () => {
     await pickPhoto()
 
-    expect(screen.getByText(/This photo lists 3 events/)).toBeInTheDocument()
-    expect(screen.getByText('Movies in the Park: Casper')).toBeInTheDocument()
-    expect(screen.getByText(/Posting 3 events/)).toBeInTheDocument()
+    expect(screen.getByText('3 events in this photo · 0 posted')).toBeInTheDocument()
+    expect(document.querySelectorAll('ion-segment-button')).toHaveLength(3)
+    expect(screen.getByText('The Little Vampire')).toBeInTheDocument()
+    expect(screen.getByText('Twitches')).toBeInTheDocument()
+    expect(screen.getByText('Casper')).toBeInTheDocument()
+    expect(activeIndex()).toBe('0')
+    // Each event has its own form, shown one at a time.
+    expect(document.querySelectorAll('[data-queue-index]')).toHaveLength(3)
+    expect(document.querySelector<HTMLElement>('[data-queue-index="1"]')!.style.display).toBe('none')
   })
 
-  it('posts every checked event, sharing the place but not the poster photo', async () => {
+  it('posts one at a time — Post moves to the next, Skip moves on, and it closes after the last', async () => {
     const onCreated = await pickPhoto()
-    // Uncheck Twitches.
-    const twitches = document.querySelector('ion-checkbox[aria-label="Movies in the Park: Twitches"]')!
-    fireEvent(twitches, new CustomEvent('ionChange', { detail: { checked: false }, bubbles: true }))
-    expect(await screen.findByText(/Posting 2 events/)).toBeInTheDocument()
 
-    fireEvent.click(screen.getByText('Post').closest('ion-button')!)
+    fireEvent.click(queueButton(0, 'Post'))
+    await waitFor(() => expect(mockCreateEvent).toHaveBeenCalledTimes(1))
+    expect(mockCreateEvent.mock.calls[0][0]).toMatchObject({ title: 'Movies in the Park: The Little Vampire', image_url: null, address: '825 W Sheridan Rd, Chicago, IL 60613' })
+    await waitFor(() => expect(activeIndex()).toBe('1'))
+    expect(screen.getByText('3 events in this photo · 1 posted')).toBeInTheDocument()
 
+    fireEvent.click(queueButton(1, 'Skip'))
+    await waitFor(() => expect(activeIndex()).toBe('2'))
+
+    fireEvent.click(queueButton(2, 'Post'))
     await waitFor(() => expect(mockCreateEvent).toHaveBeenCalledTimes(2))
-    const [first, second] = mockCreateEvent.mock.calls.map((call) => call[0])
-    expect(first).toMatchObject({ title: 'Movies in the Park: The Little Vampire', image_url: null, address: '825 W Sheridan Rd, Chicago, IL 60613' })
-    expect(second).toMatchObject({
+    expect(mockCreateEvent.mock.calls[1][0]).toMatchObject({
       title: 'Movies in the Park: Casper',
       description: 'Casper the ghost.',
       start_date: '2026-10-20',
@@ -354,6 +379,18 @@ describe('AddEventModal — a photo listing several events (feedback #180)', () 
       source_url: 'https://example.org/movies',
       image_url: null,
     })
+    // Twitches was skipped, so nothing is left pending: the flow closes.
     await waitFor(() => expect(onCreated).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(document.querySelector('ion-segment')).not.toBeInTheDocument())
+  })
+
+  it('switches between events with the tabs', async () => {
+    await pickPhoto()
+
+    fireEvent(document.querySelector('ion-segment')!, new CustomEvent('ionChange', { detail: { value: '2' }, bubbles: true }))
+
+    await waitFor(() => expect(activeIndex()).toBe('2'))
+    expect(document.querySelector<HTMLElement>('[data-queue-index="2"]')!.style.display).toBe('')
+    expect(document.querySelector<HTMLElement>('[data-queue-index="0"]')!.style.display).toBe('none')
   })
 })

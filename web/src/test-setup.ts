@@ -5,9 +5,9 @@ import '@testing-library/jest-dom/vitest'
 afterEach(() => {
   cleanup()
   // Ionic moves a presented overlay out of the React tree into <body>, so
-  // RTL's cleanup leaves it behind. (An overlay still mid-present when a test
-  // ends can land after this runs — tests wait for the present instead; see
-  // AddEventModal.test.tsx's waitUntilModalPresented.)
+  // RTL's cleanup leaves it behind. (An overlay still presenting/dismissing
+  // when a test ends can land after this runs; see AddEventModal.test.tsx's
+  // openModal/afterEach for the pattern that avoids it.)
   document.body.querySelectorAll('ion-modal, ion-action-sheet, ion-popover, ion-alert, ion-toast, ion-loading').forEach((el) => el.remove())
 })
 
@@ -24,4 +24,10 @@ if (!window.matchMedia) {
     removeEventListener: () => {},
     dispatchEvent: () => false,
   })
+}
+
+// jsdom doesn't implement element scrolling; IonSegment scrolls its active
+// button into view whenever the value changes (AddEventModal's event tabs).
+if (!Element.prototype.scrollTo) {
+  Element.prototype.scrollTo = () => {}
 }
