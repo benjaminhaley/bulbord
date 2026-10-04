@@ -31,11 +31,12 @@ Rules:
 - If a "qr_code_page_text" field is given, that's the real page the QR code linked to — treat it as an authoritative source for any field, same trust level as text printed on the poster itself (e.g. a full address or exact time that didn't fit on the poster but is on that page).
 - topic: pick the single best match from this fixed list if one clearly applies, otherwise omit the field entirely: ${JSON.stringify(TOPIC_OPTIONS)}
 ${RECURRENCE_PROMPT_RULE}
+- Several distinct events on one image (feedback #180 — e.g. a "Movies in the Park" board listing a different film on each of five dates, a concert lineup with a different act each night): describe the FIRST (earliest) one in the top-level fields and list every other one in "additional_events", one entry per distinct event, in date order. Give each its own specific title naming what's distinct about it (e.g. "Movies in the Park: Casper", not the series name alone) and its own description; use the same title pattern for the top-level event. The shared details (address, location_name, source_url, topic) go only at the top level and apply to all of them. This is for events that differ in substance; the SAME event simply repeating on a schedule is a recurrence (see above), not additional_events — never use both for one image. Omit additional_events for a single event.
 - If you can't confidently read a real, dated, upcoming event from this image at all (a blurry photo, no event-like content), respond with exactly {"found": false} and nothing else — never invent one.
 - If a "retry_instructions" field is given, this is a second attempt after a person looked at your first result and found it lacking — follow it closely. Don't attempt to decode a QR code yourself from the raw image pixels even if asked to — that's unreliable; a "qr_code_url"/"qr_code_page_text" field (see above) is the real result of an actual decoder already having tried, and its absence means no QR code was found or it didn't decode, not that you should guess at it.
 
 Respond with ONLY a JSON object, no markdown fences, no explanation, one of:
-{"found": true, "title": string, "description"?: string, "start_date": string, "start_time"?: string, "end_time"?: string, "all_day": boolean, "address"?: string, "location_name"?: string, "source_url"?: string, "topic"?: string, "recurrence"?: string}
+{"found": true, "title": string, "description"?: string, "start_date": string, "start_time"?: string, "end_time"?: string, "all_day": boolean, "address"?: string, "location_name"?: string, "source_url"?: string, "topic"?: string, "recurrence"?: string, "additional_events"?: [{"title": string, "description"?: string, "start_date": string, "start_time"?: string, "end_time"?: string, "all_day": boolean}]}
 {"found": false}`
 
 // Stage 2 only — a slower, separate call the frontend makes in parallel
@@ -71,7 +72,15 @@ export interface ExtractedEventFields {
   source_url?: string
   topic?: string
   recurrence?: RecurrencePattern
+  // Feedback #180: the other distinct events on the same poster (a film
+  // series, a lineup). Each shares the top-level place/source/topic.
+  additional_events?: AdditionalExtractedEvent[]
 }
+
+export type AdditionalExtractedEvent = Pick<ExtractedEventFields, 'title' | 'description' | 'start_date' | 'start_time' | 'end_time' | 'all_day'>
+
+// The most a poster can split into; a limit on what one Post creates.
+const MAX_ADDITIONAL_EVENTS = 19
 
 export interface DiscoveredEventSource {
   url: string
@@ -94,6 +103,32 @@ async function bufferFromStream(stream: NodeJS.ReadableStream): Promise<Buffer> 
   return Buffer.concat(chunks)
 }
 
+function optionalString(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim() ? value.trim() : undefined
+}
+
+function parseAdditionalEvents(value: unknown): AdditionalExtractedEvent[] | undefined {
+  if (!Array.isArray(value)) return undefined
+  const parsed = value.flatMap((item): AdditionalExtractedEvent[] => {
+    if (!item || typeof item !== 'object') return []
+    const raw = item as Record<string, unknown>
+    const title = optionalString(raw.title)
+    const startDate = optionalString(raw.start_date)
+    if (!title || !startDate || !/^\d{4}-\d{2}-\d{2}$/.test(startDate)) return []
+    return [
+      {
+        title,
+        description: optionalString(raw.description),
+        start_date: startDate,
+        start_time: optionalString(raw.start_time),
+        end_time: optionalString(raw.end_time),
+        all_day: raw.all_day === true,
+      },
+    ]
+  })
+  return parsed.length > 0 ? parsed.slice(0, MAX_ADDITIONAL_EVENTS) : undefined
+}
+
 function toExtractedFields(raw: RawExtractedFields): ExtractedEventFields | null {
   if (raw.found !== true) return null
   if (typeof raw.title !== 'string' || !raw.title.trim()) return null
@@ -111,6 +146,7 @@ function toExtractedFields(raw: RawExtractedFields): ExtractedEventFields | null
     source_url: isHttpUrl(raw.source_url) ? raw.source_url.trim() : undefined,
     topic: typeof raw.topic === 'string' && TOPIC_OPTIONS.includes(raw.topic) ? raw.topic : undefined,
     recurrence: parseRecurrence(raw.recurrence),
+    additional_events: parseAdditionalEvents(raw.additional_events),
   }
 }
 
@@ -170,7 +206,7 @@ async function extractEventFieldsFromPhotoInner(imageUrl: string, note?: string)
     const message = await anthropic.messages.create(
       {
         model: 'claude-opus-5',
-        max_tokens: 1000,
+        max_tokens: 3000,
         output_config: { effort: 'medium' },
         system: EXTRACT_SYSTEM_PROMPT + strategiesBlock,
         messages: [

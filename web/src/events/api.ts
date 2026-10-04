@@ -272,6 +272,8 @@ export async function createEvent(input: EventInput): Promise<Event> {
 // into EventForm's `initial` prop for review before anything is ever posted
 // (feedback #93). Stage 1 only (vision, fast) — no source_name, since that
 // only ever comes from stage 2's live search (findEventSource, below).
+export type AdditionalExtractedEvent = Pick<ExtractedEventFields, 'title' | 'description' | 'start_date' | 'start_time' | 'end_time' | 'all_day'>
+
 export interface ExtractedEventFields {
   title: string
   description?: string
@@ -285,6 +287,10 @@ export interface ExtractedEventFields {
   topic?: string
   // A stated repeat schedule the extraction found (feedback #173).
   recurrence?: RepeatPattern
+  // Feedback #180: the other distinct events on the same poster (a film
+  // series, a lineup) — photo extraction only. Each shares the top-level
+  // place/source/topic; AddEventModal posts them alongside the form's event.
+  additional_events?: AdditionalExtractedEvent[]
 }
 
 interface ExtractFromPhotoResponse {

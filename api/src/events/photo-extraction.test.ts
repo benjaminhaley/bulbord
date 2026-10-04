@@ -210,6 +210,51 @@ describe('extractEventFieldsFromPhoto', () => {
     )
   })
 
+  // Feedback #180: a "Movies in the Park" board listing a different film on each date.
+  it('returns the other distinct events on the poster, dropping malformed entries', async () => {
+    getImageObjectMock.mockResolvedValue(imageObject())
+    createMock.mockResolvedValue(
+      textResponse(
+        JSON.stringify({
+          found: true,
+          title: 'Movies in the Park: The Little Vampire',
+          start_date: '2026-10-06',
+          start_time: '18:00',
+          all_day: false,
+          location_name: 'Gill Park',
+          additional_events: [
+            { title: 'Movies in the Park: Twitches', start_date: '2026-10-13', start_time: '18:00', all_day: false },
+            { title: 'Movies in the Park: Casper', description: 'Casper the ghost.', start_date: '2026-10-20', all_day: true },
+            { title: 'No date' },
+            { title: 'Bad date', start_date: '10/27' },
+            'not an object',
+          ],
+        }),
+      ),
+    )
+    const { extractEventFieldsFromPhoto } = await import('./photo-extraction.js')
+
+    const result = await extractEventFieldsFromPhoto('/uploads/events/flyer.jpeg')
+
+    expect(result?.title).toBe('Movies in the Park: The Little Vampire')
+    expect(result?.additional_events).toEqual([
+      { title: 'Movies in the Park: Twitches', description: undefined, start_date: '2026-10-13', start_time: '18:00', end_time: undefined, all_day: false },
+      { title: 'Movies in the Park: Casper', description: 'Casper the ghost.', start_date: '2026-10-20', start_time: undefined, end_time: undefined, all_day: true },
+    ])
+  })
+
+  it('omits additional_events when the model returns none usable', async () => {
+    getImageObjectMock.mockResolvedValue(imageObject())
+    createMock.mockResolvedValue(
+      textResponse(JSON.stringify({ found: true, title: 'Fest', start_date: '2026-10-06', all_day: true, additional_events: [{ title: 'x' }] })),
+    )
+    const { extractEventFieldsFromPhoto } = await import('./photo-extraction.js')
+
+    const result = await extractEventFieldsFromPhoto('/uploads/events/flyer.jpeg')
+
+    expect(result?.additional_events).toBeUndefined()
+  })
+
   it('extracts an end_time when the poster gives a time range', async () => {
     getImageObjectMock.mockResolvedValue(imageObject())
     createMock.mockResolvedValue(

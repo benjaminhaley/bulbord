@@ -1,4 +1,19 @@
-import { IonButton, IonContent, IonHeader, IonIcon, IonModal, IonSpinner, IonText, IonTextarea, IonTitle, IonToolbar } from '@ionic/react'
+import {
+  IonButton,
+  IonCheckbox,
+  IonContent,
+  IonHeader,
+  IonIcon,
+  IonItem,
+  IonLabel,
+  IonList,
+  IonModal,
+  IonSpinner,
+  IonText,
+  IonTextarea,
+  IonTitle,
+  IonToolbar,
+} from '@ionic/react'
 import { cameraOutline, checkmarkCircle, chatbubbleEllipsesOutline, closeCircleOutline, closeOutline, refreshOutline } from 'ionicons/icons'
 import { useRef, useState } from 'react'
 
@@ -14,6 +29,7 @@ import {
   findEventImage,
   findEventSource,
   updateEvent,
+  type AdditionalExtractedEvent,
   type DiscoveredEventDetails,
   type Event,
   type EventInput,
@@ -21,6 +37,75 @@ import {
 } from './api'
 import { chicagoWallClockToLocal, localTiming } from '../timezone'
 import { EventForm, type EventFieldSuggestions, type EventFormInitialValues } from './EventForm'
+import { formatWhen } from './format'
+
+// Feedback #180: one photo can list several distinct events (a "Movies in the
+// Park" board with a different film each week). The form holds the first; the
+// rest are listed under it, each with a checkbox, and Post creates every
+// checked one too.
+interface ExtraEvent {
+  event: AdditionalExtractedEvent
+  included: boolean
+}
+
+function toExtraEvents(extracted: ExtractedEventFields | null): ExtraEvent[] {
+  return (extracted?.additional_events ?? []).map((event) => ({ event, included: true }))
+}
+
+// An extra event as a POST body: the member's submitted form supplies the
+// shared place/source/topic; the extra supplies what's its own. No image —
+// the poster shows the whole lineup, not this one event, so each gets its own
+// background photo search (a film's poster, say), the same as a post with no
+// photo attached. Never a repeat or a source registration (the form's event
+// already carries those).
+function extraEventInput(extra: AdditionalExtractedEvent, shared: EventInput): EventInput {
+  const start = chicagoWallClockToLocal(extra.start_date, extra.start_time)
+  const end = chicagoWallClockToLocal(extra.start_date, extra.end_time)
+  return {
+    ...shared,
+    title: extra.title,
+    description: extra.description ?? '',
+    start_date: start.date,
+    start_time: extra.all_day ? '' : start.time ?? '',
+    end_time: extra.all_day ? '' : end.time ?? '',
+    all_day: extra.all_day || !start.time,
+    image_url: null,
+    thumbnail_url: null,
+    repeat: undefined,
+    source_name: undefined,
+  }
+}
+
+function ExtraEventsList({ extras, onToggle }: { extras: ExtraEvent[]; onToggle: (index: number, included: boolean) => void }) {
+  const count = extras.filter((x) => x.included).length + 1
+  return (
+    <div style={{ margin: '12px 0 0' }}>
+      <IonText>
+        <p style={{ fontSize: '0.875rem', margin: '0 32px 4px' }}>
+          This photo lists {extras.length + 1} events. The form below is the first; Post also adds the checked ones here, with the same place and
+          details. {count === 1 ? 'Posting 1 event.' : `Posting ${count} events.`}
+        </p>
+      </IonText>
+      <IonList inset>
+        {extras.map(({ event, included }, index) => (
+          <IonItem key={`${event.title}-${event.start_date}`}>
+            <IonCheckbox slot="start" checked={included} onIonChange={(e) => onToggle(index, e.detail.checked)} aria-label={event.title} />
+            <IonLabel>
+              <h3>{event.title}</h3>
+              <p>
+                {formatWhen(
+                  { startDate: event.start_date, startTime: event.start_time ?? null, endTime: event.end_time ?? null, allDay: event.all_day },
+                  new Date(),
+                  'detailed',
+                )}
+              </p>
+            </IonLabel>
+          </IonItem>
+        ))}
+      </IonList>
+    </div>
+  )
+}
 
 function toInitialValues(extracted: ExtractedEventFields | null, image: UploadedImage | null): EventFormInitialValues {
   // Extraction reads Chicago-local wall-clock; the form works in the member's own zone.
@@ -52,8 +137,10 @@ function toInitialValues(extracted: ExtractedEventFields | null, image: Uploaded
     source_url: extracted?.source_url ?? null,
     topic: extracted?.topic ?? null,
     recurrence: extracted?.recurrence ?? null,
-    image_url: image?.image_url ?? null,
-    thumbnail_url: image?.thumbnail_url ?? null,
+    // A poster listing several events isn't the photo of any one of them —
+    // see extraEventInput.
+    image_url: extracted?.additional_events ? null : (image?.image_url ?? null),
+    thumbnail_url: extracted?.additional_events ? null : (image?.thumbnail_url ?? null),
   }
 }
 
@@ -264,6 +351,7 @@ export function AddEventModal({
   const [fieldSuggestions, setFieldSuggestions] = useState<EventFieldSuggestions | null>(null)
   const [foundImage, setFoundImage] = useState<UploadedImage | null>(null)
   const [pipeline, setPipeline] = useState<Pipeline>(PIPELINE_IDLE)
+  const [extraEvents, setExtraEvents] = useState<ExtraEvent[]>([])
   // The photo flow's own uploaded image, kept around (separately from
   // `pinned`'s blob preview URL) so a retry can re-read stage 1 on the same
   // real image without re-uploading it.
@@ -305,6 +393,7 @@ export function AddEventModal({
     setFieldSuggestions(null)
     setFoundImage(null)
     setPipeline(PIPELINE_IDLE)
+    setExtraEvents([])
     setUploadedImage(null)
     setRetryNote('')
     setRetrying(false)
@@ -371,6 +460,7 @@ export function AddEventModal({
     setFormNote(null)
     setFieldSuggestions(null)
     setFoundImage(null)
+    setExtraEvents([])
     setUploadedImage(null)
     setRetryNote('')
     setRetryVersion(0)
@@ -403,6 +493,7 @@ export function AddEventModal({
     if (session.cancelled) return
 
     setInitialValues(toInitialValues(fields, image))
+    setExtraEvents(toExtraEvents(fields))
     setFormNote(fields ? null : "Couldn't read the details from that photo — it's attached below, fill in the rest yourself.")
     setPipeline((prev) => ({ ...prev, stage1: fields ? 'ok' : 'failed' }))
 
@@ -434,6 +525,7 @@ export function AddEventModal({
     setFormNote(null)
     setFieldSuggestions(null)
     setFoundImage(null)
+    setExtraEvents([])
     setUploadedImage(null)
     setRetryNote('')
     setRetryVersion(0)
@@ -537,7 +629,10 @@ export function AddEventModal({
         if (!uploadedImage) return
         fields = await extractEventFieldsFromPhoto(uploadedImage.image_url, note).catch(() => null)
         if (session.cancelled) return
-        if (fields) setInitialValues(toInitialValues(fields, uploadedImage))
+        if (fields) {
+          setInitialValues(toInitialValues(fields, uploadedImage))
+          setExtraEvents(toExtraEvents(fields))
+        }
       } else {
         fields = await extractEventFieldsFromDescription(pinned.text, note).catch(() => null)
         if (session.cancelled) return
@@ -566,6 +661,12 @@ export function AddEventModal({
     // no longer exists.
     if (session) session.createdEvent = created
     onCreated(created)
+    // The form's event is already posted, so a failed extra mustn't surface
+    // as "Could not post" (a second Post would duplicate the first). Each
+    // extra is posted independently; one failing doesn't stop the rest.
+    const extras = extraEvents.filter((x) => x.included).map((x) => extraEventInput(x.event, input))
+    const results = await Promise.allSettled(extras.map((extra) => createEvent(extra)))
+    for (const result of results) if (result.status === 'fulfilled') onCreated(result.value)
     resetVisibleState()
     onClose()
   }
@@ -793,6 +894,12 @@ export function AddEventModal({
               <IonText color="medium">
                 <p style={{ fontSize: '0.8125rem', margin: '12px 16px 8px' }}>{formNote}</p>
               </IonText>
+            )}
+            {extraEvents.length > 0 && (
+              <ExtraEventsList
+                extras={extraEvents}
+                onToggle={(index, included) => setExtraEvents((prev) => prev.map((x, i) => (i === index ? { ...x, included } : x)))}
+              />
             )}
             <EventForm
               key={initialValues ? `${pinned?.kind ?? 'manual'}-prefill-${retryVersion}` : 'blank'}

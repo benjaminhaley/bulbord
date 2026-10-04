@@ -272,3 +272,76 @@ describe('AddEventModal — retry with a note (feedback #165)', () => {
     expect(mockFindEventDetails).toHaveBeenCalledTimes(1)
   })
 })
+
+vi.mock('../uploads/api', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../uploads/api')>()),
+  uploadImage: () => Promise.resolve({ image_url: '/uploads/events/flyer.jpg', thumbnail_url: '/uploads/events/flyer-thumb.jpg' }),
+}))
+
+// Feedback #180: a "Movies in the Park" board listing a different film each week.
+describe('AddEventModal — a photo listing several events (feedback #180)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    URL.createObjectURL = vi.fn(() => 'blob:preview')
+    URL.revokeObjectURL = vi.fn()
+    mockExtractFromPhoto.mockResolvedValue({
+      title: 'Movies in the Park: The Little Vampire',
+      start_date: '2026-10-06',
+      start_time: '18:00',
+      all_day: false,
+      location_name: 'Gill Park',
+      address: '825 W Sheridan Rd, Chicago, IL 60613',
+      source_url: 'https://example.org/movies',
+      additional_events: [
+        { title: 'Movies in the Park: Twitches', start_date: '2026-10-13', start_time: '18:00', all_day: false },
+        { title: 'Movies in the Park: Casper', description: 'Casper the ghost.', start_date: '2026-10-20', start_time: '18:00', all_day: false },
+      ],
+    })
+    mockCreateEvent.mockImplementation((input: { title: string }) => Promise.resolve({ id: input.title, title: input.title }))
+  })
+
+  async function pickPhoto() {
+    const onCreated = vi.fn()
+    const { rerender } = render(<AddEventModal isOpen={false} onClose={vi.fn()} onCreated={onCreated} />)
+    rerender(<AddEventModal isOpen onClose={vi.fn()} onCreated={onCreated} />)
+    await screen.findByText('Add from Photo')
+    const input = document.querySelector<HTMLInputElement>('input[type="file"]')!
+    fireEvent.change(input, { target: { files: [new File(['x'], 'flyer.jpg', { type: 'image/jpeg' })] } })
+    await screen.findByText('Movies in the Park: Twitches')
+    return onCreated
+  }
+
+  it('lists the other events, each checked, under the first one', async () => {
+    await pickPhoto()
+
+    expect(screen.getByText(/This photo lists 3 events/)).toBeInTheDocument()
+    expect(screen.getByText('Movies in the Park: Casper')).toBeInTheDocument()
+    expect(screen.getByText(/Posting 3 events/)).toBeInTheDocument()
+  })
+
+  it('posts every checked event, sharing the place but not the poster photo', async () => {
+    const onCreated = await pickPhoto()
+    // Uncheck Twitches.
+    const twitches = document.querySelector('ion-checkbox[aria-label="Movies in the Park: Twitches"]')!
+    fireEvent(twitches, new CustomEvent('ionChange', { detail: { checked: false }, bubbles: true }))
+    expect(await screen.findByText(/Posting 2 events/)).toBeInTheDocument()
+
+    fireEvent.click(screen.getByText('Post').closest('ion-button')!)
+
+    await waitFor(() => expect(mockCreateEvent).toHaveBeenCalledTimes(2))
+    const [first, second] = mockCreateEvent.mock.calls.map((call) => call[0])
+    expect(first).toMatchObject({ title: 'Movies in the Park: The Little Vampire', image_url: null, address: '825 W Sheridan Rd, Chicago, IL 60613' })
+    expect(second).toMatchObject({
+      title: 'Movies in the Park: Casper',
+      description: 'Casper the ghost.',
+      start_date: '2026-10-20',
+      start_time: '18:00',
+      all_day: false,
+      address: '825 W Sheridan Rd, Chicago, IL 60613',
+      location_name: 'Gill Park',
+      source_url: 'https://example.org/movies',
+      image_url: null,
+    })
+    await waitFor(() => expect(onCreated).toHaveBeenCalledTimes(2))
+  })
+})

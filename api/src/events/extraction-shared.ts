@@ -90,4 +90,5 @@ export interface RawExtractedFields {
   source_url?: unknown
   topic?: unknown
   recurrence?: unknown
+  additional_events?: unknown
 }
