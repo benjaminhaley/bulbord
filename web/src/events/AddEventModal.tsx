@@ -14,7 +14,7 @@ import {
   IonToolbar,
 } from '@ionic/react'
 import { cameraOutline, checkmarkCircle, chatbubbleEllipsesOutline, closeCircleOutline, closeOutline, refreshOutline, removeCircleOutline } from 'ionicons/icons'
-import { useMemo, useRef, useState } from 'react'
+import { useLayoutEffect, useMemo, useRef, useState } from 'react'
 
 import { API_URL } from '../config'
 import { unstyledButtonStyle } from '../theme/layout'
@@ -263,6 +263,64 @@ function PipelineRow({ running, ok, runningLabel, doneLabel }: { running: boolea
 // 32px left padding matches an inset IonList's own item text start (16px
 // list margin + 16px item padding-start), confirmed by direct measurement
 // against a real rendered ion-item rather than assumed.
+// The member's own description, quoted at the top of the sticky header.
+// Clamped to a few lines (feedback #177: a long description filled the
+// whole sticky header, so the form beneath it couldn't be scrolled into
+// view) with a Show more toggle; even expanded it's capped and scrolls on
+// its own, so the sticky header can never cover the whole screen.
+const PINNED_DESCRIPTION_LINES = 3
+
+function PinnedDescription({ text }: { text: string }) {
+  const [expanded, setExpanded] = useState(false)
+  const [overflows, setOverflows] = useState(false)
+  const quoteRef = useRef<HTMLDivElement>(null)
+
+  useLayoutEffect(() => {
+    const el = quoteRef.current
+    if (el && !expanded) setOverflows(el.scrollHeight > el.clientHeight + 1)
+  }, [text, expanded])
+
+  return (
+    <div style={{ padding: '12px 16px 0' }}>
+      <div
+        style={{
+          padding: '10px 14px',
+          borderRadius: 10,
+          background: 'var(--ion-color-light, #f4f4f4)',
+          color: 'var(--ion-text-color)',
+        }}
+      >
+        <div
+          ref={quoteRef}
+          data-testid="pinned-description"
+          style={{
+            fontStyle: 'italic',
+            ...(expanded
+              ? { maxHeight: '40vh', overflowY: 'auto' }
+              : {
+                  display: '-webkit-box',
+                  WebkitBoxOrient: 'vertical',
+                  WebkitLineClamp: PINNED_DESCRIPTION_LINES,
+                  overflow: 'hidden',
+                }),
+          }}
+        >
+          “{text}”
+        </div>
+        {(overflows || expanded) && (
+          <IonButton
+            fill="clear"
+            onClick={() => setExpanded(!expanded)}
+            style={{ ...unstyledButtonStyle, color: 'var(--ion-color-medium)', fontSize: '0.8125rem', marginTop: 4 }}
+          >
+            {expanded ? 'Show less' : 'Show more'}
+          </IonButton>
+        )}
+      </div>
+    </div>
+  )
+}
+
 function PipelineStatus({ pipeline, mode }: { pipeline: Pipeline; mode: PinnedInput['kind'] }) {
   if (!pipeline.active) return null
   return (
@@ -945,21 +1003,7 @@ export function AddEventModal({
                     />
                   </div>
                 )}
-                {pinned.kind === 'description' && (
-                  <div style={{ padding: '12px 16px 0' }}>
-                    <div
-                      style={{
-                        padding: '10px 14px',
-                        borderRadius: 10,
-                        background: 'var(--ion-color-light, #f4f4f4)',
-                        fontStyle: 'italic',
-                        color: 'var(--ion-text-color)',
-                      }}
-                    >
-                      “{pinned.text}”
-                    </div>
-                  </div>
-                )}
+                {pinned.kind === 'description' && <PinnedDescription text={pinned.text} />}
                 <PipelineStatus pipeline={pipeline} mode={pinned.kind} />
                 {queue.length > 0 && <QueueTabs queue={queue} active={activeIndex} onSelect={setActiveIndex} />}
               </div>

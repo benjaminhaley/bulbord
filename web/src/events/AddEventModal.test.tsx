@@ -199,6 +199,33 @@ describe('AddEventModal — Describe It flow (feedback #133)', () => {
     resolveStage2!({ source_url: 'https://nettelhorst.org/fall-festival', source_name: 'Nettelhorst PTA' })
     await waitFor(() => expect(mockFindEventImage).toHaveBeenCalled())
   })
+
+  it('clamps a long pinned description behind Show more, so the form below stays reachable (feedback #177)', async () => {
+    mockFindEventImage.mockResolvedValue(null)
+    // jsdom does no layout — fake a quote taller than its clamped box.
+    const scrollHeight = vi.spyOn(HTMLElement.prototype, 'scrollHeight', 'get').mockReturnValue(400)
+    const clientHeight = vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(60)
+    try {
+      await openDescribeItAndSubmit('a very long description '.repeat(40))
+      const quote = await screen.findByTestId('pinned-description')
+      expect(quote.style.webkitLineClamp).toBe('3')
+      fireEvent.click(screen.getByText('Show more').closest('ion-button')!)
+      expect(quote.style.webkitLineClamp).toBe('')
+      expect(quote.style.maxHeight).toBe('40vh')
+      fireEvent.click(screen.getByText('Show less').closest('ion-button')!)
+      expect(quote.style.webkitLineClamp).toBe('3')
+    } finally {
+      scrollHeight.mockRestore()
+      clientHeight.mockRestore()
+    }
+  })
+
+  it('shows no Show more toggle for a description that fits', async () => {
+    mockFindEventImage.mockResolvedValue(null)
+    await openDescribeItAndSubmit()
+    await screen.findByTestId('pinned-description')
+    expect(screen.queryByText('Show more')).toBeNull()
+  })
 })
 
 describe('AddEventModal — retry with a note (feedback #165)', () => {
