@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
 // Same db/client.js mocking shape as admin/memberDeletion.test.ts and
 // events/ingest.test.ts: select() queues consumed in call order (this file's
@@ -61,6 +61,17 @@ const PASSING_TEXT_CHECKS = {
   locationLabelQuality: PASSING_CHECK,
   addressQuality: PASSING_CHECK,
 }
+
+// The fixtures use fixed October 2026 dates, and dateQuality fails anything in
+// the past — pin "today" so these tests don't start failing once the real
+// calendar passes them (they did on 2026-10-11).
+beforeAll(() => {
+  vi.useFakeTimers({ toFake: ['Date'] })
+  vi.setSystemTime(new Date('2026-09-30T12:00:00Z'))
+})
+afterAll(() => {
+  vi.useRealTimers()
+})
 
 beforeEach(() => {
   selectResults.length = 0

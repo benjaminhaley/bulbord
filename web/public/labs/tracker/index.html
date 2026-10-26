@@ -1,0 +1,243 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="robots" content="noindex, nofollow" />
+<title>Tracker</title>
+<!--
+  Tracker lab (see CLAUDE.md's Labs section). Deliberately standalone: plain
+  HTML/JS, no build step, no imports from the app in web/src. Its only links
+  to Bulbord are (1) reading the member's session token from the same
+  localStorage key the app uses, and (2) the API's sandboxed /labs/tracker
+  routes. Nothing in the app depends on this file.
+-->
+<style>
+  :root {
+    --bg: #f4f4f6;
+    --card: #ffffff;
+    --ink: #1c1b1f;
+    --muted: #6b6b70;
+    --line: #e2e2e6;
+    --bar: #2c2c2c;
+    --bar-ink: #ffffff;
+    --red: #c62828;
+    --red-bg: #fdecec;
+    --green: #2e7d32;
+    --accent: #3f51b5;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; background: var(--bg); color: var(--ink); font-family: Roboto, -apple-system, "Segoe UI", "Helvetica Neue", Arial, sans-serif; }
+  header {
+    position: sticky; top: 0; z-index: 1;
+    background: var(--bar); color: var(--bar-ink);
+    padding: calc(env(safe-area-inset-top, 0px) + 12px) 16px 12px;
+    display: flex; align-items: center; gap: 12px;
+  }
+  header a { color: var(--bar-ink); text-decoration: none; font-size: 0.9375rem; opacity: 0.85; }
+  header h1 { margin: 0; font-size: 1.125rem; font-weight: 500; }
+  main { max-width: 480px; margin: 0 auto; padding: 16px 16px calc(env(safe-area-inset-bottom, 0px) + 32px); }
+  .intro { color: var(--muted); font-size: 0.875rem; margin: 0 0 16px; }
+  .card {
+    background: var(--card); border-radius: 12px; margin-bottom: 12px;
+    border-left: 6px solid var(--green);
+    box-shadow: 0 1px 2px rgba(0,0,0,0.08);
+  }
+  .card.due { border-left-color: var(--red); background: var(--red-bg); }
+  .summary { display: block; width: 100%; text-align: left; background: none; border: 0; padding: 14px 16px; font: inherit; color: inherit; cursor: pointer; }
+  .name { font-size: 0.8125rem; font-weight: 500; letter-spacing: 0.02em; text-transform: uppercase; color: var(--muted); }
+  .card.due .name { color: var(--red); }
+  .when { font-size: 1.25rem; font-weight: 500; margin-top: 4px; }
+  .rel { font-size: 0.875rem; color: var(--green); font-weight: 400; margin-left: 6px; }
+  .note { font-size: 0.9375rem; color: var(--ink); margin-top: 2px; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .hint { font-size: 0.875rem; color: var(--red); margin-top: 2px; }
+  form.editor { padding: 0 16px 16px; display: grid; gap: 10px; }
+  label { font-size: 0.75rem; color: var(--muted); display: grid; gap: 4px; }
+  input[type=date], input[type=text] {
+    font: inherit; font-size: 1rem; padding: 10px 12px; border: 1px solid var(--line);
+    border-radius: 8px; background: #fff; color: var(--ink); width: 100%;
+  }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .btn { font: inherit; font-size: 0.875rem; font-weight: 500; border-radius: 20px; padding: 8px 16px; border: 0; cursor: pointer; }
+  .btn.primary { background: var(--accent); color: #fff; }
+  .btn.text { background: none; color: var(--accent); padding: 8px 8px; }
+  .btn.danger { background: none; color: var(--red); padding: 8px 8px; }
+  .btn:disabled { opacity: 0.5; }
+  .spacer { flex: 1; }
+  .add { margin-top: 20px; display: flex; gap: 8px; }
+  .add input { flex: 1; }
+  .msg { text-align: center; color: var(--muted); padding: 40px 16px; }
+  .msg a { color: var(--accent); }
+  .error { color: var(--red); font-size: 0.875rem; }
+</style>
+</head>
+<body>
+<header>
+  <a href="/labs" aria-label="Back to Labs">‹ Labs</a>
+  <h1>Tracker</h1>
+</header>
+<main>
+  <p class="intro">When's the next one? Anything without an upcoming date shows red.</p>
+  <div id="list"><p class="msg">Loading…</p></div>
+  <form class="add" id="add" hidden>
+    <input type="text" id="add-name" placeholder="Track something new…" maxlength="80" />
+    <button class="btn primary" type="submit">Add</button>
+  </form>
+</main>
+<script>
+(function () {
+  var API = location.hostname === 'localhost' || location.hostname === '127.0.0.1'
+    ? 'http://' + location.hostname + ':' + (localStorage.getItem('labsApiPort') || '3001')
+    : 'https://api-production-a551.up.railway.app'
+  var BASE = API + '/labs/tracker'
+  var token = null
+  try { token = localStorage.getItem('bulbord_session_token') } catch (e) {}
+
+  var listEl = document.getElementById('list')
+  var addForm = document.getElementById('add')
+  var items = []
+  var openId = null
+
+  function api(method, path, body) {
+    return fetch(BASE + path, {
+      method: method,
+      headers: Object.assign({ Authorization: 'Bearer ' + token }, body ? { 'Content-Type': 'application/json' } : {}),
+      body: body ? JSON.stringify(body) : undefined,
+    }).then(function (res) {
+      return res.json().catch(function () { return {} }).then(function (json) {
+        if (!res.ok) { var err = new Error((json.error && json.error.message) || 'Something went wrong'); err.status = res.status; throw err }
+        return json
+      })
+    })
+  }
+
+  function pad(n) { return (n < 10 ? '0' : '') + n }
+  function todayIso() { var d = new Date(); return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) }
+  function parseIso(s) { var p = s.split('-'); return new Date(+p[0], +p[1] - 1, +p[2]) }
+
+  // An item is "upcoming" only if its most recently added entry is today or
+  // later. Past, or never entered, shows blank + red.
+  function upcoming(item) { return item.latest && item.latest.date >= todayIso() ? item.latest : null }
+
+  function whenLabel(iso) {
+    var d = parseIso(iso)
+    var opts = { weekday: 'short', month: 'short', day: 'numeric' }
+    if (d.getFullYear() !== new Date().getFullYear()) opts.year = 'numeric'
+    return d.toLocaleDateString(undefined, opts)
+  }
+  function relLabel(iso) {
+    var days = Math.round((parseIso(iso) - parseIso(todayIso())) / 86400000)
+    if (days === 0) return 'today'
+    if (days === 1) return 'tomorrow'
+    if (days < 14) return 'in ' + days + ' days'
+    if (days < 60) return 'in ' + Math.round(days / 7) + ' weeks'
+    return 'in ' + Math.round(days / 30) + ' months'
+  }
+
+  function el(tag, attrs, children) {
+    var node = document.createElement(tag)
+    for (var k in attrs || {}) {
+      if (k === 'text') node.textContent = attrs[k]
+      else if (k.slice(0, 2) === 'on') node.addEventListener(k.slice(2), attrs[k])
+      else if (attrs[k] !== false && attrs[k] != null) node.setAttribute(k, attrs[k] === true ? '' : attrs[k])
+    }
+    ;(children || []).forEach(function (c) { if (c) node.appendChild(c) })
+    return node
+  }
+
+  function render() {
+    listEl.innerHTML = ''
+    if (items.length === 0) listEl.appendChild(el('p', { class: 'msg', text: 'Nothing tracked yet — add something below.' }))
+    items.forEach(function (item) { listEl.appendChild(renderCard(item)) })
+    addForm.hidden = false
+  }
+
+  function renderCard(item) {
+    var next = upcoming(item)
+    var card = el('div', { class: 'card' + (next ? '' : ' due') })
+    var summary = el('button', { class: 'summary', type: 'button', 'aria-expanded': String(openId === item.id), onclick: function () {
+      openId = openId === item.id ? null : item.id
+      render()
+    } }, [
+      el('div', { class: 'name', text: item.name }),
+      next
+        ? el('div', { class: 'when' }, [document.createTextNode(whenLabel(next.date)), el('span', { class: 'rel', text: relLabel(next.date) })])
+        : null,
+      next && next.note ? el('div', { class: 'note', text: next.note }) : null,
+      next ? null : el('div', { class: 'hint', text: 'Nothing planned — tap to add the next one' }),
+    ])
+    card.appendChild(summary)
+    if (openId === item.id) card.appendChild(renderEditor(item, next))
+    return card
+  }
+
+  function renderEditor(item, next) {
+    var dateInput = el('input', { type: 'date', required: true, value: next ? next.date : '', min: todayIso() })
+    var noteInput = el('input', { type: 'text', maxlength: '200', placeholder: 'What is it? (optional)', value: next ? next.note : '' })
+    var errorEl = el('div', { class: 'error' })
+    function fail(err) { errorEl.textContent = err.message; busy(false) }
+    var buttons = []
+    function busy(on) { buttons.forEach(function (b) { b.disabled = on }) }
+
+    var save = el('button', { class: 'btn primary', type: 'submit', text: 'Save' })
+    var cancel = el('button', { class: 'btn text', type: 'button', text: 'Cancel', onclick: function () { openId = null; render() } })
+    var clear = next ? el('button', { class: 'btn danger', type: 'button', text: 'Clear date', onclick: function () {
+      busy(true)
+      api('DELETE', '/entries/' + next.id).then(load).catch(fail)
+    } }) : null
+    var rename = el('button', { class: 'btn text', type: 'button', text: 'Rename', onclick: function () {
+      var name = prompt('Rename', item.name)
+      if (!name || !name.trim() || name.trim() === item.name) return
+      busy(true)
+      api('PATCH', '/items/' + item.id, { name: name.trim() }).then(load).catch(fail)
+    } })
+    var remove = el('button', { class: 'btn danger', type: 'button', text: 'Remove', onclick: function () {
+      if (!confirm('Stop tracking "' + item.name + '"?')) return
+      busy(true)
+      api('DELETE', '/items/' + item.id).then(function () { openId = null; return load() }).catch(fail)
+    } })
+    buttons = [save, cancel, clear, rename, remove].filter(Boolean)
+
+    var form = el('form', { class: 'editor', onsubmit: function (e) {
+      e.preventDefault()
+      if (!dateInput.value) { errorEl.textContent = 'Pick a date'; return }
+      busy(true)
+      api('POST', '/items/' + item.id + '/entries', { date: dateInput.value, note: noteInput.value })
+        .then(function () { openId = null; return load() }).catch(fail)
+    } }, [
+      el('label', {}, [document.createTextNode('Next date'), dateInput]),
+      el('label', {}, [document.createTextNode('Note'), noteInput]),
+      errorEl,
+      el('div', { class: 'row' }, [save, cancel, clear]),
+      el('div', { class: 'row' }, [el('span', { class: 'spacer' }), rename, remove]),
+    ])
+    return form
+  }
+
+  function showMessage(html) { listEl.innerHTML = '<p class="msg">' + html + '</p>'; addForm.hidden = true }
+
+  function load() {
+    return api('GET', '/items').then(function (json) { items = json.data; render() }).catch(function (err) {
+      if (err.status === 401 || err.status === 403) showMessage('Sign in to Bulbord to use the tracker. <a href="/">Go to Bulbord</a>')
+      else showMessage('Couldn’t load the tracker: ' + err.message.replace(/</g, '&lt;'))
+    })
+  }
+
+  addForm.addEventListener('submit', function (e) {
+    e.preventDefault()
+    var input = document.getElementById('add-name')
+    var name = input.value.trim()
+    if (!name) return
+    api('POST', '/items', { name: name }).then(function () { input.value = ''; return load() }).catch(function (err) { alert(err.message) })
+  })
+
+  // Re-check red/upcoming when coming back to the page (dates roll over).
+  window.addEventListener('pageshow', function (e) { if (e.persisted) load() })
+  document.addEventListener('visibilitychange', function () { if (!document.hidden && token) render() })
+
+  if (!token) showMessage('Sign in to Bulbord to use the tracker. <a href="/">Go to Bulbord</a>')
+  else load()
+})()
+</script>
+</body>
+</html>

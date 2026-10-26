@@ -16,6 +16,8 @@ import { emailIngestRoutes } from './events/email-ingest-routes.js'
 import { eventsRoutes } from './events/routes.js'
 import { feedbackCommentsRoutes } from './feedback/comments.js'
 import { feedbackRoutes } from './feedback/routes.js'
+import { registerLabs } from './labs/sandbox.js'
+import { trackerLab } from './labs/tracker/routes.js'
 import { newsletterRoutes } from './newsletter/routes.js'
 import { notificationsRoutes } from './notifications/routes.js'
 import { sportsClubCommentsRoutes } from './sports-clubs/comments.js'
@@ -52,6 +54,10 @@ export async function buildApp() {
   await app.register(sportsClubsRoutes)
   await app.register(sportsClubCommentsRoutes)
   await app.register(uploadsRoutes)
+
+  // Labs: sandboxed side projects, each isolated so it can't affect the app
+  // above (see labs/sandbox.ts and CLAUDE.md's Labs section).
+  await registerLabs(app, [{ name: 'tracker', plugin: trackerLab }])
 
   return app
 }
