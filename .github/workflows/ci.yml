@@ -160,7 +160,7 @@ jobs:
         working-directory: web
       - name: Start web
         working-directory: web
-        run: nohup npx vite preview --port 5173 > /tmp/web.log 2>&1 &
+        run: nohup npx vite preview --port 5173 --host 127.0.0.1 > /tmp/web.log 2>&1 &
 
       - name: Wait for servers
         run: |
