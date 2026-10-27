@@ -137,9 +137,10 @@
 
   function whenLabel(iso) {
     var d = parseIso(iso)
-    var opts = { weekday: 'short', month: 'short', day: 'numeric' }
-    if (d.getFullYear() !== new Date().getFullYear()) opts.year = 'numeric'
-    return d.toLocaleDateString(undefined, opts)
+    // A date in another year shows just month + year ("Mar 2027") so it fits
+    // on one line; "in 5 months" beside it carries the rest.
+    if (d.getFullYear() !== new Date().getFullYear()) return d.toLocaleDateString(undefined, { month: 'short', year: 'numeric' })
+    return d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })
   }
   function relLabel(iso) {
     var days = Math.round((parseIso(iso) - parseIso(todayIso())) / 86400000)
@@ -165,8 +166,18 @@
     listEl.innerHTML = ''
     if (adding) listEl.appendChild(renderNameForm(null))
     if (items.length === 0 && !adding) listEl.appendChild(el('p', { class: 'msg', text: 'Nothing tracked yet — tap + to add one.' }))
-    items.forEach(function (item) { listEl.appendChild(renderCard(item)) })
+    sortedItems().forEach(function (item) { listEl.appendChild(renderCard(item)) })
     addBtn.hidden = false
+  }
+
+  // Upcoming first, soonest at the top; then the red ones, alphabetically.
+  function sortedItems() {
+    return items.slice().sort(function (a, b) {
+      var na = upcoming(a), nb = upcoming(b)
+      if (na && nb) return na.date < nb.date ? -1 : na.date > nb.date ? 1 : a.name.localeCompare(b.name)
+      if (na || nb) return na ? -1 : 1
+      return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })
+    })
   }
 
   // Shared by "add a tracker" (item null) and "rename this tracker".
@@ -205,7 +216,7 @@
         ? el('div', { class: 'when' }, [document.createTextNode(whenLabel(next.date)), el('span', { class: 'rel', text: relLabel(next.date) })])
         : null,
       next && next.note ? el('div', { class: 'note', text: next.note }) : null,
-      next ? null : el('div', { class: 'hint', text: 'Nothing planned — tap to add the next one' }),
+      next ? null : el('div', { class: 'hint', text: 'Nothing planned — tap to add one' }),
     ])
     card.appendChild(summary)
     card.appendChild(el('div', { class: 'actions' }, [
