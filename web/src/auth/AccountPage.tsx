@@ -63,10 +63,7 @@ export function AccountPage() {
             {/* Deliberately unlabeled-as-such in the tab bar/nav — reachable
                 only by a member who happens to open Account and notice this
                 row, same low-visibility posture as the Administrator row
-                above. Currently just Soccer Math (see LabsPage.tsx), a
-                buried, standalone multiplication-practice game that lives
-                outside the SPA entirely (web/public/soccer-math/) so a kid
-                can open it with no login. */}
+                above. See labs/README.md. */}
             <IonItem button routerLink="/labs" lines="none">
               <IonIcon slot="start" icon={flaskOutline} />
               <IonLabel>Labs</IonLabel>

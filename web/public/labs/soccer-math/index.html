@@ -1,0 +1,2038 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="robots" content="noindex, nofollow" />
+<title>Multiplication Shootout</title>
+<style>
+  :root {
+    --pitch: #2e8b3d;
+    --pitch-dark: #256e31;
+    --line: rgba(255,255,255,0.85);
+    --gold: #ffd23f;
+    --ink: #0b2e13;
+    --paper: #ffffff;
+    --danger: #e0473a;
+    --shadow: 0 6px 0 rgba(0,0,0,0.18);
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    margin: 0;
+    /* Deliberately NOT `height: 100%` — an explicit fixed height here (as
+       opposed to the default `auto`) stops the browser's normal
+       viewport-scroll propagation from ever seeing content taller than one
+       screen: document.documentElement.scrollHeight gets stuck reporting
+       exactly the viewport height regardless of how much #app actually
+       overflows it, so the page becomes completely unscrollable — not just
+       visually clipped, genuinely unreachable, confirmed directly
+       (2026-09-10: "I can't actually scroll to the bottom"). min-height
+       below (both here and on #app) already covers "fill the screen when
+       content is short"; height:auto is what lets it grow past that when
+       content is tall.
+    */
+    background: linear-gradient(180deg, var(--pitch) 0%, var(--pitch-dark) 100%);
+    font-family: -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    color: var(--ink);
+    overscroll-behavior: none;
+    user-select: none;
+  }
+  body {
+    display: flex;
+    justify-content: center;
+    min-height: 100vh;
+    padding: env(safe-area-inset-top, 0) 0 env(safe-area-inset-bottom, 0);
+  }
+  #app {
+    width: 100%;
+    max-width: 460px;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    /* Was `overflow: hidden` — with the end screen's tally + rank reveal +
+       name entry + leaderboard list + buttons often taller than one phone
+       viewport (especially with Safari's own chrome eating vertical space),
+       that silently clipped the bottom of the page with no way to reach it
+       at all, not even via the browser's own scroll (2026-09-10: "I can't
+       actually scroll to the bottom"). Only horizontal overflow needs
+       clipping (nothing here is meant to scroll sideways); vertical
+       overflow now just grows the page and the browser's normal scroll
+       reaches it, same as any ordinary web page. */
+    overflow-x: hidden;
+  }
+
+  /* Faint pitch markings behind everything */
+  #app::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background-image:
+      radial-gradient(circle at 50% 42%, transparent 0 58px, var(--line) 58px 60px, transparent 60px),
+      repeating-linear-gradient(90deg, rgba(255,255,255,0.05) 0 40px, rgba(255,255,255,0.09) 40px 80px);
+    opacity: 0.5;
+  }
+
+  /* Header is a real toolbar-style flex row — a fixed-width back-button
+     column, a centered title column, and an equal-width invisible spacer
+     column on the right — the same structural pattern a real IonToolbar
+     uses (a start slot + a centered IonTitle) to keep the title genuinely
+     centered without it ever colliding with the start-slot button. The
+     earlier version absolutely-positioned the back button over a plain
+     centered <h1>, which is what let the button and the ⚽ at the start of
+     the title visually overlap (2026-09-10 feedback, from a screenshot).
+  */
+  header {
+    padding: 14px 12px 10px;
+  }
+  .header-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 2px;
+  }
+  header h1 {
+    margin: 0;
+    /* A few px of top margin, not align-items:center on the whole row —
+       centering the row vertically centers the entire title+subtitle
+       block as one unit, which (since that block is roughly as tall as
+       the back button) barely moves the title line itself and does
+       nothing to isolate it from the subtitle below. This nudges just
+       the title down to sit closer to the back button's own vertically-
+       centered icon, per direct feedback (2026-09-10, from a screenshot:
+       "move the title... down a little bit").
+       Also slightly reduced from the original 1.5rem — reserving real
+       space for the back button on both sides (48px each, for a title
+       that's genuinely centered in the full header width, not just
+       centered in whatever's left after one button) narrowed the title
+       column enough that "⚽ Multiplication Shootout" wrapped to two
+       lines at the old size. */
+    margin-top: 6px;
+    font-size: 1.26rem;
+    font-weight: 900;
+    color: var(--paper);
+    text-shadow: 0 2px 0 rgba(0,0,0,0.25);
+    letter-spacing: 0.02em;
+  }
+  header .sub {
+    color: rgba(255,255,255,0.85);
+    /* Reduced alongside the title, for the same reason — the narrower
+       centered column (reserving 48px on both sides now, for genuine
+       centering) left the subtitle wrapping with just "wins!" alone on
+       its own second line. */
+    font-size: 0.74rem;
+    margin-top: 4px;
+    font-weight: 600;
+  }
+  .header-title-group {
+    flex: 1;
+    min-width: 0;
+    text-align: center;
+  }
+  /* Matches the real app's own always-present top-left back button
+     (2026-09-10 feedback: "go back, which should appear in the top left
+     corner in this case" / "should match the back button styling of the
+     rest of the app") — goes to whatever page was open before this one (a
+     real Labs-page visit, most often) when there's genuine history to
+     return to, else falls back to the app root.
+
+     Sized and iconed to match the real IonBackButton as measured directly
+     off the live app (Playwright, computed styles): a 48x48 tap target and
+     ionicons' real arrow-back SVG path (see the inline <svg> below),
+     copied verbatim from node_modules/ionicons — not redrawn by hand, so
+     the actual glyph shape can't drift from what Ionic itself renders.
+     True component-sharing isn't possible here (this page runs with no
+     Ionic runtime and, by design, no login — see CLAUDE.md's Login
+     section on why it's a static file outside the SPA at all), so this
+     is "as synced as a static page outside that runtime can be": the
+     same icon asset and the same measured sizing, re-measured by hand if
+     the real button's own style ever changes. */
+  .back-link {
+    flex-shrink: 0;
+    width: 48px;
+    height: 48px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: none;
+    border: none;
+    color: rgba(255,255,255,0.9);
+    cursor: pointer;
+  }
+  .back-link svg { width: 24px; height: 24px; }
+  .back-link:active { color: rgba(255,255,255,1); }
+
+  main {
+    position: relative;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: 8px 20px 28px;
+  }
+
+  .card {
+    background: var(--paper);
+    border-radius: 20px;
+    box-shadow: var(--shadow);
+    padding: 20px;
+  }
+
+  /* ---------- Start screen ---------- */
+  #screen-start .card { text-align: center; }
+  .ball-bounce {
+    font-size: 3rem;
+    display: inline-block;
+    animation: bounce 1.4s ease-in-out infinite;
+    margin-bottom: 4px;
+  }
+  @keyframes bounce {
+    0%, 100% { transform: translateY(0) scaleX(1); }
+    45% { transform: translateY(-26px) scaleX(1); }
+    50% { transform: translateY(-28px) scaleX(1.08); }
+    75% { transform: translateY(0) scaleX(1.1); }
+    80% { transform: translateY(0) scaleX(0.94); }
+  }
+  .start-tagline {
+    font-weight: 700;
+    color: #3a4a55;
+    font-size: 0.92rem;
+    margin: 2px 0 4px;
+  }
+  .best-row {
+    display: flex;
+    gap: 10px;
+    justify-content: center;
+    margin: 10px 0 4px;
+    flex-wrap: wrap;
+  }
+  .pill {
+    background: #eefbf0;
+    border: 2px solid #cdeed3;
+    border-radius: 999px;
+    padding: 6px 14px;
+    font-weight: 800;
+    font-size: 0.82rem;
+    color: #1b6b2c;
+    white-space: nowrap;
+  }
+  .record-pill {
+    display: inline-block;
+    background: #fff7dd;
+    border: 2px solid #ffe79c;
+    border-radius: 999px;
+    padding: 7px 16px;
+    font-weight: 800;
+    font-size: 0.82rem;
+    color: #8a6400;
+    margin: 12px 0 4px;
+  }
+  .start-btn {
+    margin-top: 20px;
+    width: 100%;
+    border: none;
+    border-radius: 16px;
+    padding: 16px 0;
+    font-size: 1.15rem;
+    font-weight: 900;
+    color: white;
+    background: var(--danger);
+    box-shadow: 0 5px 0 #a5271d;
+    cursor: pointer;
+  }
+  .start-btn:active { transform: translateY(3px); box-shadow: 0 2px 0 #a5271d; }
+  .link-btn {
+    display: block;
+    margin: 14px auto 0;
+    border: none;
+    background: none;
+    color: #2f6b3f;
+    font-weight: 800;
+    font-size: 0.88rem;
+    text-decoration: underline;
+    cursor: pointer;
+    padding: 6px;
+  }
+
+  /* ---------- Game screen ---------- */
+  #screen-game { display: none; flex-direction: column; flex: 1; }
+
+  .shot-tracker {
+    display: flex;
+    justify-content: center;
+    gap: 6px;
+    margin-bottom: 14px;
+    flex-wrap: wrap;
+  }
+  .shot-dot {
+    width: 20px; height: 20px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.35);
+    font-size: 13px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .shot-dot.goal { background: var(--gold); }
+  .shot-dot.miss { background: var(--danger); }
+  .shot-dot.current { box-shadow: 0 0 0 3px rgba(255,255,255,0.7); }
+
+  /* Both children are explicitly positioned (not flex/align-items:flex-end
+     for the goal, which left no room below it) so there's real space
+     below the goal frame for the ball to start from and travel up INTO
+     the net — see the ball-fly comment below for why this replaced the
+     original layout. */
+  .goal-scene {
+    position: relative;
+    width: 100%;
+    height: 140px;
+    margin: 4px auto 10px;
+  }
+  .goal-frame {
+    position: absolute;
+    left: 50%;
+    bottom: 32px;
+    transform: translateX(-50%);
+    font-size: 4.4rem;
+    line-height: 1;
+  }
+  /* Feedback, 2026-09-10: "the ball moves like from the goal to somewhere
+     behind it" — confirmed by screenshotting the actual rendered
+     animation end-state: the ball's rest position used to sit INSIDE the
+     goal frame's own box, so a correct answer visibly flew it UP AND OUT
+     above the crossbar, ending completely outside/above the goal — the
+     exact opposite of "scoring." The ball now starts here, below and in
+     front of the goal frame (like it's on the ground about to be
+     struck), and shoot-good below carries it UP into the goal frame's
+     own box instead of past it. */
+  .ball-fly {
+    position: absolute;
+    left: 50%;
+    bottom: 0;
+    font-size: 2rem;
+    transform: translateX(-50%);
+    transition: transform 0.5s cubic-bezier(.2,.7,.3,1), opacity 0.4s;
+  }
+  /* Lands around bottom:64px — comfortably inside the goal frame's own
+     32px-102px box (measured), not above/past its 102px top edge like
+     the old -66px did. */
+  .ball-fly.shoot-good { transform: translate(-50%, -64px) scale(0.72); }
+  .ball-fly.shoot-bad { transform: translate(calc(-50% + 70px), -14px) rotate(160deg); opacity: 0.7; }
+
+  .result-banner {
+    text-align: center;
+    font-weight: 900;
+    font-size: 1.15rem;
+    min-height: 1.5em;
+    margin-bottom: 2px;
+  }
+  .result-banner.good { color: var(--gold); text-shadow: 0 2px 0 rgba(0,0,0,0.35); }
+  .result-banner.bad { color: #ffdad4; }
+
+  /* A miss costs real time, live — no arithmetic added after the fact (see
+     endRound below). This is the "you're in the penalty box" visual: a
+     referee's yellow card plus a real, visible 2-second countdown before
+     the next shot is allowed, during which the timer up in .score-strip
+     keeps running exactly as normal. */
+  .penalty-box {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    min-height: 30px;
+    margin-bottom: 6px;
+  }
+  .yellow-card {
+    display: inline-block;
+    font-size: 1.5rem;
+    transform: rotate(-8deg);
+    animation: card-show 0.35s ease-out;
+  }
+  @keyframes card-show {
+    0% { transform: scale(0.3) rotate(-8deg); opacity: 0; }
+    65% { transform: scale(1.2) rotate(-8deg); opacity: 1; }
+    100% { transform: scale(1) rotate(-8deg); }
+  }
+  .penalty-text {
+    font-weight: 900;
+    font-size: 0.88rem;
+    color: #fff7dd;
+    background: rgba(0,0,0,0.2);
+    padding: 5px 12px;
+    border-radius: 999px;
+  }
+  .penalty-text b { color: var(--gold); font-variant-numeric: tabular-nums; }
+
+  .score-strip {
+    display: flex;
+    justify-content: center;
+    gap: 18px;
+    color: rgba(255,255,255,0.92);
+    font-weight: 700;
+    font-size: 0.85rem;
+    margin-bottom: 8px;
+  }
+  .score-strip b { font-size: 1.3rem; font-variant-numeric: tabular-nums; }
+  #timer-val { color: var(--gold); }
+
+  .question-card {
+    background: var(--paper);
+    border-radius: 20px;
+    box-shadow: var(--shadow);
+    padding: 22px 20px 20px;
+    text-align: center;
+  }
+  .question-text {
+    font-size: 2.2rem;
+    font-weight: 900;
+    color: var(--ink);
+    letter-spacing: 0.02em;
+  }
+  .choices {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-top: 18px;
+  }
+  .choice-btn {
+    border: none;
+    border-radius: 14px;
+    padding: 16px 0;
+    font-size: 1.35rem;
+    font-weight: 800;
+    background: #eef2f6;
+    color: var(--ink);
+    box-shadow: 0 4px 0 #c9d2db;
+    cursor: pointer;
+  }
+  .choice-btn:active:not(:disabled) { transform: translateY(3px); box-shadow: none; }
+  .choice-btn:disabled { cursor: default; }
+  .choice-btn.correct { background: #d6f5dc; color: #1b6b2c; box-shadow: 0 4px 0 #9edcac; }
+  .choice-btn.wrong { background: #fbdad6; color: #9a2c22; box-shadow: 0 4px 0 #f0aea5; }
+
+  /* ---------- End screen: tally card ---------- */
+  /* Fixed below the header (top set in JS to the header's real measured
+     height — see showScreen) rather than living in the normal page flow,
+     so Play Again/Home can be pinned in their own footer that's always on
+     screen; .end-scroll is the part that actually scrolls when content
+     (mainly a long leaderboard) runs past the available height. */
+  #screen-end {
+    display: none;
+    position: fixed;
+    /* Matches #app's own centered max-width:460px column (body's
+       justify-content:center) instead of spanning the full viewport width
+       — otherwise this would stretch edge-to-edge on a wide desktop
+       browser while every other screen stays in the centered phone-width
+       column. */
+    left: 50%;
+    transform: translateX(-50%);
+    width: 100%;
+    max-width: 460px;
+    bottom: 0;
+    flex-direction: column;
+    z-index: 5;
+  }
+  #screen-end .card { text-align: center; }
+  .end-scroll {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    padding: 8px 20px 16px;
+  }
+  .end-footer {
+    flex-shrink: 0;
+    display: flex;
+    gap: 10px;
+    padding: 12px 20px calc(12px + env(safe-area-inset-bottom, 0));
+    background: var(--pitch-dark);
+    box-shadow: 0 -4px 12px rgba(0,0,0,0.2);
+  }
+  .end-footer button {
+    flex: 1;
+    border: none;
+    border-radius: 14px;
+    padding: 16px 0;
+    font-weight: 800;
+    font-size: 1.1rem;
+    cursor: pointer;
+  }
+  .end-footer button:active { transform: translateY(2px); }
+  .trophy { font-size: 3rem; margin-bottom: 2px; }
+  .final-title {
+    font-weight: 800;
+    font-size: 1.02rem;
+    color: #2f6b3f;
+    margin-bottom: 12px;
+  }
+
+  .tally {
+    background: #f4f8f5;
+    border-radius: 14px;
+    padding: 14px 16px;
+    margin-bottom: 4px;
+  }
+  .tally-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-weight: 700;
+    font-size: 0.95rem;
+    color: #45564c;
+    padding: 5px 0;
+  }
+  .tally-row .val { font-variant-numeric: tabular-nums; font-weight: 900; color: var(--ink); }
+  .tally-row.final { font-size: 1.15rem; color: var(--ink); }
+  .tally-row.final .val {
+    font-size: 1.7rem;
+    color: var(--pitch-dark);
+    animation: pop-in 0.4s ease-out;
+  }
+  @keyframes pop-in {
+    0% { transform: scale(0.4); opacity: 0; }
+    70% { transform: scale(1.15); opacity: 1; }
+    100% { transform: scale(1); }
+  }
+
+  .new-best {
+    display: inline-block;
+    background: var(--gold);
+    color: #6b4c00;
+    font-weight: 900;
+    font-size: 0.78rem;
+    padding: 4px 10px;
+    border-radius: 999px;
+    margin: 8px 0 2px;
+  }
+
+  .rank-reveal {
+    margin-top: 14px;
+    font-weight: 800;
+    font-size: 1rem;
+    color: var(--ink);
+    opacity: 0;
+    transition: opacity 0.5s ease, transform 0.5s ease;
+    transform: translateY(6px);
+  }
+  .rank-reveal.show { opacity: 1; transform: translateY(0); }
+  .rank-reveal .big { font-size: 1.4rem; color: var(--danger); }
+
+  /* ---------- Name entry ---------- */
+  .name-entry {
+    display: flex;
+    gap: 8px;
+    margin-top: 12px;
+    opacity: 0;
+    max-height: 0;
+    overflow: hidden;
+    transition: opacity 0.4s ease, max-height 0.4s ease;
+  }
+  .name-entry.show { opacity: 1; max-height: 60px; }
+  /* Feedback, 2026-09-15 (Ben, live): typing a name into this row every
+     time read as "entering it for this run" — it's really a one-time
+     "who you are" choice that should carry forward on its own, editable
+     whenever you want rather than re-typed per run. Shown instead of the
+     text input (see renderNameStatus) once a name is already saved. */
+  .playing-as {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex: 1;
+    min-width: 0;
+    font-size: 0.9rem;
+    font-weight: 700;
+    color: var(--ink);
+  }
+  .playing-as-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+  }
+  .change-name-btn {
+    flex-shrink: 0;
+    border: none;
+    background: none;
+    padding: 0;
+    font-size: 0.75rem;
+    font-weight: 800;
+    color: var(--pitch);
+    text-decoration: underline;
+    cursor: pointer;
+  }
+  .name-entry input {
+    flex: 1;
+    border: 2px solid #dfe6ec;
+    border-radius: 12px;
+    padding: 10px 12px;
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: var(--ink);
+    min-width: 0;
+  }
+  .name-entry input:focus { outline: none; border-color: var(--pitch); }
+  .add-btn {
+    border: none;
+    border-radius: 12px;
+    /* Real vertical padding (not 0, relying on flex stretch to borrow the
+       input's height) — feedback, 2026-09-15 (Ben, live): "the add button
+       got shrunk a little bit". .name-entry has no align-items, so its
+       default `stretch` used to size every child to match its tallest
+       sibling — fine while the ~40px-tall text input was that sibling, but
+       .playing-as (no vertical padding of its own) is shorter, so the
+       stretched button shrank down with it once a name is already saved. */
+    padding: 10px 16px;
+    font-weight: 800;
+    font-size: 0.85rem;
+    background: var(--pitch);
+    color: white;
+    box-shadow: 0 3px 0 var(--pitch-dark);
+    cursor: pointer;
+  }
+  .add-btn:active { transform: translateY(2px); box-shadow: none; }
+  .added-note {
+    margin-top: 10px;
+    font-weight: 800;
+    font-size: 0.85rem;
+    color: #1b6b2c;
+    opacity: 0;
+    max-height: 0;
+    overflow: hidden;
+    transition: opacity 0.4s ease, max-height 0.4s ease;
+  }
+  .added-note.show { opacity: 1; max-height: 30px; }
+
+  /* ---------- Leaderboard ---------- */
+  .leaderboard-wrap {
+    margin-top: 16px;
+    opacity: 0;
+    max-height: 0;
+    overflow: hidden;
+    transition: opacity 0.5s ease, max-height 0.5s ease;
+  }
+  .leaderboard-wrap.show { opacity: 1; max-height: 320px; }
+  .leaderboard-title {
+    font-weight: 900;
+    font-size: 0.95rem;
+    color: var(--ink);
+    margin-bottom: 8px;
+    text-align: left;
+  }
+  .leaderboard-list {
+    max-height: 260px;
+    overflow-y: auto;
+    scroll-behavior: smooth;
+    border-radius: 12px;
+    background: #f4f8f5;
+    padding: 6px;
+    -webkit-overflow-scrolling: touch;
+  }
+  .lb-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 8px;
+    border-radius: 10px;
+    font-weight: 700;
+    font-size: 0.9rem;
+    color: #3a4a4a;
+  }
+  .lb-row + .lb-row { margin-top: 2px; }
+  .lb-rank { width: 28px; text-align: center; font-weight: 900; flex-shrink: 0; }
+  .lb-name {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    min-width: 0;
+  }
+  .lb-name-text {
+    text-align: left;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+  }
+  .lb-time { font-variant-numeric: tabular-nums; font-weight: 900; color: var(--ink); flex-shrink: 0; }
+  .lb-row.me {
+    background: #fff7dd;
+    box-shadow: 0 0 0 2px var(--gold) inset;
+  }
+  .lb-row.pulse { animation: lb-pulse 1s ease-in-out 3; }
+  @keyframes lb-pulse {
+    0%, 100% { background: #fff7dd; }
+    50% { background: #ffe79c; }
+  }
+  /* Feedback, 2026-09-14 (Ben, live): persistent — unlike .me above (which
+     only ever shows right after you post a fresh score), this marks your
+     row every time you open the leaderboard, and it's the one row that's
+     tappable at all (see the row click handler in renderLeaderboardList).
+     Deliberately a lighter tint than .me's celebratory gold-pulse — a
+     permanent "this one's mine" cue, not a one-time "you just did it!". */
+  .lb-row.mine {
+    background: #fff9ea;
+    box-shadow: 0 0 0 1.5px var(--gold) inset;
+    cursor: pointer;
+  }
+  .lb-row.mine:active { background: #fff1c8; }
+  .lb-you-badge {
+    display: inline-block;
+    margin-left: 6px;
+    font-size: 0.65rem;
+    font-weight: 900;
+    letter-spacing: 0.02em;
+    color: #6b5400;
+    background: var(--gold);
+    padding: 1px 6px;
+    border-radius: 999px;
+    vertical-align: 1px;
+    flex-shrink: 0;
+    white-space: nowrap;
+  }
+  .lb-empty { text-align: center; color: #7a8a80; font-weight: 700; font-size: 0.85rem; padding: 18px 4px; }
+  .row-actions-body { display: flex; flex-direction: column; gap: 8px; padding: 16px; }
+  .row-action-btn {
+    border: none; border-radius: 12px; padding: 14px 16px;
+    font-size: 1rem; font-weight: 800; text-align: left;
+    background: #f4f8f5; color: var(--ink); cursor: pointer;
+  }
+  .row-action-btn:active { background: #e3ece5; }
+  .row-action-danger { color: #b3261e; }
+
+  #play-again-btn { background: var(--pitch); color: white; }
+
+  /* ---------- Leaderboard-only screen ---------- */
+  #screen-leaderboard { display: none; }
+  #screen-leaderboard .card { text-align: center; }
+  #screen-leaderboard .leaderboard-wrap { opacity: 1; max-height: none; margin-top: 4px; }
+  #screen-leaderboard .leaderboard-list { max-height: 380px; }
+  #back-from-leaderboard-btn {
+    width: 100%;
+    margin-top: 16px;
+    border: none;
+    border-radius: 14px;
+    padding: 14px 0;
+    font-weight: 800;
+    font-size: 0.95rem;
+    background: #eef2f6;
+    color: #4a5568;
+    box-shadow: 0 4px 0 #c9d2db;
+    cursor: pointer;
+  }
+  #back-from-leaderboard-btn:active { transform: translateY(3px); box-shadow: none; }
+
+  .hidden { display: none !important; }
+
+  /* confetti burst */
+  .confetti {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    overflow: hidden;
+    z-index: 5;
+  }
+  .confetti span {
+    position: absolute;
+    top: -10px;
+    font-size: 1.4rem;
+    animation: fall linear forwards;
+  }
+  @keyframes fall {
+    to { transform: translateY(110vh) rotate(360deg); opacity: 0.2; }
+  }
+
+  /* ---------- Share (persistent FAB + modal, mirrors the real app) ----------
+     Size, position, background and shadow measured directly off the real
+     ShareButton FAB (web/src/sharing/ShareButton.tsx, color="light") on
+     the live app via Playwright computed styles — 56x56, 16px from the
+     edge, #f4f5f8, box-shadow 0 1px 4px rgba(0,0,0,.2) — same "measured,
+     not guessed" approach as the back button above. The real FAB's own
+     72px bottom clearance exists to sit above that app's tab bar; this
+     page has no tab bar, so it uses a smaller clearance instead. */
+  .share-fab {
+    position: fixed;
+    right: 16px;
+    bottom: calc(16px + env(safe-area-inset-bottom, 0));
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    border: none;
+    background: #f4f5f8;
+    color: #000;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.2);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    z-index: 30;
+  }
+  .share-fab svg { width: 24px; height: 24px; }
+  .share-fab:active { transform: scale(0.94); }
+  .share-modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.5);
+    display: flex;
+    align-items: flex-end;
+    z-index: 40;
+  }
+  .share-modal {
+    background: var(--paper);
+    width: 100%;
+    max-width: 460px;
+    margin: 0 auto;
+    border-radius: 20px 20px 0 0;
+    padding-bottom: env(safe-area-inset-bottom, 0);
+    max-height: 85vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .share-modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 18px;
+    border-bottom: 1px solid #eef2f6;
+    font-weight: 800;
+    font-size: 1.05rem;
+    color: var(--ink);
+  }
+  .share-modal-close {
+    border: none;
+    background: none;
+    color: #7a8a80;
+    cursor: pointer;
+    padding: 4px 8px;
+    display: flex;
+  }
+  .share-modal-close svg { width: 20px; height: 20px; }
+  .share-modal-body {
+    padding: 22px 24px;
+    text-align: center;
+    overflow-y: auto;
+  }
+  .share-qr {
+    width: 220px;
+    height: 220px;
+    display: block;
+    margin: 0 auto 16px;
+    border-radius: 12px;
+    background: #f4f8f5;
+  }
+  .share-instruction {
+    font-weight: 600;
+    color: #3a4a4a;
+    margin: 0 0 4px;
+  }
+  .share-or { color: #90a099; font-weight: 700; margin: 14px 0 10px; }
+  .share-native-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    width: 100%;
+    border: 2px solid #dfe6ec;
+    background: none;
+    color: var(--ink);
+    font-weight: 800;
+    font-size: 0.95rem;
+    padding: 13px 0;
+    border-radius: 14px;
+    cursor: pointer;
+  }
+  .share-native-btn svg { width: 18px; height: 18px; }
+  .share-native-btn:active { background: #f4f8f5; }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <div class="header-row">
+      <button class="back-link" id="back-btn" type="button" aria-label="Back">
+        <!-- Real ionicons arrow-back path, copied from node_modules/ionicons/dist/svg — the exact glyph Ionic's own IonBackButton renders in md mode, not a redrawn approximation. -->
+        <svg viewBox="0 0 512 512" fill="none" stroke="currentColor" stroke-width="48" stroke-linecap="square" stroke-miterlimit="10"><path d="M244 400 100 256l144-144M120 256h292"/></svg>
+      </button>
+      <div class="header-title-group">
+        <h1>⚽ Multiplication Shootout</h1>
+        <div class="sub" id="header-sub">Race the clock — 10 shots, best time wins!</div>
+      </div>
+      <!-- Balances the back button's 48px so the title is genuinely
+           centered in the full header width, not just centered in
+           whatever's left after the button — feedback, 2026-09-10. -->
+      <div class="back-link" aria-hidden="true" style="visibility: hidden;"></div>
+    </div>
+  </header>
+
+  <main>
+    <!-- START SCREEN -->
+    <section id="screen-start">
+      <div class="card">
+        <div class="ball-bounce">⚽</div>
+        <div class="start-tagline">Times tables 2–11, best time wins.</div>
+        <div class="best-row" id="best-row"></div>
+        <div id="record-row"></div>
+
+        <button class="start-btn" id="start-btn" type="button">⏱ Start Shootout</button>
+        <button class="link-btn" id="view-leaderboard-btn" type="button">🏆 View Leaderboard</button>
+      </div>
+    </section>
+
+    <!-- GAME SCREEN -->
+    <section id="screen-game">
+      <div class="shot-tracker" id="shot-tracker"></div>
+      <div class="score-strip">
+        <div>⏱ <b id="timer-val">0.0s</b></div>
+      </div>
+      <div class="goal-scene">
+        <div class="goal-frame">🥅</div>
+        <div class="ball-fly" id="ball-fly">⚽</div>
+      </div>
+      <div class="result-banner" id="result-banner">&nbsp;</div>
+      <div class="penalty-box hidden" id="penalty-box">
+        <span class="yellow-card" id="yellow-card">🟨</span>
+        <span class="penalty-text">Time-out: <b id="penalty-countdown">2</b>s</span>
+      </div>
+      <div class="question-card">
+        <div class="question-text" id="question-text">? × ?</div>
+        <div class="choices" id="choices"></div>
+      </div>
+    </section>
+
+    <!-- END SCREEN — a fixed layout (not part of the normal page scroll):
+         a scrollable content area between the header and a footer that's
+         always on screen, per direct feedback (2026-09-10) that Play
+         Again/Home needed to stay reachable without scrolling, and that
+         the leaderboard content should be what scrolls, not the whole
+         page. -->
+    <section id="screen-end">
+      <div class="end-scroll" id="end-scroll">
+        <div class="card">
+          <div class="tally">
+            <div class="tally-row final">
+              <span>🏁 FINAL SCORE</span>
+              <span class="val" id="tally-final-score">0.0s</span>
+            </div>
+          </div>
+          <div class="new-best hidden" id="new-best-badge">NEW PERSONAL BEST!</div>
+
+          <div class="rank-reveal" id="rank-reveal"></div>
+
+          <div class="name-entry" id="name-entry">
+            <div class="playing-as hidden" id="playing-as-row">
+              Playing as <span class="playing-as-name" id="playing-as-name"></span>
+              <button class="change-name-btn" id="change-name-btn" type="button">change</button>
+            </div>
+            <input id="name-input" type="text" maxlength="20" placeholder="Your name" autocomplete="off" />
+            <button class="add-btn" id="add-to-leaderboard-btn" type="button">Add</button>
+          </div>
+          <div class="added-note" id="added-note"></div>
+
+          <div class="leaderboard-wrap" id="end-leaderboard-wrap">
+            <div class="leaderboard-title">🏆 Leaderboard</div>
+            <div class="leaderboard-list" id="end-leaderboard-list"></div>
+          </div>
+        </div>
+      </div>
+      <!-- Just Play Again, per direct feedback (2026-09-10, "there's no
+           need for Home here") — the back button in the header is the way
+           out, so this footer only needs the one action people actually
+           want after finishing a round. -->
+      <div class="end-footer">
+        <button id="play-again-btn" type="button">Play Again</button>
+      </div>
+    </section>
+
+    <!-- LEADERBOARD-ONLY SCREEN -->
+    <section id="screen-leaderboard">
+      <div class="card">
+        <div class="trophy">🏆</div>
+        <div class="final-title">Leaderboard</div>
+        <div class="leaderboard-wrap">
+          <div class="leaderboard-list" id="standalone-leaderboard-list"></div>
+        </div>
+        <button id="back-from-leaderboard-btn" type="button">Back</button>
+      </div>
+    </section>
+  </main>
+</div>
+
+<!-- Persistent share entry point (2026-09-10: "the standard abilities to
+     share the app which should always persist even in this view") —
+     mirrors the real app's own ShareButton (web/src/sharing/ShareButton.tsx):
+     a QR code for this page plus the native share sheet where supported.
+     Sits outside #app since, like the real ShareButton, it must stay
+     visible across every screen this page shows, not just one. -->
+<!-- Icon SVGs below are copied verbatim from node_modules/ionicons/dist/svg
+     (share-outline, close-outline, paper-plane-outline) — the same assets
+     the real app's ShareButton/close/send icons render, not redrawn. -->
+<button class="share-fab" id="share-fab-btn" type="button" aria-label="Share this page">
+  <svg viewBox="0 0 512 512" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="32"><path d="M336 192h40a40 40 0 0 1 40 40v192a40 40 0 0 1-40 40H136a40 40 0 0 1-40-40V232a40 40 0 0 1 40-40h40M336 128l-80-80-80 80M256 321V48"/></svg>
+</button>
+<div class="share-modal-overlay hidden" id="share-modal-overlay">
+  <div class="share-modal">
+    <div class="share-modal-header">
+      <span>Share</span>
+      <button class="share-modal-close" id="share-modal-close-btn" type="button" aria-label="Close">
+        <svg viewBox="0 0 512 512" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="32"><path d="M368 368 144 144M368 144 144 368"/></svg>
+      </button>
+    </div>
+    <div class="share-modal-body">
+      <img id="share-qr-img" class="share-qr" alt="" />
+      <!-- No raw https:// URL as visible text (same convention as the real
+           ShareButton) — it lives in the QR encoding and the native share
+           sheet's own payload only. -->
+      <p class="share-instruction">Have your friend scan this QR code to play Multiplication Shootout</p>
+      <div class="share-or hidden" id="share-or-divider">— or —</div>
+      <button class="share-native-btn hidden" id="share-native-btn" type="button">
+        <svg viewBox="0 0 512 512" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="32"><path d="m53.12 199.94 400-151.39a8 8 0 0 1 10.33 10.33l-151.39 400a8 8 0 0 1-15-.34l-67.4-166.09a16 16 0 0 0-10.11-10.11L53.46 215a8 8 0 0 1-.34-15.06M460 52 227 285"/></svg>
+        Share via Text, Email, etc.
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Feedback, 2026-09-14 (Ben, live): "Don't show the X and edit button
+     here instead make it so when you click on the row, it's a prompt" —
+     tapping your own leaderboard row (the only one ever clickable — see
+     ensurePlayerIdentity/the .mine class) opens this instead of always
+     showing a pencil/✕ inline. Reuses the exact same bottom-sheet
+     overlay classes the Share modal above already defines, so it's
+     visually consistent with the rest of the page for free. -->
+<div class="share-modal-overlay hidden" id="row-actions-overlay">
+  <div class="share-modal">
+    <div class="share-modal-header">
+      <span id="row-actions-title">Your Entry</span>
+      <button class="share-modal-close" id="row-actions-close-btn" type="button" aria-label="Close">
+        <svg viewBox="0 0 512 512" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="32"><path d="M368 368 144 144M368 144 144 368"/></svg>
+      </button>
+    </div>
+    <div class="share-modal-body row-actions-body">
+      <button class="row-action-btn" id="row-actions-edit-btn" type="button">✎ Edit Name</button>
+      <button class="row-action-btn row-action-danger" id="row-actions-remove-btn" type="button">✕ Remove from Leaderboard</button>
+    </div>
+  </div>
+</div>
+
+<!-- A real, self-hosted build of the same `qrcode` npm package the main
+     app uses (see scripts/build-soccer-math-qr-bundle.mjs) — not a
+     third-party CDN, not a hand-rolled encoder. -->
+<script src="/labs/soccer-math/qrcode.bundle.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  var SHOTS_PER_ROUND = 10;
+  var MIN_TABLE = 2;
+  var MAX_TABLE = 11;
+  // A miss costs time the natural way — the round simply pauses here for
+  // real, with the live timer still running, rather than a number added to
+  // the score afterward. This is the one source of truth for both the
+  // pause duration and the on-screen countdown.
+  var MISS_TIMEOUT_MS = 2000;
+  var MAX_LEADERBOARD_ENTRIES = 100;
+  var NAME_STORAGE_KEY = 'soccerMathLastName_v1';
+  var LEADERBOARD_STORAGE_KEY = 'soccerMathLeaderboard_v1';
+  // A stable per-device identity (feedback #162 follow-up, 2026-09-14: Ben's
+  // own device ended up with two separate leaderboard rows "from the same
+  // single account" because ownership was keyed on the typed display NAME —
+  // which not only let a rename/re-add sequence produce more than one row
+  // for the same real person, but could silently collide with one of the 20
+  // hardcoded seed pros if you happened to type the same name as one of
+  // them. playerId is the real, name-independent identity: generated once
+  // per device, stamped on every entry you add, and never touched by
+  // renaming. "Your own entry" now means "the one row with your playerId,"
+  // not "the one row with your current name."
+  var PLAYER_ID_STORAGE_KEY = 'soccerMathPlayerId_v1';
+  // A little fun on first load, so the leaderboard never reads as an empty
+  // dead end (and gives a real field to place yourself in from the very
+  // first play): 20 real professional footballers, Messi on top and a
+  // handful of other genuine superstars right behind him, tapering down
+  // through well-known starters to a few deliberately obscure pros (real,
+  // but names only an actual soccer fan would recognize) at the bottom —
+  // the times are just for fun, not a real comment on anyone's ability.
+  var SEED_LEADERBOARD = [
+    { name: 'Messi', finalMs: 7800, misses: 0, date: '2026-01-01T00:00:00.000Z' },
+    { name: 'Cristiano Ronaldo', finalMs: 9100, misses: 0, date: '2026-01-01T00:00:00.000Z' },
+    { name: 'Kylian Mbappé', finalMs: 10400, misses: 0, date: '2026-01-01T00:00:00.000Z' },
+    { name: 'Erling Haaland', finalMs: 11600, misses: 0, date: '2026-01-01T00:00:00.000Z' },
+    { name: 'Kevin De Bruyne', finalMs: 13200, misses: 0, date: '2026-01-01T00:00:00.000Z' },
+    { name: 'Neymar Jr', finalMs: 14500, misses: 1, date: '2026-01-01T00:00:00.000Z' },
+    { name: 'Mohamed Salah', finalMs: 16800, misses: 1, date: '2026-01-01T00:00:00.000Z' },
+    { name: 'Jude Bellingham', finalMs: 19300, misses: 1, date: '2026-01-01T00:00:00.000Z' },
+    { name: 'Vinícius Júnior', finalMs: 22700, misses: 1, date: '2026-01-01T00:00:00.000Z' },
+    { name: 'Harry Kane', finalMs: 26100, misses: 2, date: '2026-01-01T00:00:00.000Z' },
+    { name: 'Toni Kroos', finalMs: 30500, misses: 2, date: '2026-01-01T00:00:00.000Z' },
+    { name: 'Luka Modrić', finalMs: 35000, misses: 2, date: '2026-01-01T00:00:00.000Z' },
+    { name: 'Antoine Griezmann', finalMs: 41200, misses: 3, date: '2026-01-01T00:00:00.000Z' },
+    { name: 'Bukayo Saka', finalMs: 48900, misses: 3, date: '2026-01-01T00:00:00.000Z' },
+    { name: 'Declan Rice', finalMs: 58300, misses: 4, date: '2026-01-01T00:00:00.000Z' },
+    { name: 'Virgil van Dijk', finalMs: 72000, misses: 5, date: '2026-01-01T00:00:00.000Z' },
+    { name: 'Thibaut Courtois', finalMs: 95000, misses: 6, date: '2026-01-01T00:00:00.000Z' },
+    { name: 'Jordan Pickford', finalMs: 125000, misses: 7, date: '2026-01-01T00:00:00.000Z' },
+    { name: 'Norberto Neto', finalMs: 160000, misses: 8, date: '2026-01-01T00:00:00.000Z' },
+    { name: 'Danny Ward', finalMs: 180000, misses: 9, date: '2026-01-01T00:00:00.000Z' },
+  ];
+
+  var el = {
+    screenStart: document.getElementById('screen-start'),
+    screenGame: document.getElementById('screen-game'),
+    screenEnd: document.getElementById('screen-end'),
+    screenLeaderboard: document.getElementById('screen-leaderboard'),
+    headerSub: document.getElementById('header-sub'),
+    backBtn: document.getElementById('back-btn'),
+    bestRow: document.getElementById('best-row'),
+    recordRow: document.getElementById('record-row'),
+    startBtn: document.getElementById('start-btn'),
+    viewLeaderboardBtn: document.getElementById('view-leaderboard-btn'),
+    backFromLeaderboardBtn: document.getElementById('back-from-leaderboard-btn'),
+    shotTracker: document.getElementById('shot-tracker'),
+    timerVal: document.getElementById('timer-val'),
+    ballFly: document.getElementById('ball-fly'),
+    resultBanner: document.getElementById('result-banner'),
+    penaltyBox: document.getElementById('penalty-box'),
+    yellowCard: document.getElementById('yellow-card'),
+    penaltyCountdown: document.getElementById('penalty-countdown'),
+    questionText: document.getElementById('question-text'),
+    choices: document.getElementById('choices'),
+    tallyFinalScore: document.getElementById('tally-final-score'),
+    newBestBadge: document.getElementById('new-best-badge'),
+    rankReveal: document.getElementById('rank-reveal'),
+    nameEntry: document.getElementById('name-entry'),
+    playingAsRow: document.getElementById('playing-as-row'),
+    playingAsName: document.getElementById('playing-as-name'),
+    changeNameBtn: document.getElementById('change-name-btn'),
+    nameInput: document.getElementById('name-input'),
+    addToLeaderboardBtn: document.getElementById('add-to-leaderboard-btn'),
+    addedNote: document.getElementById('added-note'),
+    endScroll: document.getElementById('end-scroll'),
+    endLeaderboardWrap: document.getElementById('end-leaderboard-wrap'),
+    endLeaderboardList: document.getElementById('end-leaderboard-list'),
+    standaloneLeaderboardList: document.getElementById('standalone-leaderboard-list'),
+    playAgainBtn: document.getElementById('play-again-btn'),
+    shareFabBtn: document.getElementById('share-fab-btn'),
+    shareModalOverlay: document.getElementById('share-modal-overlay'),
+    shareModalCloseBtn: document.getElementById('share-modal-close-btn'),
+    shareQrImg: document.getElementById('share-qr-img'),
+    shareOrDivider: document.getElementById('share-or-divider'),
+    shareNativeBtn: document.getElementById('share-native-btn'),
+    rowActionsOverlay: document.getElementById('row-actions-overlay'),
+    rowActionsCloseBtn: document.getElementById('row-actions-close-btn'),
+    rowActionsTitle: document.getElementById('row-actions-title'),
+    rowActionsEditBtn: document.getElementById('row-actions-edit-btn'),
+    rowActionsRemoveBtn: document.getElementById('row-actions-remove-btn'),
+  };
+
+  // Set once, at init (see the bottom of this script) — after
+  // ensureSeedLeaderboard() has had a chance to fix up any legacy seed rows
+  // first, since ensurePlayerIdentity's own one-time claim logic needs to
+  // tell a real leftover row apart from an unmigrated seed row.
+  var MY_PLAYER_ID = null;
+
+  var round = {
+    shots: [], index: 0, misses: 0,
+    answering: false, startTime: 0, elapsedMs: 0,
+  };
+  var timerInterval = null;
+  var ballFlyResetTimeout = null;
+
+  // ---------- storage ----------
+  // Feedback, 2026-09-16 (Ben, live): "my best does not match when I view
+  // leaderboard vs splash screen" — a second, independent "your best"
+  // number (BEST_STORAGE_KEY) used to live here, updated on every
+  // completed round regardless of whether that run ever made it into the
+  // real leaderboard (which needs a saved name). The two could only ever
+  // drift apart. Retired in favor of one real source of truth: your own
+  // entry on the leaderboard itself (see myBestEntry below).
+  function myBestEntry() {
+    return loadLeaderboard().find(function (e) { return !e.isSeed && e.playerId === MY_PLAYER_ID; });
+  }
+  function loadLeaderboard() {
+    try {
+      var raw = localStorage.getItem(LEADERBOARD_STORAGE_KEY);
+      if (!raw) return [];
+      var parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (e) {
+      return [];
+    }
+  }
+  function saveLeaderboard(entries) {
+    entries.sort(function (a, b) { return a.finalMs - b.finalMs; });
+    if (entries.length > MAX_LEADERBOARD_ENTRIES) entries = entries.slice(0, MAX_LEADERBOARD_ENTRIES);
+    try { localStorage.setItem(LEADERBOARD_STORAGE_KEY, JSON.stringify(entries)); } catch (e) {}
+    return entries;
+  }
+  function loadLastName() {
+    try { return localStorage.getItem(NAME_STORAGE_KEY) || ''; } catch (e) { return ''; }
+  }
+  function saveLastName(name) {
+    try { localStorage.setItem(NAME_STORAGE_KEY, name); } catch (e) {}
+  }
+  function loadPlayerId() {
+    try { return localStorage.getItem(PLAYER_ID_STORAGE_KEY) || ''; } catch (e) { return ''; }
+  }
+  function savePlayerId(id) {
+    try { localStorage.setItem(PLAYER_ID_STORAGE_KEY, id); } catch (e) {}
+  }
+  function generatePlayerId() {
+    if (window.crypto && typeof window.crypto.randomUUID === 'function') return window.crypto.randomUUID();
+    return 'p-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2);
+  }
+  // Finds a row `ensureSeedLeaderboard` itself owns — matched by isSeed once
+  // steady-state, or (one-time, for a device whose board predates isSeed
+  // existing at all) by the seed's own fixed placeholder `date`
+  // ('2026-01-01T00:00:00.000Z' for every seed row) — a real player's row
+  // always carries today's real date (see addCurrentScoreToLeaderboard), so
+  // this can never accidentally match one, even if the names happen to be
+  // identical. Never matches on name alone — that was the actual bug.
+  function isSeedRow(entry, seed) {
+    return entry.name === seed.name && (entry.isSeed || entry.date === seed.date);
+  }
+  // Upserts by name rather than "only if the board is completely empty" —
+  // that original check was the actual bug (2026-09-10): anyone who'd
+  // already played and saved their own score before this feature shipped
+  // had a non-empty board, so the seed rows silently never got added and
+  // the leaderboard looked like it only had one person on it. This adds
+  // whichever seed rows are missing and re-syncs their time if a stale
+  // value from an earlier version of this file is still sitting in
+  // localStorage — a real player's own row is never touched (see isSeedRow).
+  function ensureSeedLeaderboard() {
+    var board = loadLeaderboard();
+    var changed = false;
+    SEED_LEADERBOARD.forEach(function (seed) {
+      var idx = board.findIndex(function (e) { return isSeedRow(e, seed); });
+      if (idx === -1) {
+        board.push({ name: seed.name, finalMs: seed.finalMs, misses: seed.misses, date: seed.date, isSeed: true });
+        changed = true;
+      } else if (board[idx].finalMs !== seed.finalMs || !board[idx].isSeed) {
+        // The `!board[idx].isSeed` half re-stamps a row that was saved by an
+        // earlier version of this file before isSeed existed (feedback #162:
+        // "these other entries are kind of system generated placeholders
+        // that no user should be able to edit" — a device that already had
+        // these rows in localStorage needs this migrated on load, not just
+        // new rows going forward) — including undoing any edit/rename a
+        // player made to a placeholder before this fix existed.
+        board[idx] = { name: seed.name, finalMs: seed.finalMs, misses: seed.misses, date: seed.date, isSeed: true };
+        changed = true;
+      }
+    });
+    if (changed) saveLeaderboard(board);
+  }
+  // Generates (once) and returns this device's stable playerId. On the very
+  // first call ever for a device, also claims/cleans up whatever the old
+  // name-based logic already left behind under the currently-saved name:
+  // every non-seed row sharing that name is folded down to just the single
+  // best (lowest finalMs) one, stamped with the new playerId — fixing
+  // exactly the bug this was written for (2026-09-14, Ben's own device:
+  // "I have two scores here since these both came from the same single
+  // account... only my best score should appear... unless I deleted it, in
+  // which case no score should appear").
+  function ensurePlayerIdentity() {
+    var playerId = loadPlayerId();
+    if (playerId) return playerId;
+    playerId = generatePlayerId();
+    var lastName = loadLastName();
+    if (lastName) {
+      var board = loadLeaderboard();
+      var mine = board.filter(function (e) { return !e.isSeed && e.name === lastName; });
+      if (mine.length > 0) {
+        var best = mine.reduce(function (a, b) { return b.finalMs < a.finalMs ? b : a; });
+        var kept = board.filter(function (e) { return e.isSeed || e.name !== lastName; });
+        best.playerId = playerId;
+        kept.push(best);
+        saveLeaderboard(kept);
+      }
+    }
+    savePlayerId(playerId);
+    return playerId;
+  }
+
+  // ---------- helpers ----------
+  function formatTime(ms) {
+    var totalSeconds = ms / 1000;
+    if (totalSeconds < 60) return totalSeconds.toFixed(1) + 's';
+    var minutes = Math.floor(totalSeconds / 60);
+    var seconds = totalSeconds - minutes * 60;
+    return minutes + ':' + (seconds < 10 ? '0' : '') + seconds.toFixed(1);
+  }
+  function randInt(min, max) {
+    return Math.floor(Math.random() * (max - min + 1)) + min;
+  }
+  function pick(arr) { return arr[randInt(0, arr.length - 1)]; }
+
+  function renderBestRow(container) {
+    container.innerHTML = '';
+    var mine = myBestEntry();
+    if (!mine) return;
+    var p1 = document.createElement('div');
+    p1.className = 'pill';
+    p1.textContent = 'Your Best: ' + formatTime(mine.finalMs);
+    container.appendChild(p1);
+  }
+
+  function renderRecordRow() {
+    var board = loadLeaderboard();
+    el.recordRow.innerHTML = '';
+    if (board.length === 0) return;
+    var top = board[0];
+    var span = document.createElement('div');
+    span.className = 'record-pill';
+    span.textContent = '🏆 Record: ' + formatTime(top.finalMs) + ' — ' + top.name;
+    el.recordRow.appendChild(span);
+  }
+
+  // ---------- question generation ----------
+  function buildShots() {
+    var shots = [];
+    for (var i = 0; i < SHOTS_PER_ROUND; i++) {
+      var a = randInt(MIN_TABLE, MAX_TABLE);
+      var b = randInt(MIN_TABLE, MAX_TABLE);
+      shots.push({ a: a, b: b, answer: a * b, result: null });
+    }
+    return shots;
+  }
+
+  function buildChoices(correct) {
+    var options = new Set([correct]);
+    var attempts = 0;
+    while (options.size < 4 && attempts < 40) {
+      attempts++;
+      var delta = pick([-3, -2, -1, 1, 2, 3, 4, -4]);
+      var candidate = correct + delta * randInt(1, MAX_TABLE);
+      if (candidate < 0) candidate = correct + Math.abs(delta);
+      if (candidate !== correct && candidate >= 0) options.add(candidate);
+    }
+    while (options.size < 4) options.add(correct + options.size + 1);
+    var arr = Array.from(options);
+    for (var i = arr.length - 1; i > 0; i--) {
+      var j = randInt(0, i);
+      var tmp = arr[i]; arr[i] = arr[j]; arr[j] = tmp;
+    }
+    return arr;
+  }
+
+  function renderShotTracker() {
+    el.shotTracker.innerHTML = '';
+    for (var i = 0; i < round.shots.length; i++) {
+      var dot = document.createElement('div');
+      var r = round.shots[i].result;
+      dot.className = 'shot-dot' + (r === 'goal' ? ' goal' : r === 'miss' ? ' miss' : '') + (i === round.index ? ' current' : '');
+      dot.textContent = r === 'goal' ? '✓' : r === 'miss' ? '✕' : '';
+      el.shotTracker.appendChild(dot);
+    }
+  }
+
+  function showScreen(name) {
+    el.screenStart.style.display = name === 'start' ? 'block' : 'none';
+    el.screenGame.style.display = name === 'game' ? 'flex' : 'none';
+    el.screenEnd.style.display = name === 'end' ? 'flex' : 'none';
+    el.screenLeaderboard.style.display = name === 'leaderboard' ? 'block' : 'none';
+    if (name === 'end') {
+      // #screen-end is a fixed-position overlay (so Play Again/Home can be
+      // pinned in their own always-visible footer — see its CSS) rather
+      // than living in the normal page flow, so it needs its own top
+      // offset to sit below the header instead of covering it. Measured
+      // live rather than hardcoded since the header's real height can
+      // shift slightly (e.g. text wrapping at a narrow width).
+      var header = document.querySelector('header');
+      el.screenEnd.style.top = header.getBoundingClientRect().height + 'px';
+      // The share FAB's default bottom-right spot sits right where the end
+      // screen's own pinned footer (Play Again/Home) now lives — found by
+      // actually looking at a screenshot, not just reasoning about it.
+      // Lift it clear of the footer specifically on this screen; every
+      // other screen has no footer to collide with, so it uses its normal
+      // CSS position there.
+      var footer = document.querySelector('.end-footer');
+      el.shareFabBtn.style.bottom = (footer.getBoundingClientRect().height + 18) + 'px';
+    } else {
+      el.shareFabBtn.style.bottom = '';
+    }
+  }
+
+  // ---------- timer ----------
+  function startTimer() {
+    round.startTime = performance.now();
+    el.timerVal.textContent = '0.0s';
+    if (timerInterval) clearInterval(timerInterval);
+    timerInterval = setInterval(function () {
+      el.timerVal.textContent = formatTime(performance.now() - round.startTime);
+    }, 100);
+  }
+  function stopTimer() {
+    if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
+  }
+
+  // ---------- miss penalty (yellow card + real countdown) ----------
+  var penaltyInterval = null;
+  function showMissPenalty() {
+    el.penaltyBox.classList.remove('hidden');
+    // Restart the card's pop-in animation on every miss, not just the first
+    // — re-triggering a CSS animation needs a reflow between removing and
+    // re-applying it, since just re-adding the same class is a no-op.
+    el.yellowCard.style.animation = 'none';
+    void el.yellowCard.offsetWidth;
+    el.yellowCard.style.animation = '';
+
+    var secondsLeft = MISS_TIMEOUT_MS / 1000;
+    el.penaltyCountdown.textContent = secondsLeft;
+    if (penaltyInterval) clearInterval(penaltyInterval);
+    penaltyInterval = setInterval(function () {
+      secondsLeft--;
+      if (secondsLeft > 0) el.penaltyCountdown.textContent = secondsLeft;
+      else clearInterval(penaltyInterval);
+    }, 1000);
+  }
+  function hidePenaltyBox() {
+    if (penaltyInterval) { clearInterval(penaltyInterval); penaltyInterval = null; }
+    el.penaltyBox.classList.add('hidden');
+  }
+
+  // ---------- round flow ----------
+  // Bumped on every startRound() (including a mid-game "Start Over") and
+  // captured by every in-flight setTimeout below — a stale timeout from an
+  // abandoned round checks this before touching `round` at all, so
+  // restarting mid-shootout can never let an old round's delayed callback
+  // corrupt the new one's state (advancing its index, ending it early, etc).
+  var currentRoundToken = 0;
+
+  function startRound() {
+    currentRoundToken++;
+    if (ballFlyResetTimeout) { clearTimeout(ballFlyResetTimeout); ballFlyResetTimeout = null; }
+    el.ballFly.className = 'ball-fly';
+    round = {
+      shots: buildShots(), index: 0, misses: 0, token: currentRoundToken,
+      answering: false, startTime: 0, elapsedMs: 0,
+    };
+    el.headerSub.textContent = 'Score a goal for every right answer!';
+    showScreen('game');
+    startTimer();
+    showQuestion();
+  }
+
+  // The celebration ball-fly animation is deliberately NOT reset here (it
+  // used to be) — the next question now loads instantly on a correct
+  // answer (see handleAnswer), and resetting the ball's class the moment
+  // this runs would cut that CSS transition off before it's even visible.
+  // celebrateGoal() below owns the ball's whole lifecycle independently,
+  // including its own reset, so a fast answerer can chain goal after goal
+  // with each celebration playing all the way through on its own schedule
+  // (and confetti — see launchConfetti — already stacks the same way,
+  // since every call appends its own independent, self-removing overlay).
+  function showQuestion() {
+    var shot = round.shots[round.index];
+    round.answering = true;
+    el.resultBanner.textContent = ' ';
+    el.resultBanner.className = 'result-banner';
+    hidePenaltyBox();
+    el.questionText.textContent = shot.a + ' × ' + shot.b;
+    renderShotTracker();
+
+    var choices = buildChoices(shot.answer);
+    el.choices.innerHTML = '';
+    choices.forEach(function (val) {
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'choice-btn';
+      btn.textContent = val;
+      btn.addEventListener('click', function () { handleAnswer(val, btn, shot); });
+      el.choices.appendChild(btn);
+    });
+  }
+
+  // A wrong guess never reveals the right answer — it just costs a real
+  // 2-second time-out (see showMissPenalty), then hands the SAME question
+  // back for another guess, with only the choice(s) already tried crossed
+  // off. This repeats for as many wrong guesses as it takes; only a correct
+  // answer ever advances to the next shot. `startedForToken` guards every
+  // deferred callback against a mid-round "Start Over" — see
+  // currentRoundToken above.
+  function handleAnswer(val, btn, shot) {
+    if (!round.answering) return;
+    round.answering = false;
+    var startedForToken = round.token;
+    var buttons = el.choices.querySelectorAll('.choice-btn');
+    buttons.forEach(function (b) { b.disabled = true; });
+
+    var correct = val === shot.answer;
+
+    if (correct) {
+      // Advances immediately — no artificial pause here. A fast answerer
+      // shouldn't be capped by how long a celebration animation takes to
+      // play; celebrateGoal()/launchConfetti() run entirely on their own
+      // independent timers and keep playing (and stacking, for confetti)
+      // regardless of how quickly the next question replaces this one.
+      shot.result = 'goal';
+      celebrateGoal();
+      el.resultBanner.textContent = pick(['GOAL!! ⚽', 'ONTARGET! 🎉', 'SCORCHER! 🔥', 'TOP CORNER! ⚽']);
+      el.resultBanner.classList.add('good');
+      launchConfetti();
+      renderShotTracker();
+
+      round.index++;
+      if (round.index >= round.shots.length) {
+        round.elapsedMs = performance.now() - round.startTime;
+        stopTimer();
+        el.timerVal.textContent = formatTime(round.elapsedMs);
+        endRound();
+      } else {
+        showQuestion();
+      }
+      return;
+    }
+
+    // Wrong: the picked choice is eliminated (stays disabled/marked so a
+    // retry can't just re-click the same known-wrong answer) but nothing
+    // says which of the rest is actually right — that's for them to work
+    // out, same as a real missed penalty kick doesn't come with a hint.
+    round.misses++;
+    btn.classList.add('wrong');
+    el.ballFly.className = 'ball-fly shoot-bad';
+    el.resultBanner.textContent = pick(['SAVED! Take another shot ⚽', 'BLOCKED! Try again 🧤', 'OFF TARGET — go again ⚽']);
+    el.resultBanner.classList.add('bad');
+    showMissPenalty();
+
+    setTimeout(function () {
+      if (round.token !== startedForToken) return;
+      hidePenaltyBox();
+      el.ballFly.className = 'ball-fly';
+      el.resultBanner.textContent = ' ';
+      el.resultBanner.className = 'result-banner';
+      round.answering = true;
+      buttons.forEach(function (b) {
+        if (!b.classList.contains('wrong')) b.disabled = false;
+      });
+    }, MISS_TIMEOUT_MS);
+  }
+
+  // Fires the ball-into-goal celebration and cleans itself up on its own
+  // fixed schedule (matching the CSS transition's own 0.5s), independent
+  // of however fast the next question loads. Force-restarts the CSS
+  // transition (reset to the base class + a reflow before re-adding
+  // shoot-good) so answering two goals in a row inside that ~550ms window
+  // still replays the animation from the start rather than a no-op class
+  // re-add being ignored.
+  function celebrateGoal() {
+    if (ballFlyResetTimeout) clearTimeout(ballFlyResetTimeout);
+    el.ballFly.className = 'ball-fly';
+    void el.ballFly.offsetWidth;
+    el.ballFly.className = 'ball-fly shoot-good';
+    ballFlyResetTimeout = setTimeout(function () {
+      ballFlyResetTimeout = null;
+      el.ballFly.className = 'ball-fly';
+    }, 550);
+  }
+
+  function launchConfetti() {
+    var wrap = document.createElement('div');
+    wrap.className = 'confetti';
+    var pieces = ['⚽', '🎉', '⭐', '🏆'];
+    for (var i = 0; i < 10; i++) {
+      var s = document.createElement('span');
+      s.textContent = pick(pieces);
+      s.style.left = randInt(4, 96) + '%';
+      s.style.animationDuration = (0.9 + Math.random() * 0.6) + 's';
+      s.style.animationDelay = (Math.random() * 0.15) + 's';
+      wrap.appendChild(s);
+    }
+    document.body.appendChild(wrap);
+    setTimeout(function () { wrap.remove(); }, 1800);
+  }
+
+  // ---------- end-of-round tally + leaderboard reveal ----------
+  var tallyTimers = [];
+  function clearTallyTimers() {
+    tallyTimers.forEach(function (id) { clearTimeout(id); });
+    tallyTimers = [];
+  }
+
+  // Animates a number counting up from 0 to `target` (ms) over `duration`ms,
+  // using an ease-out curve so it starts fast and settles — the "totaling
+  // it up" effect. Calls onDone once it lands exactly on target.
+  function animateCount(targetEl, targetMs, duration, onDone) {
+    var start = performance.now();
+    function frame(now) {
+      var t = Math.min(1, (now - start) / duration);
+      var eased = 1 - Math.pow(1 - t, 3);
+      targetEl.textContent = formatTime(targetMs * eased);
+      if (t < 1) {
+        requestAnimationFrame(frame);
+      } else {
+        targetEl.textContent = formatTime(targetMs);
+        if (onDone) onDone();
+      }
+    }
+    requestAnimationFrame(frame);
+  }
+
+  // No penalty math happens here anymore — every miss already spent its
+  // 2 seconds live, during the round (see showMissPenalty/MISS_TIMEOUT_MS
+  // above), so `finalMs` is just the real elapsed time. This just counts up
+  // to it for the "cool graphic" effect.
+  function runTally(finalMs) {
+    clearTallyTimers();
+    if (el.endScroll) el.endScroll.scrollTop = 0;
+    el.tallyFinalScore.textContent = '0.0s';
+    el.rankReveal.className = 'rank-reveal';
+    el.rankReveal.textContent = '';
+    el.nameEntry.className = 'name-entry';
+    el.addedNote.className = 'added-note';
+    el.endLeaderboardWrap.className = 'leaderboard-wrap';
+    el.addToLeaderboardBtn.classList.remove('hidden');
+    revealedFinalMs = null;
+
+    animateCount(el.tallyFinalScore, finalMs, 650, function () {
+      tallyTimers.push(setTimeout(function () { revealRankAndLeaderboard(finalMs); }, 450));
+    });
+  }
+
+  // While the end screen's "this run vs. best" two-row view is showing,
+  // remembers which finalMs it's showing — so changeName() (below) can
+  // redraw that same view with the new name rather than leaving a stale
+  // one on screen. Cleared whenever a fresh round starts (see runTally).
+  var revealedFinalMs = null;
+
+  // Feedback, 2026-09-15 (Ben, live): the highlighted "YOU" row here used to
+  // always be the persisted personal best, even right after a worse run —
+  // confusing when it doesn't match the final score shown just above.
+  // Splices in a second, display-only row for this run's own score at the
+  // rank it would actually earn, so both are visible side by side. Building
+  // this from `loadLeaderboard()` fresh (rather than storage) is what lets
+  // revealRankAndLeaderboard call this BEFORE it auto-saves a new best
+  // below — the split still shows the real NEW BEST/PREVIOUS BEST
+  // difference for a moment even though the save itself already happened
+  // by the time anyone reads it. Pulled out of revealRankAndLeaderboard so
+  // changeName() can redraw it too.
+  function renderEndLeaderboardWithCurrentRun(finalMs) {
+    var board = loadLeaderboard();
+    var insertAt = board.filter(function (e) { return e.finalMs <= finalMs; }).length;
+    var displayBoard = board.slice();
+    displayBoard.splice(insertAt, 0, {
+      name: loadLastName() || 'You',
+      finalMs: finalMs,
+      playerId: MY_PLAYER_ID,
+      isCurrentRun: true,
+    });
+    renderLeaderboardList(el.endLeaderboardList, displayBoard, insertAt);
+  }
+
+  function revealRankAndLeaderboard(finalMs) {
+    var board = loadLeaderboard();
+    var previewRank = board.filter(function (e) { return e.finalMs <= finalMs; }).length + 1;
+    el.rankReveal.innerHTML = board.length === 0
+      ? 'Be the first on the <span class="big">Leaderboard!</span>'
+      : 'That would rank <span class="big">#' + previewRank + '</span> of ' + (board.length + 1) + '!';
+    el.rankReveal.classList.add('show');
+
+    revealedFinalMs = finalMs;
+    renderNameStatus();
+    renderEndLeaderboardWithCurrentRun(finalMs);
+    el.endLeaderboardWrap.classList.add('show');
+
+    // Feedback, 2026-09-15 (Ben, live): "it's not actually saving my new
+    // best run" — Ben reloaded before ever tapping Add and lost a genuine
+    // new best. A real new best now saves itself the moment it's revealed
+    // (as long as we already know who's playing — a true first-time player
+    // still needs the name input below), so there's nothing left to lose
+    // by navigating away. The comparison rendered just above still shows
+    // the real NEW BEST/PREVIOUS BEST split even though the save behind it
+    // already happened.
+    var priorBest = myBestEntry();
+    var isNewBest = !priorBest || finalMs < priorBest.finalMs;
+    var savedName = loadLastName();
+    if (isNewBest && savedName) {
+      var persisted = persistScore(savedName, finalMs);
+      var myIndex = persisted.board.findIndex(function (e) { return e.playerId === MY_PLAYER_ID; });
+      el.addedNote.textContent = describeSaveResult(persisted.result, myIndex);
+      el.addedNote.classList.add('show');
+      revealedFinalMs = null;
+      el.addToLeaderboardBtn.classList.add('hidden');
+    } else {
+      el.addToLeaderboardBtn.classList.remove('hidden');
+    }
+    el.nameEntry.classList.add('show');
+
+    setTimeout(function () {
+      var row = document.getElementById('lb-me-row');
+      if (row) row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 150);
+  }
+
+  function renderLeaderboardList(container, entries, highlightIndex) {
+    container.innerHTML = '';
+    if (entries.length === 0) {
+      var empty = document.createElement('div');
+      empty.className = 'lb-empty';
+      empty.textContent = 'No times yet — be the first to post one!';
+      container.appendChild(empty);
+      return;
+    }
+    // Feedback, 2026-09-15: revealRankAndLeaderboard splices in a synthetic
+    // isCurrentRun entry alongside your real persisted best so both show at
+    // once — when that's happening, badge text needs to say which is
+    // which; otherwise (every other render of this list) there's only ever
+    // one "mine" row and the plain "YOU" badge from before is unambiguous.
+    var currentRunEntry = entries.find(function (e) { return e.isCurrentRun; });
+    var hasCurrentRunRow = !!currentRunEntry;
+    var priorBestEntry = entries.find(function (e) { return !e.isSeed && !e.isCurrentRun && e.playerId === MY_PLAYER_ID; });
+    // Feedback, 2026-09-15 (Ben, live): "I just got my all-time best and
+    // instead it says this run" — the label has to track which time is
+    // actually lower, not just which row is the freshly-played one. Once
+    // this run beats the old best, THIS RUN becomes the new BEST and the
+    // old row is demoted to PREVIOUS BEST, rather than the two badges
+    // staying frozen to "which row is synthetic" regardless of the times.
+    var currentRunIsNewBest = hasCurrentRunRow && (!priorBestEntry || currentRunEntry.finalMs < priorBestEntry.finalMs);
+
+    entries.forEach(function (entry, i) {
+      // Feedback #162 (2026-09-14 follow-ups): "your own entry" is the one
+      // row carrying this device's own playerId (see ensurePlayerIdentity)
+      // — not the one matching your current typed name, which an earlier
+      // live bug report showed was unreliable. A seed/placeholder row
+      // (isSeed, see ensureSeedLeaderboard) is never editable, for anyone.
+      var isMine = !entry.isSeed && entry.playerId === MY_PLAYER_ID;
+      // The synthetic current-run row isn't a real saved entry — renaming
+      // or removing "it" would actually mutate your real persisted best
+      // behind the scenes, so it never opens the row-actions sheet.
+      var isActionable = isMine && !entry.isCurrentRun;
+
+      var row = document.createElement('div');
+      row.className = 'lb-row' + (i === highlightIndex ? ' me pulse' : '') + (isMine ? ' mine' : '');
+      var rank = document.createElement('div');
+      rank.className = 'lb-rank';
+      rank.textContent = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : '#' + (i + 1);
+      var name = document.createElement('div');
+      name.className = 'lb-name';
+      var nameText = document.createElement('span');
+      nameText.className = 'lb-name-text';
+      // Feedback, 2026-09-15 (Ben, live): "both of my scores here should
+      // say Ben, instead the top one says Messi" — the persisted best
+      // row's own `.name` field only gets updated when a rename actively
+      // touches it (setPlayerName) or a faster run replaces it
+      // (upsertLeaderboardEntry); a name saved via addCurrentScoreToLeaderboard
+      // on a run that *didn't* beat the old best used to leave that old
+      // row's name stale. Rendering your own row's name straight from your
+      // current saved identity (rather than trusting entry.name to have
+      // been kept in sync) makes every "mine" row self-heal to whoever
+      // you're playing as right now, regardless of how it drifted.
+      nameText.textContent = isMine ? (loadLastName() || entry.name) : entry.name;
+      name.appendChild(nameText);
+      // Ben, 2026-09-14 ("make your own personal row somehow highlighted so
+      // it's a little clear that it's yours"): the .mine background/border
+      // tint alone was judged not clear enough — a small explicit badge is
+      // the unambiguous version of the same signal.
+      if (isMine) {
+        var badge = document.createElement('span');
+        badge.className = 'lb-you-badge';
+        var badgeText;
+        if (!hasCurrentRunRow) {
+          badgeText = 'YOU';
+        } else if (entry.isCurrentRun) {
+          badgeText = currentRunIsNewBest ? 'NEW BEST' : 'THIS RUN';
+        } else {
+          badgeText = currentRunIsNewBest ? 'PREVIOUS BEST' : 'BEST';
+        }
+        badge.textContent = badgeText;
+        name.appendChild(badge);
+      }
+      var time = document.createElement('div');
+      time.className = 'lb-time';
+      time.textContent = formatTime(entry.finalMs);
+      row.appendChild(rank);
+      row.appendChild(name);
+      row.appendChild(time);
+      // Feedback, 2026-09-14 (Ben, live): "Don't show the X and edit button
+      // here instead make it so when you click on the row, it's a prompt"
+      // — no more always-visible pencil/✕ pair; tapping your own row (the
+      // only row that's ever clickable) opens the row-actions bottom sheet
+      // instead. This also incidentally fixed the time-column misalignment
+      // from the previous round (every row is now structurally identical —
+      // rank/name/time and nothing else — so there's no longer a
+      // conditional trailing element to keep in sync at all).
+      if (isActionable) {
+        row.setAttribute('role', 'button');
+        row.setAttribute('tabindex', '0');
+        row.setAttribute('aria-label', 'Edit or remove your entry, ' + entry.name);
+        row.onclick = function () { openRowActions(entry); };
+      }
+      if (i === highlightIndex) row.id = 'lb-me-row';
+      container.appendChild(row);
+    });
+  }
+
+  // Inserts by playerId, keeping only the better (lower finalMs) of an
+  // existing entry vs. a new one — the actual fix for feedback #162 ("you
+  // should only be able to appear once for your best possible score").
+  // Matching on playerId rather than name (2026-09-14 follow-up) is what
+  // keeps this true regardless of what you type as your display name — see
+  // ensurePlayerIdentity's own comment for the real bug this replaced.
+  function upsertLeaderboardEntry(board, entry) {
+    var idx = board.findIndex(function (e) { return e.playerId === entry.playerId; });
+    if (idx === -1) {
+      board.push(entry);
+      return { added: true, replaced: false };
+    }
+    if (entry.finalMs < board[idx].finalMs) {
+      board[idx] = entry;
+      return { added: false, replaced: true };
+    }
+    return { added: false, replaced: false };
+  }
+
+  function refreshVisibleLeaderboards() {
+    var board = loadLeaderboard();
+    // Mid-reveal (revealedFinalMs set — this run hasn't been Added yet),
+    // a plain re-render here would silently drop the "this run" row a
+    // rename should leave in place — see renderEndLeaderboardWithCurrentRun.
+    if (revealedFinalMs != null) {
+      renderEndLeaderboardWithCurrentRun(revealedFinalMs);
+    } else {
+      renderLeaderboardList(el.endLeaderboardList, board, null);
+    }
+    renderLeaderboardList(el.standaloneLeaderboardList, board, null);
+  }
+
+  // Feedback, 2026-09-14 (Ben, live): tapping your own row (the only
+  // clickable one — see renderLeaderboardList) opens this bottom sheet
+  // instead of always showing a pencil/✕ pair inline.
+  function openRowActions(entry) {
+    el.rowActionsTitle.textContent = entry.name;
+    el.rowActionsOverlay.classList.remove('hidden');
+  }
+  function closeRowActions() {
+    el.rowActionsOverlay.classList.add('hidden');
+  }
+
+  // Your name is one persistent identity, not something typed fresh per
+  // run (feedback, 2026-09-15, Ben live) — this is the one place that
+  // changes it, so every caller (the end screen's "change" link, and
+  // renameLeaderboardEntry below) stays in sync automatically: future
+  // rounds default to it (saveLastName), and if you already have a
+  // persisted best on the board, that row's name updates immediately too.
+  // Renaming only ever touches the one row carrying this device's own
+  // playerId — it can never merge into (or get confused with) any other
+  // row, including a seed pro's, even if you rename into the exact same
+  // text as one of them.
+  function setPlayerName(newName) {
+    newName = (newName || '').trim();
+    if (!newName) return false;
+    saveLastName(newName);
+    var board = loadLeaderboard();
+    var idx = board.findIndex(function (e) { return !e.isSeed && e.playerId === MY_PLAYER_ID; });
+    if (idx !== -1 && board[idx].name !== newName) {
+      board[idx].name = newName;
+      saveLeaderboard(board);
+    }
+    return true;
+  }
+
+  // Shows "Playing as <name>" once a name is already saved (see
+  // setPlayerName) instead of an empty input that reads as "type a name
+  // for this run" — only a brand-new player (nothing saved yet) still sees
+  // the plain text input, which doubles as picking a name for the first
+  // time. Either way, el.nameInput.value stays in sync (even while
+  // visually hidden) since addCurrentScoreToLeaderboard reads it directly.
+  function renderNameStatus() {
+    var savedName = loadLastName();
+    var hasName = !!savedName;
+    el.nameInput.value = savedName;
+    el.playingAsRow.classList.toggle('hidden', !hasName);
+    el.nameInput.classList.toggle('hidden', hasName);
+    if (hasName) el.playingAsName.textContent = savedName;
+  }
+
+  // One shared prompt-and-apply flow for both entry points into changing
+  // your name: the end screen's "change" link and the row-actions sheet's
+  // "Edit Name" button.
+  function promptToChangeName() {
+    var newName = window.prompt('Your name', loadLastName() || '');
+    if (newName === null) return;
+    if (!setPlayerName(newName.trim())) return;
+    renderNameStatus();
+    refreshVisibleLeaderboards();
+  }
+  var changeName = promptToChangeName;
+  var renameLeaderboardEntry = promptToChangeName;
+
+  function removeLeaderboardEntry() {
+    var board = loadLeaderboard();
+    var existing = board.find(function (e) { return !e.isSeed && e.playerId === MY_PLAYER_ID; });
+    if (!existing) return;
+    if (!window.confirm('Remove ' + existing.name + ' from the leaderboard?')) return;
+    board = board.filter(function (e) { return e !== existing; });
+    saveLeaderboard(board);
+    refreshVisibleLeaderboards();
+  }
+
+  // Pulled out of addCurrentScoreToLeaderboard so revealRankAndLeaderboard
+  // can also save a genuine new best immediately, without waiting for a
+  // manual Add tap (feedback, 2026-09-15, Ben live — see there for why).
+  // setPlayerName (not a bare saveLastName) so an existing persisted best's
+  // own name field gets corrected too, even on a run that isn't fast
+  // enough to replace it via upsertLeaderboardEntry below — see the
+  // nameText.textContent comment above for the bug this closes.
+  function persistScore(name, finalMs) {
+    setPlayerName(name);
+    var board = loadLeaderboard();
+    var result = upsertLeaderboardEntry(board, {
+      name: name,
+      finalMs: finalMs,
+      misses: round.misses,
+      date: new Date().toISOString(),
+      playerId: MY_PLAYER_ID,
+    });
+    board = saveLeaderboard(board);
+    return { result: result, board: board };
+  }
+
+  function describeSaveResult(result, myIndex) {
+    var rank = myIndex + 1;
+    if (result.replaced) return 'New best! You’re #' + rank + ' on the board 🎉';
+    if (result.added) return myIndex >= 0 ? 'Added! You’re #' + rank + ' on the board 🎉' : 'Added to the leaderboard!';
+    return 'Your best stays #' + rank + ' — that run wasn’t faster.';
+  }
+
+  function addCurrentScoreToLeaderboard(finalMs) {
+    var name = (el.nameInput.value || '').trim() || 'Player';
+    var persisted = persistScore(name, finalMs);
+    var myIndex = persisted.board.findIndex(function (e) { return e.playerId === MY_PLAYER_ID; });
+    // The score is now officially recorded, so "this run" and "best" are
+    // the same thing again — back to the ordinary single-row view.
+    revealedFinalMs = null;
+
+    el.nameEntry.classList.remove('show');
+    el.addedNote.textContent = describeSaveResult(persisted.result, myIndex);
+    el.addedNote.classList.add('show');
+
+    renderLeaderboardList(el.endLeaderboardList, persisted.board, myIndex);
+    if (myIndex >= 0) {
+      setTimeout(function () {
+        var row = document.getElementById('lb-me-row');
+        if (row) row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 150);
+    }
+  }
+
+  function endRound() {
+    // finalMs is just the real elapsed time — every miss already cost its
+    // 2 seconds live, during the round (see showMissPenalty above), so
+    // there's nothing left to add here.
+    var finalMs = round.elapsedMs;
+
+    // Same real leaderboard entry revealRankAndLeaderboard checks below to
+    // decide whether to auto-save — one fact, not two independent guesses
+    // at "is this a new best" (see myBestEntry's own comment for the bug
+    // this replaced).
+    var priorBest = myBestEntry();
+    var isNewBest = !priorBest || finalMs < priorBest.finalMs;
+    el.newBestBadge.classList.toggle('hidden', !isNewBest);
+
+    showScreen('end');
+    runTally(finalMs);
+    if (round.misses === 0) launchConfetti();
+
+    el.addToLeaderboardBtn.onclick = function () { addCurrentScoreToLeaderboard(finalMs); };
+  }
+
+  // ---------- wiring ----------
+  el.startBtn.addEventListener('click', startRound);
+  el.playAgainBtn.addEventListener('click', function () {
+    clearTallyTimers();
+    startRound();
+  });
+  el.viewLeaderboardBtn.addEventListener('click', function () {
+    renderLeaderboardList(el.standaloneLeaderboardList, loadLeaderboard(), null);
+    showScreen('leaderboard');
+  });
+  el.backFromLeaderboardBtn.addEventListener('click', function () {
+    showScreen('start');
+  });
+  el.nameInput.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') el.addToLeaderboardBtn.click();
+  });
+  // Mirrors a real IonBackButton's own defaultHref fallback: go back to
+  // wherever this tab actually came from (the app's Labs page, most often)
+  // when there's real history to return to, otherwise this was opened
+  // directly (a bookmark, a shared link) and there's nothing to go back
+  // to, so land on the app root instead.
+  el.backBtn.addEventListener('click', function () {
+    if (window.history.length > 1) window.history.back();
+    else window.location.href = '/';
+  });
+
+  // ---------- share (persistent FAB + modal) ----------
+  // The URL is always this same static page, regardless of which in-page
+  // "screen" is currently showing (there's no per-screen routing here) —
+  // so the QR only ever needs generating once per page load, not
+  // regenerated on every open the way the real ShareButton's per-route QR
+  // is.
+  var shareQrGenerated = false;
+  function openShareModal() {
+    el.shareModalOverlay.classList.remove('hidden');
+    if (!shareQrGenerated && window.BulbordQRCode) {
+      shareQrGenerated = true;
+      var shareUrl = window.location.origin + window.location.pathname;
+      window.BulbordQRCode.toDataURL(shareUrl, { width: 320, margin: 1 })
+        .then(function (dataUrl) {
+          el.shareQrImg.src = dataUrl;
+          el.shareQrImg.alt = 'QR code for ' + shareUrl;
+        })
+        .catch(function () { shareQrGenerated = false; });
+    }
+    if (typeof navigator.share === 'function') {
+      el.shareOrDivider.classList.remove('hidden');
+      el.shareNativeBtn.classList.remove('hidden');
+    }
+  }
+  function closeShareModal() {
+    el.shareModalOverlay.classList.add('hidden');
+  }
+  el.shareFabBtn.addEventListener('click', openShareModal);
+  el.shareModalCloseBtn.addEventListener('click', closeShareModal);
+  el.shareModalOverlay.addEventListener('click', function (e) {
+    if (e.target === el.shareModalOverlay) closeShareModal();
+  });
+  el.shareNativeBtn.addEventListener('click', function () {
+    var shareUrl = window.location.origin + window.location.pathname;
+    navigator.share({ url: shareUrl }).catch(function () {});
+  });
+
+  el.rowActionsCloseBtn.addEventListener('click', closeRowActions);
+  el.rowActionsOverlay.addEventListener('click', function (e) {
+    if (e.target === el.rowActionsOverlay) closeRowActions();
+  });
+  el.rowActionsEditBtn.addEventListener('click', function () {
+    closeRowActions();
+    renameLeaderboardEntry();
+  });
+  el.rowActionsRemoveBtn.addEventListener('click', function () {
+    closeRowActions();
+    removeLeaderboardEntry();
+  });
+  el.changeNameBtn.addEventListener('click', changeName);
+
+  ensureSeedLeaderboard();
+  MY_PLAYER_ID = ensurePlayerIdentity();
+
+  function refreshStartScreen() {
+    ensureSeedLeaderboard();
+    renderBestRow(el.bestRow);
+    renderRecordRow();
+    showScreen('start');
+  }
+
+  // Feedback, 2026-09-16 (Ben, live): "my best does not match when I view
+  // leaderboard vs splash screen" — a page restored from the browser's
+  // back/forward cache (bfcache, e.g. tapping the browser's own back
+  // button after leaving this page) never re-runs this script at all, so
+  // whatever the "Your Best" pill already said stays frozen on screen even
+  // after a later round changes the real data underneath it. Re-rendering
+  // on a bfcache restore is what keeps it honest without needing a real
+  // reload.
+  window.addEventListener('pageshow', function (e) {
+    if (e.persisted) refreshStartScreen();
+  });
+
+  refreshStartScreen();
+})();
+</script>
+</body>
+</html>

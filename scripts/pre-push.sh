@@ -11,6 +11,9 @@ set -e
 echo "pre-push: format.ts parity (web <-> api)"
 node scripts/check-format-parity.mjs
 
+echo "pre-push: lab isolation"
+node scripts/check-lab-isolation.mjs
+
 echo "pre-push: Ionic coverage"
 node scripts/check-ionic-coverage.mjs
 

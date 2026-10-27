@@ -41,6 +41,16 @@ jobs:
           node-version: 24
       - run: node scripts/check-format-parity.mjs
 
+  # Labs stay independent of the app — see labs/README.md.
+  lab-isolation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: node scripts/check-lab-isolation.mjs
+
   ionic-coverage:
     runs-on: ubuntu-latest
     steps:
@@ -216,7 +226,7 @@ jobs:
   # pulls the images built above (no build on Railway's side).
   deploy:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: [format-parity, ionic-coverage, api, web, e2e, build-images]
+    needs: [format-parity, lab-isolation, ionic-coverage, api, web, e2e, build-images]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     concurrency:

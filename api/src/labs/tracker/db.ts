@@ -2,15 +2,15 @@ import { date, integer, pgSchema, text, timestamp, uuid } from 'drizzle-orm/pg-c
 import { drizzle } from 'drizzle-orm/postgres-js'
 import postgres from 'postgres'
 
-import { requireEnv } from '../../env.js'
+import type { LabContext } from '../sandbox.js'
 
-// The tracker lab's tables live in their own Postgres schema (`labs`), outside
-// the app's Drizzle migration chain (drizzle.config.ts only reads
-// src/db/schema.ts / the `public` schema), and the lab creates them itself
-// with idempotent DDL on first use. No foreign keys into app tables: `user_id`
-// is a plain uuid, so nothing in the main schema can ever be blocked by or
-// depend on lab data. Removing the lab = `DROP SCHEMA labs CASCADE`.
-const labs = pgSchema('labs')
+// The tracker's tables live in its own schema, `lab_tracker`, reached through
+// its own login that can't see anything else (labs/sandbox.ts). They're outside
+// the app's Drizzle migration chain: the lab creates them itself with
+// idempotent DDL at load. `user_id` is a plain uuid (a Bulbord member id) with
+// no foreign key. Removing the lab = `DROP SCHEMA lab_tracker CASCADE; DROP
+// ROLE lab_tracker`.
+const labs = pgSchema('lab_tracker')
 
 export const trackerItems = labs.table('tracker_items', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -34,8 +34,7 @@ export const trackerEntries = labs.table('tracker_entries', {
 })
 
 const DDL = `
-  CREATE SCHEMA IF NOT EXISTS labs;
-  CREATE TABLE IF NOT EXISTS labs.tracker_items (
+  CREATE TABLE IF NOT EXISTS lab_tracker.tracker_items (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id uuid NOT NULL,
     name text NOT NULL,
@@ -44,10 +43,10 @@ const DDL = `
     updated_at timestamptz NOT NULL DEFAULT now(),
     deleted_at timestamptz
   );
-  CREATE INDEX IF NOT EXISTS tracker_items_user_idx ON labs.tracker_items (user_id);
-  CREATE TABLE IF NOT EXISTS labs.tracker_entries (
+  CREATE INDEX IF NOT EXISTS tracker_items_user_idx ON lab_tracker.tracker_items (user_id);
+  CREATE TABLE IF NOT EXISTS lab_tracker.tracker_entries (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    item_id uuid NOT NULL REFERENCES labs.tracker_items (id),
+    item_id uuid NOT NULL REFERENCES lab_tracker.tracker_items (id),
     user_id uuid NOT NULL,
     date date NOT NULL,
     note text NOT NULL DEFAULT '',
@@ -55,19 +54,18 @@ const DDL = `
     updated_at timestamptz NOT NULL DEFAULT now(),
     deleted_at timestamptz
   );
-  CREATE INDEX IF NOT EXISTS tracker_entries_item_idx ON labs.tracker_entries (item_id, created_at);
+  CREATE INDEX IF NOT EXISTS tracker_entries_item_idx ON lab_tracker.tracker_entries (item_id, created_at);
 `
 
 // Its own small connection pool, created on first use, so a misbehaving lab
-// query can never starve the app's pool (src/db/client.ts).
+// query can never starve the app's pool.
 let cached: Promise<ReturnType<typeof drizzle>> | null = null
 
-export function trackerDb() {
+export function trackerDb(ctx: LabContext) {
   cached ??= (async () => {
-    const client = postgres(requireEnv('DATABASE_URL'), { max: 2, onnotice: () => {} })
-    const db = drizzle(client)
+    const client = postgres(await ctx.databaseUrl(), { max: 2, onnotice: () => {} })
     await client.unsafe(DDL)
-    return db
+    return drizzle(client)
   })().catch((err) => {
     cached = null
     throw err

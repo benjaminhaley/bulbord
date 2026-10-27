@@ -1,5 +1,5 @@
 {
   "$schema": "https://unpkg.com/knip@6/schema.json",
   "entry": ["scripts/*.mjs"],
-  "ignore": ["scripts/qr-bundle-entry.js", "public/soccer-math/qrcode.bundle.js"]
+  "ignore": ["scripts/qr-bundle-entry.js", "public/labs/soccer-math/qrcode.bundle.js"]
 }

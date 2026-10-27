@@ -1,15 +1,10 @@
 import { IonBackButton, IonButtons, IonContent, IonHeader, IonIcon, IonItem, IonLabel, IonList, IonNote, IonPage, IonTitle, IonToolbar } from '@ionic/react'
 import { calendarNumberOutline, footballOutline } from 'ionicons/icons'
 
-// A deliberately buried catch-all for small, non-serious side projects that
-// don't belong as a real tab/feature — reached only via Account's own
-// low-visibility "Labs" row (see AccountPage.tsx). Each lab below is a real
-// `<IonItem href>` (a genuine full-page navigation, not a React Router
-// routerLink) rather than a client route, since every lab so far lives
-// entirely outside the SPA (a static file under web/public/): Soccer Math
-// needs to be usable with zero login/passkey friction, and every lab is
-// sandboxed from the app on purpose (CLAUDE.md's Labs section) — a lab
-// talks to Bulbord only through the API's /labs/<name> routes.
+// The list of labs: independent experiments walled off from Bulbord (see
+// labs/README.md). Each row is a plain full-page `href` to the lab's own
+// static page under web/public/labs/<name>/ — never a client route, and
+// nothing here imports from a lab.
 export function LabsPage() {
   return (
     <IonPage>
@@ -24,7 +19,7 @@ export function LabsPage() {
       <IonContent fullscreen className="ion-padding">
         <IonNote color="medium">Small, just-for-fun side projects — nothing here is a real Bulbord feature.</IonNote>
         <IonList inset style={{ marginTop: 12 }}>
-          <IonItem button href="/soccer-math/" lines="none">
+          <IonItem button href="/labs/soccer-math/" lines="none">
             <IonIcon slot="start" icon={footballOutline} />
             <IonLabel>
               <h2>Soccer Math</h2>
