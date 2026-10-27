@@ -35,16 +35,24 @@
     display: flex; align-items: center; gap: 12px;
   }
   header a { color: var(--bar-ink); text-decoration: none; font-size: 0.9375rem; opacity: 0.85; }
-  header h1 { margin: 0; font-size: 1.125rem; font-weight: 500; }
+  header h1 { margin: 0; font-size: 1.125rem; font-weight: 500; flex: 1; }
+  .icon-btn { background: none; border: 0; padding: 8px; margin: -8px 0; border-radius: 50%; cursor: pointer; color: var(--muted); display: inline-flex; }
+  .icon-btn svg { width: 22px; height: 22px; fill: currentColor; }
+  header .icon-btn { color: var(--bar-ink); margin-right: -8px; }
+  header .icon-btn svg { width: 28px; height: 28px; }
+  .card .actions { position: absolute; top: 8px; right: 8px; display: flex; gap: 4px; }
+  .card .actions .icon-btn { margin: 0; }
+  .card.due .actions .icon-btn { color: var(--red); }
   main { max-width: 480px; margin: 0 auto; padding: 16px 16px calc(env(safe-area-inset-bottom, 0px) + 32px); }
   .intro { color: var(--muted); font-size: 0.875rem; margin: 0 0 16px; }
   .card {
     background: var(--card); border-radius: 12px; margin-bottom: 12px;
     border-left: 6px solid var(--green);
     box-shadow: 0 1px 2px rgba(0,0,0,0.08);
+    position: relative;
   }
   .card.due { border-left-color: var(--red); background: var(--red-bg); }
-  .summary { display: block; width: 100%; text-align: left; background: none; border: 0; padding: 14px 16px; font: inherit; color: inherit; cursor: pointer; }
+  .summary { display: block; width: 100%; text-align: left; background: none; border: 0; padding: 14px 96px 14px 16px; font: inherit; color: inherit; cursor: pointer; }
   .name { font-size: 0.8125rem; font-weight: 500; letter-spacing: 0.02em; text-transform: uppercase; color: var(--muted); }
   .card.due .name { color: var(--red); }
   .when { font-size: 1.25rem; font-weight: 500; margin-top: 4px; }
@@ -63,9 +71,8 @@
   .btn.text { background: none; color: var(--accent); padding: 8px 8px; }
   .btn.danger { background: none; color: var(--red); padding: 8px 8px; }
   .btn:disabled { opacity: 0.5; }
-  .spacer { flex: 1; }
-  .add { margin-top: 20px; display: flex; gap: 8px; }
-  .add input { flex: 1; }
+  form.inline { padding: 14px 16px; display: grid; gap: 10px; }
+  .card.new { border-left-color: var(--accent); }
   .msg { text-align: center; color: var(--muted); padding: 40px 16px; }
   .msg a { color: var(--accent); }
   .error { color: var(--red); font-size: 0.875rem; }
@@ -75,14 +82,11 @@
 <header>
   <a href="/labs" aria-label="Back to Labs">‹ Labs</a>
   <h1>Tracker</h1>
+  <button class="icon-btn" id="add-btn" type="button" aria-label="Add a tracker" hidden><svg viewBox="0 0 24 24"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg></button>
 </header>
 <main>
   <p class="intro">When's the next one? Anything without an upcoming date shows red.</p>
   <div id="list"><p class="msg">Loading…</p></div>
-  <form class="add" id="add" hidden>
-    <input type="text" id="add-name" placeholder="Track something new…" maxlength="80" />
-    <button class="btn primary" type="submit">Add</button>
-  </form>
 </main>
 <script>
 (function () {
@@ -94,9 +98,21 @@
   try { token = localStorage.getItem('bulbord_session_token') } catch (e) {}
 
   var listEl = document.getElementById('list')
-  var addForm = document.getElementById('add')
+  var addBtn = document.getElementById('add-btn')
   var items = []
-  var openId = null
+  var openId = null // card whose date editor is open
+  var renamingId = null // card whose name is being edited
+  var adding = false
+
+  var ICONS = {
+    edit: 'M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z',
+    trash: 'M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z',
+  }
+  function iconButton(icon, label, onclick) {
+    var b = el('button', { class: 'icon-btn', type: 'button', 'aria-label': label, title: label, onclick: onclick })
+    b.innerHTML = '<svg viewBox="0 0 24 24"><path d="' + ICONS[icon] + '"/></svg>'
+    return b
+  }
 
   function api(method, path, body) {
     return fetch(BASE + path, {
@@ -147,12 +163,37 @@
 
   function render() {
     listEl.innerHTML = ''
-    if (items.length === 0) listEl.appendChild(el('p', { class: 'msg', text: 'Nothing tracked yet — add something below.' }))
+    if (adding) listEl.appendChild(renderNameForm(null))
+    if (items.length === 0 && !adding) listEl.appendChild(el('p', { class: 'msg', text: 'Nothing tracked yet — tap + to add one.' }))
     items.forEach(function (item) { listEl.appendChild(renderCard(item)) })
-    addForm.hidden = false
+    addBtn.hidden = false
+  }
+
+  // Shared by "add a tracker" (item null) and "rename this tracker".
+  function renderNameForm(item) {
+    var input = el('input', { type: 'text', maxlength: '80', placeholder: 'e.g. Dinner with the Smiths', value: item ? item.name : '', 'aria-label': 'Tracker name' })
+    var errorEl = el('div', { class: 'error' })
+    var save = el('button', { class: 'btn primary', type: 'submit', text: item ? 'Save' : 'Add' })
+    var cancel = el('button', { class: 'btn text', type: 'button', text: 'Cancel', onclick: function () { adding = false; renamingId = null; render() } })
+    var form = el('form', { class: 'inline', onsubmit: function (e) {
+      e.preventDefault()
+      var name = input.value.trim()
+      if (!name) { errorEl.textContent = 'Give it a name'; return }
+      save.disabled = cancel.disabled = true
+      var req = item ? api('PATCH', '/items/' + item.id, { name: name }) : api('POST', '/items', { name: name })
+      req.then(function () { adding = false; renamingId = null; return load() })
+        .catch(function (err) { errorEl.textContent = err.message; save.disabled = cancel.disabled = false })
+    } }, [
+      el('label', {}, [document.createTextNode(item ? 'Rename tracker' : 'New tracker'), input]),
+      errorEl,
+      el('div', { class: 'row' }, [save, cancel]),
+    ])
+    setTimeout(function () { input.focus() }, 0)
+    return el('div', { class: 'card' + (item ? '' : ' new') }, [form])
   }
 
   function renderCard(item) {
+    if (renamingId === item.id) return renderNameForm(item)
     var next = upcoming(item)
     var card = el('div', { class: 'card' + (next ? '' : ' due') })
     var summary = el('button', { class: 'summary', type: 'button', 'aria-expanded': String(openId === item.id), onclick: function () {
@@ -167,6 +208,13 @@
       next ? null : el('div', { class: 'hint', text: 'Nothing planned — tap to add the next one' }),
     ])
     card.appendChild(summary)
+    card.appendChild(el('div', { class: 'actions' }, [
+      iconButton('edit', 'Rename ' + item.name, function () { renamingId = item.id; openId = null; adding = false; render() }),
+      iconButton('trash', 'Delete ' + item.name, function () {
+        if (!confirm('Delete the "' + item.name + '" tracker?')) return
+        api('DELETE', '/items/' + item.id).then(load).catch(function (err) { alert(err.message) })
+      }),
+    ]))
     if (openId === item.id) card.appendChild(renderEditor(item, next))
     return card
   }
@@ -185,18 +233,7 @@
       busy(true)
       api('DELETE', '/entries/' + next.id).then(load).catch(fail)
     } }) : null
-    var rename = el('button', { class: 'btn text', type: 'button', text: 'Rename', onclick: function () {
-      var name = prompt('Rename', item.name)
-      if (!name || !name.trim() || name.trim() === item.name) return
-      busy(true)
-      api('PATCH', '/items/' + item.id, { name: name.trim() }).then(load).catch(fail)
-    } })
-    var remove = el('button', { class: 'btn danger', type: 'button', text: 'Remove', onclick: function () {
-      if (!confirm('Stop tracking "' + item.name + '"?')) return
-      busy(true)
-      api('DELETE', '/items/' + item.id).then(function () { openId = null; return load() }).catch(fail)
-    } })
-    buttons = [save, cancel, clear, rename, remove].filter(Boolean)
+    buttons = [save, cancel, clear].filter(Boolean)
 
     var form = el('form', { class: 'editor', onsubmit: function (e) {
       e.preventDefault()
@@ -209,12 +246,11 @@
       el('label', {}, [document.createTextNode('Note'), noteInput]),
       errorEl,
       el('div', { class: 'row' }, [save, cancel, clear]),
-      el('div', { class: 'row' }, [el('span', { class: 'spacer' }), rename, remove]),
     ])
     return form
   }
 
-  function showMessage(html) { listEl.innerHTML = '<p class="msg">' + html + '</p>'; addForm.hidden = true }
+  function showMessage(html) { listEl.innerHTML = '<p class="msg">' + html + '</p>'; addBtn.hidden = true }
 
   function load() {
     return api('GET', '/items').then(function (json) { items = json.data; render() }).catch(function (err) {
@@ -223,12 +259,10 @@
     })
   }
 
-  addForm.addEventListener('submit', function (e) {
-    e.preventDefault()
-    var input = document.getElementById('add-name')
-    var name = input.value.trim()
-    if (!name) return
-    api('POST', '/items', { name: name }).then(function () { input.value = ''; return load() }).catch(function (err) { alert(err.message) })
+  addBtn.addEventListener('click', function () {
+    adding = true; renamingId = null; openId = null
+    render()
+    window.scrollTo(0, 0)
   })
 
   // Re-check red/upcoming when coming back to the page (dates roll over).
