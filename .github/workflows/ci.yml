@@ -107,6 +107,9 @@ jobs:
   e2e:
     runs-on: ubuntu-latest
     needs: [api, web]
+    # Normally ~2 min; one run hung for 40+ min (2026-10-27) and would have
+    # held the deploy job behind it.
+    timeout-minutes: 15
     services:
       postgres:
         image: postgres:16-alpine
@@ -165,3 +168,55 @@ jobs:
           name: playwright-report
           path: web/playwright-report/
           retention-days: 14
+
+  # Production images, built once per push to main alongside the tests. The api
+  # image also runs the three cron services. See api/Dockerfile, web/Dockerfile.
+  build-images:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      matrix:
+        service: [api, web]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.service }}
+          push: true
+          tags: ghcr.io/benjaminhaley/bulbord-${{ matrix.service }}:${{ github.sha }}
+          build-args: VITE_API_URL=https://api-production-a551.up.railway.app
+          cache-from: type=gha,scope=${{ matrix.service }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.service }}
+
+  # Deploys main to production once every check above has passed: Railway just
+  # pulls the images built above (no build on Railway's side).
+  deploy:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [format-parity, ionic-coverage, api, web, e2e, build-images]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    concurrency:
+      group: production-deploy
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+      - name: Deploy images to Railway
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          if [ -z "$RAILWAY_TOKEN" ]; then
+            echo "::warning::RAILWAY_TOKEN secret is not set; skipping deploy"
+            exit 0
+          fi
+          scripts/railway-deploy-images.sh
