@@ -4,7 +4,7 @@ vi.mock('../claude.js', () => ({ createWithServerTools: vi.fn(async () => null),
 const fetchWithTimeoutMock = vi.fn()
 vi.mock('../uploads/fetch-with-timeout.js', () => ({ fetchWithTimeout: fetchWithTimeoutMock }))
 
-const { checkDistance, distanceVerdict, milesFromNettelhorst, withChicagoDefault } = await import('./distance-check.js')
+const { checkDistance, distanceVerdict, formerStreetNameVariant, milesFromNettelhorst, withChicagoDefault } = await import('./distance-check.js')
 
 describe('milesFromNettelhorst', () => {
   it('is ~0 at the school and ~1.4 mi at Lincoln Park Zoo', () => {
@@ -29,6 +29,13 @@ describe('withChicagoDefault', () => {
     expect(withChicagoDefault('3252 N Broadway')).toBe('3252 N Broadway, Chicago, IL')
     expect(withChicagoDefault('3252 N Broadway, Chicago, IL')).toBe('3252 N Broadway, Chicago, IL')
     expect(withChicagoDefault('3252 N Broadway 60657')).toBe('3252 N Broadway 60657')
+  })
+})
+
+describe('formerStreetNameVariant', () => {
+  it("gives DuSable Lake Shore Dr's former name, and nothing for other streets", () => {
+    expect(formerStreetNameVariant('3550 N DuSable Lake Shore Dr, Chicago, IL')).toBe('3550 N Lake Shore Dr, Chicago, IL')
+    expect(formerStreetNameVariant('3252 N Broadway')).toBeNull()
   })
 })
 

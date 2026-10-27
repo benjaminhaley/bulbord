@@ -86,8 +86,24 @@ async function geocodeNominatim(query: string): Promise<Coords | null> {
   }
 }
 
+// Renamed streets the geocoders still only know by their former name
+// (2026-10-27: "3550 N DuSable Lake Shore Dr" matched nothing, so lakefront
+// events half a mile from Nettelhorst were held as unlocatable).
+const FORMER_STREET_NAMES: [RegExp, string][] = [[/\bDuSable Lake Shore\b/i, 'Lake Shore']]
+
+export function formerStreetNameVariant(address: string): string | null {
+  const variant = FORMER_STREET_NAMES.reduce((a, [current, former]) => a.replace(current, former), address)
+  return variant === address ? null : variant
+}
+
 async function geocodeAddress(address: string): Promise<Coords | null> {
-  return (await geocodeCensus(address)) ?? (await geocodeNominatim(address))
+  const variant = formerStreetNameVariant(address)
+  return (
+    (await geocodeCensus(address)) ??
+    (variant ? await geocodeCensus(variant) : null) ??
+    (await geocodeNominatim(address)) ??
+    (variant ? await geocodeNominatim(variant) : null)
+  )
 }
 
 interface LocationLookup {
