@@ -7,9 +7,8 @@ import { existsSync } from 'node:fs'
 // a rendered page differs slightly on every load, which would defeat the
 // unchanged-page hash skip that keeps re-extraction from creating duplicates.
 //
-// Production: Chromium comes from Debian's `chromium` package, installed into
-// the api and event-sourcing-cron images via the RAILPACK_DEPLOY_APT_PACKAGES
-// service variable. Locally: set CHROMIUM_PATH, or let playwright-core use
+// Production: Chromium comes from Debian's `chromium` package, installed in
+// api/Dockerfile (the one image the api and all three cron services run). Locally: set CHROMIUM_PATH, or let playwright-core use
 // the browser `npx playwright install chromium` already put in its cache.
 
 const RENDER_TIMEOUT_MS = 25_000

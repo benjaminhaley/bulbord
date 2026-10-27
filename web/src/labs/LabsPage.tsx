@@ -22,7 +22,7 @@ export function LabsPage() {
         </IonToolbar>
       </IonHeader>
       <IonContent fullscreen className="ion-padding">
-        <IonNote color="medium">Hello, world! Small, just-for-fun side projects — nothing here is a real Bulbord feature.</IonNote>
+        <IonNote color="medium">Small, just-for-fun side projects — nothing here is a real Bulbord feature.</IonNote>
         <IonList inset style={{ marginTop: 12 }}>
           <IonItem button href="/soccer-math/" lines="none">
             <IonIcon slot="start" icon={footballOutline} />
