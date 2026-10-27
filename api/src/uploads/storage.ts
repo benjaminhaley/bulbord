@@ -5,14 +5,14 @@ import { GetObjectCommand, HeadObjectCommand, PutObjectCommand, S3Client } from 
 import sharp from 'sharp'
 
 import { requireEnv } from '../env.js'
+import { uploadsKeyPrefix } from './key-prefix.js'
 
 const THUMBNAIL_WIDTH = 400
 const FULL_IMAGE_MAX_WIDTH = 2000
 
 const bucket = requireEnv('UPLOADS_BUCKET')
-// Local dev shares the production bucket, namespaced under this prefix so
-// dev uploads never collide with real objects. Empty in production.
-const keyPrefix = process.env.UPLOADS_KEY_PREFIX ?? ''
+// `prod/` in production, `dev/` everywhere else; throws at boot otherwise.
+const keyPrefix = uploadsKeyPrefix(process.env)
 
 const client = new S3Client({
   endpoint: requireEnv('UPLOADS_ENDPOINT'),

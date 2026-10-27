@@ -19,6 +19,8 @@ env:
   UPLOADS_ENDPOINT: http://localhost:0
   UPLOADS_ACCESS_KEY_ID: ci-unused
   UPLOADS_SECRET_ACCESS_KEY: ci-unused
+  # Required too, and must be dev/ outside production (uploads/key-prefix.ts).
+  UPLOADS_KEY_PREFIX: dev/
   # newsletter/mailer.ts reads these at module load too (same shape as
   # UPLOADS_* above) — missing since the newsletter feature shipped
   # (2026-08-02), which meant the e2e job's real `npm run dev` server boot
