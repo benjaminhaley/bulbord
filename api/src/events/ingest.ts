@@ -1,11 +1,12 @@
 import { and, eq, isNull } from 'drizzle-orm'
 
 import { db } from '../db/client.js'
-import { events, eventsLog, rejectedEventCandidates } from '../db/schema.js'
+import { eventSources, events, eventsLog, rejectedEventCandidates } from '../db/schema.js'
 import { todayInChicago } from '../dates.js'
 import { timesFromChicagoWallClock } from '../timezone.js'
 import { uploadPlaceholderImage } from '../uploads/placeholder.js'
 import { checkDateQuality, checkTimeQuality, buildDuplicateCheck, runTextChecksWithRetry, scoreTextChecks, type PipelineChecks } from './candidate-checks.js'
+import { checkDistance } from './distance-check.js'
 import { findLikelyDuplicateEvent } from './duplicate-detection.js'
 import { enrichEventImages } from './image-enrichment.js'
 import { simplifyTitle } from './title-normalization.js'
@@ -186,6 +187,25 @@ export async function ingestEvents(candidates: CandidateEvent[], { sourceId, act
   })
   const { sourced, none, traces, checksByEventId } = await enrichEventImages(toEnrich)
 
+  // The 1-mile rule (feedback #179) — located against the corrected address.
+  const [source] = toFinalize.length > 0
+    ? await db.select({ distanceExempt: eventSources.distanceExempt }).from(eventSources).where(eq(eventSources.id, sourceId)).limit(1)
+    : []
+  const distanceResults = await Promise.all(
+    toFinalize.map((f, i) => {
+      const corrected = textResults[i].correctedFields
+      return checkDistance({
+        title: corrected.title ?? f.title,
+        description: corrected.description ?? f.candidate.description,
+        address: corrected.address ?? f.candidate.address,
+        locationName: corrected.locationName ?? f.candidate.locationName,
+        latitude: f.candidate.latitude,
+        longitude: f.candidate.longitude,
+        exempt: source?.distanceExempt ?? false,
+      })
+    }),
+  )
+
   const today = todayInChicago()
   await Promise.all(
     toFinalize.map(async (f, i) => {
@@ -198,8 +218,10 @@ export async function ingestEvents(candidates: CandidateEvent[], { sourceId, act
         imageQuality: imageChecks?.imageQuality ?? { pass: false, reason: 'Image check did not run', attempts: 1 },
         imageRelevance: imageChecks?.imageRelevance ?? { pass: false, reason: 'Image check did not run', attempts: 1 },
         duplicateCheck: buildDuplicateCheck(),
+        distanceCheck: distanceResults[i].check,
       }
       const pipelineChecksPassed = Object.values(checks).every((c) => c.pass)
+      const { latitude, longitude, foundAddress } = distanceResults[i]
 
       await db
         .update(events)
@@ -208,6 +230,8 @@ export async function ingestEvents(candidates: CandidateEvent[], { sourceId, act
           ...correctedFields.description !== undefined ? { description: correctedFields.description } : {},
           ...correctedFields.address !== undefined ? { address: correctedFields.address } : {},
           ...correctedFields.locationName !== undefined ? { locationName: correctedFields.locationName } : {},
+          ...foundAddress ? { address: foundAddress } : {},
+          ...latitude && longitude ? { latitude, longitude } : {},
           status: forceApprove || pipelineChecksPassed ? 'approved' : 'pending',
           pipelineChecksPassed,
           pipelineQualityChecks: checks,
@@ -270,6 +294,7 @@ export async function ingestEvents(candidates: CandidateEvent[], { sourceId, act
         r.rejectionType === 'duplicate'
           ? { pass: false, reason: r.rejectionReason, attempts: 1 }
           : { pass: true, reason: 'Not checked — rejected for relevance before reaching the duplicate check', attempts: 1 },
+      distanceCheck: { pass: true, reason: 'Not attempted — rejected before the distance check', attempts: 0 },
     }
     return {
       eventSourceId: sourceId,

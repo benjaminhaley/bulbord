@@ -31,6 +31,10 @@ export const eventSources = pgTable('event_sources', {
   // their events with JavaScript. Otherwise the browser is only a fallback
   // for a failed or near-empty plain fetch.
   renderJs: boolean('render_js').notNull().default(false),
+  // Events from this source may be more than 1 mile from Nettelhorst
+  // (feedback #179) — the pipeline's distanceCheck passes them anyway, for a
+  // destination worth the trip (Lincoln Park Zoo, the Nature Museum).
+  distanceExempt: boolean('distance_exempt').notNull().default(false),
   notes: text('notes'),
   ...timestamps,
 })

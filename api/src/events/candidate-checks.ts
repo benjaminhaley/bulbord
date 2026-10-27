@@ -28,7 +28,7 @@ export interface CheckResult {
   attempts: number
 }
 
-// The full 9-check object stored on an event row (Pipeline Review v2). Only
+// The full check object stored on an event row (Pipeline Review v2). Only
 // titleQuality/descriptionQuality/locationLabelQuality/addressQuality come
 // from an LLM call (above) — the rest are deterministic, which is both
 // cheaper and more reliable than asking a model to judge something plain
@@ -40,6 +40,9 @@ export interface PipelineChecks extends TextChecks {
   imageQuality: CheckResult
   imageRelevance: CheckResult
   duplicateCheck: CheckResult
+  // Within 1 mile of Nettelhorst (feedback #179, distance-check.ts). Optional
+  // because rows checked before 2026-10-16 don't have it.
+  distanceCheck?: CheckResult
 }
 
 // A candidate's start_date should be a real, plausible upcoming date — this

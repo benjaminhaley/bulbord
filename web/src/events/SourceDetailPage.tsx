@@ -43,7 +43,7 @@ function EditSourceForm({
   onCancel,
 }: {
   source: EventSourceDetail
-  onSaved: (patch: { name: string; url: string; type: string; notes: string | null; render_js: boolean }) => void
+  onSaved: (patch: { name: string; url: string; type: string; notes: string | null; render_js: boolean; distance_exempt: boolean }) => void
   onCancel: () => void
 }) {
   const [name, setName] = useState(source.name)
@@ -51,6 +51,7 @@ function EditSourceForm({
   const [type, setType] = useState(source.type)
   const [notes, setNotes] = useState(source.notes ?? '')
   const [renderJs, setRenderJs] = useState(source.render_js)
+  const [distanceExempt, setDistanceExempt] = useState(source.distance_exempt)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -62,8 +63,9 @@ function EditSourceForm({
     setError(null)
     try {
       const trimmedNotes = notes.trim() || null
-      await updateEventSource(source.id, { name: name.trim(), url: url.trim(), type, notes: trimmedNotes, render_js: renderJs })
-      onSaved({ name: name.trim(), url: url.trim(), type, notes: trimmedNotes, render_js: renderJs })
+      const patch = { name: name.trim(), url: url.trim(), type, notes: trimmedNotes, render_js: renderJs, distance_exempt: distanceExempt }
+      await updateEventSource(source.id, patch)
+      onSaved(patch)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not save changes')
     } finally {
@@ -91,6 +93,11 @@ function EditSourceForm({
       <IonItem>
         <IonCheckbox checked={renderJs} onIonChange={(e) => setRenderJs(e.detail.checked)} labelPlacement="end" justify="start">
           <span className="ion-text-wrap">Always load with a browser (for pages that build their events with JavaScript)</span>
+        </IonCheckbox>
+      </IonItem>
+      <IonItem>
+        <IonCheckbox checked={distanceExempt} onIonChange={(e) => setDistanceExempt(e.detail.checked)} labelPlacement="end" justify="start">
+          <span className="ion-text-wrap">Allow events more than 1 mile from Nettelhorst</span>
         </IonCheckbox>
       </IonItem>
       <IonItem lines="none">

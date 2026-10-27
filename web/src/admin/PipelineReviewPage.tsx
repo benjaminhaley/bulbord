@@ -66,6 +66,7 @@ const CHECK_DESCRIPTIONS: Record<keyof PipelineChecks, string> = {
   imageQuality: "The chosen photo is large and well-proportioned enough to use (a real size/aspect-ratio check, not just 'an image exists').",
   imageRelevance: 'The chosen photo was scored as an actual match for this specific event, or is a last-resort org logo (which is exempt from this scoring).',
   duplicateCheck: 'No already-approved event matches this one on the same date.',
+  distanceCheck: 'Within 1 mile of Nettelhorst, unless its source is allowed further away or a member posted it.',
 }
 
 const CHECK_LABELS = Object.fromEntries(PIPELINE_CHECK_LABELS.map(({ key, label }) => [key, label])) as Record<keyof PipelineChecks, string>

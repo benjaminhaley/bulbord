@@ -15,6 +15,7 @@ import { recordEdit } from '../edit-history/service.js'
 import { checkDateQuality, checkTimeQuality, buildDuplicateCheck, runTextChecksWithRetry, scoreTextChecks, type CheckResult, type PipelineChecks } from './candidate-checks.js'
 import type { CandidateEvent } from './ingest.js'
 import { ingestEvents } from './ingest.js'
+import { checkDistance, MANUAL_POST_DISTANCE_CHECK, type DistanceResult } from './distance-check.js'
 import { enrichEventImage } from './image-enrichment.js'
 import { fetchPageText } from './resourcing.js'
 import { recordRetryNote } from './retry-strategies.js'
@@ -257,6 +258,31 @@ export async function rejectEvent(eventId: string, adminId: string, note?: strin
   return row ? null : 'not_found'
 }
 
+// Re-runs the 1-mile check (distance-check.ts) for a kept event. Stored
+// coordinates are reused only while the address they came from is unchanged.
+// An event with no source is a member's own post, which the rule exempts.
+async function recheckDistance(
+  event: { title: string; description: string | null; address: string | null; locationName: string | null; sourceId: string | null; latitude: string | null; longitude: string | null },
+  addressChanged: boolean,
+): Promise<DistanceResult> {
+  if (!event.sourceId) return { check: MANUAL_POST_DISTANCE_CHECK }
+  const [source] = await db.select({ distanceExempt: eventSources.distanceExempt }).from(eventSources).where(eq(eventSources.id, event.sourceId)).limit(1)
+  return checkDistance({
+    ...event,
+    latitude: addressChanged ? null : event.latitude,
+    longitude: addressChanged ? null : event.longitude,
+    exempt: source?.distanceExempt ?? false,
+  })
+}
+
+// The columns a distance result writes back onto the event.
+function distanceColumns({ latitude, longitude, foundAddress }: DistanceResult, addressCleared: boolean) {
+  return {
+    ...(latitude && longitude ? { latitude, longitude } : addressCleared ? { latitude: null, longitude: null } : {}),
+    ...(foundAddress ? { address: foundAddress } : {}),
+  }
+}
+
 export type EditableFields = Partial<{ title: string; description: string; address: string; locationName: string; startDate: string; startTime: string | null; allDay: boolean }>
 
 // Edit only ever corrects data and re-scores the checklist — it never
@@ -291,6 +317,9 @@ export async function editKeptCandidate(eventId: string, fields: EditableFields,
       topic: events.topic,
       imageUrl: events.imageUrl,
       thumbnailUrl: events.thumbnailUrl,
+      sourceId: events.sourceId,
+      latitude: events.latitude,
+      longitude: events.longitude,
     })
     .from(events)
     .where(and(eq(events.id, eventId), isNull(events.deletedAt)))
@@ -298,6 +327,10 @@ export async function editKeptCandidate(eventId: string, fields: EditableFields,
   if (!existing) return 'not_found'
 
   const merged = { ...existing, ...fields }
+  const locationChanged = merged.address !== existing.address || merged.locationName !== existing.locationName
+  const distance: DistanceResult | null = locationChanged || !(existing.checks as PipelineChecks | null)?.distanceCheck
+    ? await recheckDistance(merged, merged.address !== existing.address)
+    : null
   // startDate/startTime are derived (Chicago wall-clock) columns — a date/time
   // correction is written as real instants instead.
   const { startDate: _sd, startTime: _st, allDay: _ad, ...textFields } = fields
@@ -320,10 +353,18 @@ export async function editKeptCandidate(eventId: string, fields: EditableFields,
     imageQuality: priorChecks?.imageQuality ?? { pass: true, reason: 'Unchanged by this edit', attempts: 1 },
     imageRelevance: priorChecks?.imageRelevance ?? { pass: true, reason: 'Unchanged by this edit', attempts: 1 },
     duplicateCheck: priorChecks?.duplicateCheck ?? buildDuplicateCheck(),
+    ...(distance ? { distanceCheck: distance.check } : priorChecks?.distanceCheck ? { distanceCheck: priorChecks.distanceCheck } : {}),
   }
   const pipelineChecksPassed = Object.values(checks).every((c) => c.pass)
 
-  await db.update(events).set({ ...textFields, ...timeColumns, pipelineQualityChecks: checks, pipelineChecksPassed, updatedAt: new Date() }).where(eq(events.id, eventId))
+  await db.update(events).set({
+    ...textFields,
+    ...timeColumns,
+    ...(distance ? distanceColumns(distance, merged.address !== existing.address) : {}),
+    pipelineQualityChecks: checks,
+    pipelineChecksPassed,
+    updatedAt: new Date(),
+  }).where(eq(events.id, eventId))
 
   await recordEdit({
     entityType: 'event',
@@ -458,6 +499,9 @@ export async function retryPipelineChecks(
       thumbnailUrl: events.thumbnailUrl,
       checks: events.pipelineQualityChecks,
       status: events.status,
+      sourceId: events.sourceId,
+      latitude: events.latitude,
+      longitude: events.longitude,
     })
     .from(events)
     .where(and(eq(events.id, eventId), isNull(events.deletedAt)))
@@ -574,6 +618,8 @@ export async function retryPipelineChecks(
     }
   }
 
+  const addressChanged = merged.address !== existing.address
+  const distance = await recheckDistance(merged, addressChanged)
   const checks: PipelineChecks = {
     ...textChecks,
     dateQuality: checkDateQuality(merged.startDate, todayInChicago()),
@@ -581,6 +627,7 @@ export async function retryPipelineChecks(
     imageQuality,
     imageRelevance,
     duplicateCheck: priorChecks?.duplicateCheck ?? buildDuplicateCheck(),
+    distanceCheck: distance.check,
   }
   const pipelineChecksPassed = Object.values(checks).every((c) => c.pass)
 
@@ -590,6 +637,7 @@ export async function retryPipelineChecks(
     locationName: merged.locationName,
     address: merged.address,
     sourceUrl: merged.sourceUrl,
+    ...distanceColumns(distance, addressChanged),
     ...timeColumns,
     pipelineQualityChecks: checks,
     pipelineChecksPassed,

@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto'
 import * as cheerio from 'cheerio'
 import { and, desc, eq, gt, gte, isNull, ne, sql } from 'drizzle-orm'
 
-import { getAnthropicClient, stripJsonCodeFence } from '../claude.js'
+import { createWithServerTools, getAnthropicClient, parseFinalJson, stripJsonCodeFence } from '../claude.js'
 import { db } from '../db/client.js'
 import { todayInChicago } from '../dates.js'
 import { eventSources, eventsLog } from '../db/schema.js'
@@ -120,8 +120,10 @@ function toCandidateEvent(raw: ExtractedEvent, sourceUrl: string): CandidateEven
 export interface ExtractionResult {
   candidates: CandidateEvent[]
   // Set only when fetching the source page itself failed (not for a missing
-  // API key or a model error) — lets a recheck say "couldn't read the page".
+  // API key or a model error) — lets a recheck say "couldn't read the page",
+  // and why (feedback #182).
   pageUnreadable?: true
+  unreadableReason?: string
   // Candidates the second-pass validator (candidate-validation.ts) already
   // dropped, with its own stated reason — carried on this result so the
   // caller can log them into ingestEvents()'s own events_ingested row
@@ -172,9 +174,13 @@ function visibleText(html: string): string {
 // browser (uploads/render-page.ts) when that fails or comes back nearly empty
 // — or always, for a source flagged `render_js` whose events are loaded by
 // JavaScript even though the static page has some text (e.g. Chicago Kids).
-export async function fetchPageText(sourceUrl: string, options: { alwaysRender?: boolean } = {}): Promise<string | null> {
+// `failures` (when given) collects a readable cause for each attempt that
+// failed, so an unreadable source can say why (feedback #182).
+export async function fetchPageText(sourceUrl: string, options: { alwaysRender?: boolean; failures?: string[] } = {}): Promise<string | null> {
   let staticText: string | null = null
   const response = await fetchWithTimeout(sourceUrl, FETCH_TIMEOUT_MS)
+  if (!response) options.failures?.push('no response to a plain fetch')
+  else if (!response.ok) options.failures?.push(`a plain fetch got HTTP ${response.status}`)
   if (response?.ok && (response.headers.get('content-type') ?? '').includes('html')) {
     try {
       staticText = visibleText(await response.text()) || null
@@ -184,7 +190,7 @@ export async function fetchPageText(sourceUrl: string, options: { alwaysRender?:
   }
   if (!options.alwaysRender && staticText && staticText.length >= MIN_STATIC_TEXT_CHARS) return staticText
 
-  const renderedHtml = await renderPageHtml(sourceUrl)
+  const renderedHtml = await renderPageHtml(sourceUrl, options.failures)
   const renderedText = renderedHtml ? visibleText(renderedHtml) : ''
   return renderedText.length > (staticText?.length ?? 0) ? renderedText : staticText
 }
@@ -204,8 +210,12 @@ export async function extractCandidateEventsFromSource(
   const anthropic = getAnthropicClient()
   if (!anthropic) return { candidates: [], rejectedCandidates: [], contentHash: null, pageText: null }
 
-  const pageText = await fetchPageText(sourceUrl, { alwaysRender })
-  if (!pageText) return { candidates: [], rejectedCandidates: [], contentHash: null, pageText: null, pageUnreadable: true }
+  const failures: string[] = []
+  const pageText = await fetchPageText(sourceUrl, { alwaysRender, failures })
+  if (!pageText) {
+    const unreadableReason = failures.length > 0 ? [...new Set(failures)].join('; ') : 'the page had no readable text'
+    return { candidates: [], rejectedCandidates: [], contentHash: null, pageText: null, pageUnreadable: true, unreadableReason }
+  }
 
   try {
     const contentHash = hashPageText(pageText)
@@ -251,6 +261,86 @@ export async function extractCandidateEventsFromSource(
     return { candidates, rejectedCandidates, contentHash, pageText }
   } catch {
     return { candidates: [], rejectedCandidates: [], contentHash: null, pageText: null }
+  }
+}
+
+const SEARCH_TIMEOUT_MS = 240_000
+
+const SEARCH_SYSTEM_PROMPT = `You find upcoming events for a family/community events app serving the Nettelhorst School community (3252 N Broadway, Chicago — Lakeview East). Use web search (and web fetch to read a promising page) to find real, dated, upcoming events matching the given search and source_notes, happening within about 1 mile of Nettelhorst School.
+
+Rules:
+- Only include events happening today or in the future, relative to the given "today" date, and only ones you actually found on a real page — never invent one.
+- source_url must be the real page you found the event on (ideally the host's own event page), never a search-engine results page.
+- start_date must be YYYY-MM-DD. If a specific time is given, set start_time to 24-hour HH:MM and all_day to false; otherwise omit start_time and set all_day to true.
+- description is optional: one short sentence on what happens. location_name is a human-friendly venue name; address is a street address — include it whenever the page gives one.
+- A recurring opportunity with listed dates: include each upcoming date as its own entry (at most the next 4).
+${AUDIENCE_RELEVANCE_RULES}
+
+Respond with ONLY a JSON array, no markdown fences, no explanation. Each element:
+{"title": string, "description"?: string, "start_date": string, "start_time"?: string, "all_day": boolean, "address"?: string, "location_name"?: string, "source_url": string}`
+
+// What a generic_search source searches for: its URL's `q` parameter (the
+// way these sources have always been stored), else its notes.
+export function searchQueryForSource(url: string, notes: string | null): string {
+  try {
+    const q = new URL(url).searchParams.get('q')
+    if (q?.trim()) return q.trim()
+  } catch {
+    // not a URL — fall through
+  }
+  return notes?.trim() || url
+}
+
+function isSearchEngineUrl(url: string): boolean {
+  try {
+    return /(^|\.)(google|bing|duckduckgo|yahoo)\./.test(new URL(url).hostname)
+  } catch {
+    return true
+  }
+}
+
+// A generic_search source (feedback #182, 2026-10-16): a real web search,
+// not a fetch of a google.com results page — Google answers that with a
+// bot check, so the source had been failing every run. Each found event
+// keeps the page it was found on as its own source_url. Search results
+// change from run to run, so there's no unchanged-page skip; the usual
+// title/date dedup in ingestEvents() keeps repeats out.
+async function extractCandidateEventsFromSearch(sourceUrl: string, notes: string | null): Promise<ExtractionResult> {
+  const failed = (reason: string): ExtractionResult => ({ candidates: [], rejectedCandidates: [], contentHash: null, pageText: null, pageUnreadable: true, unreadableReason: reason })
+  if (!getAnthropicClient()) return { candidates: [], rejectedCandidates: [], contentHash: null, pageText: null }
+
+  try {
+    const message = await createWithServerTools(
+      {
+        model: 'claude-opus-5',
+        max_tokens: 16000,
+        output_config: { effort: 'medium' },
+        system: SEARCH_SYSTEM_PROMPT + (await getRetryStrategiesPromptBlock('extraction')),
+        tools: [
+          { type: 'web_search_20260209', name: 'web_search', max_uses: 6 },
+          { type: 'web_fetch_20260209', name: 'web_fetch', max_uses: 6 },
+        ],
+        messages: [{ role: 'user', content: JSON.stringify({ today: todayInChicago(), search: searchQueryForSource(sourceUrl, notes), source_notes: notes }) }],
+      },
+      SEARCH_TIMEOUT_MS,
+    )
+    if (!message) return failed('the web search returned nothing')
+    if (message.stop_reason === 'refusal') return failed('the model declined the search')
+    const parsed = parseFinalJson(message, 'array')
+    if (!Array.isArray(parsed)) return failed('the web search ended without a usable list of events')
+
+    const candidates = parsed
+      .map((item) => {
+        const pageUrl = (item as { source_url?: unknown }).source_url
+        if (typeof pageUrl !== 'string' || !/^https?:\/\//.test(pageUrl) || isSearchEngineUrl(pageUrl)) return null
+        return toCandidateEvent(item as ExtractedEvent, pageUrl)
+      })
+      .filter((c): c is CandidateEvent => c !== null)
+    const { kept, rejected } = await filterFamilyRelevantCandidates(candidates)
+    const resultText = JSON.stringify(parsed)
+    return { candidates: kept, rejectedCandidates: rejected, contentHash: hashPageText(resultText), pageText: resultText }
+  } catch (err) {
+    return failed(`the web search failed (${err instanceof Error ? err.message : 'unknown error'})`)
   }
 }
 
@@ -319,12 +409,10 @@ async function resourceOneSource(
   budget: { remaining: number } = { remaining: Infinity },
 ): Promise<SourceResourceResult> {
   try {
-    const { candidates, rejectedCandidates, contentHash, pageText, pageUnreadable } = await extractCandidateEventsFromSource(
-      source.url,
-      source.notes,
-      source.lastContentHash,
-      source.renderJs,
-    )
+    const { candidates, rejectedCandidates, contentHash, pageText, pageUnreadable, unreadableReason } =
+      source.type === 'generic_search'
+        ? await extractCandidateEventsFromSearch(source.url, source.notes)
+        : await extractCandidateEventsFromSource(source.url, source.notes, source.lastContentHash, source.renderJs)
     // contentHash is set only when extraction genuinely succeeded (page read
     // and parsed, or unchanged since the last success). Anything else — page
     // unreadable, model error/refusal, malformed output, no API key — is a
@@ -337,7 +425,9 @@ async function resourceOneSource(
         name: source.name,
         added: 0,
         skipped: 0,
-        error: pageUnreadable ? "Couldn't read the source page" : 'Event extraction failed (model error or unreadable output)',
+        error: pageUnreadable
+          ? `Couldn't read the source page${unreadableReason ? `: ${unreadableReason}` : ''}`
+          : 'Event extraction failed (model error or unreadable output)',
         ...(pageUnreadable ? { unreadable: true } : {}),
       }
     }
@@ -418,6 +508,14 @@ export async function resourceActiveEventSources(actor: string, sample: Resource
   }
 
   await Promise.all(Array.from({ length: Math.min(RESOURCE_CONCURRENCY, sources.length) }, worker))
+
+  // One more try for each source whose page couldn't be read, after the rest
+  // of the run — a slow or briefly-down site often answers a few minutes
+  // later (feedback #182: "the pipeline should be improved to fix situations
+  // like this").
+  for (let i = 0; i < sources.length; i++) {
+    if (results[i]?.unreadable) results[i] = await resourceOneSource(sources[i], actor, budget)
+  }
 
   const report: ResourceReport = {
     startedAt,

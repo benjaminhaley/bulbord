@@ -293,6 +293,8 @@ export interface PipelineChecks {
   imageQuality: PipelineCheck
   imageRelevance: PipelineCheck
   duplicateCheck: PipelineCheck
+  // Missing on rows checked before the 1-mile rule existed (2026-10-16).
+  distanceCheck?: PipelineCheck
 }
 
 // The named-check order the review page renders them in — every row always
@@ -308,6 +310,7 @@ export const PIPELINE_CHECK_LABELS: { key: keyof PipelineChecks; label: string }
   { key: 'descriptionQuality', label: 'Description' },
   { key: 'locationLabelQuality', label: 'Location name' },
   { key: 'addressQuality', label: 'Address' },
+  { key: 'distanceCheck', label: 'Within 1 mile' },
   { key: 'dateQuality', label: 'Date' },
   { key: 'timeQuality', label: 'Time' },
   { key: 'imageQuality', label: 'Image quality' },

@@ -18,6 +18,7 @@ import { getEventsForWeek } from './week-query.js'
 import { canDeleteEvent, canEditEvent } from './permissions.js'
 import { applyEventEdit } from './edit.js'
 import { buildDuplicateCheck, checkDateQuality, checkTimeQuality, runTextChecksWithRetry, type PipelineChecks } from './candidate-checks.js'
+import { MANUAL_POST_DISTANCE_CHECK } from './distance-check.js'
 import { extractEventFieldsFromDescription, findEventDetailsFromDescription } from './description-extraction.js'
 import { enrichEventImage, findCandidateEventImage, scoreStoredEventImage } from './image-enrichment.js'
 import { extractEventFieldsFromPhoto, findEventSource, type ExtractedEventFields } from './photo-extraction.js'
@@ -496,6 +497,7 @@ export async function eventsRoutes(app: FastifyInstance) {
           imageQuality,
           imageRelevance,
           duplicateCheck: buildDuplicateCheck(),
+          distanceCheck: MANUAL_POST_DISTANCE_CHECK,
         }
         const pipelineChecksPassed = Object.values(checks).every((c) => c.pass)
         await db.update(events).set({ pipelineQualityChecks: checks, pipelineChecksPassed, updatedAt: new Date() }).where(eq(events.id, created.id))
@@ -870,7 +872,7 @@ export async function eventsRoutes(app: FastifyInstance) {
 
   app.patch('/event-sources/:id', { preHandler: requireRole('admin') }, async (request, reply) => {
     const { id } = request.params as { id: string }
-    const body = request.body as { name?: string; url?: string; type?: string; notes?: string | null; is_active?: boolean; render_js?: boolean }
+    const body = request.body as { name?: string; url?: string; type?: string; notes?: string | null; is_active?: boolean; render_js?: boolean; distance_exempt?: boolean }
 
     const updates: Partial<typeof eventSources.$inferInsert> = {}
     if (body.name !== undefined) {
@@ -893,6 +895,7 @@ export async function eventsRoutes(app: FastifyInstance) {
     if (body.notes !== undefined) updates.notes = body.notes?.trim() || null
     if (body.is_active !== undefined) updates.isActive = body.is_active
     if (body.render_js !== undefined) updates.renderJs = body.render_js
+    if (body.distance_exempt !== undefined) updates.distanceExempt = body.distance_exempt
 
     if (Object.keys(updates).length === 0) {
       return reply.code(400).send({ error: { message: 'No fields to update' } })
@@ -969,6 +972,7 @@ export async function eventsRoutes(app: FastifyInstance) {
         notes: source.notes,
         is_active: source.isActive,
         render_js: source.renderJs,
+        distance_exempt: source.distanceExempt,
         last_checked_at: source.lastCheckedAt,
         last_event_added_at: lastEventAddedAt,
         is_stale: isSourceStale(lastEventAddedAt ? new Date(lastEventAddedAt) : null),

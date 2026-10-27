@@ -116,6 +116,8 @@ export interface EventSourceDetail extends EventSource {
   is_active: boolean
   // Always fetch through a headless browser (JavaScript-built pages).
   render_js: boolean
+  // Events may be more than 1 mile from Nettelhorst (passes the distance check).
+  distance_exempt: boolean
   last_checked_at: string | null
   last_event_added_at: string | null
   is_stale: boolean
@@ -628,6 +630,7 @@ export interface EventSourceUpdateInput {
   notes?: string | null
   is_active?: boolean
   render_js?: boolean
+  distance_exempt?: boolean
 }
 
 // Recheck one source on demand — POST /event-sources/:id/recheck. Runs the

@@ -52,6 +52,8 @@ vi.mock('../db/client.js', () => {
 vi.mock('../uploads/placeholder.js', () => ({ uploadPlaceholderImage: uploadPlaceholderImageMock }))
 vi.mock('./title-normalization.js', () => ({ simplifyTitle: simplifyTitleMock }))
 vi.mock('./image-enrichment.js', () => ({ enrichEventImages: enrichEventImagesMock }))
+const checkDistanceMock = vi.fn(async () => ({ check: { pass: true, reason: '0.3 mi from Nettelhorst', attempts: 1 } }))
+vi.mock('./distance-check.js', () => ({ checkDistance: checkDistanceMock }))
 // checkDateQuality/checkTimeQuality/buildDuplicateCheck are pure and safe to
 // use for real; only runTextChecksWithRetry makes a real (Claude-backed)
 // call, so only that one is mocked.
@@ -242,6 +244,28 @@ describe('ingestEvents', () => {
       await ingestEvents([CANDIDATE], { sourceId: 'source-1', actor: 'test' })
 
       expect(updateCalls[0]).toEqual(expect.objectContaining({ status: 'pending', pipelineChecksPassed: false }))
+    })
+
+    it('holds an event over the 1-mile limit back as pending, storing where it was found (feedback #179)', async () => {
+      selectResults.push([])
+      checkDistanceMock.mockResolvedValueOnce({
+        check: { pass: false, reason: '1.4 mi from Nettelhorst — over the 1 mile limit', attempts: 1 },
+        latitude: '41.921400',
+        longitude: '-87.633600',
+      } as never)
+      enrichEventImagesMock.mockResolvedValue({
+        sourced: 1,
+        none: 0,
+        traces: [],
+        checksByEventId: new Map([['generated-1', { imageQuality: PASSING_CHECK, imageRelevance: PASSING_CHECK }]]),
+      })
+      const { ingestEvents } = await import('./ingest.js')
+
+      await ingestEvents([CANDIDATE], { sourceId: 'source-1', actor: 'test' })
+
+      expect(updateCalls[0]).toEqual(
+        expect.objectContaining({ status: 'pending', pipelineChecksPassed: false, latitude: '41.921400', longitude: '-87.633600' }),
+      )
     })
 
     it('forceApprove publishes even a check-failing candidate, while still recording the real checks', async () => {

@@ -177,7 +177,7 @@ describe('extractCandidateEventsFromSource', () => {
 
     const result = await extractCandidateEventsFromSource('https://example.com/events', null)
 
-    expect(result).toEqual({ candidates: [], rejectedCandidates: [], contentHash: null, pageText: null, pageUnreadable: true })
+    expect(result).toEqual({ candidates: [], rejectedCandidates: [], contentHash: null, pageText: null, pageUnreadable: true, unreadableReason: 'no response to a plain fetch' })
     expect(createMock).not.toHaveBeenCalled()
   })
 
@@ -246,5 +246,13 @@ describe('fetchPageText browser fallback', () => {
     renderPageHtmlMock.mockResolvedValue(null)
     const { fetchPageText } = await import('./resourcing.js')
     expect(await fetchPageText('https://example.com/events')).toBe('Short page')
+  })
+})
+
+describe('searchQueryForSource', () => {
+  it("reads a stored search URL's q parameter, else falls back to notes", async () => {
+    const { searchQueryForSource } = await import('./resourcing.js')
+    expect(searchQueryForSource('https://www.google.com/search?q=events+near+Nettelhorst', null)).toBe('events near Nettelhorst')
+    expect(searchQueryForSource('https://example.org/', 'volunteer shifts')).toBe('volunteer shifts')
   })
 })

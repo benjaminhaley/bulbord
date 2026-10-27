@@ -40,11 +40,23 @@ function executablePath(): string | undefined {
   return existsSync(DEBIAN_CHROMIUM) ? DEBIAN_CHROMIUM : undefined
 }
 
+// A short, readable cause for a failed render, for the Sources/Pipeline
+// Review failure lists (feedback #182: "figure out what's going wrong").
+function describeRenderError(message: string): string {
+  if (/ERR_CERT|SSL|certificate/i.test(message)) return "the site's security certificate is invalid"
+  if (/Timeout|timed out/i.test(message)) return 'the page took too long to load'
+  if (/ERR_NAME_NOT_RESOLVED/.test(message)) return "the site's domain doesn't resolve"
+  if (/ERR_CONNECTION|ERR_EMPTY_RESPONSE|ECONNREFUSED|ECONNRESET/.test(message)) return 'the site refused the connection'
+  if (/Executable doesn't exist|executable/i.test(message)) return 'no headless browser is installed'
+  return message.split('\n')[0].slice(0, 160)
+}
+
 // The page's HTML after JavaScript has run, or null on any failure (no
 // browser installed, navigation error, timeout) — callers treat null the same
-// as an unreadable page. Launches a fresh browser per render and always
-// closes it, so nothing lingers in the long-running api process.
-export async function renderPageHtml(url: string): Promise<string | null> {
+// as an unreadable page, and `failures` (when given) gets a readable cause.
+// Launches a fresh browser per render and always closes it, so nothing
+// lingers in the long-running api process.
+export async function renderPageHtml(url: string, failures?: string[]): Promise<string | null> {
   return withRenderSlot(async () => {
     let browser: import('playwright-core').Browser | null = null
     try {
@@ -55,13 +67,39 @@ export async function renderPageHtml(url: string): Promise<string | null> {
         args: ['--no-sandbox', '--disable-dev-shm-usage', '--disable-gpu'],
         timeout: RENDER_TIMEOUT_MS,
       })
-      const page = await browser.newPage({ userAgent: USER_AGENT })
-      const response = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: RENDER_TIMEOUT_MS })
-      if (response && !response.ok()) return null
+      // ignoreHTTPSErrors: we only read a public listing's text, so an
+      // expired certificate isn't a reason to give up on it (2026-10-14:
+      // Chicago Kids' certificate lapsed for a few hours over a weekly run).
+      const page = await browser.newPage({ userAgent: USER_AGENT, ignoreHTTPSErrors: true })
+      // The status of the last top-level document load. A bot check (Sucuri,
+      // Cloudflare) answers the first request with a 3xx/403/503 challenge
+      // page whose JavaScript then reloads the real page — so the first
+      // response alone can't say whether the page is readable (2026-10-14:
+      // Music Box Theatre's 307 challenge was treated as a failure).
+      let lastDocumentStatus = 0
+      page.on('response', (response) => {
+        if (response.request().isNavigationRequest() && response.frame() === page.mainFrame()) lastDocumentStatus = response.status()
+      })
+      await page.goto(url, { waitUntil: 'domcontentloaded', timeout: RENDER_TIMEOUT_MS })
       await page.waitForLoadState('networkidle', { timeout: NETWORK_IDLE_WAIT_MS }).catch(() => {})
+      if (lastDocumentStatus >= 300) {
+        // Still on the challenge: give its reload one more chance to land.
+        await page.waitForLoadState('load', { timeout: NETWORK_IDLE_WAIT_MS }).catch(() => {})
+        await page.waitForTimeout(3000)
+        if (lastDocumentStatus >= 300) {
+          failures?.push(
+            [401, 403, 429, 503].includes(lastDocumentStatus) || lastDocumentStatus < 400
+              ? `the site's bot protection blocked the headless browser (HTTP ${lastDocumentStatus})`
+              : `the browser got HTTP ${lastDocumentStatus}`,
+          )
+          return null
+        }
+      }
       return await page.content()
     } catch (err) {
-      console.warn(`renderPageHtml failed for ${url}:`, err instanceof Error ? err.message : err)
+      const message = err instanceof Error ? err.message : String(err)
+      console.warn(`renderPageHtml failed for ${url}:`, message)
+      failures?.push(describeRenderError(message))
       return null
     } finally {
       await browser?.close().catch(() => {})
