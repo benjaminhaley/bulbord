@@ -274,6 +274,8 @@ Rules:
 - start_date must be YYYY-MM-DD. If a specific time is given, set start_time to 24-hour HH:MM and all_day to false; otherwise omit start_time and set all_day to true.
 - description is optional: one short sentence on what happens. location_name is a human-friendly venue name; address is a street address — include it whenever the page gives one.
 - A recurring opportunity with listed dates: include each upcoming date as its own entry (at most the next 4).
+- Prefer a host's own events calendar or a sign-up page that lists specific dated shifts (e.g. a pantry's or park group's calendar, a volunteer platform's dated listing) over pages that only describe a program in general.
+- Your searches are limited. When they run out, still return every qualifying event you already found — never answer [] just because the budget ended.
 ${AUDIENCE_RELEVANCE_RULES}
 
 Respond with ONLY a JSON array, no markdown fences, no explanation. Each element:
@@ -317,8 +319,8 @@ async function extractCandidateEventsFromSearch(sourceUrl: string, notes: string
         output_config: { effort: 'medium' },
         system: SEARCH_SYSTEM_PROMPT + (await getRetryStrategiesPromptBlock('extraction')),
         tools: [
-          { type: 'web_search_20260209', name: 'web_search', max_uses: 6 },
-          { type: 'web_fetch_20260209', name: 'web_fetch', max_uses: 6 },
+          { type: 'web_search_20260209', name: 'web_search', max_uses: 10 },
+          { type: 'web_fetch_20260209', name: 'web_fetch', max_uses: 8 },
         ],
         messages: [{ role: 'user', content: JSON.stringify({ today: todayInChicago(), search: searchQueryForSource(sourceUrl, notes), source_notes: notes }) }],
       },
