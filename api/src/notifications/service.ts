@@ -20,6 +20,7 @@ export type NotificationType =
   | 'camp_comment'
   | 'sports_club_comment'
   | 'pipeline_review_ready' // feedback #138: a sourcing-pipeline run is ready for admin review
+  | 'event_retry_finished' // feedback #186: a member's "Retry with note" outlasted the request
 
 export interface CreateNotificationInput {
   userId: string // recipient

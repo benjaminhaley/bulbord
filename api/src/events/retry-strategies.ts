@@ -9,7 +9,7 @@ import { eventsLog, pipelineRetryNotes } from '../db/schema.js'
 // 2026-09-14).
 const MAX_STRATEGIES_IN_PROMPT = 15
 
-export type RetryStage = 'photo_extraction' | 'description_extraction' | 'pipeline_review'
+export type RetryStage = 'photo_extraction' | 'description_extraction' | 'pipeline_review' | 'event_detail'
 
 // Persists a retry note into the shared, growing library (see the
 // pipelineRetryNotes schema comment) and logs it into events_log too — the

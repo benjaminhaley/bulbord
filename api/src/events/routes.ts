@@ -28,7 +28,8 @@ import { withDeadline } from './extraction-shared.js'
 import { interpretReviewNote, serializeNoteDecision, type NoteDecision } from './review-note-actions.js'
 import { recordRetryNote } from './retry-strategies.js'
 import { groupSourcesByDomain } from './source-domains.js'
-import { getPipelineReviewCandidatesForRecheck, recheckReviewPath } from './pipeline-review-service.js'
+import { getPipelineReviewCandidatesForRecheck, recheckReviewPath, retryPipelineChecks } from './pipeline-review-service.js'
+import { sendRetryResult } from './retry-response.js'
 import { recheckNotificationMessage } from './recheck-message.js'
 import { createNotification } from '../notifications/service.js'
 import { chicagoWallClock, timesFromChicagoWallClock, timesFromFields } from '../timezone.js'
@@ -669,6 +670,27 @@ export async function eventsRoutes(app: FastifyInstance) {
     ])
 
     return reply.code(204).send()
+  })
+
+  // "Retry with note" on an event's page (feedback #186: "when I add an event
+  // from a photo, it's easy to rerun it with a note. I also want to be able
+  // to do that when I'm looking in an event"). Any member, like editing —
+  // it runs Pipeline Review's own Retry (the note researched and acted on:
+  // edit / new photo / split), every change lands in History. A split removes
+  // this listing, so it's only done for someone who could delete it.
+  app.post('/events/:id/retry-note', { preHandler: requireAuth }, async (request, reply) => {
+    const { id } = request.params as { id: string }
+    const note = ((request.body ?? {}) as { note?: string }).note?.trim()
+    if (!note) return reply.code(400).send({ error: { message: 'note is required' } })
+    const currentUser = request.currentUser!
+    const [existing] = await db
+      .select({ submittedByUserId: events.submittedByUserId })
+      .from(events)
+      .where(and(eq(events.id, id), isNull(events.deletedAt)))
+      .limit(1)
+    if (!existing) return reply.code(404).send({ error: { message: 'Event not found' } })
+    const work = retryPipelineChecks(id, currentUser.id, note, { stage: 'event_detail', canSplit: canDeleteEvent(currentUser, existing) })
+    return sendRetryResult(reply, work, { userId: currentUser.id, type: 'event_retry_finished', targetPath: `/events/${id}` })
   })
 
   // "Delete series" (feedback #185): this date and every later one in its

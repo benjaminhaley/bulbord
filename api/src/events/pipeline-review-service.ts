@@ -18,7 +18,7 @@ import { ingestEvents } from './ingest.js'
 import { checkDistance, MANUAL_POST_DISTANCE_CHECK, type DistanceResult } from './distance-check.js'
 import { enrichEventImage } from './image-enrichment.js'
 import { fetchPageText } from './resourcing.js'
-import { recordRetryNote } from './retry-strategies.js'
+import { recordRetryNote, type RetryStage } from './retry-strategies.js'
 import { interpretReviewNote, splitEvent, type NoteFieldEdits } from './review-note-actions.js'
 import { timesFromChicagoWallClock } from '../timezone.js'
 import { snapshotEventForHistory } from './serialize.js'
@@ -478,10 +478,14 @@ const NOTE_FIELD_LABELS: Record<keyof NoteFieldEdits, string> = {
   sourceUrl: 'source link',
 }
 
+// Also behind an event detail page's "Retry with note" (feedback #186), for
+// any member: `stage` records where the note came from, and `canSplit` is
+// false for someone who couldn't delete the listing (a split removes it).
 export async function retryPipelineChecks(
   eventId: string,
   adminId: string,
   note?: string,
+  { stage = 'pipeline_review', canSplit = true }: { stage?: RetryStage; canSplit?: boolean } = {},
 ): Promise<PipelineReviewActionError | RetryResult> {
   const [existing] = await db
     .select({
@@ -528,7 +532,9 @@ export async function retryPipelineChecks(
   let noteWantsImage = false
   if (trimmedNote) {
     const decision = await interpretReviewNote(existing, trimmedNote, sourceText)
-    if (decision.action === 'split') {
+    if (decision.action === 'split' && !canSplit) {
+      noteOutcome = { action: 'cannot', handled: false, message: `This would split it into ${decision.occurrences.length} separate events, which removes this listing — only the person who posted it or an admin can do that.` }
+    } else if (decision.action === 'split') {
       const split = await splitEvent(eventId, decision.occurrences, adminId, trimmedNote)
       if ('error' in split) {
         noteOutcome = { action: 'cannot', handled: false, message: `Couldn't split it: ${split.error}` }
@@ -538,12 +544,13 @@ export async function retryPipelineChecks(
           handled: true,
           message: `Split into ${split.inserted} separate events${split.skipped ? ` (${split.skipped} already existed)` : ''}${split.filteredOut ? ` (${split.filteredOut} left out as not family-relevant)` : ''}; the combined listing was removed. ${decision.explanation}`.trim(),
         }
-        await recordRetryNote({ note: trimmedNote, stage: 'pipeline_review', eventId, contextTitle: existing.title, userId: adminId, outcome: noteOutcome.message })
+        await recordRetryNote({ note: trimmedNote, stage, eventId, contextTitle: existing.title, userId: adminId, outcome: noteOutcome.message })
         return { allPassing: true, imageRetried: false, imageChanged: false, noteOutcome }
       }
     } else if (decision.action === 'edit') {
       noteEdits = decision.fields
       const changed = [...new Set(Object.keys(noteEdits).map((k) => NOTE_FIELD_LABELS[k as keyof NoteFieldEdits]))]
+      noteWantsImage = decision.alsoImage === true
       noteOutcome = { action: 'edit', handled: true, message: `Updated the ${changed.join(', ')}. ${decision.explanation}`.trim() }
     } else if (decision.action === 'image') {
       noteWantsImage = true
@@ -645,13 +652,19 @@ export async function retryPipelineChecks(
     updatedAt: new Date(),
   }).where(eq(events.id, eventId))
 
+  if (noteOutcome?.action === 'edit' && noteWantsImage) {
+    noteOutcome = {
+      ...noteOutcome,
+      message: `${noteOutcome.message} ${imageChanged ? 'Found a new photo.' : `No better photo found${imageRelevance.reason ? `: ${imageRelevance.reason}` : '.'}`}`,
+    }
+  }
   if (noteOutcome?.action === 'image') {
     noteOutcome = imageChanged
       ? { action: 'image', handled: true, message: 'Found a different photo.' }
       : { action: 'image', handled: false, message: `No better photo found${imageRelevance.reason ? `: ${imageRelevance.reason}` : '.'}` }
   }
   if (trimmedNote) {
-    await recordRetryNote({ note: trimmedNote, stage: 'pipeline_review', eventId, contextTitle: existing.title, userId: adminId, outcome: noteOutcome?.message })
+    await recordRetryNote({ note: trimmedNote, stage, eventId, contextTitle: existing.title, userId: adminId, outcome: noteOutcome?.message })
   }
 
   // Only worth a history entry when a text field actually changed — the

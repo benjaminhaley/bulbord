@@ -794,3 +794,31 @@ export async function interpretRetryNote(input: {
   }
   return ((await response.json()) as { data: NoteDecision }).data
 }
+
+// "Retry with note" on an event's own page (feedback #186): the API acts on
+// the note directly (an edit, a new photo, or a split into separate events)
+// and answers with what it did — or, for long work, that the result will
+// arrive as a notification.
+export type EventRetryOutcome =
+  | { stillRunning: true }
+  | { stillRunning: false; action: 'split' | 'edit' | 'image' | 'cannot' | null; handled: boolean; message: string }
+
+export async function retryEventWithNote(id: string, note: string): Promise<EventRetryOutcome> {
+  // Plain fetch, not fetchRetryingOnDrop: this acts on the event, so
+  // re-sending after a drop would act on it twice.
+  const response = await fetch(`${API_URL}/events/${id}/retry-note`, {
+    method: 'POST',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ note }),
+  })
+  if (!response.ok) {
+    throw new Error(`Failed to retry: ${response.status}`)
+  }
+  const { data } = (await response.json()) as {
+    data: { still_running?: boolean; note_outcome?: { action: 'split' | 'edit' | 'image' | 'cannot'; handled: boolean; message: string } }
+  }
+  if (data.still_running) return { stillRunning: true }
+  return data.note_outcome
+    ? { stillRunning: false, ...data.note_outcome }
+    : { stillRunning: false, action: null, handled: false, message: 'Nothing was changed.' }
+}

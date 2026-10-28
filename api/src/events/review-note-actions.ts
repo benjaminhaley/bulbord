@@ -74,14 +74,17 @@ export interface NoteFieldEdits {
 
 export type NoteDecision =
   | { action: 'split'; explanation: string; occurrences: NoteOccurrence[] }
-  | { action: 'edit'; explanation: string; fields: NoteFieldEdits }
+  // alsoImage: the note also wants a new photo, searched after the edit so
+  // it uses the corrected title (feedback #186: "find the specific movie and
+  // update the image to be an image of that movie").
+  | { action: 'edit'; explanation: string; fields: NoteFieldEdits; alsoImage?: boolean }
   | { action: 'image'; explanation: string }
   | { action: 'cannot'; explanation: string }
 
 const SYSTEM_PROMPT = `You act on a reviewer's note about one event listing in a family/community events app for Nettelhorst School families (pre-K through 8th grade) in Chicago. The note is an instruction about what's wrong with the listing. Work out what it's asking for, do the research needed (web search, and fetch the actual pages — the listing's own source_url, the venue's site, the specific program's page), and respond with exactly one decision:
 
 - "split": the listing is really several distinct events lumped together (a film series, a month of programs, a season of classes, a generic umbrella listing) and the note wants them separate. Find every individual upcoming occurrence (on or after "today") with its real date and start time, and give each its own specific title (e.g. the film's name, "Music Box of Horrors: The Shining"), a one-sentence description of that specific occurrence, and, when one exists, the URL of that occurrence's own page as source_url. Only include occurrences you actually found published — never invent a date or time. ${AUDIENCE_RELEVANCE_RULES.trim()} If you can't find the individual occurrences, choose "cannot" instead and say where you looked and what was missing.
-- "edit": the note asks for corrected facts about this one event (title, description, venue name, address, date, time, all-day, source URL). Give only the fields that change, with values you verified.
+- "edit": the note asks for corrected facts about this one event (title, description, venue name, address, date, time, all-day, source URL). Give only the fields that change, with values you verified. If the note also wants a new photo (e.g. a poster of the specific film you identified), also set "image": true — a photo search runs after your edits, using the corrected title.
 - "image": the note is only about the photo. (A separate image search, which also reads the note, will handle it.)
 - "cannot": you can't do what the note asks — the information isn't published, the pages wouldn't load, or it asks for something outside these options. Say plainly why and what you tried.
 
@@ -90,6 +93,7 @@ const SYSTEM_PROMPT = `You act on a reviewer's note about one event listing in a
 Times are Chicago local wall-clock. Respond with ONLY a JSON object as your final message, no markdown fences:
 {"action": "split"|"edit"|"image"|"cannot", "explanation": string,
  "occurrences"?: [{"title": string, "description"?: string, "start_date": "YYYY-MM-DD", "start_time"?: "HH:MM", "all_day": boolean, "location_name"?: string, "address"?: string, "source_url"?: string}],
+ "image"?: boolean,
  "fields"?: {"title"?: string, "description"?: string, "location_name"?: string, "address"?: string, "start_date"?: "YYYY-MM-DD", "start_time"?: "HH:MM" | null, "all_day"?: boolean, "source_url"?: string}}`
 
 const str = (v: unknown): string | undefined => (typeof v === 'string' && v.trim() ? v.trim() : undefined)
@@ -153,8 +157,11 @@ export function parseNoteDecision(raw: unknown, today: string): NoteDecision {
       fields.startTime = null
       fields.allDay = true
     }
-    if (Object.keys(fields).length === 0) return { action: 'cannot', explanation: `No field changes came back. ${explanation}`.trim() }
-    return { action: 'edit', explanation, fields }
+    if (Object.keys(fields).length === 0) {
+      if (r.image === true) return { action: 'image', explanation }
+      return { action: 'cannot', explanation: `No field changes came back. ${explanation}`.trim() }
+    }
+    return { action: 'edit', explanation, fields, ...(r.image === true && { alsoImage: true }) }
   }
 
   if (r.action === 'image') return { action: 'image', explanation }

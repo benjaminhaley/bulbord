@@ -50,6 +50,16 @@ describe('parseNoteDecision', () => {
     expect(decision.action === 'split' && decision.occurrences.length).toBe(MAX_SPLIT_OCCURRENCES)
   })
 
+  it('keeps an edit\'s request for a new photo, and treats a photo-only "edit" as an image decision', () => {
+    expect(parseNoteDecision({ action: 'edit', explanation: 'It is Coco.', image: true, fields: { title: 'Movies in the Parks: Coco' } }, TODAY)).toEqual({
+      action: 'edit',
+      explanation: 'It is Coco.',
+      fields: { title: 'Movies in the Parks: Coco' },
+      alsoImage: true,
+    })
+    expect(parseNoteDecision({ action: 'edit', explanation: 'x', image: true, fields: {} }, TODAY)).toEqual({ action: 'image', explanation: 'x' })
+  })
+
   it('parses an edit, clearing the time when it becomes all-day', () => {
     expect(parseNoteDecision({ action: 'edit', explanation: 'e', fields: { title: 'Better', all_day: true, start_date: 'soon' } }, TODAY)).toEqual({
       action: 'edit',

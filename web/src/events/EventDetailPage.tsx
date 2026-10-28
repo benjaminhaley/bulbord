@@ -14,7 +14,7 @@ import {
 } from '@ionic/react'
 import { useAuth } from '../auth/AuthContext'
 import { useRequireLogin } from '../auth/LoginPrompt'
-import { checkmarkOutline, closeOutline, createOutline, ellipsisVerticalOutline, layersOutline, star, starOutline, timeOutline, trashOutline } from 'ionicons/icons'
+import { checkmarkOutline, closeOutline, createOutline, ellipsisVerticalOutline, layersOutline, refreshOutline, star, starOutline, timeOutline, trashOutline } from 'ionicons/icons'
 import { useEffect, useState } from 'react'
 import { useHistory, useParams } from 'react-router-dom'
 
@@ -28,6 +28,7 @@ import { localTiming } from '../timezone'
 import type { EventBodyDraft } from './EventBody'
 import { EventPostView } from './EventPostView'
 import { InterestedBadge } from './InterestedBadge'
+import { RetryNoteModal } from './RetryNoteModal'
 import { useEventImageUpload } from './useEventImageUpload'
 import { useEventInterest } from './useEventInterest'
 import { WeatherLine } from '../weather/Weather'
@@ -69,6 +70,7 @@ export function EventDetailPage() {
   // fetched for someone who can delete, and only offered when there's more
   // than this one date.
   const [series, setSeries] = useState<SeriesDate[]>([])
+  const [retryOpen, setRetryOpen] = useState(false)
 
   async function remove() {
     if (!event || !window.confirm('Delete this event?')) return
@@ -274,6 +276,19 @@ export function EventDetailPage() {
           </>
         )}
       </IonContent>
+      {event && (
+        <RetryNoteModal
+          eventId={event.id}
+          isOpen={retryOpen}
+          onClose={() => setRetryOpen(false)}
+          onChanged={() => {
+            fetchEvent(event.id)
+              .then(setEvent)
+              .catch(() => {})
+          }}
+          onSplit={() => history.push('/events')}
+        />
+      )}
       <IonToast isOpen={savedToast} onDidDismiss={() => setSavedToast(false)} message="Saved" duration={1500} />
       {/* Unconditionally mounted, buttons computed fresh each render — same
           fix as FeedbackPage.tsx's own documented feedback #142 gotcha: an
@@ -293,6 +308,13 @@ export function EventDetailPage() {
               text: 'Edit',
               icon: createOutline,
               handler: () => requireLogin('Sign in to edit this event') && startEditing(),
+            },
+            // Feedback #186: the Add Event screen's "Retry with note", for a
+            // posted event — any member, like Edit.
+            (event?.can_edit || !user) && {
+              text: 'Retry with note',
+              icon: refreshOutline,
+              handler: () => requireLogin('Sign in to update this event') && setRetryOpen(true),
             },
             event?.can_delete && { text: 'Delete', icon: trashOutline, role: 'destructive' as const, handler: remove },
             event?.can_delete && series.length > 1 && {
