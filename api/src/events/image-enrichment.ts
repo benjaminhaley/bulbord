@@ -209,9 +209,13 @@ async function findImageCandidate(
   // and uploading+returning on the first that passes every gate. Shared by
   // all three tiers below so the priority ordering between them is just the
   // order these calls happen in, not three copies of the same loop body.
-  async function tryCandidates(candidates: { url: string; isLogo: boolean }[]): Promise<ChosenCandidate | null> {
+  // `subjectSpecific`: the image is of this event's own subject (a film's
+  // official poster), so another event using it is a second screening of
+  // the same film, not a generic fallback leaking across (feedback #186:
+  // Gill Park's Hocus Pocus lost its poster to Gallagher Way's).
+  async function tryCandidates(candidates: { url: string; isLogo: boolean; subjectSpecific?: boolean }[]): Promise<ChosenCandidate | null> {
     for (const candidate of candidates) {
-      if (title && (await isAlreadyClaimedImage(candidate.url, eventId, title))) {
+      if (title && !candidate.subjectSpecific && (await isAlreadyClaimedImage(candidate.url, eventId, title))) {
         trace.push({ url: candidate.url, outcome: 'already_claimed' })
         continue
       }
@@ -256,7 +260,7 @@ async function findImageCandidate(
     if (filmTitle) {
       const posterUrl = await lookupMoviePoster(filmTitle)
       if (posterUrl) {
-        const fromPoster = await tryCandidates([{ url: posterUrl, isLogo: false }])
+        const fromPoster = await tryCandidates([{ url: posterUrl, isLogo: false, subjectSpecific: true }])
         if (fromPoster) return { chosen: fromPoster, trace }
       }
     }

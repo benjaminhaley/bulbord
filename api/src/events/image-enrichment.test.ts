@@ -137,6 +137,22 @@ describe('enrichEventImage', () => {
     expect(fetchExternalImageMock).toHaveBeenCalledWith('https://upload.wikimedia.org/found.jpg')
   })
 
+  it("uses a film's poster even when another screening of that film already has it (feedback #186)", async () => {
+    identifyFilmScreeningMock.mockResolvedValue('Hocus Pocus')
+    lookupMoviePosterMock.mockResolvedValue('https://upload.wikimedia.org/Hocuspocusposter.jpg')
+    // Every "already claimed by a differently-titled event" lookup says yes.
+    dbQueryResults.push([{ id: 'other-screening' }], [{ id: 'other-screening' }], [{ id: 'other-screening' }])
+    fetchExternalImageMock.mockResolvedValueOnce(Buffer.from('poster-bytes'))
+    isLowQualityImageMock.mockResolvedValueOnce(false)
+    const { enrichEventImage } = await import('./image-enrichment.js')
+
+    const result = await enrichEventImage('event-1', { sourceUrl: null, title: 'Movies in the Parks: Hocus Pocus' }, { recordHistory: false })
+
+    expect(result.result).toBe('sourced')
+    expect(fetchExternalImageMock).toHaveBeenCalledWith('https://upload.wikimedia.org/Hocuspocusposter.jpg')
+    expect(uploadImageMock).toHaveBeenCalledWith(Buffer.from('poster-bytes'), 'events')
+  })
+
   it('tries overrideImageUrl before any page-extracted candidate', async () => {
     extractPageImageCandidatesMock.mockResolvedValue([{ url: 'https://example.com/page-image.jpg', isLogo: false }])
     fetchExternalImageMock.mockResolvedValueOnce(Buffer.from('poster-bytes'))
