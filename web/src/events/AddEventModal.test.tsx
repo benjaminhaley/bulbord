@@ -59,6 +59,11 @@ afterEach(async () => {
   await waitFor(() => expect(screen.queryByText('Add Event')).not.toBeInTheDocument(), { timeout: 3000 })
 })
 
+// Whichever test runs first pays Ionic's cold modal/overlay setup (~2.3s
+// alone vs ~0.7s for the rest), which under the pre-push hook's parallel
+// api+web runs passed the 5s default (8.3s, 2026-10-28).
+vi.setConfig({ testTimeout: 15_000 })
+
 describe('AddEventModal — Describe It flow (feedback #133)', () => {
   beforeEach(() => {
     vi.clearAllMocks()
