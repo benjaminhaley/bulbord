@@ -14,7 +14,7 @@
 // no shared package between api/ and web/ (see CLAUDE.md's Newsletter "kept
 // in sync" note) and topic is free text with no server-side enum to begin
 // with.
-export const TOPIC_OPTIONS = ['Movie Night', 'Sports & Fitness', 'Arts & Crafts', 'Community & Social']
+export const TOPIC_OPTIONS = ['Movie Night', 'Sports & Fitness', 'Arts & Crafts', 'Community & Social', 'Volunteering']
 
 // Real, per-request bounds on every Claude call these pipelines make —
 // added 2026-08-23 after a real production request (photo-extraction's

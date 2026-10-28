@@ -10,6 +10,7 @@ import { checkDistance } from './distance-check.js'
 import { findLikelyDuplicateEvent } from './duplicate-detection.js'
 import { enrichEventImages } from './image-enrichment.js'
 import { simplifyTitle } from './title-normalization.js'
+import { classifyTopic } from './topic-classification.js'
 
 export interface CandidateEvent {
   title: string
@@ -135,6 +136,7 @@ export async function ingestEvents(candidates: CandidateEvent[], { sourceId, act
     // UPDATEs it to a real photo if one passes, or leaves the placeholder in
     // place if nothing does.
     const placeholder = await uploadPlaceholderImage(title, 'events')
+    const topic = await classifyTopic({ title, description: candidate.description, locationName: candidate.locationName })
 
     // Pipeline Review v2 (2026-09-06): always inserted as 'pending' at this
     // point, regardless of candidate.status — the checklist below (run once
@@ -156,6 +158,7 @@ export async function ingestEvents(candidates: CandidateEvent[], { sourceId, act
         imageUrl: placeholder.imageUrl,
         thumbnailUrl: placeholder.thumbnailUrl,
         status: 'pending',
+        topic,
         pipelineRelevanceReason: candidate.relevanceReason,
       })
       .returning({ id: events.id })

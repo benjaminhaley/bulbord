@@ -52,6 +52,7 @@ vi.mock('../db/client.js', () => {
 vi.mock('../uploads/placeholder.js', () => ({ uploadPlaceholderImage: uploadPlaceholderImageMock }))
 vi.mock('./title-normalization.js', () => ({ simplifyTitle: simplifyTitleMock }))
 vi.mock('./image-enrichment.js', () => ({ enrichEventImages: enrichEventImagesMock }))
+vi.mock('./topic-classification.js', () => ({ classifyTopic: vi.fn(async () => 'Volunteering') }))
 const checkDistanceMock = vi.fn(async () => ({ check: { pass: true, reason: '0.3 mi from Nettelhorst', attempts: 1 } }))
 vi.mock('./distance-check.js', () => ({ checkDistance: checkDistanceMock }))
 // checkDateQuality/checkTimeQuality/buildDuplicateCheck are pure and safe to
