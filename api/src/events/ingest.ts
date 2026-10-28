@@ -118,10 +118,10 @@ export async function ingestEvents(candidates: CandidateEvent[], { sourceId, act
     // duplicate-detection.ts's own header for why this is a substring check
     // on squashed titles, address-aware, rather than a word-overlap ratio.
     const sameDayEvents = await db
-      .select({ id: events.id, title: events.title, address: events.address })
+      .select({ id: events.id, title: events.title, address: events.address, startTime: events.startTime })
       .from(events)
       .where(and(eq(events.startDate, candidate.startDate), isNull(events.deletedAt)))
-    const likelyDuplicate = findLikelyDuplicateEvent({ title, address: candidate.address }, sameDayEvents)
+    const likelyDuplicate = findLikelyDuplicateEvent({ title, address: candidate.address, startTime: candidate.allDay ? null : candidate.startTime }, sameDayEvents)
     if (likelyDuplicate) {
       skipped++
       duplicateSkips.push({ candidate, title, reason: 'likely_duplicate', duplicateOfEventId: likelyDuplicate.id })

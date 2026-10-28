@@ -55,4 +55,37 @@ describe('findLikelyDuplicateEvent', () => {
     const dup = findLikelyDuplicateEvent({ title: 'Curriculum Night', address: null }, existing)
     expect(dup).toBeNull()
   })
+
+  describe('same start time + a shared distinctive word', () => {
+    it('matches differently-worded listings of one event', () => {
+      const existing = [{ id: 'a', title: 'Community Stewardship Day', address: null, startTime: '09:00:00' }]
+      expect(findLikelyDuplicateEvent({ title: 'Bird Sanctuary Stewardship Day', address: null, startTime: '09:00' }, existing)?.id).toBe('a')
+      const kidical = [{ id: 'k', title: 'Lakeview East Kidical Mass', address: '3252 N Broadway', startTime: '09:00:00' }]
+      expect(findLikelyDuplicateEvent({ title: 'Kidical Mass Halloween Ride', address: '3252 N Broadway, Chicago, IL 60657', startTime: '09:00' }, kidical)?.id).toBe('k')
+    })
+
+    it('treats differently-spelled versions of one address as the same place', () => {
+      const existing = [{ id: 'a', title: 'Community Stewardship Day', address: 'Addison St & DuSable Lake Shore Dr, Chicago, IL 60613', startTime: '09:00:00' }]
+      expect(findLikelyDuplicateEvent({ title: 'Bird Sanctuary Stewardship Day', address: 'Addison St. and DuSable Lake Shore Dr., Chicago, IL', startTime: '09:00' }, existing)?.id).toBe('a')
+      const elsewhere = [{ id: 'b', title: 'Stewardship Day', address: '4200 N. Oak Park Ave., Chicago, IL', startTime: '09:00:00' }]
+      expect(findLikelyDuplicateEvent({ title: 'Bird Sanctuary Stewardship Day', address: 'Addison St. and DuSable Lake Shore Dr., Chicago, IL', startTime: '09:00' }, elsewhere)).toBeNull()
+    })
+
+    it('never matches two films in one series on the series name', () => {
+      const existing = [{ id: 'a', title: 'Music Box of Horrors: Halloween (1978)', address: '3733 N Southport Ave', startTime: '19:00:00' }]
+      expect(findLikelyDuplicateEvent({ title: 'Music Box of Horrors: Deathbed Visions', address: '3733 N Southport Ave', startTime: '19:00' }, existing)).toBeNull()
+    })
+
+    it('needs the same start time, and a word that is not generic', () => {
+      const existing = [{ id: 'a', title: 'Community Stewardship Day', address: null, startTime: '13:00:00' }]
+      expect(findLikelyDuplicateEvent({ title: 'Bird Sanctuary Stewardship Day', address: null, startTime: '09:00' }, existing)).toBeNull()
+      const generic = [{ id: 'g', title: 'Halloween Family Party', address: null, startTime: '10:00:00' }]
+      expect(findLikelyDuplicateEvent({ title: 'Halloween Costume Parade', address: null, startTime: '10:00' }, generic)).toBeNull()
+    })
+
+    it('never matches all-day listings this way', () => {
+      const existing = [{ id: 'a', title: 'Community Stewardship Day', address: null, startTime: null }]
+      expect(findLikelyDuplicateEvent({ title: 'Bird Sanctuary Stewardship Day', address: null, startTime: null }, existing)).toBeNull()
+    })
+  })
 })
