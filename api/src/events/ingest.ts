@@ -8,6 +8,7 @@ import { uploadPlaceholderImage } from '../uploads/placeholder.js'
 import { checkDateQuality, checkTimeQuality, buildDuplicateCheck, runTextChecksWithRetry, scoreTextChecks, type PipelineChecks } from './candidate-checks.js'
 import { checkDistance } from './distance-check.js'
 import { findLikelyDuplicateEvent } from './duplicate-detection.js'
+import { blockedSeriesKeys, seriesTitleKey } from './series.js'
 import { enrichEventImages } from './image-enrichment.js'
 import { simplifyTitle } from './title-normalization.js'
 import { classifyTopic } from './topic-classification.js'
@@ -85,6 +86,10 @@ export async function ingestEvents(candidates: CandidateEvent[], { sourceId, act
     reason: 'exact_match' | 'likely_duplicate'
     duplicateOfEventId: string
   }[] = []
+  // A series an admin removed with "Delete series" (feedback #185) stays
+  // gone — skipped quietly, not sent to Pipeline Review every week.
+  const blockedKeys = await blockedSeriesKeys(sourceId)
+  const seriesBlockedSkips: string[] = []
 
   for (const candidate of candidates) {
     // Simplified once and reused for both the dedup lookup and the insert
@@ -95,6 +100,12 @@ export async function ingestEvents(candidates: CandidateEvent[], { sourceId, act
       description: candidate.description,
       locationName: candidate.locationName,
     })
+
+    if (blockedKeys.has(seriesTitleKey(title)) || blockedKeys.has(seriesTitleKey(candidate.title))) {
+      skipped++
+      seriesBlockedSkips.push(title)
+      continue
+    }
 
     const existing = await db
       .select({ id: events.id })
@@ -335,6 +346,7 @@ export async function ingestEvents(candidates: CandidateEvent[], { sourceId, act
       // candidate data now lives in rejected_event_candidates instead.
       filteredOut: filteredOut.map(({ candidate, reason }) => ({ title: candidate.title, reason })),
       duplicateSkips: duplicateSkips.map(({ title, reason }) => ({ title, reason })),
+      seriesBlockedSkips,
       imageTraces: traces,
     },
   })

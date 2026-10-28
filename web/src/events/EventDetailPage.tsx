@@ -14,7 +14,7 @@ import {
 } from '@ionic/react'
 import { useAuth } from '../auth/AuthContext'
 import { useRequireLogin } from '../auth/LoginPrompt'
-import { checkmarkOutline, closeOutline, createOutline, ellipsisVerticalOutline, star, starOutline, timeOutline, trashOutline } from 'ionicons/icons'
+import { checkmarkOutline, closeOutline, createOutline, ellipsisVerticalOutline, layersOutline, star, starOutline, timeOutline, trashOutline } from 'ionicons/icons'
 import { useEffect, useState } from 'react'
 import { useHistory, useParams } from 'react-router-dom'
 
@@ -22,7 +22,7 @@ import { track } from '../analytics/api'
 import { InlineImageEditor } from '../edit-history/InlineField'
 import { factLineStyle } from '../theme/layout'
 import { Avatar } from '../uploads/Avatar'
-import { deleteEvent, fetchEvent, updateEvent, type Event } from './api'
+import { deleteEvent, deleteEventSeries, fetchDeletableSeries, fetchEvent, updateEvent, type Event, type SeriesDate } from './api'
 import { CommentsSection } from './CommentsSection'
 import { localTiming } from '../timezone'
 import type { EventBodyDraft } from './EventBody'
@@ -30,6 +30,7 @@ import { EventPostView } from './EventPostView'
 import { InterestedBadge } from './InterestedBadge'
 import { useEventImageUpload } from './useEventImageUpload'
 import { useEventInterest } from './useEventInterest'
+import { WeatherLine } from '../weather/Weather'
 
 function draftFromEvent(event: Event): EventBodyDraft {
   // The edit inputs show (and are saved from) the member's own local time —
@@ -64,10 +65,25 @@ export function EventDetailPage() {
   const { pending: interestPending, setInterest, clearInterest } = useEventInterest(setEvent)
   const { image, fileInputRef, uploading, attach, setImage } = useEventImageUpload(null)
   const [menuOpen, setMenuOpen] = useState(false)
+  // This date and the later ones in its series (feedback #185) — only
+  // fetched for someone who can delete, and only offered when there's more
+  // than this one date.
+  const [series, setSeries] = useState<SeriesDate[]>([])
 
   async function remove() {
     if (!event || !window.confirm('Delete this event?')) return
     await deleteEvent(event.id)
+    history.push('/events')
+  }
+
+  async function removeSeries() {
+    if (!event) return
+    const dates = series.map((d) => {
+      const { date } = localTiming({ ...d, start_time: null })
+      return new Date(`${date}T12:00:00`).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })
+    })
+    if (!window.confirm(`Delete this date and every later one in the series (${series.length})?\n\n${dates.join('\n')}`)) return
+    await deleteEventSeries(event.id)
     history.push('/events')
   }
 
@@ -133,6 +149,14 @@ export function EventDetailPage() {
       .then(setEvent)
       .catch(() => setError(true))
   }, [id])
+
+  useEffect(() => {
+    setSeries([])
+    if (!event?.can_delete) return
+    fetchDeletableSeries(event.id)
+      .then(setSeries)
+      .catch(() => {})
+  }, [event?.id, event?.can_delete])
 
   // Feedback #96's "number of people viewing events."
   useEffect(() => {
@@ -234,6 +258,7 @@ export function EventDetailPage() {
               slots={{
                 afterWhen: !editing ? (
                   <>
+                    <WeatherLine timing={{ starts_at: event.starts_at, ends_at: event.ends_at, all_day: event.all_day, date: localTiming(event).date }} />
                     {event.submitted_by && <p style={{ ...factLineStyle, color: 'var(--ion-color-medium)' }}>Posted by {event.submitted_by.name}</p>}
                     {event.interested_count > 0 && (
                       <InterestedBadge eventId={event.id} count={event.interested_count} people={event.interested_people} emphasized />
@@ -270,6 +295,12 @@ export function EventDetailPage() {
               handler: () => requireLogin('Sign in to edit this event') && startEditing(),
             },
             event?.can_delete && { text: 'Delete', icon: trashOutline, role: 'destructive' as const, handler: remove },
+            event?.can_delete && series.length > 1 && {
+              text: `Delete series (${series.length} dates)`,
+              icon: layersOutline,
+              role: 'destructive' as const,
+              handler: removeSeries,
+            },
             { text: 'Cancel', icon: closeOutline, role: 'cancel' as const },
           ] as ({ text: string; icon: string; role?: 'destructive' | 'cancel'; handler?: () => void } | false | null)[]
         ).filter((b): b is { text: string; icon: string; role?: 'destructive' | 'cancel'; handler?: () => void } => !!b)}

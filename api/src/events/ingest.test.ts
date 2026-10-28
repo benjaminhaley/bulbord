@@ -55,6 +55,11 @@ vi.mock('./image-enrichment.js', () => ({ enrichEventImages: enrichEventImagesMo
 vi.mock('./topic-classification.js', () => ({ classifyTopic: vi.fn(async () => 'Volunteering') }))
 const checkDistanceMock = vi.fn(async () => ({ check: { pass: true, reason: '0.3 mi from Nettelhorst', attempts: 1 } }))
 vi.mock('./distance-check.js', () => ({ checkDistance: checkDistanceMock }))
+const blockedSeriesKeysMock = vi.fn(async () => new Set<string>())
+vi.mock('./series.js', async () => {
+  const actual = await vi.importActual<typeof import('./series.js')>('./series.js')
+  return { ...actual, blockedSeriesKeys: blockedSeriesKeysMock }
+})
 // checkDateQuality/checkTimeQuality/buildDuplicateCheck are pure and safe to
 // use for real; only runTextChecksWithRetry makes a real (Claude-backed)
 // call, so only that one is mocked.
@@ -110,6 +115,17 @@ describe('ingestEvents', () => {
 
     expect(insertCalls[0].imageUrl).toBeTypeOf('string')
     expect(insertCalls[0].thumbnailUrl).toBeTypeOf('string')
+  })
+
+  it('skips a candidate whose series an admin deleted (feedback #185), without sending it to Pipeline Review', async () => {
+    blockedSeriesKeysMock.mockResolvedValueOnce(new Set(['back to school clothing swap']))
+    const { ingestEvents } = await import('./ingest.js')
+
+    const result = await ingestEvents([{ ...CANDIDATE, title: 'Back to School Clothing Swap — Saturday Session (Nov 22)' }], { sourceId: 'source-1', actor: 'test' })
+
+    expect(result).toEqual({ inserted: 0, skipped: 1 })
+    expect(insertCalls).toHaveLength(1) // only the events_log row
+    expect(insertCalls[0]).toEqual(expect.objectContaining({ action: 'events_ingested' }))
   })
 
   it('skips placeholder generation entirely for a candidate that dedups against an existing row', async () => {

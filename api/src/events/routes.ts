@@ -32,6 +32,7 @@ import { getPipelineReviewCandidatesForRecheck, recheckReviewPath } from './pipe
 import { recheckNotificationMessage } from './recheck-message.js'
 import { createNotification } from '../notifications/service.js'
 import { chicagoWallClock, timesFromChicagoWallClock, timesFromFields } from '../timezone.js'
+import { blockSeries, findUpcomingSeries } from './series.js'
 import { expandRecurrence, isRecurrencePattern, RECURRENCE_PATTERNS, type RecurrencePattern } from './recurrence.js'
 import {
   interestedCountExpr,
@@ -668,6 +669,53 @@ export async function eventsRoutes(app: FastifyInstance) {
     ])
 
     return reply.code(204).send()
+  })
+
+  // "Delete series" (feedback #185): this date and every later one in its
+  // series (see series.ts for what counts as one). The GET lets the delete
+  // sheet list exactly what will go before anyone confirms.
+  async function loadDeletableSeries(id: string, currentUser: { id: string; roles: string[] }) {
+    const [existing] = await db
+      .select({ submittedByUserId: events.submittedByUserId, sourceId: events.sourceId, title: events.title })
+      .from(events)
+      .where(and(eq(events.id, id), isNull(events.deletedAt)))
+      .limit(1)
+    if (!existing) return { error: 404 as const }
+    if (!canDeleteEvent(currentUser, existing)) return { error: 403 as const }
+    // Every date must be deletable by this viewer, not just the one tapped.
+    const series = await findUpcomingSeries(id)
+    if (series.some((e) => !canDeleteEvent(currentUser, e))) return { error: 403 as const }
+    return { existing, series }
+  }
+
+  app.get('/events/:id/series', { preHandler: requireAuth }, async (request, reply) => {
+    const { id } = request.params as { id: string }
+    const result = await loadDeletableSeries(id, request.currentUser!)
+    if (result.error) return reply.code(result.error).send({ error: { message: result.error === 404 ? 'Event not found' : 'Forbidden' } })
+    return reply.send({
+      data: result.series.map((e) => ({ id: e.id, title: e.title, start_date: e.startDate, starts_at: e.startsAt.toISOString(), all_day: e.allDay })),
+    })
+  })
+
+  app.delete('/events/:id/series', { preHandler: requireAuth }, async (request, reply) => {
+    const { id } = request.params as { id: string }
+    const currentUser = request.currentUser!
+    const result = await loadDeletableSeries(id, currentUser)
+    if (result.error) return reply.code(result.error).send({ error: { message: result.error === 404 ? 'Event not found' : 'Forbidden' } })
+    const ids = result.series.map((e) => e.id)
+
+    await Promise.all([
+      db.update(events).set({ deletedAt: new Date(), updatedAt: new Date() }).where(inArray(events.id, ids)),
+      db.insert(eventsLog).values({
+        actor: currentUser.id,
+        action: 'event_series_deleted',
+        metadata: { eventId: id, deletedEventIds: ids, sourceId: result.existing.sourceId, title: result.existing.title },
+      }),
+      // A sourced series would otherwise come right back on the next run.
+      result.existing.sourceId ? blockSeries(result.existing.sourceId, result.existing.title, currentUser.id) : null,
+    ])
+
+    return reply.send({ data: { deleted_count: ids.length } })
   })
 
   app.put('/events/:id/interest', { preHandler: requireAuth }, async (request, reply) => {

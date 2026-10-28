@@ -13,6 +13,7 @@ import { factLineStyle, leadingButtonGap } from '../theme/layout'
 import { Avatar } from '../uploads/Avatar'
 import { deleteCamp, fetchCamp, updateCamp, type Camp } from './api'
 import { CampBody, type CampBodyDraft } from './CampBody'
+import { WeatherDays } from '../weather/Weather'
 import { CommentsSection } from './CommentsSection'
 import { useCampImageUpload } from './useCampImageUpload'
 import { useCampInterest } from './useCampInterest'
@@ -227,6 +228,7 @@ export function CampDetailPage() {
                 camp.interested_count > 0 && <InterestedBadge campId={camp.id} count={camp.interested_count} people={camp.interested_people} emphasized />
               }
               commentsSection={<CommentsSection campId={camp.id} source={camp.source} />}
+              weather={<WeatherDays startDate={camp.start_date} endDate={camp.end_date} />}
             />
             {saveError && <p style={{ ...factLineStyle, color: 'var(--ion-color-danger)' }}>{saveError}</p>}
             {!editing && (

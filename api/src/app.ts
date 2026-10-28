@@ -22,6 +22,7 @@ import { notificationsRoutes } from './notifications/routes.js'
 import { sportsClubCommentsRoutes } from './sports-clubs/comments.js'
 import { sportsClubsRoutes } from './sports-clubs/routes.js'
 import { uploadsRoutes } from './uploads/routes.js'
+import { weatherRoutes } from './weather/routes.js'
 
 export async function buildApp() {
   const app = Fastify({ logger: true })
@@ -53,6 +54,7 @@ export async function buildApp() {
   await app.register(sportsClubsRoutes)
   await app.register(sportsClubCommentsRoutes)
   await app.register(uploadsRoutes)
+  await app.register(weatherRoutes)
 
   // Labs: independent experiments, walled off from everything above (see
   // labs/README.md at the repo root). This line is their only link to the app.

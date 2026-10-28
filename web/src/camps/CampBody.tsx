@@ -238,6 +238,7 @@ export function CampBody({
   highlightFields,
   imageEditor,
   interestedBadge,
+  weather,
   commentsSection,
 }: {
   camp: CampBodyFields
@@ -250,6 +251,7 @@ export function CampBody({
   // editing/viewing a historical version, same as EventBody's own
   // afterWhen-slot equivalents.
   interestedBadge?: ReactNode
+  weather?: ReactNode
   commentsSection?: ReactNode
 }) {
   const isHighlighted = (key: string) => highlightFields?.has(key) ?? false
@@ -303,6 +305,7 @@ export function CampBody({
           }
         />
       )}
+      {!editing && weather}
       {!editing && camp.submitted_by && (
         <p style={{ ...factLineStyle, color: 'var(--ion-color-medium)' }}>Posted by {camp.submitted_by.name}</p>
       )}

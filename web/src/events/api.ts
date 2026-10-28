@@ -510,6 +510,35 @@ export async function deleteEvent(id: string): Promise<void> {
   }
 }
 
+// "Delete series" (feedback #185): this date and every later one in its
+// series, for the confirm prompt to list before anything is deleted.
+export interface SeriesDate {
+  id: string
+  title: string
+  start_date: string
+  starts_at: string
+  all_day: boolean
+}
+
+export async function fetchDeletableSeries(id: string): Promise<SeriesDate[]> {
+  const response = await fetch(`${API_URL}/events/${id}/series`, { headers: authHeaders() })
+  if (!response.ok) {
+    throw new Error(`Failed to fetch series: ${response.status}`)
+  }
+  const body = (await response.json()) as { data: SeriesDate[] }
+  return body.data
+}
+
+export async function deleteEventSeries(id: string): Promise<void> {
+  const response = await fetch(`${API_URL}/events/${id}/series`, {
+    method: 'DELETE',
+    headers: authHeaders(),
+  })
+  if (!response.ok) {
+    throw new Error(`Failed to delete series: ${response.status}`)
+  }
+}
+
 export async function fetchEvent(id: string): Promise<Event> {
   const response = await fetch(`${API_URL}/events/${id}`, { headers: authHeaders() })
   if (!response.ok) {

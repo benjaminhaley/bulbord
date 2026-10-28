@@ -255,6 +255,21 @@ export const pipelineRetryNotes = pgTable('pipeline_retry_notes', {
   ...timestamps,
 })
 
+// A sourced series someone deleted with "Delete series" (feedback #185) —
+// ingestEvents() skips any later candidate from the same source whose title
+// reduces to the same series key (events/series.ts), so the weekly sourcing
+// run doesn't put it straight back. Soft-delete a row to let it back in.
+export const eventSeriesBlocks = pgTable('event_series_blocks', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  sourceId: uuid('source_id')
+    .notNull()
+    .references(() => eventSources.id),
+  titleKey: text('title_key').notNull(),
+  exampleTitle: text('example_title').notNull(),
+  blockedByUserId: uuid('blocked_by_user_id').references(() => users.id),
+  ...timestamps,
+})
+
 export const users = pgTable('users', {
   id: uuid('id').primaryKey().defaultRandom(),
   name: text('name').notNull(),

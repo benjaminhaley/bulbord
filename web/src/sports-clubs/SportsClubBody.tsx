@@ -13,6 +13,8 @@ import {
   InlineTimeInput,
 } from '../edit-history/InlineField'
 import { factLineStyle, headingContentGap, sectionDividerStyle } from '../theme/layout'
+import { weatherText } from '../weather/forecast'
+import { useForecast } from '../weather/useForecast'
 import type { ScheduleType, SportsClubOccurrence, SportsClubOptionLine } from './api'
 import {
   CATEGORY_OPTIONS,
@@ -388,17 +390,22 @@ function OccurrenceList({ occurrences }: { occurrences: SportsClubOccurrence[] }
   const [showAll, setShowAll] = useState(false)
   const visible = showAll ? occurrences : occurrences.slice(0, OCCURRENCE_PREVIEW_LIMIT)
   const remaining = occurrences.length - visible.length
+  const forecast = useForecast()
   return (
     <>
       <hr style={sectionDividerStyle} />
       <h2>Upcoming dates</h2>
       <ul style={{ marginTop: 8, marginBottom: 4, paddingLeft: 20 }}>
-        {visible.map((occ) => (
-          <li key={occ.date} style={{ marginBottom: 4 }}>
-            {occurrenceLabel(occ)}
-            {occ.note && <span style={{ color: 'var(--ion-color-medium)' }}> — {occ.note}</span>}
-          </li>
-        ))}
+        {visible.map((occ) => {
+          const weather = weatherText(forecast, { starts_at: occ.starts_at, ends_at: occ.ends_at, all_day: occ.all_day, date: occ.date })
+          return (
+            <li key={occ.date} style={{ marginBottom: 4 }}>
+              {occurrenceLabel(occ)}
+              {weather && <span style={{ color: 'var(--ion-color-medium)' }}> · {weather}</span>}
+              {occ.note && <span style={{ color: 'var(--ion-color-medium)' }}> — {occ.note}</span>}
+            </li>
+          )
+        })}
       </ul>
       {remaining > 0 && (
         <IonButton fill="clear" size="small" onClick={() => setShowAll(true)}>
