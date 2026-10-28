@@ -72,7 +72,7 @@ export async function listNotifications(userId: string): Promise<NotificationLis
     })
     .from(notifications)
     .leftJoin(users, eq(users.id, notifications.actorUserId))
-    .where(eq(notifications.userId, userId))
+    .where(and(eq(notifications.userId, userId), isNull(notifications.deletedAt)))
     .orderBy(desc(notifications.createdAt))
     .limit(LIST_LIMIT)
 
@@ -83,7 +83,7 @@ export async function getUnseenNotificationCount(userId: string): Promise<number
   const rows = await db
     .select({ id: notifications.id })
     .from(notifications)
-    .where(and(eq(notifications.userId, userId), isNull(notifications.dismissedAt)))
+    .where(and(eq(notifications.userId, userId), isNull(notifications.dismissedAt), isNull(notifications.deletedAt)))
   return rows.length
 }
 
