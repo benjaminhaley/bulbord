@@ -30,8 +30,6 @@ import { recordRetryNote } from './retry-strategies.js'
 import { groupSourcesByDomain } from './source-domains.js'
 import { getPipelineReviewCandidatesForRecheck, recheckReviewPath, retryPipelineChecks } from './pipeline-review-service.js'
 import { sendRetryResult } from './retry-response.js'
-import { recheckNotificationMessage } from './recheck-message.js'
-import { createNotification } from '../notifications/service.js'
 import { chicagoWallClock, timesFromChicagoWallClock, timesFromFields } from '../timezone.js'
 import { blockSeries, findUpcomingSeries } from './series.js'
 import { expandRecurrence, isRecurrencePattern, RECURRENCE_PATTERNS, type RecurrencePattern } from './recurrence.js'
@@ -907,8 +905,9 @@ export async function eventsRoutes(app: FastifyInstance) {
   // Claude-driven "re-run event sourcing" tool.
   // Recheck one source on demand (feedback, 2026-09-27) — the same
   // extract/ingest/9-check path the weekly run uses, for just this source.
-  // Always notifies the admin who ran it (they may have left the page while
-  // it ran), linking to Pipeline Review filtered to exactly this recheck.
+  // No notification (2026-10-28, Ben: a batch of scripted rechecks sent one
+  // per source) — the page shows the result and a review link, and the
+  // output lands in the next weekly run's single digest anyway.
   app.post('/event-sources/:id/recheck', { preHandler: requireRole('admin') }, async (request, reply) => {
     const { id } = request.params as { id: string }
     const adminId = request.currentUser!.id
@@ -918,13 +917,6 @@ export async function eventsRoutes(app: FastifyInstance) {
     const { kept, rejected } = await getPipelineReviewCandidatesForRecheck(id, result.startedAt)
     const heldBack = kept.filter((k) => k.status === 'pending').length
     const reviewPath = recheckReviewPath(id, result.startedAt)
-    await createNotification({
-      userId: adminId,
-      type: 'pipeline_review_ready',
-      actorUserId: null,
-      message: recheckNotificationMessage(result.name, { ...result, heldBack, rejected: rejected.length }),
-      targetPath: reviewPath,
-    })
 
     return reply.send({
       data: {
