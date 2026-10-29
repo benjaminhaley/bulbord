@@ -83,7 +83,8 @@
   .kinds { display: grid; gap: 6px; font-size: 0.9375rem; color: var(--ink); }
   .kinds label { display: flex; gap: 8px; align-items: flex-start; font-size: 0.9375rem; color: var(--ink); }
   .kinds small { display: block; color: var(--muted); font-size: 0.8125rem; }
-  .days { display: flex; align-items: center; gap: 8px; font-size: 0.9375rem; color: var(--ink); }
+  [hidden] { display: none !important; }
+  .days { display: grid; gap: 4px; font-size: 0.75rem; color: var(--muted); }
   /* A log card: one row per project, stalest first. */
   .log-head { padding: 14px 96px 6px 16px; }
   .log-sub { font-size: 0.8125rem; color: var(--muted); margin-top: 2px; }
@@ -268,7 +269,7 @@
     var input = el('input', { type: 'text', maxlength: '80', placeholder: 'e.g. Dinner with the Smiths', value: item ? item.name : '', 'aria-label': 'Tracker name' })
     var kind = item ? item.kind : 'next'
     var daysInput = el('input', { type: 'number', min: '1', max: '3650', inputmode: 'numeric', value: String(item && item.stale_days || 14), 'aria-label': 'Days' })
-    var daysRow = el('div', { class: 'days' }, ['Red after', daysInput, 'days without progress'])
+    var daysRow = el('label', { class: 'days' }, ['Days without progress before a project turns red', daysInput])
     daysRow.hidden = kind !== 'log'
     function kindOption(value, title, detail) {
       return el('label', {}, [
@@ -340,7 +341,6 @@
     var card = el('div', { class: 'card' + (due ? ' due' : '') })
     card.appendChild(el('div', { class: 'log-head' }, [
       el('div', { class: 'name', text: item.name }),
-      el('div', { class: 'log-sub', text: 'Red after ' + item.stale_days + ' day' + (item.stale_days === 1 ? '' : 's') + ' without progress' }),
     ]))
     card.appendChild(cardActions(item))
     // Stalest first, so what needs attention is on top.
@@ -433,13 +433,14 @@
     ]))
     var body = el('div', { class: 'modal-body' })
     body.appendChild(renderAddForm(item, !!log))
-    body.appendChild(renderEntries(item))
+    body.appendChild(renderEntries(item, !!log))
     if (log) body.appendChild(renderProjectFoot(item))
     modal.appendChild(body)
   }
 
   // One form for everything: pick a date (today by default), an optional note,
-  // Add. The date alone decides whether it's coming up or past. A project's
+  // Add. The date alone decides whether it's the next one or history. There's
+  // only ever one next one: a new upcoming date replaces it. A project's
   // progress can only be today or earlier.
   function renderAddForm(item, isProject) {
     var dateInput = el('input', { type: 'date', value: todayIso(), max: isProject ? todayIso() : null, 'aria-label': 'Date' })
@@ -451,23 +452,25 @@
       if (!dateInput.value) { errorEl.textContent = 'Pick a date'; return }
       if (isProject && dateInput.value > todayIso()) { errorEl.textContent = 'Pick today or an earlier day'; return }
       save.disabled = true
-      api('POST', '/items/' + item.id + '/entries', { date: dateInput.value, note: noteInput.value }).then(load)
+      var body = { date: dateInput.value, note: noteInput.value }
+      var next = isProject ? null : nextEntry(item)
+      var req = next && body.date >= todayIso() ? api('PATCH', '/entries/' + next.id, body) : api('POST', '/items/' + item.id + '/entries', body)
+      req.then(load)
         .catch(function (err) { errorEl.textContent = err.message; save.disabled = false })
     } }, [dateInput, noteInput, errorEl, el('div', { class: 'row' }, [save])])
   }
 
-  // Coming up (soonest first), then past (most recent first). Deleting is the
-  // only edit: to move a date, delete it and add the new one.
-  function renderEntries(item) {
+  // The next one (if any), then the history: past entries only, newest
+  // first. Deleting is the only edit.
+  function renderEntries(item, isProject) {
     var today = todayIso()
-    var upcoming = item.entries.filter(function (e) { return e.date >= today }).reverse()
-    var past = item.entries.filter(function (e) { return e.date < today })
+    var next = isProject ? null : nextEntry(item)
+    var past = item.entries.filter(function (e) { return isProject ? e.date <= today : e.date < today })
     var wrap = el('div', {})
-    if (!item.entries.length) wrap.appendChild(el('p', { class: 'empty', text: 'Nothing yet.' }))
-    if (upcoming.length) wrap.appendChild(el('h3', { text: 'Coming up' }))
-    if (upcoming.length) wrap.appendChild(entryList(upcoming))
-    if (past.length) wrap.appendChild(el('h3', { text: 'Past' }))
-    if (past.length) wrap.appendChild(entryList(past))
+    if (next) wrap.appendChild(el('h3', { text: 'Next one' }))
+    if (next) wrap.appendChild(entryList([next]))
+    wrap.appendChild(el('h3', { text: 'History' }))
+    wrap.appendChild(past.length ? entryList(past) : el('p', { class: 'empty', text: 'Nothing logged yet.' }))
     return wrap
   }
 

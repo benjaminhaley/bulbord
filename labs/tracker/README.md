@@ -24,15 +24,16 @@ long since the last progress. Built 2026-10-26; past entries and logs added
   the soonest entry dated today or later. With none, it's red ("Nothing
   planned — tap to add one") and, if there's a past entry, "Last one <date> ·
   N ago". Tapping the card opens a modal with one form (date, today by
-  default; optional note; Add; feedback #187) and the entries split into
-  "Coming up" (soonest first) and "Past" (newest first), each deletable. The
-  date alone decides which; there's no separate "plan" vs. "log" form
-  (2026-10-29, simplified after the first two-form version read as
-  confusing). To move a date, delete it and add the new one.
+  default; optional note; Add; feedback #187), then "Next one" (the single
+  upcoming entry) and "History" (past entries only, newest first), each
+  deletable. The date alone decides which; adding an upcoming date replaces
+  the next one rather than stacking a second (2026-10-29, after the first
+  two-form version read as confusing and a re-save left a duplicate).
 - **Logs** (feedback #188, e.g. "Current projects"): a card listing projects,
   each with how long since its last entry ("today", "9 days ago", "never"),
   stalest first. A project goes red once that's more than the log's
-  `stale_days` (set per log, default 14), and the whole card is red if any
+  `stale_days` (asked for in the add form only when Log is picked, default
+  14; changeable with the pencil, not shown on the card), and the whole card is red if any
   project is. "+ Add project" adds one; tapping a project opens a modal: log
   the same one form (date ≤ today), its past entries, rename/delete the
   project.
