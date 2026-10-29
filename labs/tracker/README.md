@@ -23,16 +23,19 @@ long since the last progress. Built 2026-10-26; past entries and logs added
 - **Next one** items: an item's entries can be past or future. The card shows
   the soonest entry dated today or later. With none, it's red ("Nothing
   planned — tap to add one") and, if there's a past entry, "Last one <date> ·
-  N ago". Tapping the card opens a modal: the next date + note (Save edits the
-  planned entry in place; Clear date deletes it), "Log a past one" (date ≤
-  today + note, feedback #187), and the full history, newest date first, each
-  deletable.
+  N ago". Tapping the card opens a modal with one form (date, today by
+  default; optional note; Add; feedback #187) and the entries split into
+  "Coming up" (soonest first) and "Past" (newest first), each deletable. The
+  date alone decides which; there's no separate "plan" vs. "log" form
+  (2026-10-29, simplified after the first two-form version read as
+  confusing). To move a date, delete it and add the new one.
 - **Logs** (feedback #188, e.g. "Current projects"): a card listing projects,
   each with how long since its last entry ("today", "9 days ago", "never"),
   stalest first. A project goes red once that's more than the log's
   `stale_days` (set per log, default 14), and the whole card is red if any
   project is. "+ Add project" adds one; tapping a project opens a modal: log
-  progress (date defaults to today), history, rename/delete the project.
+  the same one form (date ≤ today), its past entries, rename/delete the
+  project.
 - The modal pushes a history state, so the phone's back gesture closes it.
 - Order: upcoming next-ones first (soonest at the top), then logs that are on
   track, then everything red, alphabetically.

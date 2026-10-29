@@ -64,6 +64,9 @@
     font: inherit; font-size: 1rem; padding: 10px 12px; border: 1px solid var(--line);
     border-radius: 8px; background: #fff; color: var(--ink); width: 100%;
   }
+  input[type=date] { display: block; min-width: 0; max-width: 100%; -webkit-appearance: none; appearance: none; text-align: left; min-height: 44px; }
+  input[type=date]::-webkit-date-and-time-value { text-align: left; }
+  .modal-body form.add { margin-top: 12px; }
   .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
   .btn { font: inherit; font-size: 0.875rem; font-weight: 500; border-radius: 20px; padding: 8px 16px; border: 0; cursor: pointer; }
   .btn.primary { background: var(--accent); color: #fff; }
@@ -102,7 +105,7 @@
   .modal-body h3 { font-size: 0.8125rem; font-weight: 500; letter-spacing: 0.02em; text-transform: uppercase; color: var(--muted); margin: 18px 0 8px; }
   .modal-body form { display: grid; gap: 10px; }
   .history { list-style: none; margin: 0; padding: 0; }
-  .history li { display: flex; gap: 8px; align-items: flex-start; padding: 10px 0; border-top: 1px solid var(--line); }
+  .history li { display: flex; gap: 8px; align-items: center; padding: 10px 0; border-top: 1px solid var(--line); }
   .history li:first-child { border-top: 0; }
   .history .body { flex: 1; min-width: 0; }
   .history .date { font-size: 0.9375rem; font-weight: 500; }
@@ -429,75 +432,47 @@
       iconButton('close', 'Close', closeModal),
     ]))
     var body = el('div', { class: 'modal-body' })
-    if (log) {
-      body.appendChild(el('h3', { text: 'Log progress' }))
-      body.appendChild(renderLogForm(item, 'Date', 'What did you do? (optional)', true))
-    } else {
-      body.appendChild(el('h3', { text: 'Next one' }))
-      body.appendChild(renderNextForm(item))
-      body.appendChild(el('h3', { text: 'Log a past one' }))
-      body.appendChild(renderLogForm(item, 'Date', 'e.g. Hung out with Jeb (optional)', false))
-    }
-    body.appendChild(el('h3', { text: 'History' }))
-    body.appendChild(renderHistory(item))
+    body.appendChild(renderAddForm(item, !!log))
+    body.appendChild(renderEntries(item))
     if (log) body.appendChild(renderProjectFoot(item))
     modal.appendChild(body)
   }
 
-  function renderNextForm(item) {
-    var next = nextEntry(item)
-    var dateInput = el('input', { type: 'date', value: next ? next.date : '', min: todayIso(), 'aria-label': 'Next date' })
-    var noteInput = el('input', { type: 'text', maxlength: '200', placeholder: 'What is it? (optional)', value: next ? next.note : '', 'aria-label': 'Note' })
+  // One form for everything: pick a date (today by default), an optional note,
+  // Add. The date alone decides whether it's coming up or past. A project's
+  // progress can only be today or earlier.
+  function renderAddForm(item, isProject) {
+    var dateInput = el('input', { type: 'date', value: todayIso(), max: isProject ? todayIso() : null, 'aria-label': 'Date' })
+    var noteInput = el('input', { type: 'text', maxlength: '200', placeholder: isProject ? 'What did you do? (optional)' : 'Note (optional)', 'aria-label': 'Note' })
     var errorEl = el('div', { class: 'error' })
-    var save = el('button', { class: 'btn primary', type: 'submit', text: 'Save' })
-    var clear = next ? el('button', { class: 'btn danger', type: 'button', text: 'Clear date', onclick: function () {
-      busy(true)
-      api('DELETE', '/entries/' + next.id).then(load).catch(fail)
-    } }) : null
-    function busy(on) { save.disabled = on; if (clear) clear.disabled = on }
-    function fail(err) { errorEl.textContent = err.message; busy(false) }
-    return el('form', { onsubmit: function (e) {
+    var save = el('button', { class: 'btn primary', type: 'submit', text: 'Add' })
+    return el('form', { class: 'add', onsubmit: function (e) {
       e.preventDefault()
       if (!dateInput.value) { errorEl.textContent = 'Pick a date'; return }
-      if (dateInput.value < todayIso()) { errorEl.textContent = 'That date has passed — log it below instead'; return }
-      busy(true)
-      var body = { date: dateInput.value, note: noteInput.value }
-      // Changing the planned date edits that entry rather than adding another.
-      var req = next ? api('PATCH', '/entries/' + next.id, body) : api('POST', '/items/' + item.id + '/entries', body)
-      req.then(function () { closeModal(); return load() }).catch(fail)
-    } }, [
-      el('label', {}, ['Date', dateInput]),
-      el('label', {}, ['Note', noteInput]),
-      errorEl,
-      el('div', { class: 'row' }, [save, clear]),
-    ])
-  }
-
-  // A past entry (today allowed). Stays open afterwards so it shows up in the
-  // history right below.
-  function renderLogForm(item, dateLabel, placeholder, defaultToday) {
-    var dateInput = el('input', { type: 'date', value: defaultToday ? todayIso() : '', max: todayIso(), 'aria-label': dateLabel })
-    var noteInput = el('input', { type: 'text', maxlength: '200', placeholder: placeholder, 'aria-label': 'Note' })
-    var errorEl = el('div', { class: 'error' })
-    var save = el('button', { class: 'btn primary', type: 'submit', text: 'Log it' })
-    return el('form', { onsubmit: function (e) {
-      e.preventDefault()
-      if (!dateInput.value) { errorEl.textContent = 'Pick a date'; return }
-      if (dateInput.value > todayIso()) { errorEl.textContent = 'That’s in the future — set it as the next one instead'; return }
+      if (isProject && dateInput.value > todayIso()) { errorEl.textContent = 'Pick today or an earlier day'; return }
       save.disabled = true
       api('POST', '/items/' + item.id + '/entries', { date: dateInput.value, note: noteInput.value }).then(load)
         .catch(function (err) { errorEl.textContent = err.message; save.disabled = false })
-    } }, [
-      el('label', {}, [dateLabel, dateInput]),
-      el('label', {}, ['Note', noteInput]),
-      errorEl,
-      el('div', { class: 'row' }, [save]),
-    ])
+    } }, [dateInput, noteInput, errorEl, el('div', { class: 'row' }, [save])])
   }
 
-  function renderHistory(item) {
-    if (!item.entries.length) return el('p', { class: 'empty', text: 'Nothing logged yet.' })
-    return el('ul', { class: 'history' }, item.entries.map(function (entry) {
+  // Coming up (soonest first), then past (most recent first). Deleting is the
+  // only edit: to move a date, delete it and add the new one.
+  function renderEntries(item) {
+    var today = todayIso()
+    var upcoming = item.entries.filter(function (e) { return e.date >= today }).reverse()
+    var past = item.entries.filter(function (e) { return e.date < today })
+    var wrap = el('div', {})
+    if (!item.entries.length) wrap.appendChild(el('p', { class: 'empty', text: 'Nothing yet.' }))
+    if (upcoming.length) wrap.appendChild(el('h3', { text: 'Coming up' }))
+    if (upcoming.length) wrap.appendChild(entryList(upcoming))
+    if (past.length) wrap.appendChild(el('h3', { text: 'Past' }))
+    if (past.length) wrap.appendChild(entryList(past))
+    return wrap
+  }
+
+  function entryList(entries) {
+    return el('ul', { class: 'history' }, entries.map(function (entry) {
       return el('li', {}, [
         el('div', { class: 'body' }, [
           el('div', { class: 'date' }, [fullDateLabel(entry.date), el('span', { class: daysFromToday(entry.date) > 0 ? 'future' : '', text: relLabel(entry.date) })]),
