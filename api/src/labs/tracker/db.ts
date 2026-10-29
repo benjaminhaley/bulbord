@@ -16,6 +16,12 @@ export const trackerItems = labs.table('tracker_items', {
   id: uuid('id').primaryKey().defaultRandom(),
   userId: uuid('user_id').notNull(),
   name: text('name').notNull(),
+  // 'next' (when's the next one?), 'log' (a group of projects: how long since
+  // the last progress?), or 'project' (one row inside a log, via parent_id).
+  kind: text('kind').notNull().default('next'),
+  // A log turns red once a project's last entry is more than this many days old.
+  staleDays: integer('stale_days'),
+  parentId: uuid('parent_id'),
   position: integer('position').notNull().default(0),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
@@ -44,6 +50,9 @@ const DDL = `
     deleted_at timestamptz
   );
   CREATE INDEX IF NOT EXISTS tracker_items_user_idx ON lab_tracker.tracker_items (user_id);
+  ALTER TABLE lab_tracker.tracker_items ADD COLUMN IF NOT EXISTS kind text NOT NULL DEFAULT 'next';
+  ALTER TABLE lab_tracker.tracker_items ADD COLUMN IF NOT EXISTS stale_days integer;
+  ALTER TABLE lab_tracker.tracker_items ADD COLUMN IF NOT EXISTS parent_id uuid REFERENCES lab_tracker.tracker_items (id);
   CREATE TABLE IF NOT EXISTS lab_tracker.tracker_entries (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     item_id uuid NOT NULL REFERENCES lab_tracker.tracker_items (id),

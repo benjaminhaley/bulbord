@@ -59,7 +59,6 @@
   .rel { font-size: 0.875rem; color: var(--green); font-weight: 400; margin-left: 6px; }
   .note { font-size: 0.9375rem; color: var(--ink); margin-top: 2px; white-space: pre-wrap; overflow-wrap: anywhere; }
   .hint { font-size: 0.875rem; color: var(--red); margin-top: 2px; }
-  form.editor { padding: 0 16px 16px; display: grid; gap: 10px; }
   label { font-size: 0.75rem; color: var(--muted); display: grid; gap: 4px; }
   input[type=date], input[type=text] {
     font: inherit; font-size: 1rem; padding: 10px 12px; border: 1px solid var(--line);
@@ -76,6 +75,42 @@
   .msg { text-align: center; color: var(--muted); padding: 40px 16px; }
   .msg a { color: var(--accent); }
   .error { color: var(--red); font-size: 0.875rem; }
+  .last { font-size: 0.8125rem; color: var(--muted); margin-top: 4px; }
+  input[type=number] { font: inherit; font-size: 1rem; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: #fff; color: var(--ink); width: 6em; }
+  .kinds { display: grid; gap: 6px; font-size: 0.9375rem; color: var(--ink); }
+  .kinds label { display: flex; gap: 8px; align-items: flex-start; font-size: 0.9375rem; color: var(--ink); }
+  .kinds small { display: block; color: var(--muted); font-size: 0.8125rem; }
+  .days { display: flex; align-items: center; gap: 8px; font-size: 0.9375rem; color: var(--ink); }
+  /* A log card: one row per project, stalest first. */
+  .log-head { padding: 14px 96px 6px 16px; }
+  .log-sub { font-size: 0.8125rem; color: var(--muted); margin-top: 2px; }
+  .card.due .log-sub { color: var(--red); }
+  .projects { list-style: none; margin: 0; padding: 0 8px 8px; }
+  .project { display: flex; width: 100%; justify-content: space-between; gap: 12px; align-items: baseline; background: none; border: 0; border-radius: 8px; padding: 10px 8px; font: inherit; font-size: 1rem; color: var(--ink); text-align: left; cursor: pointer; }
+  .project:hover { background: rgba(0,0,0,0.04); }
+  .project .age { font-size: 0.875rem; color: var(--green); white-space: nowrap; }
+  .project.stale .age { color: var(--red); font-weight: 500; }
+  .add-project { margin: 0 0 8px 8px; }
+  /* Item modal */
+  dialog { border: 0; border-radius: 16px; padding: 0; width: min(440px, calc(100vw - 24px)); max-height: calc(100vh - 48px); max-height: calc(100dvh - 48px); overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; box-shadow: 0 8px 32px rgba(0,0,0,0.25); color: var(--ink); background: var(--card); }
+  dialog::backdrop { background: rgba(0,0,0,0.4); }
+  .modal-head { position: sticky; top: 0; background: var(--card); display: flex; align-items: flex-start; gap: 8px; padding: 16px 12px 8px 16px; border-bottom: 1px solid var(--line); z-index: 1; }
+  .modal-head h2:focus { outline: none; }
+  .modal-head h2 { margin: 0; font-size: 1.125rem; font-weight: 500; flex: 1; overflow-wrap: anywhere; }
+  .modal-head .log-sub { font-weight: 400; }
+  .modal-body { padding: 8px 16px 20px; }
+  .modal-body h3 { font-size: 0.8125rem; font-weight: 500; letter-spacing: 0.02em; text-transform: uppercase; color: var(--muted); margin: 18px 0 8px; }
+  .modal-body form { display: grid; gap: 10px; }
+  .history { list-style: none; margin: 0; padding: 0; }
+  .history li { display: flex; gap: 8px; align-items: flex-start; padding: 10px 0; border-top: 1px solid var(--line); }
+  .history li:first-child { border-top: 0; }
+  .history .body { flex: 1; min-width: 0; }
+  .history .date { font-size: 0.9375rem; font-weight: 500; }
+  .history .date span { font-weight: 400; color: var(--muted); font-size: 0.8125rem; margin-left: 6px; }
+  .history .date span.future { color: var(--green); }
+  .history .icon-btn { margin: -4px 0; }
+  .empty { color: var(--muted); font-size: 0.875rem; margin: 0; }
+  .modal-foot { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 20px; padding-top: 12px; border-top: 1px solid var(--line); }
 </style>
 </head>
 <body>
@@ -85,9 +120,10 @@
   <button class="icon-btn" id="add-btn" type="button" aria-label="Add a tracker" hidden><svg viewBox="0 0 24 24"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg></button>
 </header>
 <main>
-  <p class="intro">When's the next one? Anything without an upcoming date shows red.</p>
+  <p class="intro">When's the next one, and how long since the last? Anything overdue shows red.</p>
   <div id="list"><p class="msg">Loading…</p></div>
 </main>
+<dialog id="modal" aria-labelledby="modal-title"></dialog>
 <script>
 (function () {
   var API = location.hostname === 'localhost' || location.hostname === '127.0.0.1'
@@ -99,14 +135,17 @@
 
   var listEl = document.getElementById('list')
   var addBtn = document.getElementById('add-btn')
+  var modal = document.getElementById('modal')
   var items = []
-  var openId = null // card whose date editor is open
-  var renamingId = null // card whose name is being edited
+  var renamingId = null // card whose name/settings are being edited
   var adding = false
+  var openKey = null // the modal's subject: an item id, or 'project:<id>'
+  var modalRenaming = false
 
   var ICONS = {
     edit: 'M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z',
     trash: 'M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z',
+    close: 'M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z',
   }
   function iconButton(icon, label, onclick) {
     var b = el('button', { class: 'icon-btn', type: 'button', 'aria-label': label, title: label, onclick: onclick })
@@ -130,10 +169,34 @@
   function pad(n) { return (n < 10 ? '0' : '') + n }
   function todayIso() { var d = new Date(); return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) }
   function parseIso(s) { var p = s.split('-'); return new Date(+p[0], +p[1] - 1, +p[2]) }
+  // Whole days from today to iso: positive = future, negative = past.
+  function daysFromToday(iso) { return Math.round((parseIso(iso) - parseIso(todayIso())) / 86400000) }
 
-  // An item is "upcoming" only if its most recently added entry is today or
-  // later. Past, or never entered, shows blank + red.
-  function upcoming(item) { return item.latest && item.latest.date >= todayIso() ? item.latest : null }
+  // Entries come from the API newest date first. Everything below is derived
+  // from them in the viewer's own time zone.
+  // The next one is the soonest entry dated today or later.
+  function nextEntry(item) {
+    var today = todayIso(), next = null
+    item.entries.forEach(function (e) { if (e.date >= today && (!next || e.date < next.date)) next = e })
+    return next
+  }
+  // The last one is the most recent entry dated before today (for a project:
+  // up to and including today).
+  function lastEntry(entries, includeToday) {
+    var today = todayIso()
+    for (var i = 0; i < entries.length; i++) if (entries[i].date < today || (includeToday && entries[i].date === today)) return entries[i]
+    return null
+  }
+  // Days since a project's last progress; Infinity if never.
+  function projectAge(project) {
+    var last = lastEntry(project.entries, true)
+    return last ? -daysFromToday(last.date) : Infinity
+  }
+  function isStale(project, log) { return projectAge(project) > log.stale_days }
+  function isDue(item) {
+    if (item.kind === 'log') return item.projects.some(function (p) { return isStale(p, item) })
+    return !nextEntry(item)
+  }
 
   function whenLabel(iso) {
     var d = parseIso(iso)
@@ -142,47 +205,78 @@
     if (d.getFullYear() !== new Date().getFullYear()) return d.toLocaleDateString(undefined, { month: 'short', year: 'numeric' })
     return d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })
   }
+  // History shows the full date, year included when it isn't this one.
+  function fullDateLabel(iso) {
+    var d = parseIso(iso)
+    var opts = { weekday: 'short', month: 'short', day: 'numeric' }
+    if (d.getFullYear() !== new Date().getFullYear()) opts.year = 'numeric'
+    return d.toLocaleDateString(undefined, opts)
+  }
   function relLabel(iso) {
-    var days = Math.round((parseIso(iso) - parseIso(todayIso())) / 86400000)
+    var days = daysFromToday(iso)
     if (days === 0) return 'today'
     if (days === 1) return 'tomorrow'
-    if (days < 14) return 'in ' + days + ' days'
-    if (days < 60) return 'in ' + Math.round(days / 7) + ' weeks'
-    return 'in ' + Math.round(days / 30) + ' months'
+    if (days === -1) return 'yesterday'
+    var n = Math.abs(days), span
+    if (n < 14) span = n + ' days'
+    else if (n < 60) span = Math.round(n / 7) + ' weeks'
+    else if (n < 730) span = Math.round(n / 30) + ' months'
+    else span = Math.round(n / 365) + ' years'
+    return days > 0 ? 'in ' + span : span + ' ago'
   }
 
   function el(tag, attrs, children) {
     var node = document.createElement(tag)
     for (var k in attrs || {}) {
       if (k === 'text') node.textContent = attrs[k]
+      else if (k === 'value') node.value = attrs[k]
+      else if (k === 'checked') node.checked = !!attrs[k]
       else if (k.slice(0, 2) === 'on') node.addEventListener(k.slice(2), attrs[k])
       else if (attrs[k] !== false && attrs[k] != null) node.setAttribute(k, attrs[k] === true ? '' : attrs[k])
     }
-    ;(children || []).forEach(function (c) { if (c) node.appendChild(c) })
+    ;(children || []).forEach(function (c) { if (c) node.appendChild(typeof c === 'string' ? document.createTextNode(c) : c) })
     return node
   }
 
   function render() {
     listEl.innerHTML = ''
-    if (adding) listEl.appendChild(renderNameForm(null))
+    if (adding) listEl.appendChild(renderItemForm(null))
     if (items.length === 0 && !adding) listEl.appendChild(el('p', { class: 'msg', text: 'Nothing tracked yet — tap + to add one.' }))
-    sortedItems().forEach(function (item) { listEl.appendChild(renderCard(item)) })
+    sortedItems().forEach(function (item) { listEl.appendChild(renamingId === item.id ? renderItemForm(item) : item.kind === 'log' ? renderLogCard(item) : renderCard(item)) })
     addBtn.hidden = false
+    renderModal()
   }
 
-  // Upcoming first, soonest at the top; then the red ones, alphabetically.
+  // Upcoming first, soonest at the top; then logs that are on track; then the
+  // red ones, alphabetically.
   function sortedItems() {
+    function rank(item) { return isDue(item) ? 2 : item.kind === 'log' ? 1 : 0 }
     return items.slice().sort(function (a, b) {
-      var na = upcoming(a), nb = upcoming(b)
-      if (na && nb) return na.date < nb.date ? -1 : na.date > nb.date ? 1 : a.name.localeCompare(b.name)
-      if (na || nb) return na ? -1 : 1
+      var ra = rank(a), rb = rank(b)
+      if (ra !== rb) return ra - rb
+      if (ra === 0) { var na = nextEntry(a).date, nb = nextEntry(b).date; if (na !== nb) return na < nb ? -1 : 1 }
       return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })
     })
   }
 
-  // Shared by "add a tracker" (item null) and "rename this tracker".
-  function renderNameForm(item) {
+  // Shared by "add a tracker" (item null) and "edit this tracker" (rename, and
+  // a log's red-after setting).
+  function renderItemForm(item) {
     var input = el('input', { type: 'text', maxlength: '80', placeholder: 'e.g. Dinner with the Smiths', value: item ? item.name : '', 'aria-label': 'Tracker name' })
+    var kind = item ? item.kind : 'next'
+    var daysInput = el('input', { type: 'number', min: '1', max: '3650', inputmode: 'numeric', value: String(item && item.stale_days || 14), 'aria-label': 'Days' })
+    var daysRow = el('div', { class: 'days' }, ['Red after', daysInput, 'days without progress'])
+    daysRow.hidden = kind !== 'log'
+    function kindOption(value, title, detail) {
+      return el('label', {}, [
+        el('input', { type: 'radio', name: 'kind', value: value, checked: kind === value, onchange: function () { kind = value; daysRow.hidden = kind !== 'log' } }),
+        el('span', {}, [title, el('small', { text: detail })]),
+      ])
+    }
+    var kinds = item ? null : el('div', { class: 'kinds' }, [
+      kindOption('next', 'Next one', 'Plan ahead: when is the next one?'),
+      kindOption('log', 'Log', 'A list of projects: how long since you last made progress?'),
+    ])
     var errorEl = el('div', { class: 'error' })
     var save = el('button', { class: 'btn primary', type: 'submit', text: item ? 'Save' : 'Add' })
     var cancel = el('button', { class: 'btn text', type: 'button', text: 'Cancel', onclick: function () { adding = false; renamingId = null; render() } })
@@ -190,12 +284,21 @@
       e.preventDefault()
       var name = input.value.trim()
       if (!name) { errorEl.textContent = 'Give it a name'; return }
+      var body = { name: name }
+      if (kind === 'log') {
+        var days = Number(daysInput.value)
+        if (!Number.isInteger(days) || days < 1 || days > 3650) { errorEl.textContent = 'Days must be a whole number from 1 to 3650'; return }
+        body.stale_days = days
+      }
+      if (!item) body.kind = kind
       save.disabled = cancel.disabled = true
-      var req = item ? api('PATCH', '/items/' + item.id, { name: name }) : api('POST', '/items', { name: name })
+      var req = item ? api('PATCH', '/items/' + item.id, body) : api('POST', '/items', body)
       req.then(function () { adding = false; renamingId = null; return load() })
         .catch(function (err) { errorEl.textContent = err.message; save.disabled = cancel.disabled = false })
     } }, [
-      el('label', {}, [document.createTextNode(item ? 'Rename tracker' : 'New tracker'), input]),
+      el('label', {}, [item ? 'Name' : 'New tracker', input]),
+      kinds,
+      daysRow,
       errorEl,
       el('div', { class: 'row' }, [save, cancel]),
     ])
@@ -203,62 +306,234 @@
     return el('div', { class: 'card' + (item ? '' : ' new') }, [form])
   }
 
-  function renderCard(item) {
-    if (renamingId === item.id) return renderNameForm(item)
-    var next = upcoming(item)
-    var card = el('div', { class: 'card' + (next ? '' : ' due') })
-    var summary = el('button', { class: 'summary', type: 'button', 'aria-expanded': String(openId === item.id), onclick: function () {
-      openId = openId === item.id ? null : item.id
-      render()
-    } }, [
-      el('div', { class: 'name', text: item.name }),
-      next
-        ? el('div', { class: 'when' }, [document.createTextNode(whenLabel(next.date)), el('span', { class: 'rel', text: relLabel(next.date) })])
-        : null,
-      next && next.note ? el('div', { class: 'note', text: next.note }) : null,
-      next ? null : el('div', { class: 'hint', text: 'Nothing planned — tap to add one' }),
-    ])
-    card.appendChild(summary)
-    card.appendChild(el('div', { class: 'actions' }, [
-      iconButton('edit', 'Rename ' + item.name, function () { renamingId = item.id; openId = null; adding = false; render() }),
+  function cardActions(item) {
+    return el('div', { class: 'actions' }, [
+      iconButton('edit', 'Edit ' + item.name, function () { renamingId = item.id; adding = false; render() }),
       iconButton('trash', 'Delete ' + item.name, function () {
-        if (!confirm('Delete the "' + item.name + '" tracker?')) return
+        var what = item.kind === 'log' && item.projects.length ? ' log and its ' + item.projects.length + ' project' + (item.projects.length === 1 ? '' : 's') : ' tracker'
+        if (!confirm('Delete the "' + item.name + '"' + what + '?')) return
         api('DELETE', '/items/' + item.id).then(load).catch(function (err) { alert(err.message) })
       }),
+    ])
+  }
+
+  function renderCard(item) {
+    var next = nextEntry(item)
+    var last = next ? null : lastEntry(item.entries, false)
+    var card = el('div', { class: 'card' + (next ? '' : ' due') })
+    card.appendChild(el('button', { class: 'summary', type: 'button', 'aria-haspopup': 'dialog', onclick: function () { openModal(item.id) } }, [
+      el('div', { class: 'name', text: item.name }),
+      next ? el('div', { class: 'when' }, [whenLabel(next.date), el('span', { class: 'rel', text: relLabel(next.date) })]) : null,
+      next && next.note ? el('div', { class: 'note', text: next.note }) : null,
+      next ? null : el('div', { class: 'hint', text: 'Nothing planned — tap to add one' }),
+      last ? el('div', { class: 'last', text: 'Last one ' + fullDateLabel(last.date) + ' · ' + relLabel(last.date) + (last.note ? ' · ' + last.note : '') }) : null,
     ]))
-    if (openId === item.id) card.appendChild(renderEditor(item, next))
+    card.appendChild(cardActions(item))
     return card
   }
 
-  function renderEditor(item, next) {
-    var dateInput = el('input', { type: 'date', required: true, value: next ? next.date : '', min: todayIso() })
-    var noteInput = el('input', { type: 'text', maxlength: '200', placeholder: 'What is it? (optional)', value: next ? next.note : '' })
-    var errorEl = el('div', { class: 'error' })
-    function fail(err) { errorEl.textContent = err.message; busy(false) }
-    var buttons = []
-    function busy(on) { buttons.forEach(function (b) { b.disabled = on }) }
+  function renderLogCard(item) {
+    var due = isDue(item)
+    var card = el('div', { class: 'card' + (due ? ' due' : '') })
+    card.appendChild(el('div', { class: 'log-head' }, [
+      el('div', { class: 'name', text: item.name }),
+      el('div', { class: 'log-sub', text: 'Red after ' + item.stale_days + ' day' + (item.stale_days === 1 ? '' : 's') + ' without progress' }),
+    ]))
+    card.appendChild(cardActions(item))
+    // Stalest first, so what needs attention is on top.
+    var projects = item.projects.slice().sort(function (a, b) {
+      var aa = projectAge(a), ab = projectAge(b)
+      return aa !== ab ? (ab > aa ? 1 : -1) : a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })
+    })
+    var list = el('ul', { class: 'projects' }, projects.map(function (p) {
+      var last = lastEntry(p.entries, true)
+      return el('li', {}, [el('button', { class: 'project' + (isStale(p, item) ? ' stale' : ''), type: 'button', 'aria-haspopup': 'dialog', onclick: function () { openModal('project:' + p.id) } }, [
+        el('span', { text: p.name }),
+        el('span', { class: 'age', text: last ? relLabel(last.date) : 'never' }),
+      ])])
+    }))
+    if (projects.length) card.appendChild(list)
+    card.appendChild(renderAddProject(item))
+    return card
+  }
 
+  function renderAddProject(log) {
+    var wrap = el('div', { class: 'add-project' })
+    var show = el('button', { class: 'btn text', type: 'button', text: log.projects.length ? '+ Add project' : '+ Add your first project', onclick: function () {
+      wrap.innerHTML = ''
+      var input = el('input', { type: 'text', maxlength: '80', placeholder: 'Project name', 'aria-label': 'Project name' })
+      var errorEl = el('div', { class: 'error' })
+      var save = el('button', { class: 'btn primary', type: 'submit', text: 'Add' })
+      var cancel = el('button', { class: 'btn text', type: 'button', text: 'Cancel', onclick: render })
+      wrap.appendChild(el('form', { class: 'inline', style: 'padding: 0 8px 8px 0', onsubmit: function (e) {
+        e.preventDefault()
+        var name = input.value.trim()
+        if (!name) { errorEl.textContent = 'Give it a name'; return }
+        save.disabled = cancel.disabled = true
+        api('POST', '/items', { name: name, parent_id: log.id }).then(load)
+          .catch(function (err) { errorEl.textContent = err.message; save.disabled = cancel.disabled = false })
+      } }, [input, errorEl, el('div', { class: 'row' }, [save, cancel])]))
+      input.focus()
+    } })
+    wrap.appendChild(show)
+    return wrap
+  }
+
+  // ---- The modal: one item's (or project's) history ----
+
+  // Finds the modal's subject in the current items: {item, log} where log is
+  // the parent for a project.
+  function modalSubject() {
+    if (!openKey) return null
+    if (openKey.indexOf('project:') === 0) {
+      var id = openKey.slice(8)
+      for (var i = 0; i < items.length; i++) {
+        var p = items[i].projects.filter(function (x) { return x.id === id })[0]
+        if (p) return { item: p, log: items[i] }
+      }
+      return null
+    }
+    var item = items.filter(function (x) { return x.id === openKey })[0]
+    return item ? { item: item, log: null } : null
+  }
+
+  // The modal gets a history entry, so the phone's back gesture closes it.
+  function openModal(key) {
+    openKey = key
+    modalRenaming = false
+    history.pushState({ trackerModal: true }, '')
+    renderModal()
+    if (!modal.open) modal.showModal()
+    modal.scrollTop = 0
+  }
+  function closeModal() {
+    if (history.state && history.state.trackerModal) history.back()
+    else hideModal()
+  }
+  function hideModal() {
+    openKey = null
+    if (modal.open) modal.close()
+  }
+  window.addEventListener('popstate', function () { if (openKey) hideModal() })
+  modal.addEventListener('cancel', function (e) { e.preventDefault(); closeModal() }) // Esc
+  modal.addEventListener('click', function (e) { if (e.target === modal) closeModal() }) // backdrop
+
+  function renderModal() {
+    var subject = modalSubject()
+    if (!subject) { if (openKey) closeModal(); return }
+    var item = subject.item, log = subject.log
+    modal.innerHTML = ''
+    modal.appendChild(el('div', { class: 'modal-head' }, [
+      // Focus lands on the title, not the close button (iOS draws a ring on it).
+      el('h2', { id: 'modal-title', tabindex: '-1', autofocus: true }, [item.name, log ? el('div', { class: 'log-sub', text: log.name }) : null]),
+      iconButton('close', 'Close', closeModal),
+    ]))
+    var body = el('div', { class: 'modal-body' })
+    if (log) {
+      body.appendChild(el('h3', { text: 'Log progress' }))
+      body.appendChild(renderLogForm(item, 'Date', 'What did you do? (optional)', true))
+    } else {
+      body.appendChild(el('h3', { text: 'Next one' }))
+      body.appendChild(renderNextForm(item))
+      body.appendChild(el('h3', { text: 'Log a past one' }))
+      body.appendChild(renderLogForm(item, 'Date', 'e.g. Hung out with Jeb (optional)', false))
+    }
+    body.appendChild(el('h3', { text: 'History' }))
+    body.appendChild(renderHistory(item))
+    if (log) body.appendChild(renderProjectFoot(item))
+    modal.appendChild(body)
+  }
+
+  function renderNextForm(item) {
+    var next = nextEntry(item)
+    var dateInput = el('input', { type: 'date', value: next ? next.date : '', min: todayIso(), 'aria-label': 'Next date' })
+    var noteInput = el('input', { type: 'text', maxlength: '200', placeholder: 'What is it? (optional)', value: next ? next.note : '', 'aria-label': 'Note' })
+    var errorEl = el('div', { class: 'error' })
     var save = el('button', { class: 'btn primary', type: 'submit', text: 'Save' })
-    var cancel = el('button', { class: 'btn text', type: 'button', text: 'Cancel', onclick: function () { openId = null; render() } })
     var clear = next ? el('button', { class: 'btn danger', type: 'button', text: 'Clear date', onclick: function () {
       busy(true)
       api('DELETE', '/entries/' + next.id).then(load).catch(fail)
     } }) : null
-    buttons = [save, cancel, clear].filter(Boolean)
-
-    var form = el('form', { class: 'editor', onsubmit: function (e) {
+    function busy(on) { save.disabled = on; if (clear) clear.disabled = on }
+    function fail(err) { errorEl.textContent = err.message; busy(false) }
+    return el('form', { onsubmit: function (e) {
       e.preventDefault()
       if (!dateInput.value) { errorEl.textContent = 'Pick a date'; return }
+      if (dateInput.value < todayIso()) { errorEl.textContent = 'That date has passed — log it below instead'; return }
       busy(true)
-      api('POST', '/items/' + item.id + '/entries', { date: dateInput.value, note: noteInput.value })
-        .then(function () { openId = null; return load() }).catch(fail)
+      var body = { date: dateInput.value, note: noteInput.value }
+      // Changing the planned date edits that entry rather than adding another.
+      var req = next ? api('PATCH', '/entries/' + next.id, body) : api('POST', '/items/' + item.id + '/entries', body)
+      req.then(function () { closeModal(); return load() }).catch(fail)
     } }, [
-      el('label', {}, [document.createTextNode('Next date'), dateInput]),
-      el('label', {}, [document.createTextNode('Note'), noteInput]),
+      el('label', {}, ['Date', dateInput]),
+      el('label', {}, ['Note', noteInput]),
       errorEl,
-      el('div', { class: 'row' }, [save, cancel, clear]),
+      el('div', { class: 'row' }, [save, clear]),
     ])
-    return form
+  }
+
+  // A past entry (today allowed). Stays open afterwards so it shows up in the
+  // history right below.
+  function renderLogForm(item, dateLabel, placeholder, defaultToday) {
+    var dateInput = el('input', { type: 'date', value: defaultToday ? todayIso() : '', max: todayIso(), 'aria-label': dateLabel })
+    var noteInput = el('input', { type: 'text', maxlength: '200', placeholder: placeholder, 'aria-label': 'Note' })
+    var errorEl = el('div', { class: 'error' })
+    var save = el('button', { class: 'btn primary', type: 'submit', text: 'Log it' })
+    return el('form', { onsubmit: function (e) {
+      e.preventDefault()
+      if (!dateInput.value) { errorEl.textContent = 'Pick a date'; return }
+      if (dateInput.value > todayIso()) { errorEl.textContent = 'That’s in the future — set it as the next one instead'; return }
+      save.disabled = true
+      api('POST', '/items/' + item.id + '/entries', { date: dateInput.value, note: noteInput.value }).then(load)
+        .catch(function (err) { errorEl.textContent = err.message; save.disabled = false })
+    } }, [
+      el('label', {}, [dateLabel, dateInput]),
+      el('label', {}, ['Note', noteInput]),
+      errorEl,
+      el('div', { class: 'row' }, [save]),
+    ])
+  }
+
+  function renderHistory(item) {
+    if (!item.entries.length) return el('p', { class: 'empty', text: 'Nothing logged yet.' })
+    return el('ul', { class: 'history' }, item.entries.map(function (entry) {
+      return el('li', {}, [
+        el('div', { class: 'body' }, [
+          el('div', { class: 'date' }, [fullDateLabel(entry.date), el('span', { class: daysFromToday(entry.date) > 0 ? 'future' : '', text: relLabel(entry.date) })]),
+          entry.note ? el('div', { class: 'note', text: entry.note }) : null,
+        ]),
+        iconButton('trash', 'Delete this entry', function () {
+          if (!confirm('Delete the ' + fullDateLabel(entry.date) + ' entry?')) return
+          api('DELETE', '/entries/' + entry.id).then(load).catch(function (err) { alert(err.message) })
+        }),
+      ])
+    }))
+  }
+
+  function renderProjectFoot(project) {
+    if (modalRenaming) {
+      var input = el('input', { type: 'text', maxlength: '80', value: project.name, 'aria-label': 'Project name' })
+      var errorEl = el('div', { class: 'error' })
+      var save = el('button', { class: 'btn primary', type: 'submit', text: 'Save' })
+      var cancel = el('button', { class: 'btn text', type: 'button', text: 'Cancel', onclick: function () { modalRenaming = false; renderModal() } })
+      setTimeout(function () { input.focus() }, 0)
+      return el('form', { class: 'modal-foot', style: 'display: grid', onsubmit: function (e) {
+        e.preventDefault()
+        var name = input.value.trim()
+        if (!name) { errorEl.textContent = 'Give it a name'; return }
+        save.disabled = cancel.disabled = true
+        api('PATCH', '/items/' + project.id, { name: name }).then(function () { modalRenaming = false; return load() })
+          .catch(function (err) { errorEl.textContent = err.message; save.disabled = cancel.disabled = false })
+      } }, [el('label', {}, ['Rename project', input]), errorEl, el('div', { class: 'row' }, [save, cancel])])
+    }
+    return el('div', { class: 'modal-foot' }, [
+      el('button', { class: 'btn text', type: 'button', text: 'Rename project', onclick: function () { modalRenaming = true; renderModal() } }),
+      el('button', { class: 'btn danger', type: 'button', text: 'Delete project', onclick: function () {
+        if (!confirm('Delete the "' + project.name + '" project?')) return
+        api('DELETE', '/items/' + project.id).then(function () { closeModal(); return load() }).catch(function (err) { alert(err.message) })
+      } }),
+    ])
   }
 
   function showMessage(html) { listEl.innerHTML = '<p class="msg">' + html + '</p>'; addBtn.hidden = true }
@@ -271,14 +546,14 @@
   }
 
   addBtn.addEventListener('click', function () {
-    adding = true; renamingId = null; openId = null
+    adding = true; renamingId = null
     render()
     window.scrollTo(0, 0)
   })
 
   // Re-check red/upcoming when coming back to the page (dates roll over).
   window.addEventListener('pageshow', function (e) { if (e.persisted) load() })
-  document.addEventListener('visibilitychange', function () { if (!document.hidden && token) render() })
+  document.addEventListener('visibilitychange', function () { if (!document.hidden && token && items.length) render() })
 
   if (!token) showMessage('Sign in to Bulbord to use the tracker. <a href="/">Go to Bulbord</a>')
   else load()
