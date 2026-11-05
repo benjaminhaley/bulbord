@@ -30,7 +30,7 @@ export function LabsPage() {
             <IonIcon slot="start" icon={calendarNumberOutline} />
             <IonLabel>
               <h2>Tracker</h2>
-              <p>When's the next date, playdate, or trip, and how long since you last worked on each project? Red means it's overdue.</p>
+              <p>Your goals, each red when there's something to do today, with a score for the last 8 weeks.</p>
             </IonLabel>
           </IonItem>
         </IonList>

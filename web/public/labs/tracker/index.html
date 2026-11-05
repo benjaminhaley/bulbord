@@ -6,7 +6,7 @@
 <meta name="robots" content="noindex, nofollow" />
 <title>Tracker</title>
 <!--
-  Tracker lab (see CLAUDE.md's Labs section). Deliberately standalone: plain
+  Tracker lab (see labs/tracker/README.md). Deliberately standalone: plain
   HTML/JS, no build step, no imports from the app in web/src. Its only links
   to Bulbord are (1) reading the member's session token from the same
   localStorage key the app uses, and (2) the API's sandboxed /labs/tracker
@@ -57,54 +57,51 @@
   .card.due .name { color: var(--red); }
   .when { font-size: 1.25rem; font-weight: 500; margin-top: 4px; }
   .rel { font-size: 0.875rem; color: var(--green); font-weight: 400; margin-left: 6px; }
+  .card.due .rel { color: var(--red); }
   .note { font-size: 0.9375rem; color: var(--ink); margin-top: 2px; white-space: pre-wrap; overflow-wrap: anywhere; }
   .hint { font-size: 0.875rem; color: var(--red); margin-top: 2px; }
+  .last { font-size: 0.8125rem; color: var(--muted); margin-top: 4px; }
+  .score { font-size: 0.8125rem; color: var(--muted); margin-top: 6px; }
+  .score b { font-size: 0.9375rem; color: var(--ink); font-weight: 500; }
   label { font-size: 0.75rem; color: var(--muted); display: grid; gap: 4px; }
-  input[type=date], input[type=text] {
+  input[type=date], input[type=text], input[type=number], textarea, select {
     font: inherit; font-size: 1rem; padding: 10px 12px; border: 1px solid var(--line);
     border-radius: 8px; background: #fff; color: var(--ink); width: 100%;
   }
+  input[type=number] { width: 6em; }
+  textarea { resize: vertical; min-height: 4.5em; }
   input[type=date] { display: block; min-width: 0; max-width: 100%; -webkit-appearance: none; appearance: none; text-align: left; min-height: 44px; }
   input[type=date]::-webkit-date-and-time-value { text-align: left; }
-  .modal-body form.add { margin-top: 12px; }
   .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
   .btn { font: inherit; font-size: 0.875rem; font-weight: 500; border-radius: 20px; padding: 8px 16px; border: 0; cursor: pointer; }
   .btn.primary { background: var(--accent); color: #fff; }
   .btn.text { background: none; color: var(--accent); padding: 8px 8px; }
-  .btn.danger { background: none; color: var(--red); padding: 8px 8px; }
+  .btn.outline { background: none; color: var(--accent); box-shadow: inset 0 0 0 1px var(--line); }
+  .btn.kept { background: var(--green); color: #fff; }
+  .btn.missed { background: var(--red); color: #fff; }
   .btn:disabled { opacity: 0.5; }
   form.inline { padding: 14px 16px; display: grid; gap: 10px; }
   .card.new { border-left-color: var(--accent); }
   .msg { text-align: center; color: var(--muted); padding: 40px 16px; }
   .msg a { color: var(--accent); }
   .error { color: var(--red); font-size: 0.875rem; }
-  .last { font-size: 0.8125rem; color: var(--muted); margin-top: 4px; }
-  input[type=number] { font: inherit; font-size: 1rem; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: #fff; color: var(--ink); width: 6em; }
-  .kinds { display: grid; gap: 6px; font-size: 0.9375rem; color: var(--ink); }
-  .kinds label { display: flex; gap: 8px; align-items: flex-start; font-size: 0.9375rem; color: var(--ink); }
-  .kinds small { display: block; color: var(--muted); font-size: 0.8125rem; }
+  .choices { display: grid; gap: 6px; }
+  .choices label { display: flex; gap: 8px; align-items: flex-start; font-size: 0.9375rem; color: var(--ink); }
+  .choices small { display: block; color: var(--muted); font-size: 0.8125rem; }
+  .field-label { font-size: 0.75rem; color: var(--muted); }
+  .weekdays { display: flex; flex-wrap: wrap; gap: 4px 12px; }
+  .weekdays label { display: flex; gap: 4px; align-items: center; font-size: 0.9375rem; color: var(--ink); }
   [hidden] { display: none !important; }
-  .days { display: grid; gap: 4px; font-size: 0.75rem; color: var(--muted); }
-  /* A log card: one row per project, stalest first. */
-  .log-head { padding: 14px 96px 6px 16px; }
-  .log-sub { font-size: 0.8125rem; color: var(--muted); margin-top: 2px; }
-  .card.due .log-sub { color: var(--red); }
-  .projects { list-style: none; margin: 0; padding: 0 8px 8px; }
-  .project { display: flex; width: 100%; justify-content: space-between; gap: 12px; align-items: baseline; background: none; border: 0; border-radius: 8px; padding: 10px 8px; font: inherit; font-size: 1rem; color: var(--ink); text-align: left; cursor: pointer; }
-  .project:hover { background: rgba(0,0,0,0.04); }
-  .project .age { font-size: 0.875rem; color: var(--green); white-space: nowrap; }
-  .project.stale .age { color: var(--red); font-weight: 500; }
-  .add-project { margin: 0 0 8px 8px; }
-  /* Item modal */
+  /* Goal modal */
   dialog { border: 0; border-radius: 16px; padding: 0; width: min(440px, calc(100vw - 24px)); max-height: calc(100vh - 48px); max-height: calc(100dvh - 48px); overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; box-shadow: 0 8px 32px rgba(0,0,0,0.25); color: var(--ink); background: var(--card); }
   dialog::backdrop { background: rgba(0,0,0,0.4); }
   .modal-head { position: sticky; top: 0; background: var(--card); display: flex; align-items: flex-start; gap: 8px; padding: 16px 12px 8px 16px; border-bottom: 1px solid var(--line); z-index: 1; }
   .modal-head h2:focus { outline: none; }
   .modal-head h2 { margin: 0; font-size: 1.125rem; font-weight: 500; flex: 1; overflow-wrap: anywhere; }
-  .modal-head .log-sub { font-weight: 400; }
   .modal-body { padding: 8px 16px 20px; }
+  .modal-body .description { font-size: 0.9375rem; color: var(--muted); margin: 4px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }
   .modal-body h3 { font-size: 0.8125rem; font-weight: 500; letter-spacing: 0.02em; text-transform: uppercase; color: var(--muted); margin: 18px 0 8px; }
-  .modal-body form { display: grid; gap: 10px; }
+  .modal-body form { display: grid; gap: 10px; margin-top: 12px; }
   .history { list-style: none; margin: 0; padding: 0; }
   .history li { display: flex; gap: 8px; align-items: center; padding: 10px 0; border-top: 1px solid var(--line); }
   .history li:first-child { border-top: 0; }
@@ -112,19 +109,19 @@
   .history .date { font-size: 0.9375rem; font-weight: 500; }
   .history .date span { font-weight: 400; color: var(--muted); font-size: 0.8125rem; margin-left: 6px; }
   .history .date span.future { color: var(--green); }
+  .history .date span.unrecorded { color: var(--red); }
   .history .icon-btn { margin: -4px 0; }
   .empty { color: var(--muted); font-size: 0.875rem; margin: 0; }
-  .modal-foot { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 20px; padding-top: 12px; border-top: 1px solid var(--line); }
 </style>
 </head>
 <body>
 <header>
   <a href="/labs" aria-label="Back to Labs">‹ Labs</a>
   <h1>Tracker</h1>
-  <button class="icon-btn" id="add-btn" type="button" aria-label="Add a tracker" hidden><svg viewBox="0 0 24 24"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg></button>
+  <button class="icon-btn" id="add-btn" type="button" aria-label="Add a goal" hidden><svg viewBox="0 0 24 24"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg></button>
 </header>
 <main>
-  <p class="intro">When's the next one, and how long since the last? Anything overdue shows red.</p>
+  <p class="intro">Red means there's something you can do today. The score is how you've done over the last 8 weeks.</p>
   <div id="list"><p class="msg">Loading…</p></div>
 </main>
 <dialog id="modal" aria-labelledby="modal-title"></dialog>
@@ -140,11 +137,17 @@
   var listEl = document.getElementById('list')
   var addBtn = document.getElementById('add-btn')
   var modal = document.getElementById('modal')
-  var items = []
-  var renamingId = null // card whose name/settings are being edited
+  var goals = []
+  var editingId = null // the goal whose card is showing the edit form
   var adding = false
-  var openKey = null // the modal's subject: an item id, or 'project:<id>'
-  var modalRenaming = false
+  var openId = null // the goal shown in the modal
+
+  // Mirrors lab.ts.
+  var WINDOW_DAYS = 56 // the score covers the last 8 weeks
+  var MAX_STALE_DAYS = 3650
+  var DEFAULT_STALE_DAYS = 14
+  var WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+  var PERIODS = [[7, 'Every week'], [14, 'Every 2 weeks'], [28, 'Every 4 weeks']]
 
   var ICONS = {
     edit: 'M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z',
@@ -171,36 +174,167 @@
   }
 
   function pad(n) { return (n < 10 ? '0' : '') + n }
-  function todayIso() { var d = new Date(); return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) }
+  function isoOf(d) { return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) }
+  function todayIso() { return isoOf(new Date()) }
   function parseIso(s) { var p = s.split('-'); return new Date(+p[0], +p[1] - 1, +p[2]) }
+  function daysAgoIso(n) { var d = new Date(); d.setDate(d.getDate() - n); return isoOf(d) }
   // Whole days from today to iso: positive = future, negative = past.
   function daysFromToday(iso) { return Math.round((parseIso(iso) - parseIso(todayIso())) / 86400000) }
+  function byName(a, b) { return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }) }
+  function percent(n, of) { return Math.round((100 * n) / of) + '%' }
 
-  // Entries come from the API newest date first. Everything below is derived
-  // from them in the viewer's own time zone.
+  // ---- Deriving each goal's state from its entries (viewer's time zone) ----
+  // Entries come from the API newest date first.
+
   // The next one is the soonest entry dated today or later.
-  function nextEntry(item) {
-    var today = todayIso(), next = null
-    item.entries.forEach(function (e) { if (e.date >= today && (!next || e.date < next.date)) next = e })
-    return next
-  }
-  // The last one is the most recent entry dated before today (for a project:
-  // up to and including today).
-  function lastEntry(entries, includeToday) {
+  function nextEntry(goal) {
     var today = todayIso()
-    for (var i = 0; i < entries.length; i++) if (entries[i].date < today || (includeToday && entries[i].date === today)) return entries[i]
+    for (var i = goal.entries.length - 1; i >= 0; i--) if (goal.entries[i].date >= today) return goal.entries[i]
     return null
   }
-  // Days since a project's last progress; Infinity if never.
-  function projectAge(project) {
-    var last = lastEntry(project.entries, true)
+  // Entries that have happened: before today for a plan (today's is still the
+  // next one), up to and including today otherwise.
+  function pastEntries(goal) {
+    var today = todayIso()
+    return goal.entries.filter(function (e) { return goal.type === 'plan' ? e.date < today : e.date <= today })
+  }
+  // How many of the last 8 weeks' periods (counted back from today) had an
+  // entry dated today or earlier.
+  function periodScore(goal, periodDays, unit) {
+    var periods = WINDOW_DAYS / periodDays, hit = {}
+    goal.entries.forEach(function (e) {
+      var ago = -daysFromToday(e.date)
+      if (ago >= 0 && ago < WINDOW_DAYS) hit[Math.floor(ago / periodDays)] = true
+    })
+    var n = Object.keys(hit).length
+    return { pct: percent(n, periods), detail: n + ' of ' + periods + ' ' + unit }
+  }
+  // A check-in goal's chosen days in the last 8 weeks, newest first, each with
+  // its record (if any). Today is included but never counts as missing.
+  function checkinDays(goal) {
+    var byDate = {}
+    goal.entries.forEach(function (e) { byDate[e.date] = byDate[e.date] || e })
+    var days = []
+    for (var ago = 0; ago < WINDOW_DAYS; ago++) {
+      var iso = daysAgoIso(ago)
+      if (goal.weekdays.indexOf(parseIso(iso).getDay()) !== -1) days.push({ date: iso, ago: ago, entry: byDate[iso] || null })
+    }
+    return days
+  }
+  function unrecorded(goal) { return checkinDays(goal).filter(function (d) { return !d.entry && d.ago > 0 }) }
+  function projectAge(goal) {
+    var last = pastEntries(goal)[0]
     return last ? -daysFromToday(last.date) : Infinity
   }
-  function isStale(project, log) { return projectAge(project) > log.stale_days }
-  function isDue(item) {
-    if (item.kind === 'log') return item.projects.some(function (p) { return isStale(p, item) })
-    return !nextEntry(item)
+
+  // Everything that differs by goal type: what turns it red, what the card
+  // says, the score, the type's setting, and the modal's contents.
+  var TYPES = {
+    plan: {
+      label: 'Plan ahead',
+      detail: 'Red until the next one is on the calendar. E.g. seeing friends, a date night.',
+      isDue: function (goal) { return !nextEntry(goal) },
+      cardLines: function (goal) {
+        var next = nextEntry(goal), last = next ? null : pastEntries(goal)[0]
+        return [
+          next ? el('div', { class: 'when' }, [whenLabel(next.date), el('span', { class: 'rel', text: relLabel(next.date) })]) : null,
+          next && next.note ? el('div', { class: 'note', text: next.note }) : null,
+          next ? null : el('div', { class: 'hint', text: 'Nothing planned — tap to add one' }),
+          last ? el('div', { class: 'last', text: 'Last one ' + fullDateLabel(last.date) + ' · ' + relLabel(last.date) + (last.note ? ' · ' + last.note : '') }) : null,
+        ]
+      },
+      score: function (goal) {
+        var unit = { 7: 'weeks', 14: 'two-week stretches', 28: 'four-week stretches' }[goal.period_days]
+        return periodScore(goal, goal.period_days, unit)
+      },
+      settingField: function (goal) {
+        var select = el('select', { 'aria-label': 'How often' }, PERIODS.map(function (p) {
+          var option = el('option', { value: String(p[0]), text: p[1] })
+          option.selected = (goal ? goal.period_days : 7) === p[0]
+          return option
+        }))
+        return { node: el('label', {}, ['How often should one happen?', select]), read: function () { return { period_days: Number(select.value) } } }
+      },
+      modalBody: function (goal) {
+        var next = nextEntry(goal)
+        return [
+          entryForm(goal, 'Note (optional)', false),
+          next ? el('h3', { text: 'Next one' }) : null,
+          next ? entryList([next]) : null,
+          historySection(pastEntries(goal)),
+        ]
+      },
+    },
+    progress: {
+      label: 'Keep making progress',
+      detail: 'Red once it’s been too many days since you last worked on it. E.g. a project.',
+      isDue: function (goal) { return projectAge(goal) > goal.stale_days },
+      cardLines: function (goal) {
+        var last = pastEntries(goal)[0], due = TYPES.progress.isDue(goal)
+        return [
+          last ? el('div', { class: 'when' }, ['Last ' + whenLabel(last.date), el('span', { class: 'rel', text: relLabel(last.date) })]) : null,
+          last && last.note ? el('div', { class: 'note', text: last.note }) : null,
+          due ? el('div', { class: 'hint', text: last ? 'Time for some progress — tap to log it' : 'No progress yet — tap to log some' }) : null,
+        ]
+      },
+      score: function (goal) { return periodScore(goal, 7, 'weeks') },
+      settingField: function (goal) {
+        var input = el('input', { type: 'number', min: '1', max: String(MAX_STALE_DAYS), inputmode: 'numeric', value: String(goal ? goal.stale_days : DEFAULT_STALE_DAYS), 'aria-label': 'Days' })
+        return {
+          node: el('label', {}, ['Days without progress before it turns red', input]),
+          read: function () {
+            var days = Number(input.value)
+            if (!Number.isInteger(days) || days < 1 || days > MAX_STALE_DAYS) throw new Error('Days must be a whole number from 1 to ' + MAX_STALE_DAYS)
+            return { stale_days: days }
+          },
+        }
+      },
+      modalBody: function (goal) {
+        return [entryForm(goal, 'What did you do? (optional)', true), historySection(pastEntries(goal))]
+      },
+    },
+    checkin: {
+      label: 'Check in on set days',
+      detail: 'Record each chosen day as kept or missed; red while a day in the last 8 weeks is unrecorded. E.g. no drinking on Sundays and Mondays.',
+      isDue: function (goal) { return unrecorded(goal).length > 0 },
+      cardLines: function (goal) {
+        var missing = unrecorded(goal).length
+        var lastRecord = checkinDays(goal).filter(function (d) { return d.entry })[0]
+        return [
+          missing
+            ? el('div', { class: 'hint', text: missing + (missing === 1 ? ' day' : ' days') + ' to record — tap to record ' + (missing === 1 ? 'it' : 'them') })
+            : el('div', { class: 'when' }, ['All recorded']),
+          lastRecord ? el('div', { class: 'last', text: 'Last: ' + fullDateLabel(lastRecord.date) + ' · ' + (lastRecord.entry.outcome === 'kept' ? 'kept' : 'missed') }) : null,
+        ]
+      },
+      score: function (goal) {
+        var counted = checkinDays(goal).filter(function (d) { return d.ago > 0 || d.entry })
+        var kept = counted.filter(function (d) { return d.entry && d.entry.outcome === 'kept' }).length
+        return counted.length ? { pct: percent(kept, counted.length), detail: kept + ' of ' + counted.length + ' days kept' } : null
+      },
+      settingField: function (goal) {
+        var boxes = WEEKDAYS.map(function (name, day) {
+          return el('input', { type: 'checkbox', value: String(day), checked: goal ? goal.weekdays.indexOf(day) !== -1 : false })
+        })
+        return {
+          node: el('div', { class: 'choices' }, [
+            el('div', { class: 'field-label', text: 'Which days?' }),
+            el('div', { class: 'weekdays' }, boxes.map(function (box, day) { return el('label', {}, [box, WEEKDAYS[day]]) })),
+          ]),
+          read: function () {
+            var days = boxes.filter(function (b) { return b.checked }).map(function (b) { return Number(b.value) })
+            if (!days.length) throw new Error('Pick at least one day of the week')
+            return { weekdays: days }
+          },
+        }
+      },
+      modalBody: function (goal) {
+        return [el('h3', { text: 'Last 8 weeks' }), checkinList(goal)]
+      },
+    },
   }
+
+  function isDue(goal) { return TYPES[goal.type].isDue(goal) }
 
   function whenLabel(iso) {
     var d = parseIso(iso)
@@ -209,7 +343,7 @@
     if (d.getFullYear() !== new Date().getFullYear()) return d.toLocaleDateString(undefined, { month: 'short', year: 'numeric' })
     return d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })
   }
-  // History shows the full date, year included when it isn't this one.
+  // Lists show the full date, year included when it isn't this one.
   function fullDateLabel(iso) {
     var d = parseIso(iso)
     var opts = { weekday: 'short', month: 'short', day: 'numeric' }
@@ -244,166 +378,100 @@
 
   function render() {
     listEl.innerHTML = ''
-    if (adding) listEl.appendChild(renderItemForm(null))
-    if (items.length === 0 && !adding) listEl.appendChild(el('p', { class: 'msg', text: 'Nothing tracked yet — tap + to add one.' }))
-    sortedItems().forEach(function (item) { listEl.appendChild(renamingId === item.id ? renderItemForm(item) : item.kind === 'log' ? renderLogCard(item) : renderCard(item)) })
+    if (adding) listEl.appendChild(renderGoalForm(null))
+    if (goals.length === 0 && !adding) listEl.appendChild(el('p', { class: 'msg', text: 'No goals yet — tap + to add one.' }))
+    sortedGoals().forEach(function (goal) { listEl.appendChild(editingId === goal.id ? renderGoalForm(goal) : renderCard(goal)) })
     addBtn.hidden = false
     renderModal()
   }
 
-  // Upcoming first, soonest at the top; then logs that are on track; then the
-  // red ones, alphabetically.
-  function sortedItems() {
-    function rank(item) { return isDue(item) ? 2 : item.kind === 'log' ? 1 : 0 }
-    return items.slice().sort(function (a, b) {
-      var ra = rank(a), rb = rank(b)
-      if (ra !== rb) return ra - rb
-      if (ra === 0) { var na = nextEntry(a).date, nb = nextEntry(b).date; if (na !== nb) return na < nb ? -1 : 1 }
-      return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })
+  // Green first (upcoming plans soonest at the top), then the red ones,
+  // alphabetically.
+  function sortedGoals() {
+    var ranked = goals.map(function (goal) {
+      var next = goal.type === 'plan' ? nextEntry(goal) : null
+      return { goal: goal, rank: isDue(goal) ? 2 : next ? 0 : 1, next: next ? next.date : '' }
     })
+    ranked.sort(function (a, b) {
+      if (a.rank !== b.rank) return a.rank - b.rank
+      if (a.next !== b.next) return a.next < b.next ? -1 : 1
+      return byName(a.goal, b.goal)
+    })
+    return ranked.map(function (r) { return r.goal })
   }
 
-  // Shared by "add a tracker" (item null) and "edit this tracker" (rename, and
-  // a log's red-after setting).
-  function renderItemForm(item) {
-    var input = el('input', { type: 'text', maxlength: '80', placeholder: 'e.g. Dinner with the Smiths', value: item ? item.name : '', 'aria-label': 'Tracker name' })
-    var kind = item ? item.kind : 'next'
-    var daysInput = el('input', { type: 'number', min: '1', max: '3650', inputmode: 'numeric', value: String(item && item.stale_days || 14), 'aria-label': 'Days' })
-    var daysRow = el('label', { class: 'days' }, ['Days without progress before a project turns red', daysInput])
-    daysRow.hidden = kind !== 'log'
-    function kindOption(value, title, detail) {
-      return el('label', {}, [
-        el('input', { type: 'radio', name: 'kind', value: value, checked: kind === value, onchange: function () { kind = value; daysRow.hidden = kind !== 'log' } }),
-        el('span', {}, [title, el('small', { text: detail })]),
-      ])
+  // "Add a goal" (goal null: pick the type first) and "edit this goal" (its
+  // title, description and the type's setting; the type is fixed).
+  function renderGoalForm(goal) {
+    var type = goal ? goal.type : 'plan'
+    var nameInput = el('input', { type: 'text', maxlength: '80', placeholder: 'e.g. See friends', value: goal ? goal.name : '', 'aria-label': 'Title' })
+    var descInput = el('textarea', { maxlength: '500', rows: '3', placeholder: 'e.g. I want to hang out with good friends more', 'aria-label': 'Description' })
+    descInput.value = goal ? goal.description : ''
+    var settingWrap = el('div', {})
+    var setting
+    function showSetting() {
+      setting = TYPES[type].settingField(goal)
+      settingWrap.innerHTML = ''
+      settingWrap.appendChild(setting.node)
     }
-    var kinds = item ? null : el('div', { class: 'kinds' }, [
-      kindOption('next', 'Next one', 'Plan ahead: when is the next one?'),
-      kindOption('log', 'Log', 'A list of projects: how long since you last made progress?'),
-    ])
+    showSetting()
+    var types = goal ? null : el('div', { class: 'choices' }, Object.keys(TYPES).map(function (key) {
+      return el('label', {}, [
+        el('input', { type: 'radio', name: 'type', value: key, checked: type === key, onchange: function () { type = key; showSetting() } }),
+        el('span', {}, [TYPES[key].label, el('small', { text: TYPES[key].detail })]),
+      ])
+    }))
     var errorEl = el('div', { class: 'error' })
-    var save = el('button', { class: 'btn primary', type: 'submit', text: item ? 'Save' : 'Add' })
-    var cancel = el('button', { class: 'btn text', type: 'button', text: 'Cancel', onclick: function () { adding = false; renamingId = null; render() } })
+    var save = el('button', { class: 'btn primary', type: 'submit', text: goal ? 'Save' : 'Add' })
+    var cancel = el('button', { class: 'btn text', type: 'button', text: 'Cancel', onclick: function () { adding = false; editingId = null; render() } })
     var form = el('form', { class: 'inline', onsubmit: function (e) {
       e.preventDefault()
-      var name = input.value.trim()
-      if (!name) { errorEl.textContent = 'Give it a name'; return }
-      var body = { name: name }
-      if (kind === 'log') {
-        var days = Number(daysInput.value)
-        if (!Number.isInteger(days) || days < 1 || days > 3650) { errorEl.textContent = 'Days must be a whole number from 1 to 3650'; return }
-        body.stale_days = days
-      }
-      if (!item) body.kind = kind
+      var body
+      try {
+        if (!nameInput.value.trim()) throw new Error('Give it a title')
+        body = Object.assign({ name: nameInput.value, description: descInput.value }, setting.read())
+      } catch (err) { errorEl.textContent = err.message; return }
+      if (!goal) body.type = type
       save.disabled = cancel.disabled = true
-      var req = item ? api('PATCH', '/items/' + item.id, body) : api('POST', '/items', body)
-      req.then(function () { adding = false; renamingId = null; return load() })
+      ;(goal ? api('PATCH', '/items/' + goal.id, body) : api('POST', '/items', body))
+        .then(function () { adding = false; editingId = null; return load() })
         .catch(function (err) { errorEl.textContent = err.message; save.disabled = cancel.disabled = false })
     } }, [
-      el('label', {}, [item ? 'Name' : 'New tracker', input]),
-      kinds,
-      daysRow,
+      goal ? null : el('label', { text: 'New goal' }),
+      types,
+      el('label', {}, ['Title', nameInput]),
+      el('label', {}, ['Description', descInput]),
+      settingWrap,
       errorEl,
       el('div', { class: 'row' }, [save, cancel]),
     ])
-    setTimeout(function () { input.focus() }, 0)
-    return el('div', { class: 'card' + (item ? '' : ' new') }, [form])
+    setTimeout(function () { nameInput.focus() }, 0)
+    return el('div', { class: 'card' + (goal ? '' : ' new') }, [form])
   }
 
-  function cardActions(item) {
-    return el('div', { class: 'actions' }, [
-      iconButton('edit', 'Edit ' + item.name, function () { renamingId = item.id; adding = false; render() }),
-      iconButton('trash', 'Delete ' + item.name, function () {
-        var what = item.kind === 'log' && item.projects.length ? ' log and its ' + item.projects.length + ' project' + (item.projects.length === 1 ? '' : 's') : ' tracker'
-        if (!confirm('Delete the "' + item.name + '"' + what + '?')) return
-        api('DELETE', '/items/' + item.id).then(load).catch(function (err) { alert(err.message) })
+  function renderCard(goal) {
+    var type = TYPES[goal.type]
+    var score = type.score(goal)
+    var card = el('div', { class: 'card' + (isDue(goal) ? ' due' : '') })
+    card.appendChild(el('button', { class: 'summary', type: 'button', 'aria-haspopup': 'dialog', onclick: function () { openModal(goal.id) } },
+      [el('div', { class: 'name', text: goal.name })]
+        .concat(type.cardLines(goal))
+        .concat([score ? el('div', { class: 'score' }, [el('b', { text: score.pct }), ' · ' + score.detail]) : null])))
+    card.appendChild(el('div', { class: 'actions' }, [
+      iconButton('edit', 'Edit ' + goal.name, function () { editingId = goal.id; adding = false; render() }),
+      iconButton('trash', 'Delete ' + goal.name, function () {
+        if (!confirm('Delete the "' + goal.name + '" goal?')) return
+        api('DELETE', '/items/' + goal.id).then(load).catch(function (err) { alert(err.message) })
       }),
-    ])
-  }
-
-  function renderCard(item) {
-    var next = nextEntry(item)
-    var last = next ? null : lastEntry(item.entries, false)
-    var card = el('div', { class: 'card' + (next ? '' : ' due') })
-    card.appendChild(el('button', { class: 'summary', type: 'button', 'aria-haspopup': 'dialog', onclick: function () { openModal(item.id) } }, [
-      el('div', { class: 'name', text: item.name }),
-      next ? el('div', { class: 'when' }, [whenLabel(next.date), el('span', { class: 'rel', text: relLabel(next.date) })]) : null,
-      next && next.note ? el('div', { class: 'note', text: next.note }) : null,
-      next ? null : el('div', { class: 'hint', text: 'Nothing planned — tap to add one' }),
-      last ? el('div', { class: 'last', text: 'Last one ' + fullDateLabel(last.date) + ' · ' + relLabel(last.date) + (last.note ? ' · ' + last.note : '') }) : null,
     ]))
-    card.appendChild(cardActions(item))
     return card
   }
 
-  function renderLogCard(item) {
-    var due = isDue(item)
-    var card = el('div', { class: 'card' + (due ? ' due' : '') })
-    card.appendChild(el('div', { class: 'log-head' }, [
-      el('div', { class: 'name', text: item.name }),
-    ]))
-    card.appendChild(cardActions(item))
-    // Stalest first, so what needs attention is on top.
-    var projects = item.projects.slice().sort(function (a, b) {
-      var aa = projectAge(a), ab = projectAge(b)
-      return aa !== ab ? (ab > aa ? 1 : -1) : a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })
-    })
-    var list = el('ul', { class: 'projects' }, projects.map(function (p) {
-      var last = lastEntry(p.entries, true)
-      return el('li', {}, [el('button', { class: 'project' + (isStale(p, item) ? ' stale' : ''), type: 'button', 'aria-haspopup': 'dialog', onclick: function () { openModal('project:' + p.id) } }, [
-        el('span', { text: p.name }),
-        el('span', { class: 'age', text: last ? relLabel(last.date) : 'never' }),
-      ])])
-    }))
-    if (projects.length) card.appendChild(list)
-    card.appendChild(renderAddProject(item))
-    return card
-  }
-
-  function renderAddProject(log) {
-    var wrap = el('div', { class: 'add-project' })
-    var show = el('button', { class: 'btn text', type: 'button', text: log.projects.length ? '+ Add project' : '+ Add your first project', onclick: function () {
-      wrap.innerHTML = ''
-      var input = el('input', { type: 'text', maxlength: '80', placeholder: 'Project name', 'aria-label': 'Project name' })
-      var errorEl = el('div', { class: 'error' })
-      var save = el('button', { class: 'btn primary', type: 'submit', text: 'Add' })
-      var cancel = el('button', { class: 'btn text', type: 'button', text: 'Cancel', onclick: render })
-      wrap.appendChild(el('form', { class: 'inline', style: 'padding: 0 8px 8px 0', onsubmit: function (e) {
-        e.preventDefault()
-        var name = input.value.trim()
-        if (!name) { errorEl.textContent = 'Give it a name'; return }
-        save.disabled = cancel.disabled = true
-        api('POST', '/items', { name: name, parent_id: log.id }).then(load)
-          .catch(function (err) { errorEl.textContent = err.message; save.disabled = cancel.disabled = false })
-      } }, [input, errorEl, el('div', { class: 'row' }, [save, cancel])]))
-      input.focus()
-    } })
-    wrap.appendChild(show)
-    return wrap
-  }
-
-  // ---- The modal: one item's (or project's) history ----
-
-  // Finds the modal's subject in the current items: {item, log} where log is
-  // the parent for a project.
-  function modalSubject() {
-    if (!openKey) return null
-    if (openKey.indexOf('project:') === 0) {
-      var id = openKey.slice(8)
-      for (var i = 0; i < items.length; i++) {
-        var p = items[i].projects.filter(function (x) { return x.id === id })[0]
-        if (p) return { item: p, log: items[i] }
-      }
-      return null
-    }
-    var item = items.filter(function (x) { return x.id === openKey })[0]
-    return item ? { item: item, log: null } : null
-  }
+  // ---- The modal: one goal's key action and history ----
 
   // The modal gets a history entry, so the phone's back gesture closes it.
-  function openModal(key) {
-    openKey = key
-    modalRenaming = false
+  function openModal(id) {
+    openId = id
     history.pushState({ trackerModal: true }, '')
     renderModal()
     if (!modal.open) modal.showModal()
@@ -414,64 +482,55 @@
     else hideModal()
   }
   function hideModal() {
-    openKey = null
+    openId = null
     if (modal.open) modal.close()
   }
-  window.addEventListener('popstate', function () { if (openKey) hideModal() })
+  window.addEventListener('popstate', function () { if (openId) hideModal() })
   modal.addEventListener('cancel', function (e) { e.preventDefault(); closeModal() }) // Esc
   modal.addEventListener('click', function (e) { if (e.target === modal) closeModal() }) // backdrop
 
   function renderModal() {
-    var subject = modalSubject()
-    if (!subject) { if (openKey) closeModal(); return }
-    var item = subject.item, log = subject.log
+    var goal = goals.filter(function (g) { return g.id === openId })[0]
+    if (!goal) { if (openId) closeModal(); return }
     modal.innerHTML = ''
     modal.appendChild(el('div', { class: 'modal-head' }, [
       // Focus lands on the title, not the close button (iOS draws a ring on it).
-      el('h2', { id: 'modal-title', tabindex: '-1', autofocus: true }, [item.name, log ? el('div', { class: 'log-sub', text: log.name }) : null]),
+      el('h2', { id: 'modal-title', tabindex: '-1', autofocus: true, text: goal.name }),
       iconButton('close', 'Close', closeModal),
     ]))
-    var body = el('div', { class: 'modal-body' })
-    body.appendChild(renderAddForm(item, !!log))
-    body.appendChild(renderEntries(item, !!log))
-    if (log) body.appendChild(renderProjectFoot(item))
-    modal.appendChild(body)
+    modal.appendChild(el('div', { class: 'modal-body' },
+      [goal.description ? el('p', { class: 'description', text: goal.description }) : null].concat(TYPES[goal.type].modalBody(goal))))
   }
 
-  // One form for everything: pick a date (today by default), an optional note,
-  // Add. The date alone decides whether it's the next one or history. There's
-  // only ever one next one: a new upcoming date replaces it. A project's
-  // progress can only be today or earlier.
-  function renderAddForm(item, isProject) {
-    var dateInput = el('input', { type: 'date', value: todayIso(), max: isProject ? todayIso() : null, 'aria-label': 'Date' })
-    var noteInput = el('input', { type: 'text', maxlength: '200', placeholder: isProject ? 'What did you do? (optional)' : 'Note (optional)', 'aria-label': 'Note' })
+  // Pick a date (today by default), an optional note, Add. For a plan the date
+  // alone decides whether it's the next one or history, and the server makes
+  // a new upcoming date replace the next one.
+  function entryForm(goal, notePlaceholder, pastOnly) {
+    var dateInput = el('input', { type: 'date', value: todayIso(), max: pastOnly ? todayIso() : null, 'aria-label': 'Date' })
+    var noteInput = el('input', { type: 'text', maxlength: '200', placeholder: notePlaceholder, 'aria-label': 'Note' })
     var errorEl = el('div', { class: 'error' })
     var save = el('button', { class: 'btn primary', type: 'submit', text: 'Add' })
-    return el('form', { class: 'add', onsubmit: function (e) {
+    return el('form', { onsubmit: function (e) {
       e.preventDefault()
       if (!dateInput.value) { errorEl.textContent = 'Pick a date'; return }
-      if (isProject && dateInput.value > todayIso()) { errorEl.textContent = 'Pick today or an earlier day'; return }
       save.disabled = true
-      var body = { date: dateInput.value, note: noteInput.value }
-      var next = isProject ? null : nextEntry(item)
-      var req = next && body.date >= todayIso() ? api('PATCH', '/entries/' + next.id, body) : api('POST', '/items/' + item.id + '/entries', body)
-      req.then(load)
+      addEntry(goal, { date: dateInput.value, note: noteInput.value })
         .catch(function (err) { errorEl.textContent = err.message; save.disabled = false })
     } }, [dateInput, noteInput, errorEl, el('div', { class: 'row' }, [save])])
   }
 
-  // The next one (if any), then the history: past entries only, newest
-  // first. Deleting is the only edit.
-  function renderEntries(item, isProject) {
-    var today = todayIso()
-    var next = isProject ? null : nextEntry(item)
-    var past = item.entries.filter(function (e) { return isProject ? e.date <= today : e.date < today })
-    var wrap = el('div', {})
-    if (next) wrap.appendChild(el('h3', { text: 'Next one' }))
-    if (next) wrap.appendChild(entryList([next]))
-    wrap.appendChild(el('h3', { text: 'History' }))
-    wrap.appendChild(past.length ? entryList(past) : el('p', { class: 'empty', text: 'Nothing logged yet.' }))
-    return wrap
+  function addEntry(goal, body) {
+    return api('POST', '/items/' + goal.id + '/entries', Object.assign({ today: todayIso() }, body)).then(load)
+  }
+  function deleteEntry(entry) {
+    return api('DELETE', '/entries/' + entry.id).then(load).catch(function (err) { alert(err.message) })
+  }
+
+  function historySection(past) {
+    return el('div', {}, [
+      el('h3', { text: 'History' }),
+      past.length ? entryList(past) : el('p', { class: 'empty', text: 'Nothing logged yet.' }),
+    ])
   }
 
   function entryList(entries) {
@@ -482,56 +541,52 @@
           entry.note ? el('div', { class: 'note', text: entry.note }) : null,
         ]),
         iconButton('trash', 'Delete this entry', function () {
-          if (!confirm('Delete the ' + fullDateLabel(entry.date) + ' entry?')) return
-          api('DELETE', '/entries/' + entry.id).then(load).catch(function (err) { alert(err.message) })
+          if (confirm('Delete the ' + fullDateLabel(entry.date) + ' entry?')) deleteEntry(entry)
         }),
       ])
     }))
   }
 
-  function renderProjectFoot(project) {
-    if (modalRenaming) {
-      var input = el('input', { type: 'text', maxlength: '80', value: project.name, 'aria-label': 'Project name' })
-      var errorEl = el('div', { class: 'error' })
-      var save = el('button', { class: 'btn primary', type: 'submit', text: 'Save' })
-      var cancel = el('button', { class: 'btn text', type: 'button', text: 'Cancel', onclick: function () { modalRenaming = false; renderModal() } })
-      setTimeout(function () { input.focus() }, 0)
-      return el('form', { class: 'modal-foot', style: 'display: grid', onsubmit: function (e) {
-        e.preventDefault()
-        var name = input.value.trim()
-        if (!name) { errorEl.textContent = 'Give it a name'; return }
-        save.disabled = cancel.disabled = true
-        api('PATCH', '/items/' + project.id, { name: name }).then(function () { modalRenaming = false; return load() })
-          .catch(function (err) { errorEl.textContent = err.message; save.disabled = cancel.disabled = false })
-      } }, [el('label', {}, ['Rename project', input]), errorEl, el('div', { class: 'row' }, [save, cancel])])
-    }
-    return el('div', { class: 'modal-foot' }, [
-      el('button', { class: 'btn text', type: 'button', text: 'Rename project', onclick: function () { modalRenaming = true; renderModal() } }),
-      el('button', { class: 'btn danger', type: 'button', text: 'Delete project', onclick: function () {
-        if (!confirm('Delete the "' + project.name + '" project?')) return
-        api('DELETE', '/items/' + project.id).then(function () { closeModal(); return load() }).catch(function (err) { alert(err.message) })
-      } }),
-    ])
+  // One row per chosen day in the last 8 weeks: Kept / Missed. Tapping the
+  // chosen answer again clears it.
+  function checkinList(goal) {
+    return el('ul', { class: 'history' }, checkinDays(goal).map(function (day) {
+      var outcome = day.entry && day.entry.outcome
+      function answer(value, text) {
+        return el('button', { class: 'btn ' + (outcome === value ? value : 'outline'), type: 'button', text: text, 'aria-pressed': String(outcome === value), onclick: function (e) {
+          e.currentTarget.disabled = true
+          ;(outcome === value ? deleteEntry(day.entry) : addEntry(goal, { date: day.date, outcome: value })).catch(function (err) { alert(err.message) })
+        } })
+      }
+      return el('li', {}, [
+        el('div', { class: 'body' }, [
+          el('div', { class: 'date' }, [fullDateLabel(day.date), el('span', { class: outcome || day.ago === 0 ? '' : 'unrecorded', text: outcome ? relLabel(day.date) : day.ago === 0 ? 'today' : 'not recorded' })]),
+        ]),
+        answer('kept', 'Kept'),
+        answer('missed', 'Missed'),
+      ])
+    }))
   }
 
   function showMessage(html) { listEl.innerHTML = '<p class="msg">' + html + '</p>'; addBtn.hidden = true }
 
   function load() {
-    return api('GET', '/items').then(function (json) { items = json.data; render() }).catch(function (err) {
+    return api('GET', '/items').then(function (json) { goals = json.data; render() }).catch(function (err) {
       if (err.status === 401 || err.status === 403) showMessage('Sign in to Bulbord to use the tracker. <a href="/">Go to Bulbord</a>')
       else showMessage('Couldn’t load the tracker: ' + err.message.replace(/</g, '&lt;'))
     })
   }
 
   addBtn.addEventListener('click', function () {
-    adding = true; renamingId = null
+    adding = true; editingId = null
     render()
     window.scrollTo(0, 0)
   })
 
-  // Re-check red/upcoming when coming back to the page (dates roll over).
+  // Re-check red and the scores when coming back to the page (dates roll
+  // over), unless a form is open (re-rendering would drop what's typed).
   window.addEventListener('pageshow', function (e) { if (e.persisted) load() })
-  document.addEventListener('visibilitychange', function () { if (!document.hidden && token && items.length) render() })
+  document.addEventListener('visibilitychange', function () { if (!document.hidden && token && goals.length && !adding && !editingId && !openId) render() })
 
   if (!token) showMessage('Sign in to Bulbord to use the tracker. <a href="/">Go to Bulbord</a>')
   else load()

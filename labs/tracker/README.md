@@ -1,14 +1,40 @@
 # Tracker
 
-"When's the next one, and how long since the last?" A member's private list
-of things they want to keep happening (a date night, a playdate, a trip),
-each showing when the next one is planned, plus logs of projects showing how
-long since the last progress. Built 2026-10-26; past entries and logs added
-2026-10-29 (feedback #187, #188).
+A member's private list of goals. Every goal has a title, a description, a
+**key action** that turns it red when there's something to do today, and a
+**score** from 0 to 100% over the last 8 weeks, which builds up over time and
+can't be fixed on any one day. Built 2026-10-26; past entries and project logs
+2026-10-29 (feedback #187, #188); reworked into typed goals 2026-11-05
+(feedback #189).
 
 - Page: `web/public/labs/tracker/index.html` (served at `/labs/tracker/`)
 - Server: `api/src/labs/tracker/` (`lab.ts` routes, `db.ts` tables)
 - Data: schema `lab_tracker` (tables `tracker_items`, `tracker_entries`)
+
+## Goal types
+
+Goals of the same type share all their code; a new kind of goal is a new type.
+On the page, everything that differs by type lives in one `TYPES` table (what
+turns it red, what the card says, the score, its setting, the modal); on the
+server, `parseSettings` and the entry rules in `POST /items/:id/entries`.
+
+- **Plan ahead** (`plan`, e.g. see friends, date with Anna, informational
+  interview): red until the next one is on the calendar (an entry dated today
+  or later). Setting: how often one should happen, every 1, 2 or 4 weeks.
+  Score: how many of those periods in the last 8 weeks, counted back from
+  today, had an entry dated today or earlier ("2 of 8 weeks"). There's only
+  ever one next one: the server makes an entry dated today or later replace the
+  upcoming one (the old one stays as a soft-deleted row).
+- **Keep making progress** (`progress`, e.g. a project): red once the last
+  entry is more than N days old, or there's none (setting, default 14). Score:
+  how many of the last 8 weeks had an entry. Entries are today or earlier.
+- **Check in on set days** (`checkin`, e.g. no drinking on Sundays and
+  Mondays): each chosen weekday is recorded Kept or Missed. Red while any
+  chosen day in the last 8 weeks (not counting today, which can be recorded
+  early but isn't red until it's over) has no record, which is meant to force
+  catching up. Score: kept days ÷ the chosen days in the window (today counts
+  once recorded); an unrecorded day counts as not kept. One record per day: a
+  new one replaces it, and tapping the chosen answer again clears it.
 
 ## Behavior
 
@@ -16,30 +42,21 @@ long since the last progress. Built 2026-10-26; past entries and logs added
   scoped to the signed-in member; another member's ids answer 404, and a
   signed-out request answers 401 (the page then says "Sign in to Bulbord to
   use the tracker").
-- First visit seeds four "next one" items: Date with Anna, Playdate for
-  Sebrin, Fun trip, Hang with a friend. The header + adds an item of either
-  kind; each card has a pencil (rename, and a log's red-after days) and a
-  trash can (delete, with a confirm; deleting a log deletes its projects).
-- **Next one** items: an item's entries can be past or future. The card shows
-  the soonest entry dated today or later. With none, it's red ("Nothing
-  planned — tap to add one") and, if there's a past entry, "Last one <date> ·
-  N ago". Tapping the card opens a modal with one form (date, today by
-  default; optional note; Add; feedback #187), then "Next one" (the single
-  upcoming entry) and "History" (past entries only, newest first), each
-  deletable. The date alone decides which; adding an upcoming date replaces
-  the next one rather than stacking a second (2026-10-29, after the first
-  two-form version read as confusing and a re-save left a duplicate).
-- **Logs** (feedback #188, e.g. "Current projects"): a card listing projects,
-  each with how long since its last entry ("today", "9 days ago", "never"),
-  stalest first. A project goes red once that's more than the log's
-  `stale_days` (asked for in the add form only when Log is picked, default
-  14; changeable with the pencil, not shown on the card), and the whole card is red if any
-  project is. "+ Add project" adds one; tapping a project opens a modal: log
-  the same one form (date ≤ today), its past entries, rename/delete the
-  project.
-- The modal pushes a history state, so the phone's back gesture closes it.
-- Order: upcoming next-ones first (soonest at the top), then logs that are on
-  track, then everything red, alphabetically.
+- First visit seeds four plan-ahead goals: Date with Anna, Playdate for
+  Sebrin, Fun trip, Hang with a friend. The header + adds a goal (type, title,
+  description, the type's setting); each card has a pencil (everything but
+  the type, which is fixed) and a trash can (delete, with a confirm).
+- A card shows the title, the key-action line and the score. Tapping it opens
+  a modal with the description and the type's own contents: plan → one form
+  (date, today by default; optional note; Add), "Next one", "History"; progress
+  → the same form (today or earlier) and "History"; checkin → the chosen days
+  of the last 8 weeks, each with Kept / Missed. Entries are deleted with their
+  trash can. The modal pushes a history state, so the phone's back gesture
+  closes it.
+- Red and the score are derived on the page in the viewer's time zone, which
+  sends its `today` with each new entry so the server's date rules match.
+- Order: upcoming plans first (soonest at the top), then other green goals,
+  then everything red, alphabetically.
 - A date in a different year shows as month + year ("Mar 2027"), next to the
   relative label ("in 5 months").
 
@@ -47,27 +64,33 @@ long since the last progress. Built 2026-10-26; past entries and logs added
 
 All under `/labs/tracker` on the API, bearer token as for Bulbord.
 
-- `GET /items`: the member's top-level items, each `{id, name, kind: 'next' |
-  'log', stale_days, entries, projects}`. `entries` are every live entry,
-  newest date first; a log's `projects` are `{id, name, entries}`. The page
-  derives next/last/red from these in the viewer's time zone. Seeds the
-  defaults if the member never had any.
-- `POST /items` `{name, kind?, stale_days?}` (name ≤80 chars, days 1–3650),
-  or `{name, parent_id}` for a project in one of the member's logs.
-  `PATCH /items/:id` `{name?, stale_days?}` (days only on a log),
-  `DELETE /items/:id` (soft delete, a log's projects too).
-- `POST /items/:id/entries` `{date: "YYYY-MM-DD", note}` (note ≤200 chars) on
-  a next item or a project, not a log. `PATCH /entries/:id` `{date?, note?}`,
+- `GET /items`: the member's goals, each `{id, name, description, type:
+  'plan' | 'progress' | 'checkin', period_days, stale_days, weekdays,
+  entries}` (only the type's own setting is set; `weekdays` is `[0, 1]`, 0 =
+  Sunday). `entries` (`{id, date, note, outcome}`) are every live entry,
+  newest date first. Seeds the defaults if the member never had any goal.
+- `POST /items` `{name, description?, type?, period_days? | stale_days? |
+  weekdays?}` (title ≤80 chars, description ≤500, period 7/14/28, days
+  1–3650, at least one weekday). `PATCH /items/:id` takes the same fields but
+  not a different type. `DELETE /items/:id` (soft delete).
+- `POST /items/:id/entries` `{date: "YYYY-MM-DD", note?, outcome?, today?}`
+  (note ≤200 chars; `outcome` `'kept' | 'missed'`, check-in only; `today`
+  defaults to the server's UTC date). Rules per type as above.
   `DELETE /entries/:id` (soft delete).
 - Tested in `api/src/labs/tracker/lab.test.ts` (real Postgres).
 
 ## Data
 
-`tracker_items` (id, user_id, name, kind, stale_days, parent_id → a log,
-position, timestamps, deleted_at) and `tracker_entries` (id, item_id →
-tracker_items, user_id, date, note, timestamps, deleted_at), created by
-`db.ts`'s idempotent DDL (the 2026-10-29 columns are `ADD COLUMN IF NOT
-EXISTS`). Entries are soft-deleted only, which is the lab's history.
+`tracker_items` (id, user_id, name, description, kind = the goal type,
+period_days, stale_days, weekdays as `"0,1"`, position, timestamps,
+deleted_at) and `tracker_entries` (id, item_id → tracker_items, user_id,
+date, note, outcome, timestamps, deleted_at), created by `db.ts`'s idempotent
+DDL. Entries are soft-deleted only, which is the lab's history.
+
+2026-11-05 (#189): "next one" items became plan-ahead goals (every week); each
+project of a log became its own progress goal with the log's days, and the
+emptied logs were deleted (no member had a log in production). `parent_id` is
+left in the table, unused.
 
 2026-10-27: moved from the shared `labs` schema (used by Bulbord's own login)
 to `lab_tracker`, owned by the lab's own login, when labs got their own

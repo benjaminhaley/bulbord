@@ -30,7 +30,6 @@ describe.skipIf(!process.env.DATABASE_URL)('tracker lab', () => {
 
   afterAll(async () => {
     await admin.unsafe('DELETE FROM lab_tracker.tracker_entries WHERE user_id IN ($1, $2)', [member, other])
-    await admin.unsafe('UPDATE lab_tracker.tracker_items SET parent_id = NULL WHERE user_id IN ($1, $2)', [member, other])
     await admin.unsafe('DELETE FROM lab_tracker.tracker_items WHERE user_id IN ($1, $2)', [member, other])
     await admin.end()
     await app.close()
@@ -43,51 +42,56 @@ describe.skipIf(!process.env.DATABASE_URL)('tracker lab', () => {
     expect((await app.inject({ url: '/labs/tracker/items' })).statusCode).toBe(401)
   })
 
-  it('keeps past and future entries on a next item, newest date first', async () => {
-    const items = (await call('GET', '/items')).json().data
-    const hang = items.find((i: { name: string }) => i.name === 'Hang with a friend')
-    expect(hang).toMatchObject({ kind: 'next', entries: [], projects: [] })
+  it('seeds plan-ahead goals; a new upcoming date replaces the next one', async () => {
+    const goals = (await call('GET', '/items')).json().data
+    const hang = goals.find((g: { name: string }) => g.name === 'Hang with a friend')
+    expect(hang).toMatchObject({ type: 'plan', period_days: 7, description: '', entries: [] })
 
-    await call('POST', `/items/${hang.id}/entries`, { date: '2099-11-30', note: 'Book club' })
-    const past = (await call('POST', `/items/${hang.id}/entries`, { date: '2020-10-27', note: 'Jeb' })).json()
-    expect((await call('PATCH', `/entries/${past.id}`, { note: 'Hung with Jeb' })).json()).toMatchObject({ date: '2020-10-27', note: 'Hung with Jeb' })
+    const today = '2026-11-05'
+    await call('POST', `/items/${hang.id}/entries`, { date: '2026-11-20', note: 'Book club', today })
+    await call('POST', `/items/${hang.id}/entries`, { date: '2026-10-27', note: 'Jeb', today })
+    await call('POST', `/items/${hang.id}/entries`, { date: '2026-11-08', note: 'Picnic', today })
 
-    const after = (await call('GET', '/items')).json().data.find((i: { id: string }) => i.id === hang.id)
+    const after = (await call('GET', '/items')).json().data.find((g: { id: string }) => g.id === hang.id)
     expect(after.entries.map((e: { date: string; note: string }) => [e.date, e.note])).toEqual([
-      ['2099-11-30', 'Book club'],
-      ['2020-10-27', 'Hung with Jeb'],
+      ['2026-11-08', 'Picnic'],
+      ['2026-10-27', 'Jeb'],
     ])
-  })
-
-  it('makes a log of projects, each with its own entries', async () => {
-    const log = (await call('POST', '/items', { name: 'Current projects', kind: 'log', stale_days: 10 })).json()
-    expect(log).toMatchObject({ kind: 'log', stale_days: 10 })
-    const project = (await call('POST', '/items', { name: 'Garage shelves', parent_id: log.id })).json()
-    expect(project.kind).toBe('project')
-    await call('POST', `/items/${project.id}/entries`, { date: '2026-10-20', note: 'Cut boards' })
-
-    // Entries go on a project, not the log itself.
-    expect((await call('POST', `/items/${log.id}/entries`, { date: '2026-10-20' })).statusCode).toBe(400)
-    expect((await call('PATCH', `/items/${log.id}`, { stale_days: 21 })).json().stale_days).toBe(21)
-
-    const data = (await call('GET', '/items')).json().data
-    expect(data.find((i: { id: string }) => i.id === project.id)).toBeUndefined()
-    expect(data.find((i: { id: string }) => i.id === log.id)).toMatchObject({
-      stale_days: 21,
-      projects: [{ name: 'Garage shelves', entries: [{ date: '2026-10-20', note: 'Cut boards' }] }],
+    expect((await call('PATCH', `/items/${hang.id}`, { period_days: 14, description: 'See good friends more' })).json()).toMatchObject({
+      period_days: 14,
+      description: 'See good friends more',
     })
-
-    await call('DELETE', `/items/${log.id}`)
-    const remaining = (await call('GET', '/items')).json().data
-    expect(remaining.find((i: { id: string }) => i.id === log.id)).toBeUndefined()
-    expect((await call('POST', `/items/${project.id}/entries`, { date: '2026-10-21' })).statusCode).toBe(404)
+    expect((await call('PATCH', `/items/${hang.id}`, { stale_days: 3 })).statusCode).toBe(400)
   })
 
-  it("hides one member's items from another", async () => {
-    const mine = (await call('POST', '/items', { name: 'Mine', kind: 'log' })).json()
-    expect(mine.stale_days).toBe(14)
-    expect((await call('POST', '/items', { name: 'Sneaky', parent_id: mine.id }, other)).statusCode).toBe(404)
+  it('keeps progress entries to today or earlier', async () => {
+    const goal = (await call('POST', '/items', { name: 'Garage shelves', type: 'progress' })).json()
+    expect(goal).toMatchObject({ type: 'progress', stale_days: 14, period_days: null })
+    expect((await call('POST', `/items/${goal.id}/entries`, { date: '2026-11-06', today: '2026-11-05' })).statusCode).toBe(400)
+    expect((await call('POST', `/items/${goal.id}/entries`, { date: '2026-11-05', note: 'Cut boards', today: '2026-11-05' })).statusCode).toBe(201)
+  })
+
+  it('records a check-in goal kept or missed, one record per chosen day', async () => {
+    const goal = (await call('POST', '/items', { name: 'No drinking', type: 'checkin', weekdays: [1, 0, 1] })).json()
+    expect(goal.weekdays).toEqual([0, 1])
+    const record = (date: string, outcome?: string) => call('POST', `/items/${goal.id}/entries`, { date, outcome, today: '2026-11-05' })
+
+    expect((await record('2026-11-02', 'kept')).statusCode).toBe(201) // a Monday
+    expect((await record('2026-11-02', 'missed')).statusCode).toBe(201)
+    expect((await record('2026-11-04', 'kept')).statusCode).toBe(400) // a Wednesday
+    expect((await record('2026-11-09', 'kept')).statusCode).toBe(400) // after today
+    expect((await record('2026-11-03')).statusCode).toBe(400)
+
+    const after = (await call('GET', '/items')).json().data.find((g: { id: string }) => g.id === goal.id)
+    expect(after.entries).toMatchObject([{ date: '2026-11-02', outcome: 'missed' }])
+    expect((await call('POST', '/items', { name: 'No days', type: 'checkin', weekdays: [] })).statusCode).toBe(400)
+  })
+
+  it("hides one member's goals from another", async () => {
+    const mine = (await call('POST', '/items', { name: 'Mine', type: 'progress' })).json()
+    expect((await call('POST', `/items/${mine.id}/entries`, { date: '2026-10-01' }, other)).statusCode).toBe(404)
     expect((await call('PATCH', `/items/${mine.id}`, { name: 'Taken' }, other)).statusCode).toBe(404)
     expect((await call('DELETE', `/items/${mine.id}`, undefined, other)).statusCode).toBe(404)
+    expect((await call('DELETE', `/items/${mine.id}`)).statusCode).toBe(200)
   })
 })

@@ -91,4 +91,4 @@ data: `DROP SCHEMA lab_<name> CASCADE; DROP ROLE lab_<name>;`.
 ## Current labs
 
 - [Soccer Math](soccer-math/README.md): times-tables game, no server.
-- [Tracker](tracker/README.md): "when's the next one?" and project logs, members only.
+- [Tracker](tracker/README.md): goals of three types, each red or green with an 8-week score, members only.

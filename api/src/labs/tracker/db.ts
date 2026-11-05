@@ -16,12 +16,16 @@ export const trackerItems = labs.table('tracker_items', {
   id: uuid('id').primaryKey().defaultRandom(),
   userId: uuid('user_id').notNull(),
   name: text('name').notNull(),
-  // 'next' (when's the next one?), 'log' (a group of projects: how long since
-  // the last progress?), or 'project' (one row inside a log, via parent_id).
-  kind: text('kind').notNull().default('next'),
-  // A log turns red once a project's last entry is more than this many days old.
+  description: text('description').notNull().default(''),
+  // The goal's type (feedback #189): 'plan', 'progress' or 'checkin' (see
+  // lab.ts). The column is still called `kind` from before goals had types.
+  type: text('kind').notNull().default('plan'),
+  // plan: how often one should happen, in days (7, 14 or 28).
+  periodDays: integer('period_days'),
+  // progress: red once the last entry is more than this many days old.
   staleDays: integer('stale_days'),
-  parentId: uuid('parent_id'),
+  // checkin: the days to record, as "0,1" (0 = Sunday).
+  weekdays: text('weekdays'),
   position: integer('position').notNull().default(0),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
@@ -34,6 +38,8 @@ export const trackerEntries = labs.table('tracker_entries', {
   userId: uuid('user_id').notNull(),
   date: date('date').notNull(),
   note: text('note').notNull().default(''),
+  // checkin only: 'kept' or 'missed'.
+  outcome: text('outcome'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   deletedAt: timestamp('deleted_at', { withTimezone: true }),
@@ -63,7 +69,21 @@ const DDL = `
     updated_at timestamptz NOT NULL DEFAULT now(),
     deleted_at timestamptz
   );
-  CREATE INDEX IF NOT EXISTS tracker_entries_item_idx ON lab_tracker.tracker_entries (item_id, created_at);
+  ALTER TABLE lab_tracker.tracker_items ADD COLUMN IF NOT EXISTS description text NOT NULL DEFAULT '';
+  ALTER TABLE lab_tracker.tracker_items ADD COLUMN IF NOT EXISTS period_days integer;
+  ALTER TABLE lab_tracker.tracker_items ADD COLUMN IF NOT EXISTS weekdays text;
+  ALTER TABLE lab_tracker.tracker_items ALTER COLUMN kind SET DEFAULT 'plan';
+  ALTER TABLE lab_tracker.tracker_entries ADD COLUMN IF NOT EXISTS outcome text;
+  -- 2026-11-05 (feedback #189): items became goals. A "next one" item is a
+  -- plan-ahead goal; each project in a log became its own progress goal, and
+  -- the emptied logs are deleted (no member had one in production). parent_id
+  -- is unused from here on.
+  UPDATE lab_tracker.tracker_items SET kind = 'plan', period_days = coalesce(period_days, 7) WHERE kind = 'next';
+  UPDATE lab_tracker.tracker_items p SET kind = 'progress', stale_days = coalesce(l.stale_days, 14), parent_id = NULL
+    FROM lab_tracker.tracker_items l WHERE p.kind = 'project' AND l.id = p.parent_id;
+  UPDATE lab_tracker.tracker_items SET deleted_at = now() WHERE kind = 'log' AND deleted_at IS NULL;
+  DROP INDEX IF EXISTS lab_tracker.tracker_entries_item_idx;
+  CREATE INDEX IF NOT EXISTS tracker_entries_item_date_idx ON lab_tracker.tracker_entries (item_id, date);
 `
 
 // Its own small connection pool, created on first use, so a misbehaving lab
