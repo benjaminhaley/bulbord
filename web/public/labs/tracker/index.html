@@ -51,20 +51,27 @@
     position: relative;
   }
   .card.due { border-left-color: var(--red); background: var(--red-bg); }
-  /* A goal's row: one line, red or green, the title and the score ring. */
-  .card.goal { display: flex; align-items: center; gap: 12px; width: 100%; border: 0; border-left: 6px solid var(--green); padding: 8px 12px 8px 16px; margin-bottom: 8px; font: inherit; color: var(--ink); text-align: left; cursor: pointer; }
-  .card.goal.due { border-left-color: var(--red); }
-  .card.goal .name { flex: 1; min-width: 0; font-size: 1rem; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .card.goal.due .name { color: var(--red); }
+  /* A goal: one line (a red or green bar, the title, the score ring) that
+     expands in place into the details. */
+  .card.goal { margin-bottom: 8px; }
+  .card.goal.open { background: var(--card); }
+  .goal-row { display: flex; align-items: center; gap: 12px; width: 100%; background: none; border: 0; padding: 8px 12px 8px 16px; font: inherit; color: var(--ink); text-align: left; cursor: pointer; }
+  .goal-row .name { flex: 1; min-width: 0; font-size: 1rem; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .card.due .goal-row .name { color: var(--red); }
+  .card.open .goal-row .name { white-space: normal; }
+  .goal-body { padding: 4px 16px 16px; border-top: 1px solid var(--line); }
+  .goal-body .description { font-size: 0.9375rem; color: var(--muted); margin: 10px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .why { font-size: 0.9375rem; margin-top: 10px; }
+  .why b { font-weight: 500; margin-right: 4px; }
+  .why b.red { color: var(--red); }
+  .why b.green { color: var(--green); }
+  .goal-body h3 { font-size: 0.8125rem; font-weight: 500; letter-spacing: 0.02em; text-transform: uppercase; color: var(--muted); margin: 18px 0 8px; }
+  .goal-body form { display: grid; gap: 10px; margin-top: 14px; }
+  .goal-body form.inline { padding: 0; }
+  .goal-foot { display: flex; gap: 8px; margin-top: 16px; padding-top: 8px; border-top: 1px solid var(--line); }
   .donut { position: relative; flex: none; width: 40px; height: 40px; display: inline-grid; place-items: center; }
   .donut svg { position: absolute; inset: 0; width: 100%; height: 100%; }
   .donut span { position: relative; font-size: 0.6875rem; font-weight: 500; }
-  .donut.big { width: 56px; height: 56px; }
-  .donut.big span { font-size: 0.875rem; }
-  .note { font-size: 0.9375rem; color: var(--ink); margin-top: 2px; white-space: pre-wrap; overflow-wrap: anywhere; }
-  .hint { font-size: 0.875rem; color: var(--red); margin-top: 2px; }
-  .score-row { display: flex; align-items: center; gap: 12px; margin-top: 14px; }
-  .score-row .label { font-size: 0.8125rem; color: var(--muted); }
   label { font-size: 0.75rem; color: var(--muted); display: grid; gap: 4px; }
   input[type=date], input[type=text], input[type=number], textarea, select {
     font: inherit; font-size: 1rem; padding: 10px 12px; border: 1px solid var(--line);
@@ -95,18 +102,6 @@
   .weekdays { display: flex; flex-wrap: wrap; gap: 4px 12px; }
   .weekdays label { display: flex; gap: 4px; align-items: center; font-size: 0.9375rem; color: var(--ink); }
   [hidden] { display: none !important; }
-  /* Goal modal */
-  dialog { border: 0; border-radius: 16px; padding: 0; width: min(440px, calc(100vw - 24px)); max-height: calc(100vh - 48px); max-height: calc(100dvh - 48px); overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; box-shadow: 0 8px 32px rgba(0,0,0,0.25); color: var(--ink); background: var(--card); }
-  dialog::backdrop { background: rgba(0,0,0,0.4); }
-  .modal-head { position: sticky; top: 0; background: var(--card); display: flex; align-items: flex-start; gap: 8px; padding: 16px 12px 8px 16px; border-bottom: 1px solid var(--line); z-index: 1; }
-  .modal-head h2:focus { outline: none; }
-  .modal-head h2 { margin: 0; font-size: 1.125rem; font-weight: 500; flex: 1; overflow-wrap: anywhere; }
-  .modal-body { padding: 8px 16px 20px; }
-  .modal-body .description { font-size: 0.9375rem; color: var(--muted); margin: 4px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }
-  .modal-body h3 { font-size: 0.8125rem; font-weight: 500; letter-spacing: 0.02em; text-transform: uppercase; color: var(--muted); margin: 18px 0 8px; }
-  .modal-body form { display: grid; gap: 10px; margin-top: 12px; }
-  .modal-body form.inline { padding: 0; }
-  .modal-foot { display: flex; gap: 8px; margin-top: 20px; padding-top: 12px; border-top: 1px solid var(--line); }
   .history { list-style: none; margin: 0; padding: 0; }
   .history li { display: flex; gap: 8px; align-items: center; padding: 10px 0; border-top: 1px solid var(--line); }
   .history li:first-child { border-top: 0; }
@@ -129,7 +124,6 @@
   <p class="intro">Red means there's something you can do today. The ring is your score for the last 8 weeks.</p>
   <div id="list"><p class="msg">Loading…</p></div>
 </main>
-<dialog id="modal" aria-labelledby="modal-title"></dialog>
 <script>
 (function () {
   var API = location.hostname === 'localhost' || location.hostname === '127.0.0.1'
@@ -141,11 +135,10 @@
 
   var listEl = document.getElementById('list')
   var addBtn = document.getElementById('add-btn')
-  var modal = document.getElementById('modal')
   var goals = []
-  var editing = false // the modal is showing its goal's edit form
   var adding = false
-  var openId = null // the goal shown in the modal
+  var openId = null // the expanded goal
+  var editing = false // the expanded goal is showing its edit form
 
   // Mirrors lab.ts.
   var WINDOW_DAYS = 56 // the score covers the last 8 weeks
@@ -156,7 +149,6 @@
 
   var ICONS = {
     trash: 'M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z',
-    close: 'M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z',
   }
   function iconButton(icon, label, onclick) {
     var b = el('button', { class: 'icon-btn', type: 'button', 'aria-label': label, title: label, onclick: onclick })
@@ -203,15 +195,15 @@
     return goal.entries.filter(function (e) { return goal.type === 'plan' ? e.date < today : e.date <= today })
   }
   // How many of the last 8 weeks' periods (counted back from today) had an
-  // entry dated today or earlier.
-  function periodScore(goal, periodDays, unit) {
+  // entry dated today or earlier; `explain(n, periods)` says it in words.
+  function periodScore(goal, periodDays, explain) {
     var periods = WINDOW_DAYS / periodDays, hit = {}
     goal.entries.forEach(function (e) {
       var ago = -daysFromToday(e.date)
       if (ago >= 0 && ago < WINDOW_DAYS) hit[Math.floor(ago / periodDays)] = true
     })
     var n = Object.keys(hit).length
-    return { value: percent(n, periods), detail: n + ' of ' + periods + ' ' + unit }
+    return { value: percent(n, periods), detail: explain(n, periods) }
   }
   // A check-in goal's chosen days in the last 8 weeks, newest first, each with
   // its record (if any). Today is included but never counts as missing.
@@ -231,17 +223,18 @@
     return last ? -daysFromToday(last.date) : Infinity
   }
 
-  // Everything that differs by goal type: what turns it red (and the modal's
-  // hint then), the score, the type's setting, and the modal's contents.
+  // Everything that differs by goal type: what turns it red and why it is
+  // red or green (`why`, one short line), the score and what it counts, the
+  // type's setting, and the expanded card's contents.
   var TYPES = {
     plan: {
       label: 'Plan ahead',
       detail: 'Red until the next one is on the calendar. E.g. seeing friends, a date night.',
       isDue: function (goal) { return !nextEntry(goal) },
-      hint: 'Nothing planned — add one below',
+      why: function (goal) { return nextEntry(goal) ? 'the next one is planned.' : 'nothing is planned. Add the next one below.' },
       score: function (goal) {
-        var unit = { 7: 'weeks', 14: 'two-week stretches', 28: 'four-week stretches' }[goal.period_days]
-        return periodScore(goal, goal.period_days, unit)
+        var stretch = { 7: 'weeks', 14: 'two-week stretches', 28: 'four-week stretches' }[goal.period_days]
+        return periodScore(goal, goal.period_days, function (n, of) { return n + ' of the last ' + of + ' ' + stretch + ' had one.' })
       },
       settingField: function (goal) {
         var select = el('select', { 'aria-label': 'How often' }, PERIODS.map(function (p) {
@@ -251,7 +244,7 @@
         }))
         return { node: el('label', {}, ['How often should one happen?', select]), read: function () { return { period_days: Number(select.value) } } }
       },
-      modalBody: function (goal) {
+      body: function (goal) {
         var next = nextEntry(goal)
         return [
           entryForm(goal, 'Note (optional)', false),
@@ -265,8 +258,13 @@
       label: 'Keep making progress',
       detail: 'Red once it’s been too many days since you last worked on it. E.g. a project.',
       isDue: function (goal) { return projectAge(goal) > goal.stale_days },
-      hint: 'Time for some progress — log it below',
-      score: function (goal) { return periodScore(goal, 7, 'weeks') },
+      why: function (goal) {
+        var last = pastEntries(goal)[0]
+        if (!last) return 'no progress logged yet.'
+        var since = last.date === todayIso() ? 'progress today' : 'last progress ' + relLabel(last.date)
+        return since + '; red after ' + goal.stale_days + ' days without any.'
+      },
+      score: function (goal) { return periodScore(goal, 7, function (n, of) { return 'progress in ' + n + ' of the last ' + of + ' weeks.' }) },
       settingField: function (goal) {
         var input = el('input', { type: 'number', min: '1', max: String(MAX_STALE_DAYS), inputmode: 'numeric', value: String(goal ? goal.stale_days : DEFAULT_STALE_DAYS), 'aria-label': 'Days' })
         return {
@@ -278,7 +276,7 @@
           },
         }
       },
-      modalBody: function (goal) {
+      body: function (goal) {
         return [entryForm(goal, 'What did you do? (optional)', true), historySection(pastEntries(goal))]
       },
     },
@@ -286,11 +284,16 @@
       label: 'Check in on set days',
       detail: 'Record each chosen day as kept or missed; red while a day in the last 8 weeks is unrecorded. E.g. no drinking on Sundays and Mondays.',
       isDue: function (goal) { return unrecorded(goal).length > 0 },
-      hint: 'Days to record — record them below',
+      why: function (goal) {
+        var missing = unrecorded(goal).length, days = goal.weekdays.map(function (d) { return WEEKDAYS[d] }).join('/')
+        return missing
+          ? missing + (missing === 1 ? ' past ' + days + ' isn’t' : ' past ' + days + ' days aren’t') + ' recorded yet. Record them below.'
+          : 'every ' + days + ' in the last 8 weeks is recorded.'
+      },
       score: function (goal) {
         var counted = checkinDays(goal).filter(function (d) { return d.ago > 0 || d.entry })
         var kept = counted.filter(function (d) { return d.entry && d.entry.outcome === 'kept' }).length
-        return counted.length ? { value: percent(kept, counted.length), detail: kept + ' of ' + counted.length + ' days kept' } : null
+        return counted.length ? { value: percent(kept, counted.length), detail: kept + ' of ' + counted.length + ' days kept; an unrecorded day counts as missed.' } : null
       },
       settingField: function (goal) {
         var boxes = WEEKDAYS.map(function (name, day) {
@@ -308,7 +311,7 @@
           },
         }
       },
-      modalBody: function (goal) {
+      body: function (goal) {
         return [el('h3', { text: 'Last 8 weeks' }), checkinList(goal)]
       },
     },
@@ -353,9 +356,8 @@
     listEl.innerHTML = ''
     if (adding) listEl.appendChild(renderGoalForm(null))
     if (goals.length === 0 && !adding) listEl.appendChild(el('p', { class: 'msg', text: 'No goals yet — tap + to add one.' }))
-    sortedGoals().forEach(function (goal) { listEl.appendChild(renderRow(goal)) })
+    sortedGoals().forEach(function (goal) { listEl.appendChild(renderGoal(goal)) })
     addBtn.hidden = false
-    renderModal()
   }
 
   // Green first (upcoming plans soonest at the top), then the red ones,
@@ -374,8 +376,8 @@
   }
 
   // "Add a goal" (goal null: pick the type first; shown atop the list) and
-  // "edit this goal" (in its modal: title, description and the type's
-  // setting; the type is fixed).
+  // "edit this goal" (in its expanded card: title, description and the
+  // type's setting; the type is fixed).
   function renderGoalForm(goal) {
     var type = goal ? goal.type : 'plan'
     var nameInput = el('input', { type: 'text', maxlength: '80', placeholder: 'e.g. See friends', value: goal ? goal.name : '', 'aria-label': 'Title' })
@@ -423,80 +425,53 @@
     return goal ? form : el('div', { class: 'card new' }, [form])
   }
 
-  // One line per goal: red or green, the title, and the score ring. Tapping
-  // it opens the modal with everything else.
-  function renderRow(goal) {
-    return el('button', { class: 'card goal' + (isDue(goal) ? ' due' : ''), type: 'button', 'aria-haspopup': 'dialog', onclick: function () { openModal(goal.id) } }, [
-      el('span', { class: 'name', text: goal.name }),
-      donut(TYPES[goal.type].score(goal), false),
+  // One line per goal: a red or green bar, the title and the score ring.
+  // Tapping the line expands the card in place, the line staying on top as
+  // its header; tapping it again folds it back.
+  function renderGoal(goal) {
+    var open = openId === goal.id
+    var score = TYPES[goal.type].score(goal)
+    return el('div', { class: 'card goal' + (isDue(goal) ? ' due' : '') + (open ? ' open' : '') }, [
+      el('button', { class: 'goal-row', type: 'button', 'aria-expanded': String(open), onclick: function () {
+        openId = open ? null : goal.id
+        editing = false
+        render()
+      } }, [el('span', { class: 'name', text: goal.name }), donut(score)]),
+      open ? el('div', { class: 'goal-body' }, editing ? [renderGoalForm(goal)] : goalDetails(goal, score)) : null,
+    ])
+  }
+
+  // First, plainly: why it's red or green, and what the score counts. Then
+  // the type's own contents, then Edit / Delete.
+  function goalDetails(goal, score) {
+    var type = TYPES[goal.type], due = isDue(goal)
+    return [
+      goal.description ? el('p', { class: 'description', text: goal.description }) : null,
+      el('div', { class: 'why' }, [el('b', { class: due ? 'red' : 'green', text: due ? 'Red —' : 'Green —' }), type.why(goal)]),
+      el('div', { class: 'why' }, [el('b', { text: score ? 'Score ' + score.value + '% —' : 'Score —' }), score ? score.detail : 'nothing to score yet.']),
+    ].concat(type.body(goal)).concat([
+      el('div', { class: 'goal-foot' }, [
+        el('button', { class: 'btn text', type: 'button', text: 'Edit goal', onclick: function () { editing = true; render() } }),
+        el('button', { class: 'btn danger', type: 'button', text: 'Delete goal', onclick: function () {
+          if (!confirm('Delete the "' + goal.name + '" goal?')) return
+          api('DELETE', '/items/' + goal.id).then(function () { openId = null; return load() }).catch(function (err) { alert(err.message) })
+        } }),
+      ]),
     ])
   }
 
   // The score as a ring, filled to the percent and colored by how good it is
   // (green from 75%, amber from 40%, red below). Empty when there's nothing
   // to score yet.
-  function donut(score, big) {
+  function donut(score) {
     var v = score ? score.value : 0
     var color = v >= 75 ? 'var(--green)' : v >= 40 ? 'var(--amber)' : 'var(--red)'
     var ring = function (stroke, extra) { return '<circle cx="18" cy="18" r="15.9155" fill="none" stroke-width="4" stroke="' + stroke + '"' + (extra || '') + '/>' }
-    var node = el('span', { class: 'donut' + (big ? ' big' : ''), role: 'img', 'aria-label': score ? 'Score ' + v + '%' : 'No score yet' })
+    var node = el('span', { class: 'donut', role: 'img', 'aria-label': score ? 'Score ' + v + '%' : 'No score yet' })
     node.innerHTML = '<svg viewBox="0 0 36 36">' + ring('var(--track)') +
       (v ? ring(color, ' stroke-dasharray="' + v + ' 100" transform="rotate(-90 18 18)"') : '') +
       '</svg><span>' + (score ? v + '%' : '–') + '</span>'
     return node
-  }
-
-  // ---- The modal: one goal's key action and history ----
-
-  // The modal gets a history entry, so the phone's back gesture closes it.
-  function openModal(id) {
-    openId = id
-    editing = false
-    history.pushState({ trackerModal: true }, '')
-    renderModal()
-    if (!modal.open) modal.showModal()
-    modal.scrollTop = 0
-  }
-  function closeModal() {
-    if (history.state && history.state.trackerModal) history.back()
-    else hideModal()
-  }
-  function hideModal() {
-    openId = null
-    editing = false
-    if (modal.open) modal.close()
-  }
-  window.addEventListener('popstate', function () { if (openId) hideModal() })
-  modal.addEventListener('cancel', function (e) { e.preventDefault(); closeModal() }) // Esc
-  modal.addEventListener('click', function (e) { if (e.target === modal) closeModal() }) // backdrop
-
-  function renderModal() {
-    var goal = goals.filter(function (g) { return g.id === openId })[0]
-    if (!goal) { if (openId) closeModal(); return }
-    modal.innerHTML = ''
-    modal.appendChild(el('div', { class: 'modal-head' }, [
-      // Focus lands on the title, not the close button (iOS draws a ring on it).
-      el('h2', { id: 'modal-title', tabindex: '-1', autofocus: true, text: goal.name }),
-      iconButton('close', 'Close', closeModal),
-    ]))
-    if (editing) { modal.appendChild(el('div', { class: 'modal-body' }, [renderGoalForm(goal)])); return }
-    var type = TYPES[goal.type], score = type.score(goal)
-    modal.appendChild(el('div', { class: 'modal-body' }, [
-      goal.description ? el('p', { class: 'description', text: goal.description }) : null,
-      isDue(goal) ? el('div', { class: 'hint', text: type.hint }) : null,
-      el('div', { class: 'score-row' }, [
-        donut(score, true),
-        el('div', {}, [el('div', { class: 'label', text: 'Score, last 8 weeks' }), el('div', { text: score ? score.detail : 'Nothing to score yet' })]),
-      ]),
-    ].concat(type.modalBody(goal)).concat([
-      el('div', { class: 'modal-foot' }, [
-        el('button', { class: 'btn text', type: 'button', text: 'Edit goal', onclick: function () { editing = true; renderModal() } }),
-        el('button', { class: 'btn danger', type: 'button', text: 'Delete goal', onclick: function () {
-          if (!confirm('Delete the "' + goal.name + '" goal?')) return
-          api('DELETE', '/items/' + goal.id).then(function () { closeModal(); return load() }).catch(function (err) { alert(err.message) })
-        } }),
-      ]),
-    ])))
   }
 
   // Pick a date (today by default), an optional note, Add. For a plan the date
