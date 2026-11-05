@@ -44,21 +44,24 @@ server, `parseSettings` and the entry rules in `POST /items/:id/entries`.
   use the tracker").
 - First visit seeds four plan-ahead goals: Date with Anna, Playdate for
   Sebrin, Fun trip, Hang with a friend. The header + adds a goal (type, title,
-  description, the type's setting); each card has a pencil (everything but
-  the type, which is fixed) and a trash can (delete, with a confirm).
-- A card shows the title, the key-action line and the score. Tapping it opens
-  a modal with the description and the type's own contents: plan → one form
-  (date, today by default; optional note; Add), "Next one", "History"; progress
-  → the same form (today or earlier) and "History"; checkin → the chosen days
-  of the last 8 weeks, each with Kept / Missed. Entries are deleted with their
-  trash can. The modal pushes a history state, so the phone's back gesture
-  closes it.
+  description, the type's setting) at the top of the list.
+- The list is one line per goal (2026-11-05, Ben: "basically one line"): a
+  red or green bar, the title, and the score as a ring, filled to the percent
+  and colored by how good it is (green from 75%, amber from 40%, red below).
+- Tapping a goal opens a modal with everything else: the description, a red
+  hint when there's something to do, the score ring with its count ("2 of 8
+  weeks"), then the type's own contents: plan → one form (date, today by
+  default; optional note; Add), "Next one", "History"; progress → the same
+  form (today or earlier) and "History"; checkin → the chosen days of the last
+  8 weeks, each with Kept / Missed. Entries are deleted with their trash can.
+  At the bottom: Edit goal (everything but the type, which is fixed; the form
+  replaces the modal's contents) and Delete goal. The modal pushes a history
+  state, so the phone's back gesture closes it.
 - Red and the score are derived on the page in the viewer's time zone, which
   sends its `today` with each new entry so the server's date rules match.
 - Order: upcoming plans first (soonest at the top), then other green goals,
   then everything red, alphabetically.
-- A date in a different year shows as month + year ("Mar 2027"), next to the
-  relative label ("in 5 months").
+- Dates in lists include the year when it isn't this one.
 
 ## API
 
