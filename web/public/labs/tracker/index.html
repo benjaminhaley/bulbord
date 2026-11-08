@@ -26,7 +26,6 @@
     --green: #2e7d32;
     --green-bg: #edf6ee;
     --accent: #3f51b5;
-    --amber: #ef8f00;
     --track: #e8e8ec;
   }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -621,16 +620,14 @@
     } }, [setting.node])
   }
 
-  // The score as a ring, filled to the percent and colored by how good it is
-  // (green from 75%, amber from 40%, red below). Empty when there's nothing
-  // to score yet.
+  // The score as a ring, filled to the percent in one neutral color (red and
+  // green only ever mean the status). Empty when there's nothing to score yet.
   function donut(score) {
     var v = score ? score.value : 0
-    var color = v >= 75 ? 'var(--green)' : v >= 40 ? 'var(--amber)' : 'var(--red)'
     var ring = function (stroke, extra) { return '<circle cx="18" cy="18" r="15.9155" fill="none" stroke-width="4" stroke="' + stroke + '"' + (extra || '') + '/>' }
     var node = el('span', { class: 'donut', role: 'img', 'aria-label': score ? 'Score ' + v + '%' : 'No score yet' })
     node.innerHTML = '<svg viewBox="0 0 36 36">' + ring('var(--track)') +
-      (v ? ring(color, ' stroke-dasharray="' + v + ' 100" transform="rotate(-90 18 18)"') : '') +
+      (v ? ring('var(--accent)', ' stroke-dasharray="' + v + ' 100" transform="rotate(-90 18 18)"') : '') +
       '</svg><span>' + (score ? v + '%' : '–') + '</span>'
     return node
   }

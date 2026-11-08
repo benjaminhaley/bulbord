@@ -48,7 +48,7 @@ server, `parseSettings` and the entry rules in `POST /items/:id/entries`.
   description, the type's setting) at the top of the list.
 - The list is one line per goal (2026-11-05, Ben: "basically one line"): a
   red or green bar, the title, and the score as a ring, filled to the percent
-  and colored by how good it is (green from 75%, amber from 40%, red below).
+  in one neutral blue (red and green only ever mean the status).
 - Tapping a goal's line expands that card in place (one at a time), the line
   staying on top as its header; tapping it again folds it back. Its order holds
   still while it's open. The details, reworked 2026-11-08 (Ben: "pretty clunky",
