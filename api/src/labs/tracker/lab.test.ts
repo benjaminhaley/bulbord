@@ -65,6 +65,14 @@ describe.skipIf(!process.env.DATABASE_URL)('tracker lab', () => {
     const replaced = (await call('GET', '/items')).json().data.find((g: { id: string }) => g.id === hang.id)
     expect(replaced.entries.map((e: { note: string }) => e.note)).toEqual(['Park', 'Coffee', 'Jeb'])
 
+    // Tap-to-edit: a new note, then a move that takes over the future plan.
+    const coffee = replaced.entries.find((e: { note: string }) => e.note === 'Coffee')
+    expect((await call('PATCH', `/entries/${coffee.id}`, { note: 'Long coffee', today })).json()).toMatchObject({ date: today, note: 'Long coffee' })
+    expect((await call('PATCH', `/entries/${coffee.id}`, { date: '2026-11-12', today })).json()).toMatchObject({ date: '2026-11-12', note: 'Long coffee' })
+    const moved = (await call('GET', '/items')).json().data.find((g: { id: string }) => g.id === hang.id)
+    expect(moved.entries.map((e: { note: string }) => e.note)).toEqual(['Long coffee', 'Jeb'])
+    expect((await call('PATCH', `/entries/${coffee.id}`, { note: 'Taken' }, other)).statusCode).toBe(404)
+
     expect((await call('PATCH', `/items/${hang.id}`, { period_days: 14, description: 'See good friends more' })).json()).toMatchObject({
       period_days: 14,
       description: 'See good friends more',
@@ -76,7 +84,9 @@ describe.skipIf(!process.env.DATABASE_URL)('tracker lab', () => {
     const goal = (await call('POST', '/items', { name: 'Garage shelves', type: 'progress' })).json()
     expect(goal).toMatchObject({ type: 'progress', stale_days: 14, period_days: null })
     expect((await call('POST', `/items/${goal.id}/entries`, { date: '2026-11-06', today: '2026-11-05' })).statusCode).toBe(400)
-    expect((await call('POST', `/items/${goal.id}/entries`, { date: '2026-11-05', note: 'Cut boards', today: '2026-11-05' })).statusCode).toBe(201)
+    const entry = await call('POST', `/items/${goal.id}/entries`, { date: '2026-11-05', note: 'Cut boards', today: '2026-11-05' })
+    expect(entry.statusCode).toBe(201)
+    expect((await call('PATCH', `/entries/${entry.json().id}`, { date: '2026-11-06', today: '2026-11-05' })).statusCode).toBe(400)
   })
 
   it('records a check-in goal kept or missed, one record per chosen day', async () => {
@@ -92,6 +102,7 @@ describe.skipIf(!process.env.DATABASE_URL)('tracker lab', () => {
 
     const after = (await call('GET', '/items')).json().data.find((g: { id: string }) => g.id === goal.id)
     expect(after.entries).toMatchObject([{ date: '2026-11-02', outcome: 'missed' }])
+    expect((await call('PATCH', `/entries/${after.entries[0].id}`, { note: 'No' })).statusCode).toBe(400)
     expect((await call('POST', '/items', { name: 'No days', type: 'checkin', weekdays: [] })).statusCode).toBe(400)
   })
 

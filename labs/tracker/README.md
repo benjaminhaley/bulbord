@@ -59,11 +59,17 @@ server, `parseSettings` and the entry rules in `POST /items/:id/entries`.
     lives here, not in its own section.
   - "Score: 1 of the last 8 weeks" over one mark per period, oldest to newest.
     The percent is the ring above, so it isn't repeated.
-  - The one action. Plan and progress: a button (filled when red) that opens the
-    date and note. Check-in: one dot per chosen day (✓ kept, ✕ missed, blank) and
-    one question at a time, Kept / Missed, moving on to the next unanswered day;
-    tapping a dot asks about that day, and tapping its answer again clears it.
-  - History (plan, progress): the latest 3, then "Show all N". Each has a small ✕.
+  - No Add button (2026-11-08, Ben: "just click on the fields"): dates and notes
+    read as text and are edited by tapping them, saved on leaving the field. A
+    plan's status box holds its next date and note, or "Pick a date" when red.
+    Progress has a date (today) and "What did you do?": typing logs it for that
+    date, and picking another date logs that day at once. Check-in: one dot per
+    chosen day (✓ kept, ✕ missed, blank) and one question at a time, Kept / Missed,
+    moving on to the next unanswered day; tapping a dot asks about that day, and
+    tapping its answer again clears it.
+  - History (plan, progress): folded away as "History (N)". Inside, each entry's
+    date and note are tap-to-edit, with a small ✕; a plan also has "Add a past
+    date".
   - Edit goal (everything but the type; the form replaces the details), with
     Delete goal inside it.
 - Red and the score are derived on the page in the viewer's time zone, which
@@ -88,7 +94,8 @@ All under `/labs/tracker` on the API, bearer token as for Bulbord.
 - `POST /items/:id/entries` `{date: "YYYY-MM-DD", note?, outcome?, today?}`
   (note ≤200 chars; `outcome` `'kept' | 'missed'`, check-in only; `today`
   defaults to the server's UTC date). Rules per type as above.
-  `DELETE /entries/:id` (soft delete).
+  `PATCH /entries/:id` `{date?, note?, today?}` edits a plan or progress entry
+  under the same date rules. `DELETE /entries/:id` (soft delete).
 - Tested in `api/src/labs/tracker/lab.test.ts` (real Postgres).
 
 ## Data

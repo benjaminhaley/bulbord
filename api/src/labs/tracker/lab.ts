@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gt, inArray, isNull, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, gt, inArray, isNull, ne, sql } from 'drizzle-orm'
 import type { FastifyInstance, FastifyRequest } from 'fastify'
 
 import type { Lab, LabContext } from '../sandbox.js'
@@ -257,6 +257,39 @@ async function trackerRoutes(app: FastifyInstance, ctx: LabContext) {
       return reply.code(201).send(serializeEntry(entry))
     },
   )
+
+  // Tap-to-edit an entry's date or note. A check-in day has no date or note to
+  // edit (answering again replaces it). The same date rules as adding apply.
+  app.patch<{ Params: { id: string }; Body: { date?: unknown; note?: unknown; today?: unknown } }>('/entries/:id', async (request) => {
+    const db = await database()
+    if (!UUID_RE.test(request.params.id)) throw notFound()
+    const body = request.body ?? {}
+    const userId = member(request)
+    const [entry] = await db
+      .select()
+      .from(trackerEntries)
+      .where(and(eq(trackerEntries.id, request.params.id), eq(trackerEntries.userId, userId), isNull(trackerEntries.deletedAt)))
+    if (!entry) throw notFound()
+    const item = await findItem(entry.itemId, userId)
+    if (item.type === 'checkin') throw badRequest('Answer the day again to change it')
+
+    const date = body.date === undefined ? entry.date : parseDate(body.date)
+    const note = body.note === undefined ? entry.note : parseText(body.note, MAX_NOTE, 'Note', false)
+    const today = body.today === undefined ? utcToday() : parseDate(body.today, 'today')
+    if (item.type !== 'plan' && date > today) throw badRequest('Pick today or an earlier day')
+
+    const updated = await db.transaction(async (tx) => {
+      if (item.type === 'plan' && date > today) {
+        await tx
+          .update(trackerEntries)
+          .set({ deletedAt: new Date() })
+          .where(and(eq(trackerEntries.itemId, item.id), isNull(trackerEntries.deletedAt), gt(trackerEntries.date, today), ne(trackerEntries.id, entry.id)))
+      }
+      const [row] = await tx.update(trackerEntries).set({ date, note, updatedAt: new Date() }).where(eq(trackerEntries.id, entry.id)).returning()
+      return row
+    })
+    return serializeEntry(updated)
+  })
 
   app.delete<{ Params: { id: string } }>('/entries/:id', async (request) => {
     const db = await database()

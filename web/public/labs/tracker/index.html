@@ -74,6 +74,23 @@
   .status .title { font-size: 0.9375rem; font-weight: 500; color: var(--green); }
   .status.due .title { color: var(--red); }
   .status .detail { font-size: 0.875rem; margin-top: 2px; overflow-wrap: anywhere; }
+  .status .fields { margin-top: 4px; }
+  /* Fields you tap to edit in place; they read as plain text until then. A
+     date is its label under an invisible native date input, which takes the
+     tap and opens the picker. */
+  .date-field { position: relative; display: inline-block; padding: 2px 0; font-size: 0.875rem; border-bottom: 1px dashed var(--muted); }
+  .date-field b { color: var(--ink); }
+  .date-field span { color: var(--muted); margin-left: 6px; }
+  .date-field input[type=date] { position: absolute; inset: 0; width: 100%; height: 100%; min-height: 0; padding: 0; border: 0; opacity: 0; cursor: pointer; }
+  .date-field input[type=date]::-webkit-calendar-picker-indicator { position: absolute; inset: 0; width: 100%; height: 100%; cursor: pointer; }
+  .date-field.pick b { color: var(--accent); }
+  .date-field.pick { display: block; margin-top: 8px; padding: 10px 12px; background: var(--card); border: 1px solid var(--line); border-radius: 8px; color: var(--accent); font-size: 1rem; font-weight: 500; text-align: center; }
+  textarea.note-field { display: block; min-height: 0; padding: 2px 0; border: 0; border-bottom: 1px solid transparent; border-radius: 0; background: transparent; resize: none; overflow: hidden; }
+  textarea.note-field:focus { outline: none; border-bottom-color: var(--accent); }
+  .new-entry { padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; }
+  .history-toggle { display: flex; align-items: center; gap: 6px; width: 100%; margin: -6px 0; padding: 6px 0; background: none; border: 0; color: var(--muted); font: inherit; font-size: 0.875rem; text-align: left; cursor: pointer; }
+  .history-toggle svg { width: 16px; height: 16px; fill: currentColor; transition: transform 120ms; }
+  .history-toggle[aria-expanded=true] svg { transform: rotate(90deg); }
   /* What the score counts: one mark per period, oldest to newest. */
   .score-line { font-size: 0.875rem; margin-bottom: 6px; }
   .score-line b { font-weight: 400; color: var(--muted); }
@@ -112,7 +129,6 @@
   .btn.kept { background: var(--green); color: #fff; }
   .btn.missed { background: var(--red); color: #fff; }
   .btn.danger { background: none; color: var(--red); padding: 8px 8px; margin-left: auto; }
-  .btn.wide { width: 100%; padding: 10px 16px; }
   .btn:disabled { opacity: 0.5; }
   form.inline { padding: 14px 16px; display: grid; gap: 10px; }
   .card.new { border-left-color: var(--accent); }
@@ -126,11 +142,11 @@
   .weekdays { display: flex; flex-wrap: wrap; gap: 4px 12px; }
   .weekdays label { display: flex; gap: 4px; align-items: center; font-size: 0.9375rem; color: var(--ink); }
   [hidden] { display: none !important; }
-  .section-title { font-size: 0.875rem; color: var(--muted); margin-bottom: 2px; }
   .history { list-style: none; margin: 0; padding: 0; }
+  .history { margin-top: 4px; }
   .history li { display: flex; gap: 8px; align-items: flex-start; padding: 6px 0; }
   .history .body { flex: 1; min-width: 0; font-size: 0.9375rem; overflow-wrap: anywhere; }
-  .history .date { font-size: 0.8125rem; color: var(--muted); }
+  .add-past { margin-top: 6px; }
   .remove { flex: none; background: none; border: 0; padding: 4px; margin: -2px -4px -2px 0; color: #a0a0a6; cursor: pointer; display: inline-flex; }
   .remove svg { width: 18px; height: 18px; fill: currentColor; }
   .empty { color: var(--muted); font-size: 0.875rem; margin: 0; }
@@ -161,8 +177,7 @@
   var adding = false
   var openId = null // the expanded goal
   var editing = false // the expanded goal is showing its edit form
-  var entryFormOpen = false // the expanded goal is showing its add-a-date form
-  var showAllHistory = false
+  var historyOpen = false
   var chosenDay = null // the check-in day picked to change (default: see dayToAsk)
   var justOpened = false
   var order = [] // goal ids; held still while a goal is open so it doesn't jump
@@ -267,12 +282,14 @@
       isDue: function (goal) { return !nextEntry(goal) },
       status: function (goal) {
         var next = nextEntry(goal)
-        if (!next) return { title: 'Red: nothing planned', detail: 'Turns green once the next one is on the calendar.' }
-        return {
-          title: 'Green: planned for ' + (next.date === todayIso() ? 'today' : fullDateLabel(next.date)),
-          detail: [next.date === todayIso() ? null : capitalize(relLabel(next.date)), next.note].filter(Boolean).join(' · '),
-          entry: next,
+        if (!next) {
+          return {
+            title: 'Red: nothing planned',
+            detail: 'Turns green once the next one is on the calendar.',
+            fields: dateField({ value: '', label: 'Pick a date', pick: true, onPick: function (date) { return addEntry(goal, { date: date }) } }),
+          }
         }
+        return { title: 'Green: next one is planned', fields: entryFields(next, 'Add a note'), entry: next }
       },
       score: function (goal) {
         var stretch = { 7: 'weeks', 14: 'two-week stretches', 28: 'four-week stretches' }[goal.period_days]
@@ -287,21 +304,12 @@
         return { node: el('label', {}, ['How often should one happen?', select]), read: function () { return { period_days: Number(select.value) } } }
       },
       body: function (goal) {
-        var today = todayIso()
-        var planned = nextEntry(goal)
-        var future = planned && planned.date > today ? planned : null
-        return [
-          entryAction(goal, {
-            open: isDue(goal) ? 'Plan the next one' : 'Add a date',
-            placeholder: 'Note (optional)',
-            // The server keeps one future plan, so say when this replaces it.
-            submit: function (date) {
-              if (date <= today) return 'Add'
-              return future ? 'Replace the ' + shortDateLabel(future.date) + ' plan' : 'Plan it'
-            },
-          }),
-          historySection(pastEntries(goal)),
-        ]
+        return [historySection(pastEntries(goal), dateField({
+          value: '',
+          label: 'Add a past date',
+          max: daysAgoIso(1),
+          onPick: function (date) { return addEntry(goal, { date: date }) },
+        }))]
       },
     },
     progress: {
@@ -328,12 +336,7 @@
           },
         }
       },
-      body: function (goal) {
-        return [
-          entryAction(goal, { open: 'Log progress', placeholder: 'What did you do? (optional)', pastOnly: true, submit: function () { return 'Log it' } }),
-          historySection(pastEntries(goal)),
-        ]
-      },
+      body: function (goal) { return [newEntry(goal), historySection(pastEntries(goal))] },
     },
     checkin: {
       label: 'Check in on set days',
@@ -415,6 +418,7 @@
     if (!openId || order.length !== goals.length) order = sortedGoals().map(function (g) { return g.id })
     order.forEach(function (id) { listEl.appendChild(renderGoal(goals.filter(function (g) { return g.id === id })[0])) })
     justOpened = false
+    Array.prototype.forEach.call(listEl.querySelectorAll('.note-field'), fitNote)
     addBtn.hidden = false
   }
 
@@ -495,7 +499,7 @@
     return el('div', { class: 'card goal' + (isDue(goal) ? ' due' : '') + (open ? ' open' : '') }, [
       el('button', { class: 'goal-row', type: 'button', 'aria-expanded': String(open), onclick: function () {
         openId = open ? null : goal.id
-        editing = entryFormOpen = showAllHistory = false
+        editing = historyOpen = false
         chosenDay = null
         justOpened = !open
         render()
@@ -515,6 +519,7 @@
         el('div', {}, [
           el('div', { class: 'title', text: status.title }),
           status.detail ? el('div', { class: 'detail', text: status.detail }) : null,
+          status.fields ? el('div', { class: 'fields' }, [status.fields]) : null,
         ]),
         status.entry ? removeButton(status.entry) : null,
       ]),
@@ -547,60 +552,99 @@
     return node
   }
 
-  // The goal's one action: a button that opens a date (today by default), an
-  // optional note, and a submit button that says what will happen.
-  function entryAction(goal, opts) {
-    if (!entryFormOpen) {
-      return el('button', { class: 'btn wide ' + (isDue(goal) ? 'primary' : 'outline'), type: 'button', text: opts.open, onclick: function () { entryFormOpen = true; render() } })
+  // A date you tap to change, shown as text ("Mon, Nov 30  in 3 weeks"), saved
+  // when the picker closes. Blur is the close on most browsers; the timer is a
+  // fallback in case a phone's picker closes without one.
+  function dateField(opts) {
+    var label = el('b', { style: 'font-weight:inherit', text: opts.value ? fullDateLabel(opts.value) : opts.label })
+    var rel = el('span', { text: opts.value && !opts.pick ? relLabel(opts.value) : '' })
+    var input = el('input', { type: 'date', value: opts.value, max: opts.max || null, 'aria-label': opts.label || 'Change the date' })
+    var saved = opts.value, timer
+    function commit() {
+      clearTimeout(timer)
+      if (!input.value) { input.value = saved; return } // cleared: keep the old date
+      if (input.value === saved) return
+      saved = input.value
+      opts.onPick(input.value)
     }
-    var dateInput = el('input', { type: 'date', value: todayIso(), max: opts.pastOnly ? todayIso() : null, 'aria-label': 'Date' })
-    var noteInput = el('input', { type: 'text', maxlength: '200', placeholder: opts.placeholder, 'aria-label': 'Note' })
-    var errorEl = el('div', { class: 'error' })
-    var save = el('button', { class: 'btn primary', type: 'submit', text: opts.submit(dateInput.value) })
-    function relabel() { save.textContent = opts.submit(dateInput.value) }
-    dateInput.addEventListener('input', relabel)
-    dateInput.addEventListener('change', relabel)
-    return el('form', { onsubmit: function (e) {
-      e.preventDefault()
-      if (!dateInput.value) { errorEl.textContent = 'Pick a date'; return }
-      save.disabled = true
-      addEntry(goal, { date: dateInput.value, note: noteInput.value })
-        .catch(function (err) { errorEl.textContent = err.message; save.disabled = false })
-    } }, [dateInput, noteInput, errorEl, el('div', { class: 'row' }, [
-      save,
-      el('button', { class: 'btn text', type: 'button', text: 'Cancel', onclick: function () { entryFormOpen = false; render() } }),
-    ])])
+    input.addEventListener('change', function () {
+      if (!input.value) return
+      label.textContent = fullDateLabel(input.value)
+      rel.textContent = relLabel(input.value)
+      clearTimeout(timer)
+      timer = setTimeout(commit, 1500)
+    })
+    input.addEventListener('blur', commit)
+    input.addEventListener('click', function () { try { input.showPicker() } catch (e) {} })
+    return el('label', { class: 'date-field' + (opts.pick ? ' pick' : '') }, [label, rel, input])
+  }
+
+  // A note that reads as plain text until tapped; saved on leaving it or Return.
+  function fitNote(area) { area.style.height = 'auto'; area.style.height = area.scrollHeight + 'px' }
+  function noteField(value, placeholder, onSave) {
+    var area = el('textarea', { class: 'note-field', rows: '1', maxlength: '200', placeholder: placeholder, 'aria-label': 'Note', value: value })
+    area.addEventListener('input', function () { fitNote(area) })
+    area.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); area.blur() } })
+    area.addEventListener('blur', function () {
+      var text = area.value.trim()
+      if (text !== value.trim()) { value = text; onSave(text) }
+    })
+    return area
+  }
+
+  // An existing entry's date and note, both tap-to-edit.
+  function entryFields(entry, placeholder) {
+    return el('div', {}, [
+      dateField({ value: entry.date, onPick: function (date) { return editEntry(entry, { date: date }) } }),
+      noteField(entry.note || '', placeholder, function (note) { return editEntry(entry, { note: note }) }),
+    ])
+  }
+
+  // Logging progress: typing what you did logs it for the date shown (today
+  // unless changed); picking another date logs that day right away.
+  function newEntry(goal) {
+    var date = todayIso()
+    var note = noteField('', 'What did you do?', function (text) { return addEntry(goal, { date: date, note: text }) })
+    return el('div', { class: 'new-entry' }, [
+      dateField({ value: date, max: date, onPick: function (picked) {
+        date = picked
+        historyOpen = true // its note can be added there
+        return addEntry(goal, { date: picked, note: note.value })
+      } }),
+      note,
+    ])
   }
 
   function afterChange() {
-    entryFormOpen = false
     chosenDay = null
     return load()
   }
+  // A failed save says why, then shows what's really saved.
+  function saving(request) {
+    return request.then(afterChange).catch(function (err) { alert(err.message); return load() })
+  }
   function addEntry(goal, body) {
-    return api('POST', '/items/' + goal.id + '/entries', Object.assign({ today: todayIso() }, body)).then(afterChange)
+    return saving(api('POST', '/items/' + goal.id + '/entries', Object.assign({ today: todayIso() }, body)))
+  }
+  function editEntry(entry, body) {
+    return saving(api('PATCH', '/entries/' + entry.id, Object.assign({ today: todayIso() }, body)))
   }
   function deleteEntry(entry) {
-    return api('DELETE', '/entries/' + entry.id).then(afterChange).catch(function (err) { alert(err.message) })
+    return saving(api('DELETE', '/entries/' + entry.id))
   }
 
-  // Past entries, newest first; only the latest few until asked for the rest.
-  var HISTORY_SHOWN = 3
-  function historySection(past) {
-    if (!past.length) return null
-    var shown = showAllHistory ? past : past.slice(0, HISTORY_SHOWN)
+  // Past entries, newest first, folded away until tapped.
+  function historySection(past, addField) {
+    if (!past.length && !addField) return null
+    var toggle = el('button', { class: 'history-toggle', type: 'button', 'aria-expanded': String(historyOpen), onclick: function () { historyOpen = !historyOpen; render() } })
+    toggle.innerHTML = '<svg viewBox="0 0 24 24"><path d="M10 6 8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg>'
+    toggle.appendChild(document.createTextNode('History (' + past.length + ')'))
     return el('div', {}, [
-      el('div', { class: 'section-title', text: 'History' }),
-      el('ul', { class: 'history' }, shown.map(function (entry) {
-        return el('li', {}, [
-          el('div', { class: 'body' }, [
-            el('div', { class: 'date', text: fullDateLabel(entry.date) + ' · ' + relLabel(entry.date) }),
-            entry.note ? el('div', { text: entry.note }) : null,
-          ]),
-          removeButton(entry),
-        ])
-      })),
-      shown.length < past.length ? el('button', { class: 'btn text', type: 'button', style: 'margin-left:-8px', text: 'Show all ' + past.length, onclick: function () { showAllHistory = true; render() } }) : null,
+      toggle,
+      historyOpen ? el('ul', { class: 'history' }, past.map(function (entry) {
+        return el('li', {}, [el('div', { class: 'body' }, [entryFields(entry, 'Add a note')]), removeButton(entry)])
+      })) : null,
+      historyOpen && addField ? el('div', { class: 'add-past' }, [addField]) : null,
     ])
   }
 
@@ -640,7 +684,8 @@
     function answer(value, text) {
       return el('button', { class: 'btn ' + (outcome === value ? value : 'outline'), type: 'button', text: text, 'aria-pressed': String(outcome === value), onclick: function (e) {
         e.currentTarget.disabled = true
-        ;(outcome === value ? deleteEntry(day.entry) : addEntry(goal, { date: day.date, outcome: value })).catch(function (err) { alert(err.message) })
+        if (outcome === value) deleteEntry(day.entry)
+        else addEntry(goal, { date: day.date, outcome: value })
       } })
     }
     return el('div', { class: 'ask' }, [
