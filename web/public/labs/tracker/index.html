@@ -56,6 +56,8 @@
   .card.goal { margin-bottom: 8px; }
   .card.goal.open { background: var(--card); }
   .goal-row { display: flex; align-items: center; gap: 12px; width: 100%; background: none; border: 0; padding: 8px 12px 8px 16px; font: inherit; color: var(--ink); text-align: left; cursor: pointer; }
+  button.goal-row { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+  .goal-row input.title-field { flex: 1; min-width: 0; padding: 4px 8px; margin-left: -8px; font-weight: 500; }
   .goal-row .name { flex: 1; min-width: 0; font-size: 1rem; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .card.due .goal-row .name { color: var(--red); }
   .card.open .goal-row .name { white-space: normal; }
@@ -63,7 +65,7 @@
   .goal-body.opening { animation: unfold 160ms ease-out; }
   @keyframes unfold { from { opacity: 0; transform: translateY(-4px); } }
   @media (prefers-reduced-motion: reduce) { .goal-body.opening { animation: none; } }
-  .goal-body .description { font-size: 0.875rem; color: var(--muted); margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+  textarea.note-field.description { color: var(--muted); }
   .goal-body form { display: grid; gap: 8px; }
   .goal-body form.inline { padding: 0; }
   /* Why it's red or green, and when that changes. */
@@ -107,6 +109,17 @@
   .day-row .btn.missed { background: var(--red); }
   .goal-foot { margin: -6px 0 0 -8px; }
   .goal-foot .btn.text { color: var(--muted); font-weight: 400; }
+  /* The goal's setting, tap-to-change on the card. */
+  .setting label { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 0.875rem; }
+  .setting select { width: auto; padding: 4px 0; border: 0; background: none; color: var(--accent); text-align: right; -webkit-appearance: none; appearance: none; }
+  .setting input[type=number] { width: 3.5em; padding: 4px 8px; text-align: center; -moz-appearance: textfield; appearance: textfield; }
+  .setting input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; }
+  .setting .choices { gap: 4px; }
+  .setting .field-label { font-size: 0.875rem; }
+  .setting .weekdays { flex-wrap: nowrap; gap: 4px; }
+  .setting .weekdays label { flex: 1; position: relative; justify-content: center; padding: 6px 0; border: 1px solid var(--line); border-radius: 8px; font-size: 0.8125rem; color: var(--muted); cursor: pointer; }
+  .setting .weekdays label:has(input:checked) { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .setting .weekdays input { position: absolute; inset: 0; margin: 0; opacity: 0; cursor: pointer; }
   .donut { position: relative; flex: none; width: 40px; height: 40px; display: inline-grid; place-items: center; }
   .donut svg { position: absolute; inset: 0; width: 100%; height: 100%; }
   .donut span { position: relative; font-size: 0.6875rem; font-weight: 500; }
@@ -173,7 +186,7 @@
   var goals = []
   var adding = false
   var openId = null // the expanded goal
-  var editing = false // the expanded goal is showing its edit form
+  var titleEditing = null // the goal whose title is being edited (hold the title)
   var historyOpen = false
   var justOpened = false
   var order = [] // goal ids; held still while a goal is open so it doesn't jump
@@ -307,7 +320,7 @@
           option.selected = (goal ? goal.period_days : 7) === p[0]
           return option
         }))
-        return { node: el('label', {}, ['How often should one happen?', select]), read: function () { return { period_days: Number(select.value) } } }
+        return { node: el('label', {}, ['How often', select]), read: function () { return { period_days: Number(select.value) } } }
       },
       body: function (goal) {
         return [historySection(pastEntries(goal), dateField({
@@ -334,7 +347,7 @@
       settingField: function (goal) {
         var input = el('input', { type: 'number', min: '1', max: String(MAX_STALE_DAYS), inputmode: 'numeric', value: String(goal ? goal.stale_days : DEFAULT_STALE_DAYS), 'aria-label': 'Days' })
         return {
-          node: el('label', {}, ['Days without progress before it turns red', input]),
+          node: el('label', {}, ['Days without progress until red', input]),
           read: function () {
             var days = Number(input.value)
             if (!Number.isInteger(days) || days < 1 || days > MAX_STALE_DAYS) throw new Error('Days must be a whole number from 1 to ' + MAX_STALE_DAYS)
@@ -431,7 +444,7 @@
 
   function render() {
     listEl.innerHTML = ''
-    if (adding) listEl.appendChild(renderGoalForm(null))
+    if (adding) listEl.appendChild(renderNewGoalForm())
     if (goals.length === 0 && !adding) listEl.appendChild(el('p', { class: 'msg', text: 'No goals yet — tap + to add one.' }))
     if (!openId || order.length !== goals.length) order = sortedGoals().map(function (g) { return g.id })
     order.forEach(function (id) { listEl.appendChild(renderGoal(goals.filter(function (g) { return g.id === id })[0])) })
@@ -454,83 +467,127 @@
     return ranked.map(function (r) { return r.goal })
   }
 
-  // "Add a goal" (goal null: pick the type first; shown atop the list) and
-  // "edit this goal" (in its expanded card: title, description and the
-  // type's setting; the type is fixed).
-  function renderGoalForm(goal) {
-    var type = goal ? goal.type : 'plan'
-    var nameInput = el('input', { type: 'text', maxlength: '80', placeholder: 'e.g. See friends', value: goal ? goal.name : '', 'aria-label': 'Title' })
+  // "Add a goal", atop the list: the type, title, description and its setting.
+  function renderNewGoalForm() {
+    var type = 'plan'
+    var nameInput = el('input', { type: 'text', maxlength: '80', placeholder: 'e.g. See friends', 'aria-label': 'Title' })
     var descInput = el('textarea', { maxlength: '500', rows: '3', placeholder: 'e.g. I want to hang out with good friends more', 'aria-label': 'Description' })
-    descInput.value = goal ? goal.description : ''
     var settingWrap = el('div', {})
     var setting
     function showSetting() {
-      setting = TYPES[type].settingField(goal)
+      setting = TYPES[type].settingField(null)
       settingWrap.innerHTML = ''
       settingWrap.appendChild(setting.node)
     }
     showSetting()
-    var types = goal ? null : el('div', { class: 'choices' }, Object.keys(TYPES).map(function (key) {
+    var types = el('div', { class: 'choices' }, Object.keys(TYPES).map(function (key) {
       return el('label', {}, [
         el('input', { type: 'radio', name: 'type', value: key, checked: type === key, onchange: function () { type = key; showSetting() } }),
         el('span', {}, [TYPES[key].label, el('small', { text: TYPES[key].detail })]),
       ])
     }))
     var errorEl = el('div', { class: 'error' })
-    var save = el('button', { class: 'btn primary', type: 'submit', text: goal ? 'Save' : 'Add' })
-    var cancel = el('button', { class: 'btn text', type: 'button', text: 'Cancel', onclick: function () { adding = false; editing = false; render() } })
+    var save = el('button', { class: 'btn primary', type: 'submit', text: 'Add' })
+    var cancel = el('button', { class: 'btn text', type: 'button', text: 'Cancel', onclick: function () { adding = false; render() } })
     var form = el('form', { class: 'inline', onsubmit: function (e) {
       e.preventDefault()
       var body
       try {
         if (!nameInput.value.trim()) throw new Error('Give it a title')
-        body = Object.assign({ name: nameInput.value, description: descInput.value }, setting.read())
+        body = Object.assign({ name: nameInput.value, description: descInput.value, type: type }, setting.read())
       } catch (err) { errorEl.textContent = err.message; return }
-      if (!goal) body.type = type
       save.disabled = cancel.disabled = true
-      ;(goal ? api('PATCH', '/items/' + goal.id, body) : api('POST', '/items', body))
-        .then(function () { adding = false; editing = false; return load() })
+      api('POST', '/items', body)
+        .then(function () { adding = false; return load() })
         .catch(function (err) { errorEl.textContent = err.message; save.disabled = cancel.disabled = false })
     } }, [
-      goal ? null : el('label', { text: 'New goal' }),
+      el('label', { text: 'New goal' }),
       types,
       el('label', {}, ['Title', nameInput]),
       el('label', {}, ['Description', descInput]),
       settingWrap,
       errorEl,
-      el('div', { class: 'row' }, [save, cancel, goal ? el('button', { class: 'btn danger', type: 'button', text: 'Delete goal', onclick: function () {
-        if (!confirm('Delete the "' + goal.name + '" goal?')) return
-        api('DELETE', '/items/' + goal.id).then(function () { openId = null; editing = false; return load() }).catch(function (err) { errorEl.textContent = err.message })
-      } }) : null]),
+      el('div', { class: 'row' }, [save, cancel]),
     ])
     setTimeout(function () { nameInput.focus() }, 0)
-    return goal ? form : el('div', { class: 'card new' }, [form])
+    return el('div', { class: 'card new' }, [form])
   }
 
   // One line per goal: a red or green bar, the title and the score ring.
   // Tapping the line expands the card in place, the line staying on top as
-  // its header; tapping it again folds it back.
+  // its header; tapping it again folds it back. Holding it edits the title.
   function renderGoal(goal) {
     var open = openId === goal.id
     var score = TYPES[goal.type].score(goal)
     return el('div', { class: 'card goal' + (isDue(goal) ? ' due' : '') + (open ? ' open' : '') }, [
-      el('button', { class: 'goal-row', type: 'button', 'aria-expanded': String(open), onclick: function () {
-        openId = open ? null : goal.id
-        editing = historyOpen = false
-        justOpened = !open
-        render()
-      } }, [el('span', { class: 'name', text: goal.name }), donut(score)]),
-      open ? el('div', { class: 'goal-body' + (justOpened ? ' opening' : '') }, editing ? [renderGoalForm(goal)] : goalDetails(goal, score)) : null,
+      titleEditing === goal.id
+        ? el('div', { class: 'goal-row' }, [titleField(goal), donut(score)])
+        : holdable(el('button', { class: 'goal-row', type: 'button', 'aria-expanded': String(open), onclick: function () {
+            openId = open ? null : goal.id
+            titleEditing = null
+            historyOpen = false
+            justOpened = !open
+            render()
+          } }, [el('span', { class: 'name', text: goal.name }), donut(score)]), function () {
+            justOpened = openId !== goal.id
+            openId = goal.id
+            historyOpen = false
+            titleEditing = goal.id
+            render()
+          }),
+      open ? el('div', { class: 'goal-body' + (justOpened ? ' opening' : '') }, goalDetails(goal, score)) : null,
     ])
   }
 
-  // In order: why it's red or green, what the score counts (the ring above is
-  // its percent), the type's own contents, and Edit (Delete is inside it).
+  // Calls onHold after a half-second press that doesn't move (a scroll cancels).
+  function holdable(node, onHold) {
+    var timer, startX, startY
+    function cancel() { clearTimeout(timer) }
+    node.addEventListener('pointerdown', function (e) {
+      startX = e.clientX
+      startY = e.clientY
+      timer = setTimeout(onHold, 500)
+    })
+    node.addEventListener('pointermove', function (e) {
+      if (Math.abs(e.clientX - startX) > 10 || Math.abs(e.clientY - startY) > 10) cancel()
+    })
+    node.addEventListener('pointerup', cancel)
+    node.addEventListener('pointercancel', cancel)
+    node.addEventListener('pointerleave', cancel)
+    node.addEventListener('contextmenu', function (e) { e.preventDefault() })
+    return node
+  }
+
+  // The title being edited: saved on leaving it or Return; Escape or blank
+  // keeps the old one.
+  function titleField(goal) {
+    var input = el('input', { class: 'title-field', type: 'text', maxlength: '80', value: goal.name, 'aria-label': 'Title' })
+    function finish(text) {
+      if (titleEditing !== goal.id) return
+      titleEditing = null
+      if (text && text !== goal.name) saveGoal(goal, { name: text })
+      else setTimeout(render, 200) // after any tap that took the focus away lands
+    }
+    input.addEventListener('blur', function () { finish(input.value.trim()) })
+    input.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') { e.preventDefault(); input.blur() }
+      if (e.key === 'Escape') { input.value = goal.name; input.blur() }
+    })
+    function focus() { input.focus(); input.select() }
+    setTimeout(focus, 0)
+    // A phone only opens its keyboard from a touch, so focus again on letting go.
+    document.addEventListener('touchend', focus, { once: true })
+    return input
+  }
+
+  // In order: the description, why it's red or green, what the score counts
+  // (the ring above is its percent), the type's own contents, the setting, and
+  // Delete. Everything is edited by tapping it where it is.
   function goalDetails(goal, score) {
     var type = TYPES[goal.type], due = isDue(goal), status = type.status(goal)
     var marks = score && score.marks ? el('div', { class: 'marks', 'aria-hidden': 'true' }, score.marks.map(function (c) { return el('i', { class: c }) })) : null
     return [
-      goal.description ? el('p', { class: 'description', text: goal.description }) : null,
+      noteField(goal.description, 'Add a description', function (text) { return saveGoal(goal, { description: text }) }, 500, 'description'),
       el('div', { class: 'status' + (due ? ' due' : '') }, [
         el('div', {}, [
           el('div', { class: 'title', text: status.title }),
@@ -544,10 +601,24 @@
         marks,
       ]),
     ].concat(type.body(goal)).concat([
+      settingOnCard(goal),
       el('div', { class: 'goal-foot' }, [
-        el('button', { class: 'btn text', type: 'button', text: 'Edit goal', onclick: function () { editing = true; render() } }),
+        el('button', { class: 'btn text', type: 'button', text: 'Delete goal', onclick: function () {
+          if (!confirm('Delete the "' + goal.name + '" goal?')) return
+          openId = null
+          saving(api('DELETE', '/items/' + goal.id))
+        } }),
       ]),
     ])
+  }
+
+  // The type's setting, saved as soon as it changes. An invalid one says why
+  // and goes back to what's saved.
+  function settingOnCard(goal) {
+    var setting = TYPES[goal.type].settingField(goal)
+    return el('div', { class: 'setting', onchange: function () {
+      try { saveGoal(goal, setting.read()) } catch (err) { alert(err.message); render() }
+    } }, [setting.node])
   }
 
   // The score as a ring, filled to the percent and colored by how good it is
@@ -593,8 +664,8 @@
 
   // A note that reads as plain text until tapped; saved on leaving it or Return.
   function fitNote(area) { area.style.height = 'auto'; area.style.height = area.scrollHeight + 'px' }
-  function noteField(value, placeholder, onSave) {
-    var area = el('textarea', { class: 'note-field', rows: '1', maxlength: '200', placeholder: placeholder, 'aria-label': 'Note', value: value })
+  function noteField(value, placeholder, onSave, max, extraClass) {
+    var area = el('textarea', { class: 'note-field' + (extraClass ? ' ' + extraClass : ''), rows: '1', maxlength: String(max || 200), placeholder: placeholder, 'aria-label': 'Note', value: value })
     area.addEventListener('input', function () { fitNote(area) })
     area.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); area.blur() } })
     area.addEventListener('blur', function () {
@@ -633,6 +704,9 @@
   }
   function addEntry(goal, body) {
     return saving(api('POST', '/items/' + goal.id + '/entries', Object.assign({ today: todayIso() }, body)))
+  }
+  function saveGoal(goal, body) {
+    return saving(api('PATCH', '/items/' + goal.id, body))
   }
   function editEntry(entry, body) {
     return saving(api('PATCH', '/entries/' + entry.id, Object.assign({ today: todayIso() }, body)))

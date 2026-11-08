@@ -69,8 +69,10 @@ server, `parseSettings` and the entry rules in `POST /items/:id/entries`.
   - History: folded away as "History (N)". Inside, each entry's date and note are
     tap-to-edit, with a small ✕; a plan also has "Add a past date". A check-in's
     history is its other days, each with Kept / Missed.
-  - Edit goal (everything but the type; the form replaces the details), with
-    Delete goal inside it.
+  - The goal's setting, changed right on the card and saved at once.
+  - Delete goal, a quiet link at the bottom. There's no Edit goal (2026-11-08,
+    Ben: tap the field, or hold if a tap already does something): the description
+    is tap-to-edit, and holding the title line edits the title. The type is fixed.
 - Red and the score are derived on the page in the viewer's time zone, which
   sends its `today` with each new entry so the server's date rules match.
 - Order: everything red first, then upcoming plans (soonest at the top), then
