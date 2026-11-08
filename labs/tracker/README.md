@@ -30,10 +30,11 @@ server, `parseSettings` and the entry rules in `POST /items/:id/entries`.
   entry is more than N days old, or there's none (setting, default 14). Score:
   how many of the last 8 weeks had an entry. Entries are today or earlier.
 - **Check in on set days** (`checkin`, e.g. no drinking on Sundays and
-  Mondays): each chosen weekday is recorded Kept or Missed. Red while any
-  chosen day in the last 8 weeks (not counting today, which can be recorded
-  early but isn't red until it's over) has no record, which is meant to force
-  catching up. Score: kept days ÷ the chosen days in the window (today counts
+  Mondays): each chosen weekday is recorded Kept or Missed. Red until the latest
+  past day of each chosen weekday (last Sunday and last Monday) is recorded;
+  today can be recorded early but isn't red until it's over, and older blanks
+  don't turn it red (2026-11-08, Ben: based on recordkeeping, not the future).
+  Score: kept days ÷ the chosen days in the window (today counts
   once recorded); an unrecorded day counts as not kept. One record per day: a
   new one replaces it, and tapping the chosen answer again clears it.
 
@@ -57,25 +58,25 @@ server, `parseSettings` and the entry rules in `POST /items/:id/entries`.
   - A tinted status box: why it's red or green and when that changes ("Green:
     progress 3 days ago / Turns red in 8 days without more."). A plan's next one
     lives here, not in its own section.
-  - "Score: 1 of the last 8 weeks" over one mark per period, oldest to newest.
+  - "Score: 1 of the last 8 weeks" over one mark per period or check-in day,
+    oldest to newest (kept green, missed red, blank gray).
     The percent is the ring above, so it isn't repeated.
   - No Add button (2026-11-08, Ben: "just click on the fields"): dates and notes
     read as text and are edited by tapping them, saved on leaving the field. A
     plan's status box holds its next date and note, or "Pick a date" when red.
     Progress has a date (today) and "What did you do?": typing logs it for that
-    date, and picking another date logs that day at once. Check-in: one dot per
-    chosen day (✓ kept, ✕ missed, blank) and one question at a time, Kept / Missed,
-    moving on to the next unanswered day; tapping a dot asks about that day, and
-    tapping its answer again clears it.
-  - History (plan, progress): folded away as "History (N)". Inside, each entry's
-    date and note are tap-to-edit, with a small ✕; a plan also has "Add a past
-    date".
+    date, and picking another date logs that day at once. Check-in: the status box
+    has Kept / Missed beside each day that needs an answer (the latest days, and
+    today if blank); tapping the current answer again clears it.
+  - History: folded away as "History (N)". Inside, each entry's date and note are
+    tap-to-edit, with a small ✕; a plan also has "Add a past date". A check-in's
+    history is its other days, each with Kept / Missed.
   - Edit goal (everything but the type; the form replaces the details), with
     Delete goal inside it.
 - Red and the score are derived on the page in the viewer's time zone, which
   sends its `today` with each new entry so the server's date rules match.
-- Order: upcoming plans first (soonest at the top), then other green goals,
-  then everything red, alphabetically.
+- Order: everything red first, then upcoming plans (soonest at the top), then
+  other green goals, alphabetically. There's no intro text above the list.
 - Dates in lists include the year when it isn't this one.
 
 ## API
