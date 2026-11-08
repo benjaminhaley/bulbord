@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gte, inArray, isNull, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, gt, inArray, isNull, sql } from 'drizzle-orm'
 import type { FastifyInstance, FastifyRequest } from 'fastify'
 
 import type { Lab, LabContext } from '../sandbox.js'
@@ -214,8 +214,8 @@ async function trackerRoutes(app: FastifyInstance, ctx: LabContext) {
   })
 
   // `today` is the viewer's own date (the server's UTC date if not given).
-  // plan: there's only ever one next one, so an entry dated today or later
-  // replaces the upcoming one (which stays in history, soft-deleted).
+  // plan: there's only ever one future plan, so a date after today replaces it
+  // (the old one stays as a soft-deleted row); today or earlier is just logged.
   // progress: today or earlier. checkin: today or earlier, on one of the
   // goal's weekdays, kept or missed; a new record replaces that day's old one.
   app.post<{ Params: { id: string }; Body: { date?: unknown; note?: unknown; outcome?: unknown; today?: unknown } }>(
@@ -238,8 +238,8 @@ async function trackerRoutes(app: FastifyInstance, ctx: LabContext) {
       if (item.type !== 'plan' && date > today) throw badRequest('Pick today or an earlier day')
 
       const replaces =
-        item.type === 'plan' && date >= today
-          ? gte(trackerEntries.date, today)
+        item.type === 'plan' && date > today
+          ? gt(trackerEntries.date, today)
           : item.type === 'checkin'
             ? eq(trackerEntries.date, date)
             : null

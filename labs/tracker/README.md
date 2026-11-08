@@ -23,8 +23,9 @@ server, `parseSettings` and the entry rules in `POST /items/:id/entries`.
   or later). Setting: how often one should happen, every 1, 2 or 4 weeks.
   Score: how many of those periods in the last 8 weeks, counted back from
   today, had an entry dated today or earlier ("2 of 8 weeks"). There's only
-  ever one next one: the server makes an entry dated today or later replace the
-  upcoming one (the old one stays as a soft-deleted row).
+  ever one future plan: the server makes a date after today replace it (the old
+  one stays as a soft-deleted row), and the submit button says so first ("Replace
+  the Nov 30 plan"). Today or earlier is just logged and leaves the plan alone.
 - **Keep making progress** (`progress`, e.g. a project): red once the last
   entry is more than N days old, or there's none (setting, default 14). Score:
   how many of the last 8 weeks had an entry. Entries are today or earlier.
@@ -49,16 +50,22 @@ server, `parseSettings` and the entry rules in `POST /items/:id/entries`.
   red or green bar, the title, and the score as a ring, filled to the percent
   and colored by how good it is (green from 75%, amber from 40%, red below).
 - Tapping a goal's line expands that card in place (one at a time), the line
-  staying on top as its header; tapping it again folds it back. The details
-  open with the description and two plain lines: why it's red or green
-  ("Red — nothing is planned. Add the next one below.") and what the score
-  counts ("Score 25% — 2 of the last 8 weeks had one."). Then the type's own
-  contents: plan → one form (date, today by default; optional note; Add),
-  "Next one", "History"; progress → the same form (today or earlier) and
-  "History"; checkin → the chosen days of the last 8 weeks, each with Kept /
-  Missed. Entries are deleted with their trash can. At the bottom: Edit goal
-  (everything but the type, which is fixed; the form replaces the details)
-  and Delete goal.
+  staying on top as its header; tapping it again folds it back. Its order holds
+  still while it's open. The details, reworked 2026-11-08 (Ben: "pretty clunky",
+  "happy experience when I click in"), show only what's needed:
+  - The description, if any.
+  - A tinted status box: why it's red or green and when that changes ("Green:
+    progress 3 days ago / Turns red in 8 days without more."). A plan's next one
+    lives here, not in its own section.
+  - "Score: 1 of the last 8 weeks" over one mark per period, oldest to newest.
+    The percent is the ring above, so it isn't repeated.
+  - The one action. Plan and progress: a button (filled when red) that opens the
+    date and note. Check-in: one dot per chosen day (✓ kept, ✕ missed, blank) and
+    one question at a time, Kept / Missed, moving on to the next unanswered day;
+    tapping a dot asks about that day, and tapping its answer again clears it.
+  - History (plan, progress): the latest 3, then "Show all N". Each has a small ✕.
+  - Edit goal (everything but the type; the form replaces the details), with
+    Delete goal inside it.
 - Red and the score are derived on the page in the viewer's time zone, which
   sends its `today` with each new entry so the server's date rules match.
 - Order: upcoming plans first (soonest at the top), then other green goals,

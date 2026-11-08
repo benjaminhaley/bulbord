@@ -57,6 +57,14 @@ describe.skipIf(!process.env.DATABASE_URL)('tracker lab', () => {
       ['2026-11-08', 'Picnic'],
       ['2026-10-27', 'Jeb'],
     ])
+    // Logging today leaves the future plan alone.
+    await call('POST', `/items/${hang.id}/entries`, { date: today, note: 'Coffee', today })
+    const logged = (await call('GET', '/items')).json().data.find((g: { id: string }) => g.id === hang.id)
+    expect(logged.entries.map((e: { note: string }) => e.note)).toEqual(['Picnic', 'Coffee', 'Jeb'])
+    await call('POST', `/items/${hang.id}/entries`, { date: '2026-11-09', note: 'Park', today })
+    const replaced = (await call('GET', '/items')).json().data.find((g: { id: string }) => g.id === hang.id)
+    expect(replaced.entries.map((e: { note: string }) => e.note)).toEqual(['Park', 'Coffee', 'Jeb'])
+
     expect((await call('PATCH', `/items/${hang.id}`, { period_days: 14, description: 'See good friends more' })).json()).toMatchObject({
       period_days: 14,
       description: 'See good friends more',
