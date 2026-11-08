@@ -251,12 +251,12 @@
     return { value: percent(n, periods), detail: explain(n, periods), marks: marks }
   }
   // A check-in goal's chosen days in the last 8 weeks, newest first, each with
-  // its record (if any). Today is included but never counts as missing.
+  // its record (if any). Today isn't one of them until it's over.
   function checkinDays(goal) {
     var byDate = {}
     goal.entries.forEach(function (e) { byDate[e.date] = byDate[e.date] || e })
     var days = []
-    for (var ago = 0; ago < WINDOW_DAYS; ago++) {
+    for (var ago = 1; ago < WINDOW_DAYS; ago++) {
       var iso = daysAgoIso(ago)
       if (goal.weekdays.indexOf(parseIso(iso).getDay()) !== -1) days.push({ date: iso, ago: ago, entry: byDate[iso] || null })
     }
@@ -268,7 +268,7 @@
     var seen = {}
     return checkinDays(goal).filter(function (d) {
       var weekday = parseIso(d.date).getDay()
-      if (d.ago === 0 || seen[weekday]) return false
+      if (seen[weekday]) return false
       return (seen[weekday] = true)
     })
   }
@@ -350,17 +350,17 @@
       isDue: function (goal) { return daysToRecord(goal).length > 0 },
       status: function (goal) {
         var missing = daysToRecord(goal)
-        var ask = missing.slice().reverse()
-        var today = checkinDays(goal)[0]
-        if (today.ago === 0 && !today.entry) ask.push(today)
-        var fields = ask.length ? el('div', {}, ask.map(function (d) { return dayRow(goal, d) })) : null
         if (missing.length) {
-          return { title: 'Red: ' + missing.length + (missing.length === 1 ? ' day' : ' days') + ' to record', detail: 'Turns green once ' + (missing.length === 1 ? 'it’s' : 'they’re') + ' recorded.', fields: fields }
+          return {
+            title: 'Red: ' + missing.length + (missing.length === 1 ? ' day' : ' days') + ' to record',
+            detail: 'Turns green once ' + (missing.length === 1 ? 'it’s' : 'they’re') + ' recorded.',
+            fields: el('div', {}, missing.slice().reverse().map(function (d) { return dayRow(goal, d) })),
+          }
         }
-        return { title: 'Green: all recorded', detail: 'Recorded through ' + fullDateLabel(latestDays(goal)[0].date) + '.', fields: fields }
+        return { title: 'Green: all recorded', detail: 'Recorded through ' + fullDateLabel(latestDays(goal)[0].date) + '.' }
       },
       score: function (goal) {
-        var counted = checkinDays(goal).filter(function (d) { return d.ago > 0 || d.entry })
+        var counted = checkinDays(goal)
         var kept = counted.filter(function (d) { return d.entry && d.entry.outcome === 'kept' }).length
         var marks = checkinDays(goal).slice().reverse().map(function (d) { return (d.entry && d.entry.outcome) || '' })
         return counted.length ? { value: percent(kept, counted.length), detail: kept + ' of ' + counted.length + ' days kept (blank = missed)', marks: marks } : null
@@ -385,7 +385,7 @@
       body: function (goal) {
         var due = daysToRecord(goal)
         var days = checkinDays(goal).filter(function (d) {
-          return (d.ago > 0 || d.entry) && !due.some(function (x) { return x.date === d.date })
+          return !due.some(function (x) { return x.date === d.date })
         })
         return [foldedHistory(days.length, days.map(function (d) { return el('li', {}, [el('div', { class: 'body' }, [dayRow(goal, d)])]) }))]
       },

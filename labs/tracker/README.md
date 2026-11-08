@@ -31,11 +31,10 @@ server, `parseSettings` and the entry rules in `POST /items/:id/entries`.
   how many of the last 8 weeks had an entry. Entries are today or earlier.
 - **Check in on set days** (`checkin`, e.g. no drinking on Sundays and
   Mondays): each chosen weekday is recorded Kept or Missed. Red until the latest
-  past day of each chosen weekday (last Sunday and last Monday) is recorded;
-  today can be recorded early but isn't red until it's over, and older blanks
-  don't turn it red (2026-11-08, Ben: based on recordkeeping, not the future).
-  Score: kept days ÷ the chosen days in the window (today counts
-  once recorded); an unrecorded day counts as not kept. One record per day: a
+  past day of each chosen weekday (last Sunday and last Monday) is recorded.
+  Today doesn't appear or count until it's over, and older blanks don't turn it
+  red (2026-11-08, Ben: based on recordkeeping, not the future).
+  Score: kept days ÷ the chosen days in the window; an unrecorded day counts as not kept. One record per day: a
   new one replaces it, and tapping the chosen answer again clears it.
 
 ## Behavior
@@ -66,8 +65,7 @@ server, `parseSettings` and the entry rules in `POST /items/:id/entries`.
     plan's status box holds its next date and note, or "Pick a date" when red.
     Progress has a date (today) and "What did you do?": typing logs it for that
     date, and picking another date logs that day at once. Check-in: the status box
-    has Kept / Missed beside each day that needs an answer (the latest days, and
-    today if blank); tapping the current answer again clears it.
+    has Kept / Missed beside each day that needs an answer; tapping the current answer again clears it.
   - History: folded away as "History (N)". Inside, each entry's date and note are
     tap-to-edit, with a small ✕; a plan also has "Add a past date". A check-in's
     history is its other days, each with Kept / Missed.
