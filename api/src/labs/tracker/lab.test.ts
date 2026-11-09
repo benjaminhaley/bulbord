@@ -106,6 +106,47 @@ describe.skipIf(!process.env.DATABASE_URL)('tracker lab', () => {
     expect((await call('POST', '/items', { name: 'No days', type: 'checkin', weekdays: [] })).statusCode).toBe(400)
   })
 
+  it('records a weekly goal on any day, one record per day', async () => {
+    const goal = (await call('POST', '/items', { name: 'Work on projects', type: 'weekly', days_per_week: 5 })).json()
+    expect(goal).toMatchObject({ type: 'weekly', days_per_week: 5, weekdays: null })
+    const record = (date: string, outcome?: string) => call('POST', `/items/${goal.id}/entries`, { date, outcome, today: '2026-11-09' })
+
+    expect((await record('2026-11-07', 'kept')).statusCode).toBe(201) // a Saturday
+    expect((await record('2026-11-08', 'kept')).statusCode).toBe(201) // a Sunday
+    expect((await record('2026-11-08', 'missed')).statusCode).toBe(201)
+    expect((await record('2026-11-10', 'kept')).statusCode).toBe(400) // after today
+    expect((await record('2026-11-06')).statusCode).toBe(400)
+
+    const after = (await call('GET', '/items')).json().data.find((g: { id: string }) => g.id === goal.id)
+    expect(after.entries).toMatchObject([{ date: '2026-11-08', outcome: 'missed' }, { date: '2026-11-07', outcome: 'kept' }])
+    expect((await call('PATCH', `/entries/${after.entries[0].id}`, { note: 'No' })).statusCode).toBe(400)
+
+    expect((await call('PATCH', `/items/${goal.id}`, { days_per_week: 3 })).json()).toMatchObject({ days_per_week: 3 })
+    expect((await call('PATCH', `/items/${goal.id}`, { days_per_week: 8 })).statusCode).toBe(400)
+    expect((await call('PATCH', `/items/${goal.id}`, { weekdays: [1] })).statusCode).toBe(400)
+    expect((await call('POST', '/items', { name: 'Default', type: 'weekly' })).json()).toMatchObject({ days_per_week: 5 })
+  })
+
+  it('keeps every answer to an every-few-hours goal, with its time', async () => {
+    const goal = (await call('POST', '/items', { name: 'Did I think to yes and?', type: 'often' })).json()
+    expect(goal).toMatchObject({ type: 'often', every_hours: 6, times_per_week: 10 })
+    const answer = (outcome?: string, date = '2026-11-09') => call('POST', `/items/${goal.id}/entries`, { date, outcome, today: '2026-11-09' })
+
+    expect((await answer('kept')).statusCode).toBe(201)
+    expect((await answer('kept')).statusCode).toBe(201)
+    expect((await answer('missed')).statusCode).toBe(201)
+    expect((await answer()).statusCode).toBe(400)
+    expect((await answer('kept', '2026-11-10')).statusCode).toBe(400)
+
+    const after = (await call('GET', '/items')).json().data.find((g: { id: string }) => g.id === goal.id)
+    expect(after.entries).toHaveLength(3)
+    expect(Date.parse(after.entries[0].at)).toBeGreaterThan(0)
+    expect((await call('PATCH', `/entries/${after.entries[0].id}`, { note: 'No' })).statusCode).toBe(400)
+
+    expect((await call('PATCH', `/items/${goal.id}`, { every_hours: 4, times_per_week: 12 })).json()).toMatchObject({ every_hours: 4, times_per_week: 12 })
+    expect((await call('PATCH', `/items/${goal.id}`, { every_hours: 0 })).statusCode).toBe(400)
+  })
+
   it("hides one member's goals from another", async () => {
     const mine = (await call('POST', '/items', { name: 'Mine', type: 'progress' })).json()
     expect((await call('POST', `/items/${mine.id}/entries`, { date: '2026-10-01' }, other)).statusCode).toBe(404)

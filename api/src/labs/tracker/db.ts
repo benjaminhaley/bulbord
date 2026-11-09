@@ -17,7 +17,7 @@ export const trackerItems = labs.table('tracker_items', {
   userId: uuid('user_id').notNull(),
   name: text('name').notNull(),
   description: text('description').notNull().default(''),
-  // The goal's type (feedback #189): 'plan', 'progress' or 'checkin' (see
+  // The goal's type (feedback #189): 'plan', 'progress', 'checkin', 'weekly' or 'often' (see
   // lab.ts). The column is still called `kind` from before goals had types.
   type: text('kind').notNull().default('plan'),
   // plan: how often one should happen, in days (7, 14 or 28).
@@ -26,6 +26,12 @@ export const trackerItems = labs.table('tracker_items', {
   staleDays: integer('stale_days'),
   // checkin: the days to record, as "0,1" (0 = Sunday).
   weekdays: text('weekdays'),
+  // weekly: the target, any this many days a week.
+  daysPerWeek: integer('days_per_week'),
+  // often: red after this many hours without an answer; the Yes answers to aim
+  // for each week.
+  everyHours: integer('every_hours'),
+  timesPerWeek: integer('times_per_week'),
   position: integer('position').notNull().default(0),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
@@ -38,7 +44,7 @@ export const trackerEntries = labs.table('tracker_entries', {
   userId: uuid('user_id').notNull(),
   date: date('date').notNull(),
   note: text('note').notNull().default(''),
-  // checkin only: 'kept' or 'missed'.
+  // checkin, weekly and often only: 'kept' or 'missed' (often: Yes or No).
   outcome: text('outcome'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
@@ -74,6 +80,9 @@ const DDL = `
   ALTER TABLE lab_tracker.tracker_items ADD COLUMN IF NOT EXISTS weekdays text;
   ALTER TABLE lab_tracker.tracker_items ALTER COLUMN kind SET DEFAULT 'plan';
   ALTER TABLE lab_tracker.tracker_entries ADD COLUMN IF NOT EXISTS outcome text;
+  ALTER TABLE lab_tracker.tracker_items ADD COLUMN IF NOT EXISTS days_per_week integer;
+  ALTER TABLE lab_tracker.tracker_items ADD COLUMN IF NOT EXISTS every_hours integer;
+  ALTER TABLE lab_tracker.tracker_items ADD COLUMN IF NOT EXISTS times_per_week integer;
   -- 2026-11-05 (feedback #189): items became goals. A "next one" item is a
   -- plan-ahead goal; each project in a log became its own progress goal, and
   -- the emptied logs are deleted (no member had one in production). parent_id

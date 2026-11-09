@@ -30,12 +30,24 @@ server, `parseSettings` and the entry rules in `POST /items/:id/entries`.
   entry is more than N days old, or there's none (setting, default 14). Score:
   how many of the last 8 weeks had an entry. Entries are today or earlier.
 - **Check in on set days** (`checkin`, e.g. no drinking on Sundays and
-  Mondays): each chosen weekday is recorded Kept or Missed. Red until the latest
-  past day of each chosen weekday (last Sunday and last Monday) is recorded.
+  Mondays): each chosen weekday is recorded Kept or Missed. Red until the most
+  recent chosen day is recorded, the only day it asks about (2026-11-09, Ben).
   Today doesn't appear or count until it's over, and older blanks don't turn it
   red (2026-11-08, Ben: based on recordkeeping, not the future).
   Score: kept days ÷ the chosen days in the window; an unrecorded day counts as not kept. One record per day: a
   new one replaces it, and tapping the chosen answer again clears it.
+- **Some days a week** (`weekly`, e.g. work on projects, 5 days of 7; 2026-11-09,
+  Ben: "the target is 5 of 7, not a particular one"): every day is recorded Did
+  it or Didn't, and any of them count. Red until the most recent day (yesterday)
+  is recorded, the only day it asks about. Setting: how many days a week, 1 to 7.
+  Score: done days ÷ the target over 8 seven-day stretches counted back from
+  yesterday, each stretch counting no more than the target ("12 of 40 days").
+- **Every few hours** (`often`, e.g. did I think to yes and?; 2026-11-09, Ben):
+  the title is the question, answered Yes or No any time, as often as wanted. Red
+  once the last answer of either kind is N hours old (default 6), overnight too.
+  Settings: those hours, and the Yes answers to aim for each week (default 10).
+  Score: Yes answers ÷ the target over 8 seven-day stretches, each counting no
+  more than the target. Goes by each entry's `at`, the time it was recorded.
 
 ## Behavior
 
@@ -65,10 +77,11 @@ server, `parseSettings` and the entry rules in `POST /items/:id/entries`.
     plan's status box holds its next date and note, or "Pick a date" when red.
     Progress has a date (today) and "What did you do?": typing logs it for that
     date, and picking another date logs that day at once. Check-in: the status box
-    has Kept / Missed beside each day that needs an answer; tapping the current answer again clears it.
+    has Kept / Missed beside the day that needs an answer (Did it / Didn't on a
+    weekly goal); tapping the current answer again clears it.
   - History: folded away as "History (N)". Inside, each entry's date and note are
     tap-to-edit, with a small ✕; a plan also has "Add a past date". A check-in's
-    history is its other days, each with Kept / Missed.
+    history is its other days, each with its answers.
   - The goal's setting, changed right on the card and saved at once.
   - Delete goal, a quiet link at the bottom. There's no Edit goal (2026-11-08,
     Ben: tap the field, or hold if a tap already does something): the description
@@ -84,16 +97,16 @@ server, `parseSettings` and the entry rules in `POST /items/:id/entries`.
 All under `/labs/tracker` on the API, bearer token as for Bulbord.
 
 - `GET /items`: the member's goals, each `{id, name, description, type:
-  'plan' | 'progress' | 'checkin', period_days, stale_days, weekdays,
-  entries}` (only the type's own setting is set; `weekdays` is `[0, 1]`, 0 =
-  Sunday). `entries` (`{id, date, note, outcome}`) are every live entry,
+  'plan' | 'progress' | 'checkin' | 'weekly' | 'often', period_days, stale_days,
+  weekdays, days_per_week, every_hours, times_per_week, entries}` (only the type's own setting is set; `weekdays` is `[0, 1]`, 0 =
+  Sunday). `entries` (`{id, date, at, note, outcome}`) are every live entry,
   newest date first. Seeds the defaults if the member never had any goal.
 - `POST /items` `{name, description?, type?, period_days? | stale_days? |
-  weekdays?}` (title ≤80 chars, description ≤500, period 7/14/28, days
-  1–3650, at least one weekday). `PATCH /items/:id` takes the same fields but
+  weekdays? | days_per_week? | every_hours? & times_per_week?}` (title ≤80 chars, description ≤500, period
+  7/14/28, days 1–3650, at least one weekday, 1–7 days a week, 1–168 hours, 1–100 times a week). `PATCH /items/:id` takes the same fields but
   not a different type. `DELETE /items/:id` (soft delete).
 - `POST /items/:id/entries` `{date: "YYYY-MM-DD", note?, outcome?, today?}`
-  (note ≤200 chars; `outcome` `'kept' | 'missed'`, check-in only; `today`
+  (note ≤200 chars; `outcome` `'kept' | 'missed'`, check-in, weekly and every-few-hours only; `today`
   defaults to the server's UTC date). Rules per type as above.
   `PATCH /entries/:id` `{date?, note?, today?}` edits a plan or progress entry
   under the same date rules. `DELETE /entries/:id` (soft delete).
@@ -102,7 +115,7 @@ All under `/labs/tracker` on the API, bearer token as for Bulbord.
 ## Data
 
 `tracker_items` (id, user_id, name, description, kind = the goal type,
-period_days, stale_days, weekdays as `"0,1"`, position, timestamps,
+period_days, stale_days, weekdays as `"0,1"`, days_per_week, every_hours, times_per_week, position, timestamps,
 deleted_at) and `tracker_entries` (id, item_id → tracker_items, user_id,
 date, note, outcome, timestamps, deleted_at), created by `db.ts`'s idempotent
 DDL. Entries are soft-deleted only, which is the lab's history.
