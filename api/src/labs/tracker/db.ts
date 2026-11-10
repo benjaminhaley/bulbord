@@ -32,6 +32,9 @@ export const trackerItems = labs.table('tracker_items', {
   // for each week.
   everyHours: integer('every_hours'),
   timesPerWeek: integer('times_per_week'),
+  // Any type: how the card words its question, in place of the title ('' = the
+  // title). The page adds the type's own ending ("… yesterday?").
+  question: text('question').notNull().default(''),
   position: integer('position').notNull().default(0),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
@@ -91,6 +94,7 @@ const DDL = `
   UPDATE lab_tracker.tracker_items p SET kind = 'progress', stale_days = coalesce(l.stale_days, 14), parent_id = NULL
     FROM lab_tracker.tracker_items l WHERE p.kind = 'project' AND l.id = p.parent_id;
   UPDATE lab_tracker.tracker_items SET deleted_at = now() WHERE kind = 'log' AND deleted_at IS NULL;
+  ALTER TABLE lab_tracker.tracker_items ADD COLUMN IF NOT EXISTS question text NOT NULL DEFAULT '';
   DROP INDEX IF EXISTS lab_tracker.tracker_entries_item_idx;
   CREATE INDEX IF NOT EXISTS tracker_entries_item_date_idx ON lab_tracker.tracker_entries (item_id, date);
 `

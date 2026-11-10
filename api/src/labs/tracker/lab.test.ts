@@ -145,6 +145,10 @@ describe.skipIf(!process.env.DATABASE_URL)('tracker lab', () => {
 
     expect((await call('PATCH', `/items/${goal.id}`, { every_hours: 4, times_per_week: 12 })).json()).toMatchObject({ every_hours: 4, times_per_week: 12 })
     expect((await call('PATCH', `/items/${goal.id}`, { every_hours: 0 })).statusCode).toBe(400)
+    // Any goal can reword its question; '' goes back to the title.
+    expect(goal.question).toBe('')
+    expect((await call('PATCH', `/items/${goal.id}`, { question: '  Did I yes-and  ' })).json()).toMatchObject({ question: 'Did I yes-and' })
+    expect((await call('PATCH', `/items/${goal.id}`, { question: 'x'.repeat(121) })).statusCode).toBe(400)
   })
 
   it("hides one member's goals from another", async () => {

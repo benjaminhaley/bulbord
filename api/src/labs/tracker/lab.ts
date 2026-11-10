@@ -31,6 +31,7 @@ type GoalType = (typeof GOAL_TYPES)[number]
 const DEFAULT_GOALS = ['Date with Anna', 'Playdate for Sebrin', 'Fun trip', 'Hang with a friend']
 const MAX_NAME = 80
 const MAX_DESCRIPTION = 500
+const MAX_QUESTION = 120
 const MAX_NOTE = 200
 const PERIOD_DAYS = [7, 14, 28]
 const DEFAULT_PERIOD_DAYS = 7
@@ -47,7 +48,7 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 
 type Item = typeof trackerItems.$inferSelect
 type Entry = typeof trackerEntries.$inferSelect
-type ItemBody = { name?: unknown; description?: unknown; type?: unknown; period_days?: unknown; stale_days?: unknown; weekdays?: unknown; days_per_week?: unknown; every_hours?: unknown; times_per_week?: unknown }
+type ItemBody = { name?: unknown; description?: unknown; question?: unknown; type?: unknown; period_days?: unknown; stale_days?: unknown; weekdays?: unknown; days_per_week?: unknown; every_hours?: unknown; times_per_week?: unknown }
 
 // Thrown by the parsers below; the scope's error handler answers it.
 class HttpError extends Error {
@@ -146,6 +147,7 @@ function serializeItem(item: Item, entries: Entry[] = []) {
     id: item.id,
     name: item.name,
     description: item.description,
+    question: item.question,
     type: item.type,
     period_days: item.periodDays,
     stale_days: item.staleDays,
@@ -223,6 +225,7 @@ async function trackerRoutes(app: FastifyInstance, ctx: LabContext) {
         type,
         name: parseText(body.name, MAX_NAME, 'Title', true),
         description: parseText(body.description, MAX_DESCRIPTION, 'Description', false),
+        question: parseText(body.question, MAX_QUESTION, 'Question', false),
         ...parseSettings(type, body, true),
         position: sql`(select coalesce(max(position) + 1, 0) from ${trackerItems} where ${trackerItems.userId} = ${userId})`,
       })
@@ -230,7 +233,7 @@ async function trackerRoutes(app: FastifyInstance, ctx: LabContext) {
     return reply.code(201).send(serializeItem(item))
   })
 
-  // A goal's type is fixed; its title, description and setting can change.
+  // A goal's type is fixed; its title, description, question and settings can change.
   app.patch<{ Params: { id: string }; Body: ItemBody }>('/items/:id', async (request) => {
     const db = await database()
     const body = request.body ?? {}
@@ -240,6 +243,7 @@ async function trackerRoutes(app: FastifyInstance, ctx: LabContext) {
     const changes: Partial<Item> = parseSettings(item.type as GoalType, body, false)
     if (body.name !== undefined) changes.name = parseText(body.name, MAX_NAME, 'Title', true)
     if (body.description !== undefined) changes.description = parseText(body.description, MAX_DESCRIPTION, 'Description', false)
+    if (body.question !== undefined) changes.question = parseText(body.question, MAX_QUESTION, 'Question', false)
     if (Object.keys(changes).length === 0) throw badRequest('Nothing to change')
     const [updated] = await db.update(trackerItems).set({ ...changes, updatedAt: new Date() }).where(eq(trackerItems.id, item.id)).returning()
     return serializeItem(updated)

@@ -46,9 +46,6 @@ server, `parseSettings` and the entry rules in `POST /items/:id/entries`.
   the title is the question, answered Yes or No any time, as often as wanted. Red
   once the last answer of either kind is N hours old (default 6), overnight too.
   Settings: those hours, and the Yes answers to aim for each week (default 10).
-  The status box is only the question, the title asked over that window ("Did I
-  think to yes and in the last 6 hours?"), with Yes / No beside it; its color
-  says red or green (2026-11-10, Ben: "a simple question… no ornamentation").
   Score: Yes answers ÷ the target over 8 seven-day stretches, each counting no
   more than the target. Goes by each entry's `at`, the time it was recorded.
 
@@ -69,43 +66,60 @@ server, `parseSettings` and the entry rules in `POST /items/:id/entries`.
   still while it's open. The details, reworked 2026-11-08 (Ben: "pretty clunky",
   "happy experience when I click in"), show only what's needed:
   - The description, if any.
-  - A tinted status box holding just one question and its answer buttons, no
-    "Red:/Green:" heading or explanation; the box's color says red or green
-    (2026-11-10, Ben: "a simple question… a yes or a no"). Day-by-day goals
-    (check-in, some days a week) ask about their most recent day, answered or not
-    ("Work on projects yesterday?" Yes / No, the chosen answer filled in, its note
-    underneath); every-few-hours asks "<title> in the last N hours?"; progress shows
-    "Last done 9 days ago" and Did it; a plan asks "When's the next one?" with Pick
-    a date, or once planned shows the next one's date and note. Answers are Yes /
-    No for every type (they used to be Kept / Missed and Did it / Didn't).
+  - The question, only while the goal is red: a tinted box with one question
+    and its answer buttons, nothing else (2026-11-10, Ben: "a simple question…
+    a yes or a no"). Answering turns the goal green, the box goes away, and the
+    answer lives in History (Ben: "the ability to answer should go away. It
+    should become buried in the history"). The questions: day-by-day goals ask
+    about their most recent day ("Did I work on projects yesterday?" Yes / No);
+    every few hours "… in the last 6 hours?" Yes / No; progress "… today?" Yes,
+    with "Last done 9 days ago" under it; a plan "When's the next one?" with
+    Pick a date.
+  - Yes always opens a bare note dialog first (2026-11-10, Ben: "very spare"):
+    one box with "Describe this (optional)" as its placeholder and one button,
+    Skip while it's empty and Enter once there's text (the Enter key works too;
+    Escape or tapping outside skips). It's recorded either way, with the note if
+    any. No records at once.
   - "Score: 1 of the last 8 weeks" over one mark per period or check-in day,
     oldest to newest (kept green, missed red, blank gray).
     The percent is the ring above, so it isn't repeated.
-  - No Add button (2026-11-08, Ben: "just click on the fields"): dates and notes
-    read as text and are edited by tapping them, saved on leaving the field. A
-    plan's status box holds its next date and note, or "Pick a date" when red.
-    Progress (2026-11-10, Ben's weekly house project: "after I click yes I did…
-    a quick note") has only "Last done 9 days ago" (or "Not done yet") and a
-    Did it button in its status box, which opens the note dialog below and logs
-    today; History has "Add a past date" for a day it wasn't logged. Check-in and
-    some-days-a-week: tapping the current answer again clears it.
-    Tapping Yes on a day-by-day goal, or Did it on a progress goal, first opens a bare note dialog (2026-11-10, Ben: "very
-    spare"): one box with "Describe this (optional)" as its placeholder and one
-    button, Skip while it's empty and Enter once there's text (the Enter key works
-    too; Escape or tapping outside skips). The day is recorded either way, with
-    the note if any, and the note shows under that day's date in History.
-    No records at once.
-  - History: folded away as "History (N)". Inside, each entry's date and note are
-    tap-to-edit, with a small ✕; a plan also has "Add a past date". A check-in's
-    history is its other days, each with its answers.
+  - History, folded away as "History (N)". A plan's or progress goal's entries
+    have a tap-to-edit date and note and a small ✕, and an "Add a past date"; a
+    plan's upcoming one is at the top. A day-by-day goal lists every day with its
+    Yes / No (tap the chosen one again to clear it) and note. Every few hours
+    lists each answer with its time and note.
   - Settings, folded away behind a gear at the bottom (2026-11-10, Ben: the
-    numbers "should be buried under a Settings gear"), the same for every type.
-    Opening it shows the type's settings (how often, days until red, which days,
-    days a week, hours until red and weekly Yes target), changed in place and
-    saved at once, then Delete goal as a quiet link. It folds again when the card
-    closes. There's no Edit goal (2026-11-08,
-    Ben: tap the field, or hold if a tap already does something): the description
-    is tap-to-edit, and holding the title line edits the title. The type is fixed.
+    numbers "should be buried under a Settings gear"). First, for every type,
+    the Question: the words the question starts with, in place of the title
+    (empty = the title; a plan's default is "When's the next one"), with the
+    type's ending shown after the box. Then the type's own settings (how often,
+    days until red, which days, days a week, hours until red and weekly Yes
+    target), all saved at once, then Delete goal as a quiet link. It folds
+    again when the card closes. There's no Edit goal (2026-11-08, Ben: tap the
+    field, or hold if a tap already does something): the description is
+    tap-to-edit, and holding the title line edits the title. The type is fixed.
+
+## One card for every type
+
+(2026-11-10, Ben: "the same code component and design components should be
+shared between these cards with settings that impact how they behave… they
+should be consistent unless they have some sort of unique customization, and
+those unique customizations should appear in the settings.") After the
+question was simplified on one type and missed on the others:
+
+- Every card is drawn by the same code (`goalDetails`): description, the
+  question (`statusBox`, shown only while red), score, history, Settings. Every
+  answer button is `answerButtons`, which is the only place Yes opens the note
+  dialog.
+- A type in `TYPES` never draws its own status box or buttons. It describes its
+  question as data, `ask(goal)` (`stem`, `ending`, `answers: yesno | yes | date`,
+  `note`, `answer`), plus what turns it red, its score, its settings and its
+  history rows. A change to how cards look or behave goes in the shared code and
+  reaches every type; a type differs only through `ask` or a setting.
+- Anything one goal does differently from the rest of its type is a setting
+  stored on the goal (like `question`), under the gear: there if someone drills
+  in, usually set by Claude.
+
 - Red and the score are derived on the page in the viewer's time zone, which
   sends its `today` with each new entry so the server's date rules match.
 - Order: everything red first, then upcoming plans (soonest at the top), then
@@ -116,13 +130,13 @@ server, `parseSettings` and the entry rules in `POST /items/:id/entries`.
 
 All under `/labs/tracker` on the API, bearer token as for Bulbord.
 
-- `GET /items`: the member's goals, each `{id, name, description, type:
+- `GET /items`: the member's goals, each `{id, name, description, question, type:
   'plan' | 'progress' | 'checkin' | 'weekly' | 'often', period_days, stale_days,
   weekdays, days_per_week, every_hours, times_per_week, entries}` (only the type's own setting is set; `weekdays` is `[0, 1]`, 0 =
   Sunday). `entries` (`{id, date, at, note, outcome}`) are every live entry,
   newest date first. Seeds the defaults if the member never had any goal.
-- `POST /items` `{name, description?, type?, period_days? | stale_days? |
-  weekdays? | days_per_week? | every_hours? & times_per_week?}` (title ≤80 chars, description ≤500, period
+- `POST /items` `{name, description?, question?, type?, period_days? | stale_days? |
+  weekdays? | days_per_week? | every_hours? & times_per_week?}` (title ≤80 chars, description ≤500, question ≤120 ('' = the title), period
   7/14/28, days 1–3650, at least one weekday, 1–7 days a week, 1–168 hours, 1–100 times a week). `PATCH /items/:id` takes the same fields but
   not a different type. `DELETE /items/:id` (soft delete).
 - `POST /items/:id/entries` `{date: "YYYY-MM-DD", note?, outcome?, today?}`
@@ -134,7 +148,7 @@ All under `/labs/tracker` on the API, bearer token as for Bulbord.
 
 ## Data
 
-`tracker_items` (id, user_id, name, description, kind = the goal type,
+`tracker_items` (id, user_id, name, description, question, kind = the goal type,
 period_days, stale_days, weekdays as `"0,1"`, days_per_week, every_hours, times_per_week, position, timestamps,
 deleted_at) and `tracker_entries` (id, item_id → tracker_items, user_id,
 date, note, outcome, timestamps, deleted_at), created by `db.ts`'s idempotent
