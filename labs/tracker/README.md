@@ -46,6 +46,9 @@ server, `parseSettings` and the entry rules in `POST /items/:id/entries`.
   the title is the question, answered Yes or No any time, as often as wanted. Red
   once the last answer of either kind is N hours old (default 6), overnight too.
   Settings: those hours, and the Yes answers to aim for each week (default 10).
+  The status box is only the question, the title asked over that window ("Did I
+  think to yes and in the last 6 hours?"), with Yes / No beside it; its color
+  says red or green (2026-11-10, Ben: "a simple question… no ornamentation").
   Score: Yes answers ÷ the target over 8 seven-day stretches, each counting no
   more than the target. Goes by each entry's `at`, the time it was recorded.
 
@@ -82,8 +85,12 @@ server, `parseSettings` and the entry rules in `POST /items/:id/entries`.
   - History: folded away as "History (N)". Inside, each entry's date and note are
     tap-to-edit, with a small ✕; a plan also has "Add a past date". A check-in's
     history is its other days, each with its answers.
-  - The goal's setting, changed right on the card and saved at once.
-  - Delete goal, a quiet link at the bottom. There's no Edit goal (2026-11-08,
+  - Settings, folded away behind a gear at the bottom (2026-11-10, Ben: the
+    numbers "should be buried under a Settings gear"), the same for every type.
+    Opening it shows the type's settings (how often, days until red, which days,
+    days a week, hours until red and weekly Yes target), changed in place and
+    saved at once, then Delete goal as a quiet link. It folds again when the card
+    closes. There's no Edit goal (2026-11-08,
     Ben: tap the field, or hold if a tap already does something): the description
     is tap-to-edit, and holding the title line edits the title. The type is fixed.
 - Red and the score are derived on the page in the viewer's time zone, which

@@ -91,6 +91,8 @@
   .history-toggle { display: flex; align-items: center; gap: 6px; width: 100%; margin: -6px 0; padding: 6px 0; background: none; border: 0; color: var(--muted); font: inherit; font-size: 0.875rem; text-align: left; cursor: pointer; }
   .history-toggle svg { width: 16px; height: 16px; fill: currentColor; transition: transform 120ms; }
   .history-toggle[aria-expanded=true] svg { transform: rotate(90deg); }
+  .history-toggle svg.gear { transform: none; }
+  .settings { display: grid; gap: 12px; }
   /* What the score counts: one mark per period, oldest to newest. */
   .score-line { font-size: 0.875rem; margin-bottom: 6px; }
   .score-line b { font-weight: 400; color: var(--muted); }
@@ -102,6 +104,7 @@
   /* A check-in day: its date, then Kept / Missed to tap. */
   .day-row { display: flex; align-items: center; gap: 8px; padding: 5px 0; }
   .day-row .when { flex: 1; min-width: 0; font-size: 0.875rem; }
+  .day-row .question { flex: 1; min-width: 0; font-size: 0.9375rem; }
   .day-row .when span { display: block; color: var(--muted); font-size: 0.75rem; }
   .day-row .btn { padding: 6px 12px; font-size: 0.8125rem; background: var(--card); }
   .day-row .btn.kept { background: var(--green); }
@@ -187,6 +190,7 @@
   var openId = null // the expanded goal
   var titleEditing = null // the goal whose title is being edited (hold the title)
   var historyOpen = false
+  var settingsOpen = false // the open goal's Settings (gear) section
   var justOpened = false
   var order = [] // goal ids; held still while a goal is open so it doesn't jump
 
@@ -303,12 +307,6 @@
   // Hours since a goal's last answer (entries are newest first).
   function hoursSinceAnswer(goal) {
     return goal.entries.length ? (Date.now() - Date.parse(goal.entries[0].at)) / 3600000 : Infinity
-  }
-  function spanLabel(hours) {
-    if (hours < 1) return 'under an hour'
-    var h = Math.floor(hours)
-    if (h < 48) return h + (h === 1 ? ' hour' : ' hours')
-    return Math.floor(h / 24) + ' days'
   }
   // Yes answers in each 7-day stretch counted back from today, this week first.
   function yesByWeek(goal) {
@@ -462,14 +460,8 @@
       label: 'Every few hours',
       detail: 'Answer a question every few hours or it turns red; each Yes counts toward a weekly target. E.g. did I think to yes and?',
       isDue: function (goal) { return hoursSinceAnswer(goal) >= goal.every_hours },
-      status: function (goal) {
-        var since = hoursSinceAnswer(goal)
-        var pace = yesByWeek(goal)[0] + ' of ' + goal.times_per_week + ' in the last 7 days.'
-        if (since === Infinity) return { title: 'Red: not answered yet', detail: 'Answer to turn it green. ' + pace, fields: answerRow(goal) }
-        var when = 'answered ' + spanLabel(since) + ' ago'
-        if (isDue(goal)) return { title: 'Red: last ' + when, detail: 'Answer to turn it green. ' + pace, fields: answerRow(goal) }
-        return { title: 'Green: ' + when, detail: 'Turns red in ' + spanLabel(goal.every_hours - since) + ' without an answer. ' + pace, fields: answerRow(goal) }
-      },
+      // Just the question and Yes / No; the box's color says red or green.
+      status: function (goal) { return { fields: answerRow(goal) } },
       // Each of the 8 weeks counts up to the target.
       score: function (goal) {
         var weeks = yesByWeek(goal), target = goal.times_per_week
@@ -626,12 +618,14 @@
             openId = open ? null : goal.id
             titleEditing = null
             historyOpen = false
+            settingsOpen = false
             justOpened = !open
             render()
           } }, [el('span', { class: 'name', text: goal.name }), donut(score)]), function () {
             justOpened = openId !== goal.id
             openId = goal.id
             historyOpen = false
+            settingsOpen = false
             titleEditing = goal.id
             render()
           }),
@@ -690,7 +684,7 @@
       noteField(goal.description, 'Add a description', function (text) { return saveGoal(goal, { description: text }) }, 500, 'description'),
       el('div', { class: 'status' + (due ? ' due' : '') }, [
         el('div', {}, [
-          el('div', { class: 'title', text: status.title }),
+          status.title ? el('div', { class: 'title', text: status.title }) : null,
           status.detail ? el('div', { class: 'detail', text: status.detail }) : null,
           status.fields ? el('div', { class: 'fields' }, [status.fields]) : null,
         ]),
@@ -700,15 +694,25 @@
         el('div', { class: 'score-line' }, [el('b', { text: 'Score: ' }), score ? score.detail : 'nothing to score yet']),
         marks,
       ]),
-    ].concat(type.body(goal)).concat([
-      settingOnCard(goal),
-      el('div', { class: 'goal-foot' }, [
+    ].concat(type.body(goal)).concat([settingsSection(goal)])
+  }
+
+  // The type's settings and Delete, folded behind a gear so the card shows only
+  // the goal itself (2026-11-10, Ben: "buried under a Settings gear").
+  function settingsSection(goal) {
+    var toggle = el('button', { class: 'history-toggle', type: 'button', 'aria-expanded': String(settingsOpen), onclick: function () { settingsOpen = !settingsOpen; render() } })
+    toggle.innerHTML = '<svg class="gear" viewBox="0 0 24 24"><path d="M19.14 12.94c.04-.3.06-.61.06-.94s-.02-.64-.07-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.49.49 0 0 0-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.48.48 0 0 0-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96a.48.48 0 0 0-.59.22L2.74 8.87a.47.47 0 0 0 .12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32a.47.47 0 0 0-.12-.61l-2.01-1.58zM12 15.6A3.6 3.6 0 1 1 12 8.4a3.6 3.6 0 0 1 0 7.2z"/></svg>'
+    toggle.appendChild(document.createTextNode('Settings'))
+    return el('div', { class: 'settings' }, [
+      toggle,
+      settingsOpen ? settingOnCard(goal) : null,
+      settingsOpen ? el('div', { class: 'goal-foot' }, [
         el('button', { class: 'btn text', type: 'button', text: 'Delete goal', onclick: function () {
           if (!confirm('Delete the "' + goal.name + '" goal?')) return
           openId = null
           saving(api('DELETE', '/items/' + goal.id))
         } }),
-      ]),
+      ]) : null,
     ])
   }
 
@@ -831,15 +835,18 @@
     ])
   }
 
-  // An every-few-hours goal's question: each tap is one more answer, right now.
+  // An every-few-hours goal's question, the title asked over its window ("Did I
+  // think to yes and in the last 6 hours?"): each tap is one more answer, right now.
   function answerRow(goal) {
+    var hours = goal.every_hours === 1 ? 'hour' : goal.every_hours + ' hours'
+    var question = goal.name.replace(/[\s?.!]+$/, '') + ' in the last ' + hours + '?'
     function answer(value, text) {
       return el('button', { class: 'btn outline', type: 'button', text: text, onclick: function (e) {
         e.currentTarget.disabled = true
         addEntry(goal, { date: todayIso(), outcome: value })
       } })
     }
-    return el('div', { class: 'day-row' }, [el('div', { class: 'when', text: 'Answer now' }), answer('kept', 'Yes'), answer('missed', 'No')])
+    return el('div', { class: 'day-row' }, [el('div', { class: 'question', text: question }), answer('kept', 'Yes'), answer('missed', 'No')])
   }
 
   // A day to record: tap an answer; tap the current answer again to clear it.
