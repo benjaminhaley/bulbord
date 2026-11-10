@@ -87,7 +87,6 @@
   .date-field.pick { display: block; margin-top: 8px; padding: 10px 12px; background: var(--card); border: 1px solid var(--line); border-radius: 8px; color: var(--accent); font-size: 1rem; font-weight: 500; text-align: center; }
   textarea.note-field { display: block; min-height: 0; padding: 2px 0; border: 0; border-bottom: 1px solid transparent; border-radius: 0; background: transparent; resize: none; overflow: hidden; }
   textarea.note-field:focus { outline: none; border-bottom-color: var(--accent); }
-  .new-entry { padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; }
   .history-toggle { display: flex; align-items: center; gap: 6px; width: 100%; margin: -6px 0; padding: 6px 0; background: none; border: 0; color: var(--muted); font: inherit; font-size: 0.875rem; text-align: left; cursor: pointer; }
   .history-toggle svg { width: 16px; height: 16px; fill: currentColor; transition: transform 120ms; }
   .history-toggle[aria-expanded=true] svg { transform: rotate(90deg); }
@@ -373,13 +372,18 @@
       label: 'Keep making progress',
       detail: 'Red once it’s been too many days since you last worked on it. E.g. a project.',
       isDue: function (goal) { return projectAge(goal) > goal.stale_days },
+      // When it was last done and a Did it button (then the note dialog); the
+      // box's color says red or green.
       status: function (goal) {
         var last = pastEntries(goal)[0]
-        if (!last) return { title: 'Red: no progress logged yet', detail: 'Log some to turn it green.' }
-        var when = last.date === todayIso() ? 'today' : relLabel(last.date)
-        if (isDue(goal)) return { title: 'Red: last progress ' + when, detail: 'Log some to turn it green. It’s red after ' + goal.stale_days + ' days without any.' }
-        var left = goal.stale_days - projectAge(goal) + 1
-        return { title: 'Green: progress ' + when, detail: 'Turns red ' + (left === 1 ? 'tomorrow' : 'in ' + left + ' days') + ' without more.' }
+        var when = !last ? 'Not done yet' : 'Last done ' + (last.date === todayIso() ? 'today' : relLabel(last.date))
+        return { fields: el('div', { class: 'day-row' }, [
+          el('div', { class: 'when', text: when }),
+          el('button', { class: 'btn outline', type: 'button', text: 'Did it', onclick: function (e) {
+            var button = e.currentTarget
+            askNote(function (note) { button.disabled = true; addEntry(goal, { date: todayIso(), note: note }) })
+          } }),
+        ]) }
       },
       score: function (goal) { return periodScore(goal, 7, function (n, of) { return n + ' of the last ' + of + ' weeks' }) },
       settingField: function (goal) {
@@ -393,7 +397,14 @@
           },
         }
       },
-      body: function (goal) { return [newEntry(goal), historySection(pastEntries(goal))] },
+      body: function (goal) {
+        return [historySection(pastEntries(goal), dateField({
+          value: '',
+          label: 'Add a past date',
+          max: daysAgoIso(1),
+          onPick: function (date) { return addEntry(goal, { date: date }) },
+        }))]
+      },
     },
     checkin: {
       label: 'Check in on set days',
@@ -788,21 +799,6 @@
     return el('div', {}, [
       dateField({ value: entry.date, onPick: function (date) { return editEntry(entry, { date: date }) } }),
       noteField(entry.note || '', placeholder, function (note) { return editEntry(entry, { note: note }) }),
-    ])
-  }
-
-  // Logging progress: typing what you did logs it for the date shown (today
-  // unless changed); picking another date logs that day right away.
-  function newEntry(goal) {
-    var date = todayIso()
-    var note = noteField('', 'What did you do?', function (text) { return addEntry(goal, { date: date, note: text }) })
-    return el('div', { class: 'new-entry' }, [
-      dateField({ value: date, max: date, onPick: function (picked) {
-        date = picked
-        historyOpen = true // its note can be added there
-        return addEntry(goal, { date: picked, note: note.value })
-      } }),
-      note,
     ])
   }
 

@@ -78,11 +78,13 @@ server, `parseSettings` and the entry rules in `POST /items/:id/entries`.
   - No Add button (2026-11-08, Ben: "just click on the fields"): dates and notes
     read as text and are edited by tapping them, saved on leaving the field. A
     plan's status box holds its next date and note, or "Pick a date" when red.
-    Progress has a date (today) and "What did you do?": typing logs it for that
-    date, and picking another date logs that day at once. Check-in: the status box
+    Progress (2026-11-10, Ben's weekly house project: "after I click yes I did…
+    a quick note") has only "Last done 9 days ago" (or "Not done yet") and a
+    Did it button in its status box, which opens the note dialog below and logs
+    today; History has "Add a past date" for a day it wasn't logged. Check-in: the status box
     has Kept / Missed beside the day that needs an answer (Did it / Didn't on a
     weekly goal); tapping the current answer again clears it.
-    Tapping Did it / Kept first opens a bare note dialog (2026-11-10, Ben: "very
+    Tapping Did it (any type) or Kept first opens a bare note dialog (2026-11-10, Ben: "very
     spare"): one box with "Describe this (optional)" as its placeholder and one
     button, Skip while it's empty and Enter once there's text (the Enter key works
     too; Escape or tapping outside skips). The day is recorded either way, with
