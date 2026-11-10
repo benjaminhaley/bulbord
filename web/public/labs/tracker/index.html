@@ -105,6 +105,12 @@
   .day-row { display: flex; align-items: center; gap: 8px; padding: 5px 0; }
   .day-row .when { flex: 1; min-width: 0; font-size: 0.875rem; }
   .day-row .question { flex: 1; min-width: 0; font-size: 0.9375rem; }
+  .day-row .when .day-note { color: var(--ink); font-size: 0.8125rem; overflow-wrap: anywhere; }
+  .note-dialog { width: min(440px, calc(100% - 32px)); border: 0; border-radius: 16px; padding: 16px; background: var(--card); color: var(--ink); }
+  .note-dialog::backdrop { background: rgba(0, 0, 0, 0.35); }
+  .note-dialog textarea { width: 100%; box-sizing: border-box; }
+  .note-dialog textarea:focus { outline: none; border-color: var(--accent); }
+  .note-actions { display: flex; justify-content: flex-end; margin-top: 12px; }
   .day-row .when span { display: block; color: var(--muted); font-size: 0.75rem; }
   .day-row .btn { padding: 6px 12px; font-size: 0.8125rem; background: var(--card); }
   .day-row .btn.kept { background: var(--green); }
@@ -849,6 +855,31 @@
     return el('div', { class: 'day-row' }, [el('div', { class: 'question', text: question }), answer('kept', 'Yes'), answer('missed', 'No')])
   }
 
+  // After a Did it / Kept: a bare note box. Skip while it's empty, Enter once
+  // there's text; Escape or tapping outside skips. The day is recorded either way.
+  function askNote(done) {
+    var box = el('textarea', { rows: '3', maxlength: '500', placeholder: 'Describe this (optional)', 'aria-label': 'Note' })
+    var button = el('button', { class: 'btn primary', type: 'button', text: 'Skip' })
+    var dialog = el('dialog', { class: 'note-dialog' }, [box, el('div', { class: 'note-actions' }, [button])])
+    var finished = false
+    function finish() {
+      if (finished) return
+      finished = true
+      var note = box.value.trim()
+      if (dialog.open) dialog.close()
+      dialog.remove()
+      done(note)
+    }
+    box.addEventListener('input', function () { button.textContent = box.value.trim() ? 'Enter' : 'Skip' })
+    box.addEventListener('keydown', function (e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); finish() } })
+    button.addEventListener('click', finish)
+    dialog.addEventListener('close', finish)
+    dialog.addEventListener('click', function (e) { if (e.target === dialog) finish() })
+    document.body.appendChild(dialog)
+    dialog.showModal()
+    box.focus()
+  }
+
   // A day to record: tap an answer; tap the current answer again to clear it.
   function dayRow(goal, day) {
     var outcome = day.entry && day.entry.outcome
@@ -857,11 +888,16 @@
       return el('button', { class: 'btn ' + (outcome === value ? value : 'outline'), type: 'button', text: text, 'aria-pressed': String(outcome === value), 'aria-label': text + ', ' + fullDateLabel(day.date), onclick: function (e) {
         e.currentTarget.disabled = true
         if (outcome === value) deleteEntry(day.entry)
+        else if (value === 'kept') askNote(function (note) { addEntry(goal, { date: day.date, outcome: value, note: note }) })
         else addEntry(goal, { date: day.date, outcome: value })
       } })
     }
     return el('div', { class: 'day-row' }, [
-      el('div', { class: 'when' }, [fullDateLabel(day.date), el('span', { text: relLabel(day.date) })]),
+      el('div', { class: 'when' }, [
+        fullDateLabel(day.date),
+        el('span', { text: relLabel(day.date) }),
+        day.entry && day.entry.note ? el('span', { class: 'day-note', text: day.entry.note }) : null,
+      ]),
       answer('kept', words[0]),
       answer('missed', words[1]),
     ])

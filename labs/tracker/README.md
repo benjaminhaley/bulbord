@@ -82,6 +82,12 @@ server, `parseSettings` and the entry rules in `POST /items/:id/entries`.
     date, and picking another date logs that day at once. Check-in: the status box
     has Kept / Missed beside the day that needs an answer (Did it / Didn't on a
     weekly goal); tapping the current answer again clears it.
+    Tapping Did it / Kept first opens a bare note dialog (2026-11-10, Ben: "very
+    spare"): one box with "Describe this (optional)" as its placeholder and one
+    button, Skip while it's empty and Enter once there's text (the Enter key works
+    too; Escape or tapping outside skips). The day is recorded either way, with
+    the note if any, and the note shows under that day's date in History.
+    Didn't / Missed records at once.
   - History: folded away as "History (N)". Inside, each entry's date and note are
     tap-to-edit, with a small ✕; a plan also has "Add a past date". A check-in's
     history is its other days, each with its answers.
