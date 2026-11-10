@@ -69,9 +69,15 @@ server, `parseSettings` and the entry rules in `POST /items/:id/entries`.
   still while it's open. The details, reworked 2026-11-08 (Ben: "pretty clunky",
   "happy experience when I click in"), show only what's needed:
   - The description, if any.
-  - A tinted status box: why it's red or green and when that changes ("Green:
-    progress 3 days ago / Turns red in 8 days without more."). A plan's next one
-    lives here, not in its own section.
+  - A tinted status box holding just one question and its answer buttons, no
+    "Red:/Green:" heading or explanation; the box's color says red or green
+    (2026-11-10, Ben: "a simple question… a yes or a no"). Day-by-day goals
+    (check-in, some days a week) ask about their most recent day, answered or not
+    ("Work on projects yesterday?" Yes / No, the chosen answer filled in, its note
+    underneath); every-few-hours asks "<title> in the last N hours?"; progress shows
+    "Last done 9 days ago" and Did it; a plan asks "When's the next one?" with Pick
+    a date, or once planned shows the next one's date and note. Answers are Yes /
+    No for every type (they used to be Kept / Missed and Did it / Didn't).
   - "Score: 1 of the last 8 weeks" over one mark per period or check-in day,
     oldest to newest (kept green, missed red, blank gray).
     The percent is the ring above, so it isn't repeated.
@@ -81,15 +87,14 @@ server, `parseSettings` and the entry rules in `POST /items/:id/entries`.
     Progress (2026-11-10, Ben's weekly house project: "after I click yes I did…
     a quick note") has only "Last done 9 days ago" (or "Not done yet") and a
     Did it button in its status box, which opens the note dialog below and logs
-    today; History has "Add a past date" for a day it wasn't logged. Check-in: the status box
-    has Kept / Missed beside the day that needs an answer (Did it / Didn't on a
-    weekly goal); tapping the current answer again clears it.
-    Tapping Did it (any type) or Kept first opens a bare note dialog (2026-11-10, Ben: "very
+    today; History has "Add a past date" for a day it wasn't logged. Check-in and
+    some-days-a-week: tapping the current answer again clears it.
+    Tapping Yes on a day-by-day goal, or Did it on a progress goal, first opens a bare note dialog (2026-11-10, Ben: "very
     spare"): one box with "Describe this (optional)" as its placeholder and one
     button, Skip while it's empty and Enter once there's text (the Enter key works
     too; Escape or tapping outside skips). The day is recorded either way, with
     the note if any, and the note shows under that day's date in History.
-    Didn't / Missed records at once.
+    No records at once.
   - History: folded away as "History (N)". Inside, each entry's date and note are
     tap-to-edit, with a small ✕; a plan also has "Add a past date". A check-in's
     history is its other days, each with its answers.

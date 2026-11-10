@@ -104,6 +104,7 @@
   .day-row { display: flex; align-items: center; gap: 8px; padding: 5px 0; }
   .day-row .when { flex: 1; min-width: 0; font-size: 0.875rem; }
   .day-row .question { flex: 1; min-width: 0; font-size: 0.9375rem; }
+  .day-row .question .day-note { display: block; margin-top: 2px; }
   .day-row .when .day-note { color: var(--ink); font-size: 0.8125rem; overflow-wrap: anywhere; }
   .note-dialog { width: min(440px, calc(100% - 32px)); border: 0; border-radius: 16px; padding: 16px; background: var(--card); color: var(--ink); }
   .note-dialog::backdrop { background: rgba(0, 0, 0, 0.35); }
@@ -295,17 +296,18 @@
     var latest = recordDays(goal)[0]
     return latest && !latest.entry ? latest : null
   }
-  function askDay(goal, day, extra) {
-    return {
-      title: 'Red: 1 day to record',
-      detail: 'Turns green once it’s recorded.' + (extra ? ' ' + extra : ''),
-      fields: dayRow(goal, day),
-    }
+  // The status box of a day-by-day goal: one question about the most recent day,
+  // whether it's answered yet or not ("Work on projects yesterday?"), Yes / No.
+  function askLatestDay(goal) {
+    var day = recordDays(goal)[0]
+    if (!day) return { fields: el('div', { class: 'day-row' }, [el('div', { class: 'question', text: 'Nothing to answer yet' })]) }
+    var rel = relLabel(day.date)
+    var question = goal.name.replace(/[\s?.!]+$/, '') + ' ' + (rel === 'yesterday' ? 'yesterday' : 'on ' + fullDateLabel(day.date)) + '?'
+    return { fields: dayRow(goal, day, question) }
   }
-  // Every day not being asked about in the status box, newest first.
+  // Every day but the one asked about in the status box, newest first.
   function dayHistory(goal) {
-    var due = dayToRecord(goal)
-    var days = recordDays(goal).filter(function (d) { return !due || d.date !== due.date })
+    var days = recordDays(goal).slice(1)
     return [foldedHistory(days.length, days.map(function (d) { return el('li', {}, [el('div', { class: 'body' }, [dayRow(goal, d)])]) }))]
   }
   function isKept(d) { return !!d.entry && d.entry.outcome === 'kept' }
@@ -339,13 +341,12 @@
       status: function (goal) {
         var next = nextEntry(goal)
         if (!next) {
-          return {
-            title: 'Red: nothing planned',
-            detail: 'Turns green once the next one is on the calendar.',
-            fields: dateField({ value: '', label: 'Pick a date', pick: true, onPick: function (date) { return addEntry(goal, { date: date }) } }),
-          }
+          return { fields: el('div', { class: 'day-row' }, [
+            el('div', { class: 'question', text: 'When’s the next one?' }),
+            dateField({ value: '', label: 'Pick a date', pick: true, onPick: function (date) { return addEntry(goal, { date: date }) } }),
+          ]) }
         }
-        return { title: 'Green: next one is planned', fields: entryFields(next, 'Add a note'), entry: next }
+        return { fields: entryFields(next, 'Add a note'), entry: next }
       },
       score: function (goal) {
         var stretch = { 7: 'weeks', 14: 'two-week stretches', 28: 'four-week stretches' }[goal.period_days]
@@ -411,9 +412,7 @@
       detail: 'Record each chosen day as kept or missed; red until the most recent one is recorded. E.g. no drinking on Sundays and Mondays.',
       isDue: function (goal) { return !!dayToRecord(goal) },
       status: function (goal) {
-        var due = dayToRecord(goal)
-        if (due) return askDay(goal, due)
-        return { title: 'Green: all recorded', detail: 'Recorded through ' + fullDateLabel(recordDays(goal)[0].date) + '.' }
+        return askLatestDay(goal)
       },
       score: function (goal) {
         var counted = recordDays(goal)
@@ -442,14 +441,8 @@
     weekly: {
       label: 'Some days a week',
       detail: 'Say each day whether you did it; any of those days count. E.g. work on projects 5 days of 7.',
-      answers: ['Did it', 'Didn’t'],
       isDue: function (goal) { return !!dayToRecord(goal) },
-      status: function (goal) {
-        var pace = recordDays(goal).slice(0, 7).filter(isKept).length + ' of the last 7 days, aiming for ' + goal.days_per_week + '.'
-        var due = dayToRecord(goal)
-        if (due) return askDay(goal, due, pace)
-        return { title: 'Green: yesterday recorded', detail: pace }
-      },
+      status: askLatestDay,
       // Each of the 8 weeks, counted back from yesterday, counts up to the
       // target: a seventh day in one week can't make up for a thin one.
       score: function (goal) {
@@ -877,9 +870,9 @@
   }
 
   // A day to record: tap an answer; tap the current answer again to clear it.
-  function dayRow(goal, day) {
+  function dayRow(goal, day, question) {
     var outcome = day.entry && day.entry.outcome
-    var words = TYPES[goal.type].answers || ['Kept', 'Missed']
+    var words = ['Yes', 'No']
     function answer(value, text) {
       return el('button', { class: 'btn ' + (outcome === value ? value : 'outline'), type: 'button', text: text, 'aria-pressed': String(outcome === value), 'aria-label': text + ', ' + fullDateLabel(day.date), onclick: function (e) {
         e.currentTarget.disabled = true
@@ -889,7 +882,7 @@
       } })
     }
     return el('div', { class: 'day-row' }, [
-      el('div', { class: 'when' }, [
+      question ? el('div', { class: 'question' }, [question, day.entry && day.entry.note ? el('span', { class: 'day-note', text: day.entry.note }) : null]) : el('div', { class: 'when' }, [
         fullDateLabel(day.date),
         el('span', { text: relLabel(day.date) }),
         day.entry && day.entry.note ? el('span', { class: 'day-note', text: day.entry.note }) : null,
