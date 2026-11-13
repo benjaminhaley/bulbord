@@ -93,9 +93,11 @@
   .history-toggle[aria-expanded=true] svg { transform: rotate(90deg); }
   .history-toggle svg.gear { transform: none; }
   .settings { display: grid; gap: 12px; }
-  /* What the score counts: one mark per period, oldest to newest. */
-  .score-line { font-size: 0.875rem; margin-bottom: 6px; }
-  .score-line b { font-weight: 400; color: var(--muted); }
+  /* What the score counts: one mark per period, oldest to newest. Tapping the
+     bar says how this goal's score is kept. */
+  .score-bar { display: block; width: 100%; margin: -6px 0; padding: 6px 0; background: none; border: 0; cursor: pointer; }
+  .score-how { margin: 8px 0 0; font-size: 0.875rem; color: var(--muted); line-height: 1.4; }
+  .setting .toggle input { width: 20px; height: 20px; margin: 0; accent-color: var(--accent); }
   .marks { display: flex; gap: 3px; }
   .marks i { flex: 1; height: 8px; border-radius: 2px; background: var(--track); }
   .marks i.on { background: var(--green); }
@@ -204,6 +206,7 @@
   var titleEditing = null // the goal whose title is being edited (hold the title)
   var historyOpen = false
   var settingsOpen = false // the open goal's Settings (gear) section
+  var scoreInfoOpen = false // the open goal's "how the score is kept" (tap the bar)
   var justOpened = false
   var order = [] // goal ids; held still while a goal is open so it doesn't jump
 
@@ -320,6 +323,12 @@
     var days = recordDays(goal).slice(dayToRecord(goal) ? 1 : 0)
     return [foldedHistory(days.length, days.map(function (d) { return el('li', {}, [el('div', { class: 'body' }, [dayRow(goal, d)])]) }))]
   }
+  // "Sunday and Monday", or "day" when it's all seven.
+  function weekdayNames(days) {
+    if (days.length === 7) return 'day'
+    var names = days.map(function (d) { return ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][d] })
+    return names.length === 1 ? names[0] : names.slice(0, -1).join(', ') + ' and ' + names[names.length - 1]
+  }
   function isKept(d) { return !!d.entry && d.entry.outcome === 'kept' }
   // Hours since a goal's last answer (entries are newest first).
   function hoursSinceAnswer(goal) {
@@ -364,8 +373,12 @@
         return { stem: 'When’s the next one', ending: '?', answers: 'date', pick: function (date) { return addEntry(goal, { date: date }) } }
       },
       score: function (goal) {
-        var stretch = { 7: 'weeks', 14: 'two-week stretches', 28: 'four-week stretches' }[goal.period_days]
-        return periodScore(goal, goal.period_days, function (n, of) { return n + ' of the last ' + of + ' ' + stretch })
+        var one = { 7: 'week', 14: 'two-week stretch', 28: 'four-week stretch' }[goal.period_days]
+        var many = { 7: 'weeks', 14: 'two-week stretches', 28: 'four-week stretches' }[goal.period_days]
+        return periodScore(goal, goal.period_days, function (n, of) {
+          return 'The last 8 weeks are split into ' + of + ' ' + many + ', counting back from today. Each one counts if one happened in it (a date today or earlier; an upcoming plan doesn’t count yet). ' +
+            n + ' of ' + of + ' did, so ' + percent(n, of) + '%. Each bar is one ' + one + ', oldest on the left.'
+        })
       },
       settingField: function (goal) {
         var select = el('select', { 'aria-label': 'How often' }, PERIODS.map(function (p) {
@@ -398,7 +411,12 @@
           answer: function (outcome, note) { return addEntry(goal, { date: todayIso(), note: note }) },
         }
       },
-      score: function (goal) { return periodScore(goal, 7, function (n, of) { return n + ' of the last ' + of + ' weeks' }) },
+      score: function (goal) {
+        return periodScore(goal, 7, function (n, of) {
+          return 'Each of the last ' + of + ' weeks, counting back from today, counts if you made progress at least once that week. ' +
+            n + ' of ' + of + ' did, so ' + percent(n, of) + '%. Each bar is one week, oldest on the left.'
+        })
+      },
       settingField: function (goal) {
         var input = el('input', { type: 'number', min: '1', max: String(MAX_STALE_DAYS), inputmode: 'numeric', value: String(goal ? goal.stale_days : DEFAULT_STALE_DAYS), 'aria-label': 'Days' })
         return {
@@ -428,7 +446,9 @@
         var counted = recordDays(goal)
         var kept = counted.filter(isKept).length
         var marks = counted.slice().reverse().map(function (d) { return (d.entry && d.entry.outcome) || '' })
-        return counted.length ? { value: percent(kept, counted.length), detail: kept + ' of ' + counted.length + ' days kept (blank = missed)', marks: marks } : null
+        return counted.length ? { value: percent(kept, counted.length), marks: marks, detail:
+          'Every ' + weekdayNames(goal.weekdays) + ' in the last 8 weeks counts, not including today. A day counts toward the score only if it’s answered Yes; a No or an unanswered day doesn’t. ' +
+          kept + ' of ' + counted.length + ' days were Yes, so ' + percent(kept, counted.length) + '%. Each bar is one day, oldest on the left: green Yes, red No, gray unanswered.' } : null
       },
       settingField: function (goal) {
         var boxes = WEEKDAYS.map(function (name, day) {
@@ -459,7 +479,9 @@
         var days = recordDays(goal), target = goal.days_per_week, weeks = WINDOW_DAYS / 7, done = 0
         for (var w = 0; w < weeks; w++) done += Math.min(days.slice(w * 7, w * 7 + 7).filter(isKept).length, target)
         var marks = days.slice().reverse().map(function (d) { return isKept(d) ? 'kept' : '' })
-        return { value: percent(done, weeks * target), detail: done + ' of ' + weeks * target + ' days (' + target + ' a week)', marks: marks }
+        return { value: percent(done, weeks * target), marks: marks, detail:
+          'The aim is ' + target + (target === 1 ? ' day' : ' days') + ' a week. The last 8 weeks, counting back from yesterday, each count up to ' + target + ' Yes days, so an extra day can’t make up for a thin week. ' +
+          done + ' of ' + weeks * target + ', so ' + percent(done, weeks * target) + '%. Each bar is one day, oldest on the left, green when it was Yes.' }
       },
       settingField: function (goal) {
         var chosen = goal ? goal.days_per_week : DEFAULT_DAYS_PER_WEEK
@@ -493,7 +515,9 @@
         var weeks = yesByWeek(goal), target = goal.times_per_week
         var done = weeks.reduce(function (sum, n) { return sum + Math.min(n, target) }, 0)
         var marks = weeks.slice().reverse().map(function (n) { return n >= target ? 'on' : '' })
-        return { value: percent(done, weeks.length * target), detail: done + ' of ' + weeks.length * target + ' times (' + target + ' a week)', marks: marks }
+        return { value: percent(done, weeks.length * target), marks: marks, detail:
+          'The aim is ' + target + ' Yes ' + (target === 1 ? 'answer' : 'answers') + ' a week. The last 8 weeks, counting back from today, each count up to ' + target + ', so a big week can’t make up for a thin one; No answers don’t count. ' +
+          done + ' of ' + weeks.length * target + ', so ' + percent(done, weeks.length * target) + '%. Each bar is one week, oldest on the left, green once it reached ' + target + '.' }
       },
       settingField: function (goal) {
         function whole(value, what, max) {
@@ -648,6 +672,7 @@
             titleEditing = null
             historyOpen = false
             settingsOpen = false
+            scoreInfoOpen = false
             justOpened = !open
             render()
           } }, [el('span', { class: 'name', text: goal.name }), donut(score)]), function () {
@@ -655,6 +680,7 @@
             openId = goal.id
             historyOpen = false
             settingsOpen = false
+            scoreInfoOpen = false
             titleEditing = goal.id
             render()
           }),
@@ -708,17 +734,24 @@
   // Delete. Everything is edited by tapping it where it is.
   function goalDetails(goal, score) {
     var type = TYPES[goal.type], due = isDue(goal)
-    var marks = score && score.marks ? el('div', { class: 'marks', 'aria-hidden': 'true' }, score.marks.map(function (c) { return el('i', { class: c }) })) : null
     return [
       noteField(goal.description, 'Add a description', function (text) { return saveGoal(goal, { description: text }) }, 500, 'description'),
       // Only a red goal asks anything; once answered it's green and the answer
       // is in History.
       due ? statusBox(goal) : null,
-      el('div', {}, [
-        el('div', { class: 'score-line' }, [el('b', { text: 'Score: ' }), score ? score.detail : 'nothing to score yet']),
-        marks,
-      ]),
+      scoreBar(score),
     ].concat(type.body(goal)).concat([settingsSection(goal)])
+  }
+
+  // The score's marks, one per period or day; tapping them says how this goal's
+  // score is kept (2026-11-13, Ben: the line above the bar was "unnecessary and
+  // complicated").
+  function scoreBar(score) {
+    if (!score) return el('p', { class: 'empty', text: 'Nothing to score yet' })
+    var bar = el('button', { class: 'score-bar', type: 'button', 'aria-expanded': String(scoreInfoOpen), 'aria-label': 'How the score is kept', onclick: function () { scoreInfoOpen = !scoreInfoOpen; render() } }, [
+      el('div', { class: 'marks', 'aria-hidden': 'true' }, score.marks.map(function (c) { return el('i', { class: c }) })),
+    ])
+    return el('div', {}, [bar, scoreInfoOpen ? el('p', { class: 'score-how', text: score.detail }) : null])
   }
 
   // The type's settings and Delete, folded behind a gear so the card shows only
@@ -730,6 +763,7 @@
     return el('div', { class: 'settings' }, [
       toggle,
       settingsOpen ? questionSetting(goal) : null,
+      settingsOpen ? askNoteSetting(goal) : null,
       settingsOpen ? settingOnCard(goal) : null,
       settingsOpen ? el('div', { class: 'goal-foot' }, [
         el('button', { class: 'btn text', type: 'button', text: 'Delete goal', onclick: function () {
@@ -754,6 +788,12 @@
       el('span', { text: 'Question' }),
       el('span', { class: 'question-input' }, [input, el('span', { text: ask.ending || '' })]),
     ])
+  }
+
+  // Every type: whether Yes opens the optional note dialog first.
+  function askNoteSetting(goal) {
+    var box = el('input', { type: 'checkbox', checked: goal.ask_note !== false, onchange: function () { saveGoal(goal, { ask_note: box.checked }) } })
+    return el('div', { class: 'setting' }, [el('label', { class: 'toggle' }, ['Ask for a note after Yes', box])])
   }
 
   // The type's setting, saved as soon as it changes. An invalid one says why
@@ -865,12 +905,14 @@
   function statusBox(goal) {
     var ask = TYPES[goal.type].ask(goal)
     var question, control = null
+    // Answering folds the card back to its one line (2026-11-13, Ben).
+    function thenFold(record) { return function (a, b) { if (openId === goal.id) openId = null; return record(a, b) } }
     if (ask.empty) question = ask.empty
     else {
       question = questionStem(goal, ask) + ask.ending
       control = ask.answers === 'date'
-        ? dateField({ value: '', label: 'Pick a date', pick: true, onPick: ask.pick })
-        : answerButtons({ yesOnly: ask.answers === 'yes', answer: ask.answer })
+        ? dateField({ value: '', label: 'Pick a date', pick: true, onPick: thenFold(ask.pick) })
+        : answerButtons({ yesOnly: ask.answers === 'yes', askNote: goal.ask_note !== false, answer: thenFold(ask.answer) })
     }
     return el('div', { class: 'status due' }, [
       el('div', { class: 'day-row' }, [el('div', { class: 'question' }, [question, ask.note ? el('span', { class: 'day-note', text: ask.note }) : null]), control]),
@@ -881,14 +923,16 @@
   }
 
   // Yes / No (or Yes alone) for every type and every day. Yes asks for an
-  // optional note first; tapping the chosen answer again clears it.
+  // optional note first unless the goal's setting turned that off; tapping the
+  // chosen answer again clears it.
   function answerButtons(opts) {
     var outcome = opts.chosen ? opts.chosen.outcome || 'kept' : null
     function button(value, text) {
       return el('button', { class: 'btn ' + (outcome === value ? value : 'outline'), type: 'button', text: text, 'aria-pressed': String(outcome === value), 'aria-label': opts.label ? text + ', ' + opts.label : null, onclick: function (e) {
         var b = e.currentTarget
         if (outcome === value) { b.disabled = true; deleteEntry(opts.chosen) }
-        else if (value === 'kept') askNote(function (note) { b.disabled = true; opts.answer('kept', note) })
+        else if (value === 'kept' && opts.askNote) askNote(function (note) { b.disabled = true; opts.answer('kept', note) })
+        else if (value === 'kept') { b.disabled = true; opts.answer('kept', '') }
         else { b.disabled = true; opts.answer('missed', '') }
       } })
     }
@@ -928,7 +972,7 @@
         el('span', { text: relLabel(day.date) }),
         day.entry && day.entry.note ? el('span', { class: 'day-note', text: day.entry.note }) : null,
       ]),
-      answerButtons({ chosen: day.entry, label: fullDateLabel(day.date), answer: function (outcome, note) { return addEntry(goal, { date: day.date, outcome: outcome, note: note }) } }),
+      answerButtons({ chosen: day.entry, label: fullDateLabel(day.date), askNote: goal.ask_note !== false, answer: function (outcome, note) { return addEntry(goal, { date: day.date, outcome: outcome, note: note }) } }),
     ])
   }
 

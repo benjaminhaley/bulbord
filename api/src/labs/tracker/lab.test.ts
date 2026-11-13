@@ -149,6 +149,10 @@ describe.skipIf(!process.env.DATABASE_URL)('tracker lab', () => {
     expect(goal.question).toBe('')
     expect((await call('PATCH', `/items/${goal.id}`, { question: '  Did I yes-and  ' })).json()).toMatchObject({ question: 'Did I yes-and' })
     expect((await call('PATCH', `/items/${goal.id}`, { question: 'x'.repeat(121) })).statusCode).toBe(400)
+    // Any goal can stop asking for a note after Yes (on by default).
+    expect(goal.ask_note).toBe(true)
+    expect((await call('PATCH', `/items/${goal.id}`, { ask_note: false })).json()).toMatchObject({ ask_note: false })
+    expect((await call('PATCH', `/items/${goal.id}`, { ask_note: 'no' })).statusCode).toBe(400)
   })
 
   it("hides one member's goals from another", async () => {

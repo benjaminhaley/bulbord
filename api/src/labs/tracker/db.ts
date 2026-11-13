@@ -1,4 +1,4 @@
-import { date, integer, pgSchema, text, timestamp, uuid } from 'drizzle-orm/pg-core'
+import { boolean, date, integer, pgSchema, text, timestamp, uuid } from 'drizzle-orm/pg-core'
 import { drizzle } from 'drizzle-orm/postgres-js'
 import postgres from 'postgres'
 
@@ -35,6 +35,9 @@ export const trackerItems = labs.table('tracker_items', {
   // Any type: how the card words its question, in place of the title ('' = the
   // title). The page adds the type's own ending ("… yesterday?").
   question: text('question').notNull().default(''),
+  // Any type: whether Yes opens the optional note dialog first (2026-11-13,
+  // Ben: off for Healthy eating and yes-and).
+  askNote: boolean('ask_note').notNull().default(true),
   position: integer('position').notNull().default(0),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
@@ -95,6 +98,7 @@ const DDL = `
     FROM lab_tracker.tracker_items l WHERE p.kind = 'project' AND l.id = p.parent_id;
   UPDATE lab_tracker.tracker_items SET deleted_at = now() WHERE kind = 'log' AND deleted_at IS NULL;
   ALTER TABLE lab_tracker.tracker_items ADD COLUMN IF NOT EXISTS question text NOT NULL DEFAULT '';
+  ALTER TABLE lab_tracker.tracker_items ADD COLUMN IF NOT EXISTS ask_note boolean NOT NULL DEFAULT true;
   DROP INDEX IF EXISTS lab_tracker.tracker_entries_item_idx;
   CREATE INDEX IF NOT EXISTS tracker_entries_item_date_idx ON lab_tracker.tracker_entries (item_id, date);
 `
