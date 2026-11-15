@@ -153,6 +153,10 @@ describe.skipIf(!process.env.DATABASE_URL)('tracker lab', () => {
     expect(goal.ask_note).toBe(true)
     expect((await call('PATCH', `/items/${goal.id}`, { ask_note: false })).json()).toMatchObject({ ask_note: false })
     expect((await call('PATCH', `/items/${goal.id}`, { ask_note: 'no' })).statusCode).toBe(400)
+    // ...and start asking after No (off by default).
+    expect(goal.ask_note_no).toBe(false)
+    expect((await call('PATCH', `/items/${goal.id}`, { ask_note_no: true })).json()).toMatchObject({ ask_note: false, ask_note_no: true })
+    expect((await call('PATCH', `/items/${goal.id}`, { ask_note_no: 1 })).statusCode).toBe(400)
   })
 
   it("hides one member's goals from another", async () => {

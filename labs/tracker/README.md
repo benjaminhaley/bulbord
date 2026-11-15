@@ -81,7 +81,10 @@ server, `parseSettings` and the entry rules in `POST /items/:id/entries`.
     Escape or tapping outside skips). It's recorded either way, with the note if
     any. No records at once. The dialog is a per-goal setting, "Ask for a note
     after Yes" (`ask_note`, on by default; 2026-11-13, Ben turned it off for
-    Healthy eating and yes-and); off, Yes records straight away.
+    Healthy eating and yes-and); off, Yes records straight away. A second
+    setting, "Ask for a note after No" (`ask_note_no`, off by default;
+    2026-11-15, Ben turned it on for Healthy eating: "not when I say yes"),
+    opens the same dialog after No.
   - Answering the question folds the card back to its one line (2026-11-13,
     Ben: it should "shrink back down again"). Answers in History don't.
   - The score's marks, one per period or day, oldest to newest (kept green,
@@ -136,12 +139,12 @@ question was simplified on one type and missed on the others:
 
 All under `/labs/tracker` on the API, bearer token as for Bulbord.
 
-- `GET /items`: the member's goals, each `{id, name, description, question, ask_note, type:
+- `GET /items`: the member's goals, each `{id, name, description, question, ask_note, ask_note_no, type:
   'plan' | 'progress' | 'checkin' | 'weekly' | 'often', period_days, stale_days,
   weekdays, days_per_week, every_hours, times_per_week, entries}` (only the type's own setting is set; `weekdays` is `[0, 1]`, 0 =
   Sunday). `entries` (`{id, date, at, note, outcome}`) are every live entry,
   newest date first. Seeds the defaults if the member never had any goal.
-- `POST /items` `{name, description?, question?, ask_note?, type?, period_days? | stale_days? |
+- `POST /items` `{name, description?, question?, ask_note?, ask_note_no?, type?, period_days? | stale_days? |
   weekdays? | days_per_week? | every_hours? & times_per_week?}` (title ≤80 chars, description ≤500, question ≤120 ('' = the title), period
   7/14/28, days 1–3650, at least one weekday, 1–7 days a week, 1–168 hours, 1–100 times a week). `PATCH /items/:id` takes the same fields but
   not a different type. `DELETE /items/:id` (soft delete).
@@ -154,7 +157,7 @@ All under `/labs/tracker` on the API, bearer token as for Bulbord.
 
 ## Data
 
-`tracker_items` (id, user_id, name, description, question, ask_note, kind = the goal type,
+`tracker_items` (id, user_id, name, description, question, ask_note, ask_note_no, kind = the goal type,
 period_days, stale_days, weekdays as `"0,1"`, days_per_week, every_hours, times_per_week, position, timestamps,
 deleted_at) and `tracker_entries` (id, item_id → tracker_items, user_id,
 date, note, outcome, timestamps, deleted_at), created by `db.ts`'s idempotent

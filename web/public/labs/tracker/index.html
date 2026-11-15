@@ -763,7 +763,8 @@
     return el('div', { class: 'settings' }, [
       toggle,
       settingsOpen ? questionSetting(goal) : null,
-      settingsOpen ? askNoteSetting(goal) : null,
+      settingsOpen ? askNoteSetting(goal, 'ask_note', 'Ask for a note after Yes') : null,
+      settingsOpen ? askNoteSetting(goal, 'ask_note_no', 'Ask for a note after No') : null,
       settingsOpen ? settingOnCard(goal) : null,
       settingsOpen ? el('div', { class: 'goal-foot' }, [
         el('button', { class: 'btn text', type: 'button', text: 'Delete goal', onclick: function () {
@@ -790,11 +791,16 @@
     ])
   }
 
-  // Every type: whether Yes opens the optional note dialog first.
-  function askNoteSetting(goal) {
-    var box = el('input', { type: 'checkbox', checked: goal.ask_note !== false, onchange: function () { saveGoal(goal, { ask_note: box.checked }) } })
-    return el('div', { class: 'setting' }, [el('label', { class: 'toggle' }, ['Ask for a note after Yes', box])])
+  // Every type: whether Yes (ask_note) or No (ask_note_no) opens the optional
+  // note dialog first.
+  function askNoteSetting(goal, field, text) {
+    var box = el('input', { type: 'checkbox', checked: noteAsked(goal)[field === 'ask_note' ? 'kept' : 'missed'], onchange: function () {
+      var change = {}; change[field] = box.checked; saveGoal(goal, change)
+    } })
+    return el('div', { class: 'setting' }, [el('label', { class: 'toggle' }, [text, box])])
   }
+  // Which answers open the note dialog, by outcome.
+  function noteAsked(goal) { return { kept: goal.ask_note !== false, missed: goal.ask_note_no === true } }
 
   // The type's setting, saved as soon as it changes. An invalid one says why
   // and goes back to what's saved.
@@ -912,7 +918,7 @@
       question = questionStem(goal, ask) + ask.ending
       control = ask.answers === 'date'
         ? dateField({ value: '', label: 'Pick a date', pick: true, onPick: thenFold(ask.pick) })
-        : answerButtons({ yesOnly: ask.answers === 'yes', askNote: goal.ask_note !== false, answer: thenFold(ask.answer) })
+        : answerButtons({ yesOnly: ask.answers === 'yes', askNote: noteAsked(goal), answer: thenFold(ask.answer) })
     }
     return el('div', { class: 'status due' }, [
       el('div', { class: 'day-row' }, [el('div', { class: 'question' }, [question, ask.note ? el('span', { class: 'day-note', text: ask.note }) : null]), control]),
@@ -922,18 +928,17 @@
     return (goal.question || ask.stem || goal.name).replace(/[\s?.!:]+$/, '')
   }
 
-  // Yes / No (or Yes alone) for every type and every day. Yes asks for an
-  // optional note first unless the goal's setting turned that off; tapping the
-  // chosen answer again clears it.
+  // Yes / No (or Yes alone) for every type and every day. Each answer asks for
+  // an optional note first when the goal's settings say so (opts.askNote, by
+  // outcome); tapping the chosen answer again clears it.
   function answerButtons(opts) {
     var outcome = opts.chosen ? opts.chosen.outcome || 'kept' : null
     function button(value, text) {
       return el('button', { class: 'btn ' + (outcome === value ? value : 'outline'), type: 'button', text: text, 'aria-pressed': String(outcome === value), 'aria-label': opts.label ? text + ', ' + opts.label : null, onclick: function (e) {
         var b = e.currentTarget
         if (outcome === value) { b.disabled = true; deleteEntry(opts.chosen) }
-        else if (value === 'kept' && opts.askNote) askNote(function (note) { b.disabled = true; opts.answer('kept', note) })
-        else if (value === 'kept') { b.disabled = true; opts.answer('kept', '') }
-        else { b.disabled = true; opts.answer('missed', '') }
+        else if (opts.askNote && opts.askNote[value]) askNote(function (note) { b.disabled = true; opts.answer(value, note) })
+        else { b.disabled = true; opts.answer(value, '') }
       } })
     }
     return el('div', { class: 'answers' }, [button('kept', 'Yes'), opts.yesOnly ? null : button('missed', 'No')])
@@ -972,7 +977,7 @@
         el('span', { text: relLabel(day.date) }),
         day.entry && day.entry.note ? el('span', { class: 'day-note', text: day.entry.note }) : null,
       ]),
-      answerButtons({ chosen: day.entry, label: fullDateLabel(day.date), askNote: goal.ask_note !== false, answer: function (outcome, note) { return addEntry(goal, { date: day.date, outcome: outcome, note: note }) } }),
+      answerButtons({ chosen: day.entry, label: fullDateLabel(day.date), askNote: noteAsked(goal), answer: function (outcome, note) { return addEntry(goal, { date: day.date, outcome: outcome, note: note }) } }),
     ])
   }
 

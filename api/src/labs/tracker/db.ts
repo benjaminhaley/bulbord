@@ -38,6 +38,9 @@ export const trackerItems = labs.table('tracker_items', {
   // Any type: whether Yes opens the optional note dialog first (2026-11-13,
   // Ben: off for Healthy eating and yes-and).
   askNote: boolean('ask_note').notNull().default(true),
+  // Any type: whether No opens the same note dialog (2026-11-15, Ben: on for
+  // Healthy eating, "not when I say yes").
+  askNoteNo: boolean('ask_note_no').notNull().default(false),
   position: integer('position').notNull().default(0),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
@@ -99,6 +102,7 @@ const DDL = `
   UPDATE lab_tracker.tracker_items SET deleted_at = now() WHERE kind = 'log' AND deleted_at IS NULL;
   ALTER TABLE lab_tracker.tracker_items ADD COLUMN IF NOT EXISTS question text NOT NULL DEFAULT '';
   ALTER TABLE lab_tracker.tracker_items ADD COLUMN IF NOT EXISTS ask_note boolean NOT NULL DEFAULT true;
+  ALTER TABLE lab_tracker.tracker_items ADD COLUMN IF NOT EXISTS ask_note_no boolean NOT NULL DEFAULT false;
   DROP INDEX IF EXISTS lab_tracker.tracker_entries_item_idx;
   CREATE INDEX IF NOT EXISTS tracker_entries_item_date_idx ON lab_tracker.tracker_entries (item_id, date);
 `

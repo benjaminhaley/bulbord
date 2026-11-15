@@ -48,7 +48,7 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 
 type Item = typeof trackerItems.$inferSelect
 type Entry = typeof trackerEntries.$inferSelect
-type ItemBody = { name?: unknown; description?: unknown; question?: unknown; ask_note?: unknown; type?: unknown; period_days?: unknown; stale_days?: unknown; weekdays?: unknown; days_per_week?: unknown; every_hours?: unknown; times_per_week?: unknown }
+type ItemBody = { name?: unknown; description?: unknown; question?: unknown; ask_note?: unknown; ask_note_no?: unknown; type?: unknown; period_days?: unknown; stale_days?: unknown; weekdays?: unknown; days_per_week?: unknown; every_hours?: unknown; times_per_week?: unknown }
 
 // Thrown by the parsers below; the scope's error handler answers it.
 class HttpError extends Error {
@@ -154,6 +154,7 @@ function serializeItem(item: Item, entries: Entry[] = []) {
     description: item.description,
     question: item.question,
     ask_note: item.askNote,
+    ask_note_no: item.askNoteNo,
     type: item.type,
     period_days: item.periodDays,
     stale_days: item.staleDays,
@@ -233,6 +234,7 @@ async function trackerRoutes(app: FastifyInstance, ctx: LabContext) {
         description: parseText(body.description, MAX_DESCRIPTION, 'Description', false),
         question: parseText(body.question, MAX_QUESTION, 'Question', false),
         ...(body.ask_note === undefined ? {} : { askNote: parseBool(body.ask_note, 'ask_note') }),
+        ...(body.ask_note_no === undefined ? {} : { askNoteNo: parseBool(body.ask_note_no, 'ask_note_no') }),
         ...parseSettings(type, body, true),
         position: sql`(select coalesce(max(position) + 1, 0) from ${trackerItems} where ${trackerItems.userId} = ${userId})`,
       })
@@ -240,7 +242,7 @@ async function trackerRoutes(app: FastifyInstance, ctx: LabContext) {
     return reply.code(201).send(serializeItem(item))
   })
 
-  // A goal's type is fixed; its title, description, question, ask_note and settings can change.
+  // A goal's type is fixed; its title, description, question, note dialogs and settings can change.
   app.patch<{ Params: { id: string }; Body: ItemBody }>('/items/:id', async (request) => {
     const db = await database()
     const body = request.body ?? {}
@@ -252,6 +254,7 @@ async function trackerRoutes(app: FastifyInstance, ctx: LabContext) {
     if (body.description !== undefined) changes.description = parseText(body.description, MAX_DESCRIPTION, 'Description', false)
     if (body.question !== undefined) changes.question = parseText(body.question, MAX_QUESTION, 'Question', false)
     if (body.ask_note !== undefined) changes.askNote = parseBool(body.ask_note, 'ask_note')
+    if (body.ask_note_no !== undefined) changes.askNoteNo = parseBool(body.ask_note_no, 'ask_note_no')
     if (Object.keys(changes).length === 0) throw badRequest('Nothing to change')
     const [updated] = await db.update(trackerItems).set({ ...changes, updatedAt: new Date() }).where(eq(trackerItems.id, item.id)).returning()
     return serializeItem(updated)
