@@ -98,15 +98,20 @@ server, `parseSettings` and the entry rules in `POST /items/:id/entries`.
     Yes / No (tap the chosen one again to clear it) and note. Every few hours
     lists each answer with its time and note.
   - Settings, folded away behind a gear at the bottom (2026-11-10, Ben: the
-    numbers "should be buried under a Settings gear"). First, for every type,
+    numbers "should be buried under a Settings gear"). Settings hold every
+    option a goal has (2026-11-15, Ben): first the Title and the Type (a select
+    with the type's explanation under it; switching brings up the new type's
+    own settings at their defaults, a check-in starting on every day, and asks
+    first when entries would change: see the API), then, for every type,
     the Question: the words the question starts with, in place of the title
     (empty = the title; a plan's default is "When's the next one"), with the
-    type's ending shown after the box, and "Ask for a note after Yes". Then the type's own settings (how often,
+    type's ending shown after the box, and "Ask for a note after Yes" / "… after No" (only the answers the type
+    has: none for a plan, Yes alone for progress). Then the type's own settings (how often,
     days until red, which days, days a week, hours until red and weekly Yes
     target), all saved at once, then Delete goal as a quiet link. It folds
     again when the card closes. There's no Edit goal (2026-11-08, Ben: tap the
     field, or hold if a tap already does something): the description is
-    tap-to-edit, and holding the title line edits the title. The type is fixed.
+    tap-to-edit, and holding the title line edits the title. The title is also in Settings.
 
 ## One card for every type
 
@@ -146,8 +151,11 @@ All under `/labs/tracker` on the API, bearer token as for Bulbord.
   newest date first. Seeds the defaults if the member never had any goal.
 - `POST /items` `{name, description?, question?, ask_note?, ask_note_no?, type?, period_days? | stale_days? |
   weekdays? | days_per_week? | every_hours? & times_per_week?}` (title ≤80 chars, description ≤500, question ≤120 ('' = the title), period
-  7/14/28, days 1–3650, at least one weekday, 1–7 days a week, 1–168 hours, 1–100 times a week). `PATCH /items/:id` takes the same fields but
-  not a different type. `DELETE /items/:id` (soft delete).
+  7/14/28, days 1–3650, at least one weekday, 1–7 days a week, 1–168 hours, 1–100 times a week). `PATCH /items/:id` takes the same fields, a
+  new `type` included: the new type's settings are given or defaulted (a
+  check-in needs `weekdays`), the old type's are cleared, and entries carry
+  over (to a Yes / No type, a plain date becomes a Yes; to plan or progress, a
+  No is soft-deleted and a Yes becomes a plain date). `DELETE /items/:id` (soft delete).
 - `POST /items/:id/entries` `{date: "YYYY-MM-DD", note?, outcome?, today?}`
   (note ≤200 chars; `outcome` `'kept' | 'missed'`, check-in, weekly and every-few-hours only; `today`
   defaults to the server's UTC date). Rules per type as above.

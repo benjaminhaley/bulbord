@@ -242,21 +242,41 @@ async function trackerRoutes(app: FastifyInstance, ctx: LabContext) {
     return reply.code(201).send(serializeItem(item))
   })
 
-  // A goal's type is fixed; its title, description, question, note dialogs and settings can change.
+  // Everything about a goal can change, its type too (2026-11-15, Ben: Settings
+  // should cover every option goals have). A new type gets its own settings
+  // (given, or the defaults) and the old type's are cleared; its entries are
+  // carried over: going to a type with Yes / No answers, a logged date becomes
+  // a Yes; going to plan or progress, a No is soft-deleted (it would read as
+  // done) and a Yes becomes a plain logged date.
   app.patch<{ Params: { id: string }; Body: ItemBody }>('/items/:id', async (request) => {
     const db = await database()
     const body = request.body ?? {}
     const item = await findItem(request.params.id, member(request))
-    if (body.type !== undefined && body.type !== item.type) throw badRequest("A goal's type can't change")
+    const newType = (body.type ?? item.type) as GoalType
+    if (!GOAL_TYPES.includes(newType)) throw badRequest('Unknown goal type')
+    const typeChanges = newType !== item.type
 
-    const changes: Partial<Item> = parseSettings(item.type as GoalType, body, false)
+    const changes: Partial<Item> = typeChanges
+      ? { type: newType, periodDays: null, staleDays: null, weekdays: null, daysPerWeek: null, everyHours: null, timesPerWeek: null, ...parseSettings(newType, body, true) }
+      : parseSettings(item.type as GoalType, body, false)
     if (body.name !== undefined) changes.name = parseText(body.name, MAX_NAME, 'Title', true)
     if (body.description !== undefined) changes.description = parseText(body.description, MAX_DESCRIPTION, 'Description', false)
     if (body.question !== undefined) changes.question = parseText(body.question, MAX_QUESTION, 'Question', false)
     if (body.ask_note !== undefined) changes.askNote = parseBool(body.ask_note, 'ask_note')
     if (body.ask_note_no !== undefined) changes.askNoteNo = parseBool(body.ask_note_no, 'ask_note_no')
     if (Object.keys(changes).length === 0) throw badRequest('Nothing to change')
-    const [updated] = await db.update(trackerItems).set({ ...changes, updatedAt: new Date() }).where(eq(trackerItems.id, item.id)).returning()
+    const updated = await db.transaction(async (tx) => {
+      const [row] = await tx.update(trackerItems).set({ ...changes, updatedAt: new Date() }).where(eq(trackerItems.id, item.id)).returning()
+      const wasAnswers = takesAnswers(item), isAnswers = takesAnswers(row)
+      const live = and(eq(trackerEntries.itemId, item.id), isNull(trackerEntries.deletedAt))
+      if (isAnswers && !wasAnswers) {
+        await tx.update(trackerEntries).set({ outcome: 'kept', updatedAt: new Date() }).where(and(live, isNull(trackerEntries.outcome)))
+      } else if (wasAnswers && !isAnswers) {
+        await tx.update(trackerEntries).set({ deletedAt: new Date() }).where(and(live, eq(trackerEntries.outcome, 'missed')))
+        await tx.update(trackerEntries).set({ outcome: null, updatedAt: new Date() }).where(live)
+      }
+      return row
+    })
     return serializeItem(updated)
   })
 

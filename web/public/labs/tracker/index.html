@@ -132,6 +132,7 @@
   .setting input[type=number] { width: 3.5em; padding: 4px 8px; text-align: center; -moz-appearance: textfield; appearance: textfield; }
   .setting input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; }
   .setting .choices { gap: 4px; }
+  .setting-detail { display: block; margin-top: 2px; color: var(--muted); font-size: 0.8125rem; }
   .setting .field-label { font-size: 0.875rem; }
   .setting .weekdays { flex-wrap: nowrap; gap: 4px; }
   .setting .weekdays label { flex: 1; position: relative; justify-content: center; padding: 6px 0; border: 1px solid var(--line); border-radius: 8px; font-size: 0.8125rem; color: var(--muted); cursor: pointer; }
@@ -762,9 +763,12 @@
     toggle.appendChild(document.createTextNode('Settings'))
     return el('div', { class: 'settings' }, [
       toggle,
+      settingsOpen ? titleSetting(goal) : null,
+      settingsOpen ? typeSetting(goal) : null,
       settingsOpen ? questionSetting(goal) : null,
-      settingsOpen ? askNoteSetting(goal, 'ask_note', 'Ask for a note after Yes') : null,
-      settingsOpen ? askNoteSetting(goal, 'ask_note_no', 'Ask for a note after No') : null,
+      // Only the answers this type has: a plan picks a date, progress has Yes alone.
+      settingsOpen && answersOf(goal) !== 'date' ? askNoteSetting(goal, 'ask_note', 'Ask for a note after Yes') : null,
+      settingsOpen && answersOf(goal) === 'yesno' ? askNoteSetting(goal, 'ask_note_no', 'Ask for a note after No') : null,
       settingsOpen ? settingOnCard(goal) : null,
       settingsOpen ? el('div', { class: 'goal-foot' }, [
         el('button', { class: 'btn text', type: 'button', text: 'Delete goal', onclick: function () {
@@ -774,6 +778,45 @@
         } }),
       ]) : null,
     ])
+  }
+
+  function answersOf(goal) { return TYPES[goal.type].ask(goal).answers }
+
+  // The title, also editable by holding the title line.
+  function titleSetting(goal) {
+    var input = el('input', { type: 'text', maxlength: '80', value: goal.name, 'aria-label': 'Title' })
+    input.addEventListener('change', function () {
+      var text = input.value.trim()
+      if (!text) { input.value = goal.name; return }
+      if (text !== goal.name) saveGoal(goal, { name: text })
+    })
+    return el('label', { class: 'question-setting' }, [el('span', { text: 'Title' }), input])
+  }
+
+  // The goal's type (2026-11-15, Ben: Settings should cover every option goals
+  // have). Switching brings up the new type's own settings at their defaults;
+  // the server carries the entries over and says so here first when any would
+  // change.
+  var ANSWER_TYPES = { checkin: true, weekly: true, often: true }
+  function typeSetting(goal) {
+    var select = el('select', { 'aria-label': 'Type' }, Object.keys(TYPES).map(function (key) {
+      var option = el('option', { value: key, text: TYPES[key].label })
+      option.selected = key === goal.type
+      return option
+    }))
+    var detail = el('small', { class: 'setting-detail', text: TYPES[goal.type].detail })
+    select.addEventListener('change', function () {
+      var to = select.value
+      var nos = goal.entries.filter(function (e) { return e.outcome === 'missed' }).length
+      var warn = ANSWER_TYPES[goal.type] && !ANSWER_TYPES[to] && nos
+        ? 'Switching to ' + TYPES[to].label + ' removes the ' + nos + ' No ' + (nos === 1 ? 'answer' : 'answers') + ' and keeps each Yes as a date. Switch?'
+        : !ANSWER_TYPES[goal.type] && ANSWER_TYPES[to] && goal.entries.length
+          ? 'Switching to ' + TYPES[to].label + ' counts each logged date as a Yes. Switch?'
+          : null
+      if (warn && !confirm(warn)) { select.value = goal.type; return }
+      saveGoal(goal, to === 'checkin' ? { type: to, weekdays: [0, 1, 2, 3, 4, 5, 6] } : { type: to })
+    })
+    return el('div', { class: 'setting' }, [el('label', {}, ['Type', select]), detail])
   }
 
   // Every type's first setting: how the question is worded, in place of the
