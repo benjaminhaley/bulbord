@@ -17,21 +17,21 @@ export const trackerItems = labs.table('tracker_items', {
   userId: uuid('user_id').notNull(),
   name: text('name').notNull(),
   description: text('description').notNull().default(''),
-  // The goal's type (feedback #189): 'plan', 'progress', 'checkin', 'weekly' or 'often' (see
-  // lab.ts). The column is still called `kind` from before goals had types.
+  // When it asks (feedback #189, 2026-11-16): 'plan', 'progress', 'checkin' or
+  // 'often' (see lab.ts). The column is still called `kind` from before goals
+  // had types. Unused columns from older designs stay in the table (parent_id,
+  // period_days, days_per_week, times_per_week).
   type: text('kind').notNull().default('plan'),
-  // plan: how often one should happen, in days (7, 14 or 28).
-  periodDays: integer('period_days'),
   // progress: red once the last entry is more than this many days old.
   staleDays: integer('stale_days'),
-  // checkin: the days to record, as "0,1" (0 = Sunday).
+  // checkin: the days to answer, as "0,1" (0 = Sunday).
   weekdays: text('weekdays'),
-  // weekly: the target, any this many days a week.
-  daysPerWeek: integer('days_per_week'),
-  // often: red after this many hours without an answer; the Yes answers to aim
-  // for each week.
+  // often: red after this many hours without an answer.
   everyHours: integer('every_hours'),
-  timesPerWeek: integer('times_per_week'),
+  // Any type: the goal, this many (dates, days or Yes answers) in each this
+  // many days (7, 14 or 28).
+  targetCount: integer('target_count'),
+  targetPeriodDays: integer('target_period_days'),
   // Any type: how the card words its question, in place of the title ('' = the
   // title). The page adds the type's own ending ("… yesterday?").
   question: text('question').notNull().default(''),
@@ -53,7 +53,7 @@ export const trackerEntries = labs.table('tracker_entries', {
   userId: uuid('user_id').notNull(),
   date: date('date').notNull(),
   note: text('note').notNull().default(''),
-  // checkin, weekly and often only: 'kept' or 'missed' (often: Yes or No).
+  // checkin and often only: 'kept' or 'missed' (often: Yes or No).
   outcome: text('outcome'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
@@ -103,6 +103,18 @@ const DDL = `
   ALTER TABLE lab_tracker.tracker_items ADD COLUMN IF NOT EXISTS question text NOT NULL DEFAULT '';
   ALTER TABLE lab_tracker.tracker_items ADD COLUMN IF NOT EXISTS ask_note boolean NOT NULL DEFAULT true;
   ALTER TABLE lab_tracker.tracker_items ADD COLUMN IF NOT EXISTS ask_note_no boolean NOT NULL DEFAULT false;
+  -- 2026-11-16: every goal has a target (count per 7, 14 or 28 days), taken
+  -- from the old per-type settings; a "some days a week" goal is a check-in on
+  -- every day. Runs once: only goals without a target yet.
+  ALTER TABLE lab_tracker.tracker_items ADD COLUMN IF NOT EXISTS target_count integer;
+  ALTER TABLE lab_tracker.tracker_items ADD COLUMN IF NOT EXISTS target_period_days integer;
+  UPDATE lab_tracker.tracker_items SET kind = 'checkin', weekdays = '0,1,2,3,4,5,6', target_count = coalesce(days_per_week, 5), target_period_days = 7
+    WHERE kind = 'weekly' AND target_count IS NULL;
+  UPDATE lab_tracker.tracker_items SET target_count = 1, target_period_days = coalesce(period_days, 7) WHERE kind = 'plan' AND target_count IS NULL;
+  UPDATE lab_tracker.tracker_items SET target_count = 1, target_period_days = 7 WHERE kind = 'progress' AND target_count IS NULL;
+  UPDATE lab_tracker.tracker_items SET target_count = coalesce(array_length(string_to_array(weekdays, ','), 1), 7), target_period_days = 7
+    WHERE kind = 'checkin' AND target_count IS NULL;
+  UPDATE lab_tracker.tracker_items SET target_count = coalesce(times_per_week, 10), target_period_days = 7 WHERE kind = 'often' AND target_count IS NULL;
   DROP INDEX IF EXISTS lab_tracker.tracker_entries_item_idx;
   CREATE INDEX IF NOT EXISTS tracker_entries_item_date_idx ON lab_tracker.tracker_entries (item_id, date);
 `

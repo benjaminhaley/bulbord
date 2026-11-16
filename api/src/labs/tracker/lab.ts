@@ -5,28 +5,25 @@ import type { Lab, LabContext } from '../sandbox.js'
 import { trackerDb, trackerEntries, trackerItems } from './db.js'
 
 // Tracker (Labs). Each member has their own private list of goals. Every goal
-// has a title, a description, a key action that turns it red when it can be
-// done today, and a 0-100% score over the last 8 weeks, which builds up over
-// time (feedback #189). The type decides the key action and the score:
-// - plan ("plan ahead", e.g. see friends): red until the next one is on the
-//   calendar; scored by how many of the last 8 weeks' periods (every 1, 2 or 4
-//   weeks) had one.
-// - progress ("keep making progress"): red once the last entry is more than
-//   stale_days old; scored by how many of the last 8 weeks had one.
-// - checkin ("check in on set days", e.g. no drinking on Sundays and Mondays):
-//   each chosen weekday is recorded kept or missed; red until the most recent
-//   one is recorded; scored by kept days out of chosen days.
-// - weekly ("some days a week", e.g. work on projects 5 days of 7): every day is
-//   recorded the same way, any of them counting; red until the most recent day
-//   is recorded; scored by kept days out of days_per_week each week.
-// - often ("every few hours", e.g. did I think to yes and?): any number of Yes or
-//   No answers (stored kept or missed); red once the last is every_hours old;
-//   scored by Yes answers out of times_per_week each week.
+// has a title, a description, a question that turns it red when it's due, and a
+// 0-100% score, which builds up over time (feedback #189). Every goal is made of
+// the same parts (2026-11-16, Ben: every setting available to every type):
+// - When it asks (the goal's `type`; its own setting in brackets):
+//   - plan: red until the next one is on the calendar (none).
+//   - progress: red once the last entry is more than [stale_days] old.
+//   - checkin: each chosen [weekdays] is answered Yes or No (stored kept or
+//     missed), one answer per day; red until the most recent one is answered.
+//     Every day of the week is the old "some days a week" goal.
+//   - often: any number of Yes or No answers; red once the last is
+//     [every_hours] old.
+// - The goal: target_count a week, every 2 weeks or every 4 weeks
+//   (target_period_days), any type: the score is how much of it was reached.
+// - The question's wording and which answers ask for a note.
 // The page derives red and the score from the entries in the viewer's own time
 // zone. This file enforces each type's entry rules, against the viewer's
 // `today` that the page sends. Entries are soft-deleted only, which doubles as
 // this lab's own history — labs never write to the app's events_log.
-const GOAL_TYPES = ['plan', 'progress', 'checkin', 'weekly', 'often'] as const
+const GOAL_TYPES = ['plan', 'progress', 'checkin', 'often'] as const
 type GoalType = (typeof GOAL_TYPES)[number]
 const DEFAULT_GOALS = ['Date with Anna', 'Playdate for Sebrin', 'Fun trip', 'Hang with a friend']
 const MAX_NAME = 80
@@ -34,21 +31,20 @@ const MAX_DESCRIPTION = 500
 const MAX_QUESTION = 120
 const MAX_NOTE = 200
 const PERIOD_DAYS = [7, 14, 28]
-const DEFAULT_PERIOD_DAYS = 7
 const DEFAULT_STALE_DAYS = 14
 const MAX_STALE_DAYS = 3650
-const DEFAULT_DAYS_PER_WEEK = 5
 const DEFAULT_EVERY_HOURS = 6
-const DEFAULT_TIMES_PER_WEEK = 10
 const MAX_EVERY_HOURS = 168
-const MAX_TIMES_PER_WEEK = 100
+const MAX_TARGET = 100
+// A new goal's target, a week, when none is given; a check-in's is every chosen day.
+const DEFAULT_TARGET: Record<GoalType, number> = { plan: 1, progress: 1, checkin: 7, often: 10 }
 const OUTCOMES = ['kept', 'missed']
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 type Item = typeof trackerItems.$inferSelect
 type Entry = typeof trackerEntries.$inferSelect
-type ItemBody = { name?: unknown; description?: unknown; question?: unknown; ask_note?: unknown; ask_note_no?: unknown; type?: unknown; period_days?: unknown; stale_days?: unknown; weekdays?: unknown; days_per_week?: unknown; every_hours?: unknown; times_per_week?: unknown }
+type ItemBody = { name?: unknown; description?: unknown; question?: unknown; ask_note?: unknown; ask_note_no?: unknown; type?: unknown; stale_days?: unknown; weekdays?: unknown; every_hours?: unknown; target_count?: unknown; target_period_days?: unknown }
 
 // Thrown by the parsers below; the scope's error handler answers it.
 class HttpError extends Error {
@@ -87,8 +83,14 @@ function weekdayOf(date: string) {
   return new Date(`${date}T00:00:00Z`).getUTCDay()
 }
 
-// The type's own setting, from a create (every one, with defaults) or an
-// edit (only what's given). A setting of another type is an error.
+function wholeNumber(value: unknown, max: number, message: string) {
+  if (!(Number.isInteger(value) && (value as number) >= 1 && (value as number) <= max)) throw badRequest(message)
+  return value as number
+}
+
+// The type's own setting, from a create or a type change (every one, with
+// defaults) or an edit (only what's given). A setting of another type is an
+// error.
 function parseSettings(type: GoalType, body: ItemBody, creating: boolean): Partial<Item> {
   const settings: Partial<Item> = {}
   const wanted = (key: keyof ItemBody, owner: GoalType) => {
@@ -96,17 +98,8 @@ function parseSettings(type: GoalType, body: ItemBody, creating: boolean): Parti
     if (type !== owner) throw badRequest(`Only a ${owner} goal has ${key}`)
     return true
   }
-  if (wanted('period_days', 'plan')) {
-    const days = body.period_days ?? DEFAULT_PERIOD_DAYS
-    if (!PERIOD_DAYS.includes(days as number)) throw badRequest('How often must be every 7, 14 or 28 days')
-    settings.periodDays = days as number
-  }
   if (wanted('stale_days', 'progress')) {
-    const days = body.stale_days ?? DEFAULT_STALE_DAYS
-    if (!(Number.isInteger(days) && (days as number) >= 1 && (days as number) <= MAX_STALE_DAYS)) {
-      throw badRequest(`Days must be a whole number from 1 to ${MAX_STALE_DAYS}`)
-    }
-    settings.staleDays = days as number
+    settings.staleDays = wholeNumber(body.stale_days ?? DEFAULT_STALE_DAYS, MAX_STALE_DAYS, `Days must be a whole number from 1 to ${MAX_STALE_DAYS}`)
   }
   if (wanted('weekdays', 'checkin')) {
     const days = body.weekdays
@@ -115,27 +108,27 @@ function parseSettings(type: GoalType, body: ItemBody, creating: boolean): Parti
     }
     settings.weekdays = [...new Set(days as number[])].sort().join(',')
   }
-  if (wanted('days_per_week', 'weekly')) {
-    const days = body.days_per_week ?? DEFAULT_DAYS_PER_WEEK
-    if (!(Number.isInteger(days) && (days as number) >= 1 && (days as number) <= 7)) throw badRequest('Days a week must be from 1 to 7')
-    settings.daysPerWeek = days as number
-  }
   if (wanted('every_hours', 'often')) {
-    const hours = body.every_hours ?? DEFAULT_EVERY_HOURS
-    if (!(Number.isInteger(hours) && (hours as number) >= 1 && (hours as number) <= MAX_EVERY_HOURS)) throw badRequest(`Hours must be a whole number from 1 to ${MAX_EVERY_HOURS}`)
-    settings.everyHours = hours as number
-  }
-  if (wanted('times_per_week', 'often')) {
-    const times = body.times_per_week ?? DEFAULT_TIMES_PER_WEEK
-    if (!(Number.isInteger(times) && (times as number) >= 1 && (times as number) <= MAX_TIMES_PER_WEEK)) throw badRequest(`Times a week must be a whole number from 1 to ${MAX_TIMES_PER_WEEK}`)
-    settings.timesPerWeek = times as number
+    settings.everyHours = wholeNumber(body.every_hours ?? DEFAULT_EVERY_HOURS, MAX_EVERY_HOURS, `Hours must be a whole number from 1 to ${MAX_EVERY_HOURS}`)
   }
   return settings
 }
 
+// The goal, any type: target_count in each target_period_days. Given values
+// are checked; then it's fitted to the type (a check-in can't aim for more
+// days than it asks about, and starts at every one of them).
+function fitTarget(type: GoalType, body: ItemBody, current: { count: number | null; period: number | null }, weekdays: string | null) {
+  const period = body.target_period_days === undefined ? (current.period ?? 7) : (body.target_period_days as number)
+  if (!PERIOD_DAYS.includes(period)) throw badRequest('The goal must be per 7, 14 or 28 days')
+  const max = type === 'checkin' && weekdays ? weekdays.split(',').length * (period / 7) : MAX_TARGET
+  let count = current.count ?? (type === 'checkin' ? max : DEFAULT_TARGET[type])
+  if (body.target_count !== undefined) count = wholeNumber(body.target_count, MAX_TARGET, `The goal must be a whole number from 1 to ${MAX_TARGET}`)
+  return { targetCount: Math.min(count, max), targetPeriodDays: period }
+}
+
 // These goals record a day kept or missed, one record per day.
 function recordsDays(item: Item) {
-  return item.type === 'checkin' || item.type === 'weekly'
+  return item.type === 'checkin'
 }
 
 // These goals' entries are answers, with no date or note to edit.
@@ -156,12 +149,12 @@ function serializeItem(item: Item, entries: Entry[] = []) {
     ask_note: item.askNote,
     ask_note_no: item.askNoteNo,
     type: item.type,
-    period_days: item.periodDays,
     stale_days: item.staleDays,
     weekdays: item.weekdays ? item.weekdays.split(',').map(Number) : null,
-    days_per_week: item.daysPerWeek,
     every_hours: item.everyHours,
-    times_per_week: item.timesPerWeek,
+    target_count: item.targetCount,
+    target_period_days: item.targetPeriodDays,
+    created_at: item.createdAt.toISOString(),
     entries: entries.map(serializeEntry),
   }
 }
@@ -202,7 +195,7 @@ async function trackerRoutes(app: FastifyInstance, ctx: LabContext) {
     if (items.length === 0) {
       items = await db
         .insert(trackerItems)
-        .values(DEFAULT_GOALS.map((name, position) => ({ userId, name, position, periodDays: DEFAULT_PERIOD_DAYS })))
+        .values(DEFAULT_GOALS.map((name, position) => ({ userId, name, position, targetCount: 1, targetPeriodDays: 7 })))
         .returning()
     }
     items = items.filter((item) => !item.deletedAt)
@@ -225,6 +218,7 @@ async function trackerRoutes(app: FastifyInstance, ctx: LabContext) {
     const type = (body.type ?? 'plan') as GoalType
     if (!GOAL_TYPES.includes(type)) throw badRequest('Unknown goal type')
     const userId = member(request)
+    const settings = parseSettings(type, body, true)
     const [item] = await db
       .insert(trackerItems)
       .values({
@@ -235,7 +229,8 @@ async function trackerRoutes(app: FastifyInstance, ctx: LabContext) {
         question: parseText(body.question, MAX_QUESTION, 'Question', false),
         ...(body.ask_note === undefined ? {} : { askNote: parseBool(body.ask_note, 'ask_note') }),
         ...(body.ask_note_no === undefined ? {} : { askNoteNo: parseBool(body.ask_note_no, 'ask_note_no') }),
-        ...parseSettings(type, body, true),
+        ...settings,
+        ...fitTarget(type, body, { count: null, period: null }, settings.weekdays ?? null),
         position: sql`(select coalesce(max(position) + 1, 0) from ${trackerItems} where ${trackerItems.userId} = ${userId})`,
       })
       .returning()
@@ -257,14 +252,21 @@ async function trackerRoutes(app: FastifyInstance, ctx: LabContext) {
     const typeChanges = newType !== item.type
 
     const changes: Partial<Item> = typeChanges
-      ? { type: newType, periodDays: null, staleDays: null, weekdays: null, daysPerWeek: null, everyHours: null, timesPerWeek: null, ...parseSettings(newType, body, true) }
+      ? { type: newType, staleDays: null, weekdays: null, everyHours: null, ...parseSettings(newType, body, true) }
       : parseSettings(item.type as GoalType, body, false)
+    // The goal carries over; a check-in's is refitted to its days. A
+    // check-in that was aiming for every one of its days keeps doing so when
+    // its days change.
+    const weekdays = changes.weekdays !== undefined ? changes.weekdays : item.weekdays
+    const everyDay = item.type === 'checkin' && item.weekdays && item.targetCount === item.weekdays.split(',').length * ((item.targetPeriodDays ?? 7) / 7)
+    const target = fitTarget(newType, body, { count: everyDay && changes.weekdays ? null : item.targetCount, period: item.targetPeriodDays }, weekdays)
+    if (target.targetCount !== item.targetCount || target.targetPeriodDays !== item.targetPeriodDays) Object.assign(changes, target)
     if (body.name !== undefined) changes.name = parseText(body.name, MAX_NAME, 'Title', true)
     if (body.description !== undefined) changes.description = parseText(body.description, MAX_DESCRIPTION, 'Description', false)
     if (body.question !== undefined) changes.question = parseText(body.question, MAX_QUESTION, 'Question', false)
     if (body.ask_note !== undefined) changes.askNote = parseBool(body.ask_note, 'ask_note')
     if (body.ask_note_no !== undefined) changes.askNoteNo = parseBool(body.ask_note_no, 'ask_note_no')
-    if (Object.keys(changes).length === 0) throw badRequest('Nothing to change')
+    if (Object.keys(body).length === 0) throw badRequest('Nothing to change')
     const updated = await db.transaction(async (tx) => {
       const [row] = await tx.update(trackerItems).set({ ...changes, updatedAt: new Date() }).where(eq(trackerItems.id, item.id)).returning()
       const wasAnswers = takesAnswers(item), isAnswers = takesAnswers(row)
@@ -292,7 +294,7 @@ async function trackerRoutes(app: FastifyInstance, ctx: LabContext) {
   // (the old one stays as a soft-deleted row); today or earlier is just logged.
   // progress: today or earlier. checkin: today or earlier, on one of the
   // goal's weekdays, kept or missed; a new record replaces that day's old one.
-  // weekly: the same, on any day. often: any number of answers, kept (Yes) or
+  // often: any number of answers, kept (Yes) or
   // missed (No), today or earlier.
   app.post<{ Params: { id: string }; Body: { date?: unknown; note?: unknown; outcome?: unknown; today?: unknown } }>(
     '/items/:id/entries',

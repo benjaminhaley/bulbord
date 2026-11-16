@@ -45,7 +45,8 @@ describe.skipIf(!process.env.DATABASE_URL)('tracker lab', () => {
   it('seeds plan-ahead goals; a new upcoming date replaces the next one', async () => {
     const goals = (await call('GET', '/items')).json().data
     const hang = goals.find((g: { name: string }) => g.name === 'Hang with a friend')
-    expect(hang).toMatchObject({ type: 'plan', period_days: 7, description: '', entries: [] })
+    expect(hang).toMatchObject({ type: 'plan', target_count: 1, target_period_days: 7, description: '', entries: [] })
+    expect(Date.parse(hang.created_at)).toBeGreaterThan(0)
 
     const today = '2026-11-05'
     await call('POST', `/items/${hang.id}/entries`, { date: '2026-11-20', note: 'Book club', today })
@@ -73,16 +74,21 @@ describe.skipIf(!process.env.DATABASE_URL)('tracker lab', () => {
     expect(moved.entries.map((e: { note: string }) => e.note)).toEqual(['Long coffee', 'Jeb'])
     expect((await call('PATCH', `/entries/${coffee.id}`, { note: 'Taken' }, other)).statusCode).toBe(404)
 
-    expect((await call('PATCH', `/items/${hang.id}`, { period_days: 14, description: 'See good friends more' })).json()).toMatchObject({
-      period_days: 14,
+    expect((await call('PATCH', `/items/${hang.id}`, { target_period_days: 14, description: 'See good friends more' })).json()).toMatchObject({
+      target_count: 1,
+      target_period_days: 14,
       description: 'See good friends more',
     })
     expect((await call('PATCH', `/items/${hang.id}`, { stale_days: 3 })).statusCode).toBe(400)
+    // Any goal takes any target.
+    expect((await call('PATCH', `/items/${hang.id}`, { target_count: 3 })).json()).toMatchObject({ target_count: 3, target_period_days: 14 })
+    expect((await call('PATCH', `/items/${hang.id}`, { target_period_days: 10 })).statusCode).toBe(400)
+    expect((await call('PATCH', `/items/${hang.id}`, { target_count: 0 })).statusCode).toBe(400)
   })
 
   it('keeps progress entries to today or earlier', async () => {
     const goal = (await call('POST', '/items', { name: 'Garage shelves', type: 'progress' })).json()
-    expect(goal).toMatchObject({ type: 'progress', stale_days: 14, period_days: null })
+    expect(goal).toMatchObject({ type: 'progress', stale_days: 14, target_count: 1, target_period_days: 7 })
     expect((await call('POST', `/items/${goal.id}/entries`, { date: '2026-11-06', today: '2026-11-05' })).statusCode).toBe(400)
     const entry = await call('POST', `/items/${goal.id}/entries`, { date: '2026-11-05', note: 'Cut boards', today: '2026-11-05' })
     expect(entry.statusCode).toBe(201)
@@ -91,7 +97,7 @@ describe.skipIf(!process.env.DATABASE_URL)('tracker lab', () => {
 
   it('records a check-in goal kept or missed, one record per chosen day', async () => {
     const goal = (await call('POST', '/items', { name: 'No drinking', type: 'checkin', weekdays: [1, 0, 1] })).json()
-    expect(goal.weekdays).toEqual([0, 1])
+    expect(goal).toMatchObject({ weekdays: [0, 1], target_count: 2 }) // every chosen day
     const record = (date: string, outcome?: string) => call('POST', `/items/${goal.id}/entries`, { date, outcome, today: '2026-11-05' })
 
     expect((await record('2026-11-02', 'kept')).statusCode).toBe(201) // a Monday
@@ -106,30 +112,24 @@ describe.skipIf(!process.env.DATABASE_URL)('tracker lab', () => {
     expect((await call('POST', '/items', { name: 'No days', type: 'checkin', weekdays: [] })).statusCode).toBe(400)
   })
 
-  it('records a weekly goal on any day, one record per day', async () => {
-    const goal = (await call('POST', '/items', { name: 'Work on projects', type: 'weekly', days_per_week: 5 })).json()
-    expect(goal).toMatchObject({ type: 'weekly', days_per_week: 5, weekdays: null })
+  it('fits a check-in goal to its days: some days a week is every day with a smaller goal', async () => {
+    const goal = (await call('POST', '/items', { name: 'Work on projects', type: 'checkin', weekdays: [0, 1, 2, 3, 4, 5, 6], target_count: 5 })).json()
+    expect(goal).toMatchObject({ target_count: 5, target_period_days: 7 })
     const record = (date: string, outcome?: string) => call('POST', `/items/${goal.id}/entries`, { date, outcome, today: '2026-11-09' })
-
-    expect((await record('2026-11-07', 'kept')).statusCode).toBe(201) // a Saturday
-    expect((await record('2026-11-08', 'kept')).statusCode).toBe(201) // a Sunday
-    expect((await record('2026-11-08', 'missed')).statusCode).toBe(201)
+    expect((await record('2026-11-07', 'kept')).statusCode).toBe(201) // any day
     expect((await record('2026-11-10', 'kept')).statusCode).toBe(400) // after today
-    expect((await record('2026-11-06')).statusCode).toBe(400)
 
-    const after = (await call('GET', '/items')).json().data.find((g: { id: string }) => g.id === goal.id)
-    expect(after.entries).toMatchObject([{ date: '2026-11-08', outcome: 'missed' }, { date: '2026-11-07', outcome: 'kept' }])
-    expect((await call('PATCH', `/entries/${after.entries[0].id}`, { note: 'No' })).statusCode).toBe(400)
-
-    expect((await call('PATCH', `/items/${goal.id}`, { days_per_week: 3 })).json()).toMatchObject({ days_per_week: 3 })
-    expect((await call('PATCH', `/items/${goal.id}`, { days_per_week: 8 })).statusCode).toBe(400)
-    expect((await call('PATCH', `/items/${goal.id}`, { weekdays: [1] })).statusCode).toBe(400)
-    expect((await call('POST', '/items', { name: 'Default', type: 'weekly' })).json()).toMatchObject({ days_per_week: 5 })
+    // No more days than it asks about: fewer days lower the goal to fit.
+    expect((await call('PATCH', `/items/${goal.id}`, { weekdays: [1, 3] })).json()).toMatchObject({ weekdays: [1, 3], target_count: 2 })
+    expect((await call('PATCH', `/items/${goal.id}`, { target_period_days: 14, target_count: 4 })).json()).toMatchObject({ target_count: 4 })
+    expect((await call('PATCH', `/items/${goal.id}`, { target_count: 9 })).json()).toMatchObject({ target_count: 4 })
+    // Aiming for every day keeps doing so when the days change.
+    expect((await call('PATCH', `/items/${goal.id}`, { weekdays: [1, 3, 5] })).json()).toMatchObject({ target_count: 6 })
   })
 
   it('keeps every answer to an every-few-hours goal, with its time', async () => {
     const goal = (await call('POST', '/items', { name: 'Did I think to yes and?', type: 'often' })).json()
-    expect(goal).toMatchObject({ type: 'often', every_hours: 6, times_per_week: 10 })
+    expect(goal).toMatchObject({ type: 'often', every_hours: 6, target_count: 10, target_period_days: 7 })
     const answer = (outcome?: string, date = '2026-11-09') => call('POST', `/items/${goal.id}/entries`, { date, outcome, today: '2026-11-09' })
 
     expect((await answer('kept')).statusCode).toBe(201)
@@ -143,7 +143,7 @@ describe.skipIf(!process.env.DATABASE_URL)('tracker lab', () => {
     expect(Date.parse(after.entries[0].at)).toBeGreaterThan(0)
     expect((await call('PATCH', `/entries/${after.entries[0].id}`, { note: 'No' })).statusCode).toBe(400)
 
-    expect((await call('PATCH', `/items/${goal.id}`, { every_hours: 4, times_per_week: 12 })).json()).toMatchObject({ every_hours: 4, times_per_week: 12 })
+    expect((await call('PATCH', `/items/${goal.id}`, { every_hours: 4, target_count: 12 })).json()).toMatchObject({ every_hours: 4, target_count: 12 })
     expect((await call('PATCH', `/items/${goal.id}`, { every_hours: 0 })).statusCode).toBe(400)
     // Any goal can reword its question; '' goes back to the title.
     expect(goal.question).toBe('')
@@ -162,14 +162,17 @@ describe.skipIf(!process.env.DATABASE_URL)('tracker lab', () => {
   it('changes a goal\'s type, carrying its entries over', async () => {
     const goal = (await call('POST', '/items', { name: 'Switch', type: 'progress', stale_days: 3 })).json()
     await call('POST', `/items/${goal.id}/entries`, { date: '2026-10-01', today: '2026-10-05' })
-    // To a type with answers: its settings get defaults, the old one is cleared, a logged date is a Yes.
-    const weekly = (await call('PATCH', `/items/${goal.id}`, { type: 'weekly' })).json()
-    expect(weekly).toMatchObject({ type: 'weekly', days_per_week: 5, stale_days: null })
+    // To a type with answers: its own setting is given, the old one cleared, the goal kept (fitted to the days), a logged date is a Yes.
+    const daily = (await call('PATCH', `/items/${goal.id}`, { type: 'checkin', weekdays: [0, 1, 2, 3, 4, 5, 6] })).json()
+    expect(daily).toMatchObject({ type: 'checkin', stale_days: null, target_count: 1 })
+    expect((await call('PATCH', `/items/${goal.id}`, { type: 'often' })).statusCode).toBe(200)
+    expect((await call('PATCH', `/items/${goal.id}`, { type: 'checkin', weekdays: [0, 1, 2, 3, 4, 5, 6] })).statusCode).toBe(200)
+    expect((await call('PATCH', `/items/${goal.id}`, { type: 'weekly' })).statusCode).toBe(400)
     await call('POST', `/items/${goal.id}/entries`, { date: '2026-10-02', outcome: 'missed', today: '2026-10-05' })
     const read = async () => (await call('GET', '/items')).json().data.find((g: { id: string }) => g.id === goal.id)
     expect((await read()).entries.map((e: { outcome: string }) => e.outcome)).toEqual(['missed', 'kept'])
     // Back to plan, with its own setting: a No is dropped, a Yes is a plain date.
-    expect((await call('PATCH', `/items/${goal.id}`, { type: 'plan', period_days: 14 })).json()).toMatchObject({ type: 'plan', period_days: 14, days_per_week: null })
+    expect((await call('PATCH', `/items/${goal.id}`, { type: 'plan', target_period_days: 14 })).json()).toMatchObject({ type: 'plan', target_period_days: 14, weekdays: null })
     expect((await read()).entries).toMatchObject([{ date: '2026-10-01', outcome: null }])
     expect((await call('PATCH', `/items/${goal.id}`, { type: 'nope' })).statusCode).toBe(400)
     expect((await call('PATCH', `/items/${goal.id}`, { stale_days: 4 })).statusCode).toBe(400)

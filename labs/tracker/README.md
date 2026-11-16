@@ -2,8 +2,8 @@
 
 A member's private list of goals. Every goal has a title, a description, a
 **key action** that turns it red when there's something to do today, and a
-**score** from 0 to 100% over the last 8 weeks, which builds up over time and
-can't be fixed on any one day. Built 2026-10-26; past entries and project logs
+**score** from 0 to 100% toward its goal over the last 8 weeks (or since it
+started), which builds up over time and can't be fixed on any one day. Built 2026-10-26; past entries and project logs
 2026-10-29 (feedback #187, #188); reworked into typed goals 2026-11-05
 (feedback #189).
 
@@ -11,43 +11,64 @@ can't be fixed on any one day. Built 2026-10-26; past entries and project logs
 - Server: `api/src/labs/tracker/` (`lab.ts` routes, `db.ts` tables)
 - Data: schema `lab_tracker` (tables `tracker_items`, `tracker_entries`)
 
-## Goal types
+## The parts of a goal
 
-Goals of the same type share all their code; a new kind of goal is a new type.
-On the page, everything that differs by type lives in one `TYPES` table (what
-turns it red, what the card says, the score, its setting, the modal); on the
-server, `parseSettings` and the entry rules in `POST /items/:id/entries`.
+(2026-11-16, Ben: "anything that should be a setting available to every
+different type is actually available to every different type", in sub-menus.)
+Every goal is made of the same parts, and each is a sub-menu under Settings:
 
-- **Plan ahead** (`plan`, e.g. see friends, date with Anna, informational
-  interview): red until the next one is on the calendar (an entry dated today
-  or later). Setting: how often one should happen, every 1, 2 or 4 weeks.
-  Score: how many of those periods in the last 8 weeks, counted back from
-  today, had an entry dated today or earlier ("2 of 8 weeks"). There's only
-  ever one future plan: the server makes a date after today replace it (the old
-  one stays as a soft-deleted row), and the submit button says so first ("Replace
-  the Nov 30 plan"). Today or earlier is just logged and leaves the plan alone.
-- **Keep making progress** (`progress`, e.g. a project): red once the last
-  entry is more than N days old, or there's none (setting, default 14). Score:
-  how many of the last 8 weeks had an entry. Entries are today or earlier.
-- **Check in on set days** (`checkin`, e.g. no drinking on Sundays and
-  Mondays): each chosen weekday is recorded Kept or Missed. Red until the most
-  recent chosen day is recorded, the only day it asks about (2026-11-09, Ben).
-  Today doesn't appear or count until it's over, and older blanks don't turn it
-  red (2026-11-08, Ben: based on recordkeeping, not the future).
-  Score: kept days ÷ the chosen days in the window; an unrecorded day counts as not kept. One record per day: a
-  new one replaces it, and tapping the chosen answer again clears it.
-- **Some days a week** (`weekly`, e.g. work on projects, 5 days of 7; 2026-11-09,
-  Ben: "the target is 5 of 7, not a particular one"): every day is recorded Did
-  it or Didn't, and any of them count. Red until the most recent day (yesterday)
-  is recorded, the only day it asks about. Setting: how many days a week, 1 to 7.
-  Score: done days ÷ the target over 8 seven-day stretches counted back from
-  yesterday, each stretch counting no more than the target ("12 of 40 days").
-- **Every few hours** (`often`, e.g. did I think to yes and?; 2026-11-09, Ben):
-  the title is the question, answered Yes or No any time, as often as wanted. Red
-  once the last answer of either kind is N hours old (default 6), overnight too.
-  Settings: those hours, and the Yes answers to aim for each week (default 10).
-  Score: Yes answers ÷ the target over 8 seven-day stretches, each counting no
-  more than the target. Goes by each entry's `at`, the time it was recorded.
+- **When it asks** (the goal's `type`; on the page, the only thing in the
+  `TYPES` table; on the server, `parseSettings` and the entry rules in
+  `POST /items/:id/entries`):
+  - **When nothing's planned** (`plan`, e.g. see friends, date with Anna): red
+    until the next one is on the calendar (an entry dated today or later).
+    There's only ever one future plan: the server makes a date after today
+    replace it (the old one stays as a soft-deleted row). Today or earlier is
+    just logged and leaves the plan alone.
+  - **After some days without it** (`progress`, e.g. a project): red once the
+    last entry is more than N days old, or there's none (`stale_days`, default
+    14). Yes only. Entries are today or earlier.
+  - **Every day, or on set days** (`checkin`, e.g. no drinking on Sundays and
+    Mondays; work on projects 5 days a week): each chosen weekday (`weekdays`)
+    is answered Yes or No (stored kept / missed). Red until the most recent
+    chosen day is answered, the only day it asks about (2026-11-09, Ben).
+    Today doesn't appear or count until it's over, and older blanks don't turn
+    it red (2026-11-08, Ben). One record per day: a new one replaces it, and
+    tapping the chosen answer again clears it. The old "some days a week" type
+    (`weekly`, 2026-11-09) is this on every day with a goal under 7; existing
+    ones were converted 2026-11-16.
+  - **Every few hours** (`often`, e.g. did I think to yes and?): answered Yes
+    or No any time, as often as wanted. Red once the last answer of either kind
+    is N hours old (`every_hours`, default 6), overnight too.
+  Switching it keeps the goal and the history (see the API for how entries
+  carry over) and asks first when entries would change.
+- **Goal** (any type): `target_count` a week, every 2 weeks or every 4 weeks
+  (`target_period_days` 7 / 14 / 28): "5 days a week", "1 time every 4
+  weeks", "10 Yes answers a week". A check-in can't aim for more days than it
+  asks about; one that aims for every chosen day keeps doing so when its days
+  change. A new goal's default: 1 a week, a check-in's every chosen day, every
+  few hours 10 a week.
+- **Question**: the words the question starts with, in place of the title.
+- **Notes**: whether Yes / No open the optional note dialog (only the answers
+  the type has).
+- **Title**.
+
+### The score
+
+One function for every type (`scoreOf`). What counts: a plan's or progress
+goal's dates (one per day), a check-in's Yes days on its chosen days, every
+Yes to an every-few-hours goal. The window is the last 8 weeks **or since the
+goal started, whichever is shorter** (2026-11-16, Ben: so a new goal doesn't
+"start kind of automatically on a bad foot"); started = the day it was
+created, or its first entry if that's earlier (past dates logged after creating
+it). It ends today (yesterday for a check-in) and is cut into stretches of the
+goal's period counted back from there. Each stretch counts up to the goal, so a
+big stretch can't make up for a thin one. The oldest stretch, when the goal
+started part way into it, aims for its share of the goal, rounded (a check-in:
+by its chosen days in it), and counts in full if it reached more. Score =
+counted ÷ aimed for. Nothing to score yet while that's 0 (e.g. a check-in made
+today). The marks: a check-in's days in the window (green Yes, red No, gray
+blank), otherwise one per stretch (green reached, pale green part way).
 
 ## Behavior
 
@@ -56,8 +77,8 @@ server, `parseSettings` and the entry rules in `POST /items/:id/entries`.
   signed-out request answers 401 (the page then says "Sign in to Bulbord to
   use the tracker").
 - First visit seeds four plan-ahead goals: Date with Anna, Playdate for
-  Sebrin, Fun trip, Hang with a friend. The header + adds a goal (type, title,
-  description, the type's setting) at the top of the list.
+  Sebrin, Fun trip, Hang with a friend. The header + adds a goal (title,
+  description, when it asks and its setting, the goal) at the top of the list.
 - The list is one line per goal (2026-11-05, Ben: "basically one line"): a
   red or green bar, the title, and the score as a ring, filled to the percent
   in one neutral blue (red and green only ever mean the status).
@@ -98,20 +119,15 @@ server, `parseSettings` and the entry rules in `POST /items/:id/entries`.
     Yes / No (tap the chosen one again to clear it) and note. Every few hours
     lists each answer with its time and note.
   - Settings, folded away behind a gear at the bottom (2026-11-10, Ben: the
-    numbers "should be buried under a Settings gear"). Settings hold every
-    option a goal has (2026-11-15, Ben): first the Title and the Type (a select
-    with the type's explanation under it; switching brings up the new type's
-    own settings at their defaults, a check-in starting on every day, and asks
-    first when entries would change: see the API), then, for every type,
-    the Question: the words the question starts with, in place of the title
-    (empty = the title; a plan's default is "When's the next one"), with the
-    type's ending shown after the box, and "Ask for a note after Yes" / "… after No" (only the answers the type
-    has: none for a plan, Yes alone for progress). Then the type's own settings (how often,
-    days until red, which days, days a week, hours until red and weekly Yes
-    target), all saved at once, then Delete goal as a quiet link. It folds
-    again when the card closes. There's no Edit goal (2026-11-08, Ben: tap the
-    field, or hold if a tap already does something): the description is
-    tap-to-edit, and holding the title line edits the title. The title is also in Settings.
+    numbers "should be buried under a Settings gear"). Opened, it's a list of
+    sub-menus, each row showing its current value with a chevron (2026-11-16,
+    Ben: "the settings has kind of sub menus"): Title, When it asks, Goal,
+    Question, Notes (not on a plan, which has no Yes / No), then Delete goal as
+    a quiet link. Tapping a row opens it in place, with "‹ Settings" to go back.
+    Each saves as soon as it changes; an invalid value says why and goes back.
+    It folds again when the card closes. There's no Edit goal (2026-11-08,
+    Ben): the description is tap-to-edit, and holding the title line edits the
+    title (also under Settings › Title).
 
 ## One card for every type
 
@@ -127,8 +143,9 @@ question was simplified on one type and missed on the others:
   dialog.
 - A type in `TYPES` never draws its own status box or buttons. It describes its
   question as data, `ask(goal)` (`stem`, `ending`, `answers: yesno | yes | date`,
-  `note`, `answer`), plus what turns it red, its score, its settings and its
-  history rows. A change to how cards look or behave goes in the shared code and
+  `note`, `answer`), plus what turns it red, its own setting, what its goal
+  counts (`unit`) and its history rows. The score, the goal and the notes are
+  shared by every type. A change to how cards look or behave goes in the shared code and
   reaches every type; a type differs only through `ask` or a setting.
 - Anything one goal does differently from the rest of its type is a setting
   stored on the goal (like `question`), under the gear: there if someone drills
@@ -144,20 +161,26 @@ question was simplified on one type and missed on the others:
 
 All under `/labs/tracker` on the API, bearer token as for Bulbord.
 
-- `GET /items`: the member's goals, each `{id, name, description, question, ask_note, ask_note_no, type:
-  'plan' | 'progress' | 'checkin' | 'weekly' | 'often', period_days, stale_days,
-  weekdays, days_per_week, every_hours, times_per_week, entries}` (only the type's own setting is set; `weekdays` is `[0, 1]`, 0 =
-  Sunday). `entries` (`{id, date, at, note, outcome}`) are every live entry,
-  newest date first. Seeds the defaults if the member never had any goal.
-- `POST /items` `{name, description?, question?, ask_note?, ask_note_no?, type?, period_days? | stale_days? |
-  weekdays? | days_per_week? | every_hours? & times_per_week?}` (title ≤80 chars, description ≤500, question ≤120 ('' = the title), period
-  7/14/28, days 1–3650, at least one weekday, 1–7 days a week, 1–168 hours, 1–100 times a week). `PATCH /items/:id` takes the same fields, a
-  new `type` included: the new type's settings are given or defaulted (a
-  check-in needs `weekdays`), the old type's are cleared, and entries carry
+- `GET /items`: the member's goals, each `{id, name, description, question,
+  ask_note, ask_note_no, type: 'plan' | 'progress' | 'checkin' | 'often',
+  stale_days, weekdays, every_hours, target_count, target_period_days,
+  created_at, entries}` (only the type's own setting is set; `weekdays` is
+  `[0, 1]`, 0 = Sunday). `entries` (`{id, date, at, note, outcome}`) are every
+  live entry, newest date first. Seeds the defaults if the member never had any
+  goal.
+- `POST /items` `{name, description?, question?, ask_note?, ask_note_no?,
+  type?, stale_days? | weekdays? | every_hours?, target_count?,
+  target_period_days?}` (title ≤80 chars, description ≤500, question ≤120 (''
+  = the title), days 1–3650, at least one weekday (required for a check-in),
+  1–168 hours, goal 1–100 per 7 / 14 / 28 days, a check-in's lowered to at most
+  its days). `PATCH /items/:id` takes the same fields, a
+  new `type` included: the new type's setting is given or defaulted (a
+  check-in needs `weekdays`), the old type's is cleared, the goal is kept
+  (fitted to a check-in's days), and entries carry
   over (to a Yes / No type, a plain date becomes a Yes; to plan or progress, a
   No is soft-deleted and a Yes becomes a plain date). `DELETE /items/:id` (soft delete).
 - `POST /items/:id/entries` `{date: "YYYY-MM-DD", note?, outcome?, today?}`
-  (note ≤200 chars; `outcome` `'kept' | 'missed'`, check-in, weekly and every-few-hours only; `today`
+  (note ≤200 chars; `outcome` `'kept' | 'missed'`, check-in and every-few-hours only; `today`
   defaults to the server's UTC date). Rules per type as above.
   `PATCH /entries/:id` `{date?, note?, today?}` edits a plan or progress entry
   under the same date rules. `DELETE /entries/:id` (soft delete).
@@ -165,8 +188,9 @@ All under `/labs/tracker` on the API, bearer token as for Bulbord.
 
 ## Data
 
-`tracker_items` (id, user_id, name, description, question, ask_note, ask_note_no, kind = the goal type,
-period_days, stale_days, weekdays as `"0,1"`, days_per_week, every_hours, times_per_week, position, timestamps,
+`tracker_items` (id, user_id, name, description, question, ask_note,
+ask_note_no, kind = the goal type, stale_days, weekdays as `"0,1"`,
+every_hours, target_count, target_period_days, position, timestamps,
 deleted_at) and `tracker_entries` (id, item_id → tracker_items, user_id,
 date, note, outcome, timestamps, deleted_at), created by `db.ts`'s idempotent
 DDL. Entries are soft-deleted only, which is the lab's history.
@@ -175,6 +199,13 @@ DDL. Entries are soft-deleted only, which is the lab's history.
 project of a log became its own progress goal with the log's days, and the
 emptied logs were deleted (no member had a log in production). `parent_id` is
 left in the table, unused.
+
+2026-11-16: every goal got a goal (`target_count`, `target_period_days`) from
+its old setting: a plan's `period_days` became 1 per that many days, progress 1
+a week, a check-in every chosen day, every few hours its `times_per_week`; a
+`weekly` goal became a check-in on every day aiming for its `days_per_week`.
+`period_days`, `days_per_week` and `times_per_week` are left in the table,
+unused.
 
 2026-10-27: moved from the shared `labs` schema (used by Bulbord's own login)
 to `lab_tracker`, owned by the lab's own login, when labs got their own
