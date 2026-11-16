@@ -527,13 +527,13 @@
     often: {
       label: 'Every few hours',
       detail: 'Asks Yes or No again once the last answer is a few hours old, overnight too. E.g. did I think to yes and?',
-      summary: function (goal) { return 'Every ' + (goal.every_hours === 1 ? 'hour' : goal.every_hours + ' hours') },
+      summary: function (goal) { return 'Every ' + hoursPhrase(goal.every_hours) },
       unit: ['Yes answer', 'Yes answers'],
       isDue: function (goal) { return hoursSinceAnswer(goal) >= goal.every_hours },
       // Each answer is a new entry; it asks again once the last is every_hours old.
       ask: function (goal) {
         return {
-          ending: ' in the last ' + (goal.every_hours === 1 ? 'hour' : goal.every_hours + ' hours') + '?',
+          ending: ' in the last ' + hoursPhrase(goal.every_hours) + '?',
           answers: 'yesno',
           answer: function (outcome, note) { return addEntry(goal, { date: todayIso(), outcome: outcome, note: note }) },
         }
@@ -596,6 +596,15 @@
   }
   function targetSummary(goal) {
     return goal.target_count + ' ' + plural(goal.target_count, TYPES[goal.type].unit) + ' ' + PERIOD_LABEL[goal.target_period_days]
+  }
+
+  // "6 hours", "day", "3 days", "week" (168 hours = once a week, 2026-11-16:
+  // Playdate for Sebron asks weekly).
+  function hoursPhrase(h) {
+    if (h === 168) return 'week'
+    if (h === 24) return 'day'
+    if (h % 24 === 0) return h / 24 + ' days'
+    return h === 1 ? 'hour' : h + ' hours'
   }
 
   function isDue(goal) { return TYPES[goal.type].isDue(goal) }
@@ -819,11 +828,13 @@
   // Settings, folded behind a gear so the card shows only the goal itself
   // (2026-11-10, Ben: "buried under a Settings gear"). Opened, it's a list of
   // sub-menus, each with its current value (2026-11-16, Ben: every setting
-  // available to every type, in sub-menus): Title, When it asks, Goal,
+  // available to every type, in sub-menus): Title, Description (optional, any
+  // type; 2026-11-16, Ben: e.g. "Current projects: …"), When it asks, Goal,
   // Question, Notes; then Delete goal. Tapping one opens it in place, with
   // "‹ Settings" to go back.
   var SETTINGS = [
     ['title', 'Title'],
+    ['description', 'Description'],
     ['asks', 'When it asks'],
     ['goal', 'Goal'],
     ['question', 'Question'],
@@ -842,6 +853,7 @@
     if (!settingsOpen) return el('div', { class: 'settings' }, [toggle])
     var values = {
       title: goal.name,
+      description: goal.description || 'None',
       asks: TYPES[goal.type].summary(goal),
       goal: targetSummary(goal),
       question: questionText(goal),
@@ -870,6 +882,7 @@
 
   function settingsPanelContent(goal, panel) {
     if (panel === 'title') return [titleSetting(goal)]
+    if (panel === 'description') return [descriptionSetting(goal)]
     if (panel === 'asks') return asksSetting(goal)
     if (panel === 'goal') return goalSetting(goal)
     if (panel === 'question') return [questionSetting(goal)]
@@ -884,6 +897,18 @@
       if (text !== goal.name) saveGoal(goal, { name: text })
     })
     return el('label', { class: 'question-setting' }, [el('span', { text: 'Title' }), input])
+  }
+
+  // Optional, any type: shown at the top of the open card (also tap-to-edit
+  // there). Empty = none.
+  function descriptionSetting(goal) {
+    var area = el('textarea', { maxlength: '500', rows: '3', placeholder: 'Optional', 'aria-label': 'Description' })
+    area.value = goal.description || ''
+    area.addEventListener('change', function () {
+      var text = area.value.trim()
+      if (text !== (goal.description || '')) saveGoal(goal, { description: text })
+    })
+    return el('label', { class: 'question-setting' }, [el('span', { text: 'Description' }), area])
   }
 
   // When it asks: the four ways, the chosen one's own setting under it.

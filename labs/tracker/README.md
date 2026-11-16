@@ -39,7 +39,9 @@ Every goal is made of the same parts, and each is a sub-menu under Settings:
     ones were converted 2026-11-16.
   - **Every few hours** (`often`, e.g. did I think to yes and?): answered Yes
     or No any time, as often as wanted. Red once the last answer of either kind
-    is N hours old (`every_hours`, default 6), overnight too.
+    is N hours old (`every_hours`, default 6), overnight too. Up to 168 hours, which reads as "every week" / "… in the last week?"
+    (2026-11-16: Playdate for Sebron, asked once a week whether he had a
+    playdate with somebody besides Andrew).
   Switching it keeps the goal and the history (see the API for how entries
   carry over) and asks first when entries would change.
 - **Goal** (any type): `target_count` a week, every 2 weeks, every 4 weeks or
@@ -123,7 +125,8 @@ blank), otherwise one per stretch (green reached, pale green part way).
   - Settings, folded away behind a gear at the bottom (2026-11-10, Ben: the
     numbers "should be buried under a Settings gear"). Opened, it's a list of
     sub-menus, each row showing its current value with a chevron (2026-11-16,
-    Ben: "the settings has kind of sub menus"): Title, When it asks, Goal,
+    Ben: "the settings has kind of sub menus"): Title, Description (optional,
+    any type: "Current projects: …"), When it asks, Goal,
     Question, Notes (not on a plan, which has no Yes / No), then Delete goal as
     a quiet link. Tapping a row opens it in place, with "‹ Settings" to go back.
     Each saves as soon as it changes; an invalid value says why and goes back.
