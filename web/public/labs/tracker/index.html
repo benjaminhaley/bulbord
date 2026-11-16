@@ -226,18 +226,22 @@
   var order = [] // goal ids; held still while a goal is open so it doesn't jump
 
   // Mirrors lab.ts.
-  var WINDOW_DAYS = 56 // the score covers the last 8 weeks
+  var WINDOW_DAYS = 56 // the score covers the last 8 weeks (a year for a yearly goal)
   var MAX_STALE_DAYS = 3650
   var DEFAULT_STALE_DAYS = 14
   var DEFAULT_EVERY_HOURS = 6
   var MAX_EVERY_HOURS = 168
-  var MAX_TARGET = 100
+  var MAX_TARGET = 365
   var DEFAULT_TARGET = { plan: 1, progress: 1, checkin: 7, often: 10 } // a week; a check-in's is every chosen day
   var ALL_DAYS = [0, 1, 2, 3, 4, 5, 6]
   var WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
-  var PERIODS = [[7, 'a week'], [14, 'every 2 weeks'], [28, 'every 4 weeks']]
-  var PERIOD_LABEL = { 7: 'a week', 14: 'every 2 weeks', 28: 'every 4 weeks' }
-  var PERIOD_ONE = { 7: 'week', 14: 'two-week stretch', 28: 'four-week stretch' }
+  var PERIODS = [[7, 'a week'], [14, 'every 2 weeks'], [28, 'every 4 weeks'], [365, 'a year']]
+  var PERIOD_LABEL = { 7: 'a week', 14: 'every 2 weeks', 28: 'every 4 weeks', 365: 'a year' }
+  var PERIOD_ONE = { 7: ['week', 'weeks'], 14: ['two-week stretch', 'two-week stretches'], 28: ['four-week stretch', 'four-week stretches'], 365: ['year', 'years'] }
+  // How far back the score looks: 8 weeks, or one whole period when that's
+  // longer (2026-11-16, Ben: a yearly goal has "a one year look back").
+  function windowDays(P) { return Math.max(WINDOW_DAYS, P) }
+  function windowLabel(P) { return P > WINDOW_DAYS ? 'year' : '8 weeks' }
 
   // A small, quiet "remove this entry" (the row's only control).
   function removeButton(entry) {
@@ -300,7 +304,8 @@
   }
 
   // Every goal's score, the same way (2026-11-16, Ben): its goal is
-  // target_count in each target_period_days. The window is the last 8 weeks or
+  // target_count in each target_period_days. The window is the last 8 weeks (a
+  // year for a yearly goal) or
   // since the goal started, whichever is shorter, ending today (yesterday for a
   // check-in, whose today isn't over), cut into stretches of the period counted
   // back from that end. Each stretch counts up to its aim, so a big stretch
@@ -313,7 +318,8 @@
     var daily = type === 'checkin', r0 = daily ? 1 : 0
     var eligible = function (iso) { return !daily || goal.weekdays.indexOf(parseIso(iso).getDay()) !== -1 }
     var start = startedIso(goal), startAgo = -daysFromToday(start)
-    var last = Math.min(r0 + WINDOW_DAYS - 1, startAgo) // the oldest day counted, in days ago
+    var W = windowDays(P)
+    var last = Math.min(r0 + W - 1, startAgo) // the oldest day counted, in days ago
     if (last < r0) return null
     var n = Math.ceil((last - r0 + 1) / P), hits = [], seen = {}, k, a
     for (k = 0; k < n; k++) hits.push(0)
@@ -351,16 +357,16 @@
     }
 
     var unit = TYPES[type].unit, oldest = stretches[n - 1]
-    var started = startAgo <= r0 + WINDOW_DAYS - 1
+    var started = startAgo <= r0 + W - 1
     var detail = 'The goal is ' + N + ' ' + plural(N, unit) + ' ' + PERIOD_LABEL[P] + '. ' +
-      (started ? 'It counts from ' + fullDateLabel(start) + ', when this goal started, ' : 'It counts the last 8 weeks, ') +
+      (started ? 'It counts from ' + fullDateLabel(start) + ', when this goal started, ' : 'It counts the last ' + windowLabel(P) + ', ') +
       'to ' + (r0 ? 'yesterday' : 'today') +
-      (n > 1 ? ', as ' + n + ' ' + PERIOD_ONE[P] + (P === 7 ? 's' : 'es') + ' counted back from then, each counting up to the goal' : '') +
+      (n > 1 ? ', as ' + n + ' ' + PERIOD_ONE[P][1] + ' counted back from then, each counting up to the goal' : '') +
       (oldest.days < P ? (n > 1 ? '. The oldest is only ' : '. That’s only ') + oldest.days + (oldest.days === 1 ? ' day' : ' days') + ', so it aims for ' + oldest.aim : '') + '. ' +
       (daily ? 'Only Yes days count. ' : type === 'often' ? 'No answers don’t count. ' : '') +
       done + ' of ' + total + ', so ' + percent(done, total) + '%. ' +
       (daily ? 'Each bar is one day, oldest on the left: green Yes, red No, gray unanswered.'
-        : 'Each bar is one ' + PERIOD_ONE[P] + ', oldest on the left: green when it reached the goal, pale green part way.')
+        : 'Each bar is one ' + PERIOD_ONE[P][0] + ', oldest on the left: green when it reached the goal, pale green part way.')
     return { value: percent(done, total), marks: marks, detail: detail }
   }
   // A check-in's days to record in the last 8 weeks, newest first, each with
@@ -561,10 +567,10 @@
   }
 
   // The goal, for every type: [count] [unit] [a week | every 2 weeks | every 4
-  // weeks]. A check-in can't aim for more days than it asks about.
+  // weeks | a year]. A check-in can't aim for more days than it asks about.
   // opts.days() gives a check-in's chosen days (for its most); opts.onTouch is
   // called when the count is edited by hand.
-  function maxTarget(type, days, period) { return type === 'checkin' ? days.length * (period / 7) : MAX_TARGET }
+  function maxTarget(type, days, period) { return type === 'checkin' ? Math.floor((days.length * period) / 7) : MAX_TARGET }
   function targetField(type, goal, opts) {
     var period = el('select', { 'aria-label': 'How often' }, PERIODS.map(function (p) {
       var option = el('option', { value: String(p[0]), text: p[1] })
@@ -921,7 +927,7 @@
     return [
       el('div', { class: 'panel-title', text: 'Goal' }),
       el('div', { class: 'setting' }, [field.node]),
-      el('p', { class: 'setting-detail', text: 'The score counts ' + how + ' toward it over the last 8 weeks, or since the goal started if that’s sooner. Each ' + PERIOD_ONE[goal.target_period_days] + ' counts up to the goal.' }),
+      el('p', { class: 'setting-detail', text: 'The score counts ' + how + ' toward it over the last ' + windowLabel(goal.target_period_days) + ', or since the goal started if that’s sooner (the day it was created, or its first date if that’s earlier). Each ' + PERIOD_ONE[goal.target_period_days][0] + ' counts up to the goal.' }),
     ]
   }
 

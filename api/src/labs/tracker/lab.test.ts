@@ -83,6 +83,8 @@ describe.skipIf(!process.env.DATABASE_URL)('tracker lab', () => {
     // Any goal takes any target.
     expect((await call('PATCH', `/items/${hang.id}`, { target_count: 3 })).json()).toMatchObject({ target_count: 3, target_period_days: 14 })
     expect((await call('PATCH', `/items/${hang.id}`, { target_period_days: 10 })).statusCode).toBe(400)
+    // Twice a year.
+    expect((await call('PATCH', `/items/${hang.id}`, { target_count: 2, target_period_days: 365 })).json()).toMatchObject({ target_count: 2, target_period_days: 365 })
     expect((await call('PATCH', `/items/${hang.id}`, { target_count: 0 })).statusCode).toBe(400)
   })
 
@@ -125,6 +127,8 @@ describe.skipIf(!process.env.DATABASE_URL)('tracker lab', () => {
     expect((await call('PATCH', `/items/${goal.id}`, { target_count: 9 })).json()).toMatchObject({ target_count: 4 })
     // Aiming for every day keeps doing so when the days change.
     expect((await call('PATCH', `/items/${goal.id}`, { weekdays: [1, 3, 5] })).json()).toMatchObject({ target_count: 6 })
+    // A year of two days a week is at most 104 (whole days).
+    expect((await call('PATCH', `/items/${goal.id}`, { weekdays: [1, 3], target_period_days: 365, target_count: 200 })).json()).toMatchObject({ target_count: 104 })
   })
 
   it('keeps every answer to an every-few-hours goal, with its time', async () => {

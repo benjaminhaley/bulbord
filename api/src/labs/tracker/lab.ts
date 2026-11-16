@@ -16,7 +16,7 @@ import { trackerDb, trackerEntries, trackerItems } from './db.js'
 //     Every day of the week is the old "some days a week" goal.
 //   - often: any number of Yes or No answers; red once the last is
 //     [every_hours] old.
-// - The goal: target_count a week, every 2 weeks or every 4 weeks
+// - The goal: target_count a week, every 2 weeks, every 4 weeks or a year
 //   (target_period_days), any type: the score is how much of it was reached.
 // - The question's wording and which answers ask for a note.
 // The page derives red and the score from the entries in the viewer's own time
@@ -30,12 +30,12 @@ const MAX_NAME = 80
 const MAX_DESCRIPTION = 500
 const MAX_QUESTION = 120
 const MAX_NOTE = 200
-const PERIOD_DAYS = [7, 14, 28]
+const PERIOD_DAYS = [7, 14, 28, 365] // 365 = a year (2026-11-16, Ben: "twice a year")
 const DEFAULT_STALE_DAYS = 14
 const MAX_STALE_DAYS = 3650
 const DEFAULT_EVERY_HOURS = 6
 const MAX_EVERY_HOURS = 168
-const MAX_TARGET = 100
+const MAX_TARGET = 365
 // A new goal's target, a week, when none is given; a check-in's is every chosen day.
 const DEFAULT_TARGET: Record<GoalType, number> = { plan: 1, progress: 1, checkin: 7, often: 10 }
 const OUTCOMES = ['kept', 'missed']
@@ -119,8 +119,8 @@ function parseSettings(type: GoalType, body: ItemBody, creating: boolean): Parti
 // days than it asks about, and starts at every one of them).
 function fitTarget(type: GoalType, body: ItemBody, current: { count: number | null; period: number | null }, weekdays: string | null) {
   const period = body.target_period_days === undefined ? (current.period ?? 7) : (body.target_period_days as number)
-  if (!PERIOD_DAYS.includes(period)) throw badRequest('The goal must be per 7, 14 or 28 days')
-  const max = type === 'checkin' && weekdays ? weekdays.split(',').length * (period / 7) : MAX_TARGET
+  if (!PERIOD_DAYS.includes(period)) throw badRequest('The goal must be per 7, 14, 28 or 365 days')
+  const max = type === 'checkin' && weekdays ? Math.floor((weekdays.split(',').length * period) / 7) : MAX_TARGET
   let count = current.count ?? (type === 'checkin' ? max : DEFAULT_TARGET[type])
   if (body.target_count !== undefined) count = wholeNumber(body.target_count, MAX_TARGET, `The goal must be a whole number from 1 to ${MAX_TARGET}`)
   return { targetCount: Math.min(count, max), targetPeriodDays: period }

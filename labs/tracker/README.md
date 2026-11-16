@@ -42,9 +42,10 @@ Every goal is made of the same parts, and each is a sub-menu under Settings:
     is N hours old (`every_hours`, default 6), overnight too.
   Switching it keeps the goal and the history (see the API for how entries
   carry over) and asks first when entries would change.
-- **Goal** (any type): `target_count` a week, every 2 weeks or every 4 weeks
-  (`target_period_days` 7 / 14 / 28): "5 days a week", "1 time every 4
-  weeks", "10 Yes answers a week". A check-in can't aim for more days than it
+- **Goal** (any type): `target_count` a week, every 2 weeks, every 4 weeks or
+  a year (`target_period_days` 7 / 14 / 28 / 365; a year added 2026-11-16,
+  Ben: Fun trip is "twice a year"): "5 days a week", "1 time every 4 weeks",
+  "10 Yes answers a week", "2 times a year". A check-in can't aim for more days than it
   asks about; one that aims for every chosen day keeps doing so when its days
   change. A new goal's default: 1 a week, a check-in's every chosen day, every
   few hours 10 a week.
@@ -57,7 +58,8 @@ Every goal is made of the same parts, and each is a sub-menu under Settings:
 
 One function for every type (`scoreOf`). What counts: a plan's or progress
 goal's dates (one per day), a check-in's Yes days on its chosen days, every
-Yes to an every-few-hours goal. The window is the last 8 weeks **or since the
+Yes to an every-few-hours goal. The window is the last 8 weeks (a yearly
+goal: the last year, 2026-11-16, Ben: "a one year look back") **or since the
 goal started, whichever is shorter** (2026-11-16, Ben: so a new goal doesn't
 "start kind of automatically on a bad foot"); started = the day it was
 created, or its first entry if that's earlier (past dates logged after creating
@@ -172,7 +174,7 @@ All under `/labs/tracker` on the API, bearer token as for Bulbord.
   type?, stale_days? | weekdays? | every_hours?, target_count?,
   target_period_days?}` (title ≤80 chars, description ≤500, question ≤120 (''
   = the title), days 1–3650, at least one weekday (required for a check-in),
-  1–168 hours, goal 1–100 per 7 / 14 / 28 days, a check-in's lowered to at most
+  1–168 hours, goal 1–365 per 7 / 14 / 28 / 365 days, a check-in's lowered to at most
   its days). `PATCH /items/:id` takes the same fields, a
   new `type` included: the new type's setting is given or defaulted (a
   check-in needs `weekdays`), the old type's is cleared, the goal is kept
