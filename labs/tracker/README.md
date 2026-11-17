@@ -71,8 +71,14 @@ big stretch can't make up for a thin one. The oldest stretch, when the goal
 started part way into it, aims for its share of the goal, rounded (a check-in:
 by its chosen days in it), and counts in full if it reached more. Score =
 counted ÷ aimed for. Nothing to score yet while that's 0 (e.g. a check-in made
-today). The marks: a check-in's days in the window (green Yes, red No, gray
-blank), otherwise one per stretch (green reached, pale green part way).
+today). The bar draws exactly what the percent counts (2026-11-17, Ben: the bars should
+"match the percent seen in the donut"): one group per stretch, as wide as its
+aim, with a segment per Yes/time aimed for, green for each reached (past 40
+segments in all, each group is one bar filled by reached ÷ aimed for). A
+check-in that aims for every chosen day shows its days instead (green Yes, red
+No, gray blank), which is the same count. Under the bar, a few words on the
+cadence: "10× a week", "5 days a week", "Every Sun, Mon", "2× a year"; tapping
+the bar still gives the full explanation.
 
 ## Behavior
 

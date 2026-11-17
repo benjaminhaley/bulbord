@@ -113,7 +113,11 @@
   .marks { display: flex; gap: 3px; }
   .marks i { flex: 1; height: 8px; border-radius: 2px; background: var(--track); }
   .marks i.on { background: var(--green); }
-  .marks i.part { background: #a5d6a7; }
+  .stretches { display: flex; gap: 8px; }
+  .stretches .marks { flex-basis: 0; min-width: 0; gap: 2px; }
+  .marks i.fill { position: relative; overflow: hidden; }
+  .marks i.fill b { position: absolute; inset: 0 auto 0 0; background: var(--green); }
+  .score-bar .cadence { display: block; margin-top: 6px; font-size: 0.8125rem; color: var(--muted); text-align: left; }
   .marks i.kept { background: var(--green); }
   .marks i.missed { background: var(--red); }
   /* A check-in day: its date, then Kept / Missed to tap. */
@@ -340,12 +344,18 @@
       var got = Math.min(hits[k], aim)
       done += got
       total += aim
-      stretches.push({ aim: aim, got: got, days: to - from + 1 })
+      stretches.push({ aim: aim, got: got, days: to - from + 1, chosen: days })
     }
     if (!total) return null
 
+    // The bar draws exactly what the percent counts (2026-11-17, Ben: the bars
+    // should "match the percent seen in the donut"): one segment per Yes/time
+    // aimed for, grouped by stretch, filled for each one reached. A check-in
+    // that aims for every chosen day draws its days instead (the same count,
+    // and it shows which days were No).
     var marks = []
-    if (daily) {
+    var byDay = daily && stretches.every(function (s) { return s.aim === s.chosen })
+    if (byDay) {
       var byDate = {}
       goal.entries.forEach(function (e) { byDate[e.date] = byDate[e.date] || e })
       for (a = last; a >= r0; a--) {
@@ -353,8 +363,10 @@
         if (eligible(iso)) marks.push(byDate[iso] ? byDate[iso].outcome || '' : '')
       }
     } else {
-      for (k = n - 1; k >= 0; k--) marks.push(stretches[k].got >= stretches[k].aim ? 'on' : stretches[k].got ? 'part' : '')
+      for (k = n - 1; k >= 0; k--) marks.push({ aim: stretches[k].aim, got: stretches[k].got })
     }
+    var cadence = byDay ? (goal.weekdays.length === 7 ? 'Every day' : 'Every ' + goal.weekdays.slice().sort().map(function (d) { return WEEKDAYS[d] }).join(', '))
+      : N + (daily ? (N === 1 ? ' day ' : ' days ') : '× ') + PERIOD_LABEL[P]
 
     var unit = TYPES[type].unit, oldest = stretches[n - 1]
     var started = startAgo <= r0 + W - 1
@@ -365,9 +377,9 @@
       (oldest.days < P ? (n > 1 ? '. The oldest is only ' : '. That’s only ') + oldest.days + (oldest.days === 1 ? ' day' : ' days') + ', so it aims for ' + oldest.aim : '') + '. ' +
       (daily ? 'Only Yes days count. ' : type === 'often' ? 'No answers don’t count. ' : '') +
       done + ' of ' + total + ', so ' + percent(done, total) + '%. ' +
-      (daily ? 'Each bar is one day, oldest on the left: green Yes, red No, gray unanswered.'
-        : 'Each bar is one ' + PERIOD_ONE[P][0] + ', oldest on the left: green when it reached the goal, pale green part way.')
-    return { value: percent(done, total), marks: marks, detail: detail }
+      (byDay ? 'Each mark is one day, oldest on the left: green Yes, red No, gray unanswered.'
+        : 'Each group is one ' + PERIOD_ONE[P][0] + ', oldest on the left, with a mark for each one it aims for, green when reached.')
+    return { value: percent(done, total), marks: marks, byDay: byDay, cadence: cadence, detail: detail }
   }
   // A check-in's days to record in the last 8 weeks, newest first, each with
   // its record (if any): its chosen weekdays.
@@ -817,10 +829,27 @@
   // The score's marks, one per period or day; tapping them says how this goal's
   // score is kept (2026-11-13, Ben: the line above the bar was "unnecessary and
   // complicated").
+  // One group per stretch, as wide as its aim. Small aims get one segment per
+  // Yes/time; past MAX_SEGMENTS in all they'd be slivers, so each group is one
+  // bar filled by got ÷ aim (the green length still matches the percent).
+  var MAX_SEGMENTS = 40
+  function stretchMarks(stretches) {
+    var total = stretches.reduce(function (t, s) { return t + s.aim }, 0)
+    return el('div', { class: 'stretches', 'aria-hidden': 'true' }, stretches.map(function (s) {
+      var group = el('div', { class: 'marks' }, total <= MAX_SEGMENTS
+        ? Array.apply(null, Array(s.aim)).map(function (_, i) { return el('i', { class: i < s.got ? 'on' : '' }) })
+        : [el('i', { class: 'fill' }, [el('b', {})])])
+      group.style.flexGrow = String(s.aim)
+      if (total > MAX_SEGMENTS) group.querySelector('b').style.width = (100 * s.got / s.aim) + '%'
+      return group
+    }))
+  }
   function scoreBar(score) {
     if (!score) return el('p', { class: 'empty', text: 'Nothing to score yet' })
     var bar = el('button', { class: 'score-bar', type: 'button', 'aria-expanded': String(scoreInfoOpen), 'aria-label': 'How the score is kept', onclick: function () { scoreInfoOpen = !scoreInfoOpen; render() } }, [
-      el('div', { class: 'marks', 'aria-hidden': 'true' }, score.marks.map(function (c) { return el('i', { class: c }) })),
+      score.byDay ? el('div', { class: 'marks', 'aria-hidden': 'true' }, score.marks.map(function (c) { return el('i', { class: c }) }))
+        : stretchMarks(score.marks),
+      el('span', { class: 'cadence', text: score.cadence }),
     ])
     return el('div', {}, [bar, scoreInfoOpen ? el('p', { class: 'score-how', text: score.detail }) : null])
   }
