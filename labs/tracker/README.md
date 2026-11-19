@@ -60,25 +60,32 @@ Every goal is made of the same parts, and each is a sub-menu under Settings:
 
 One function for every type (`scoreOf`). What counts: a plan's or progress
 goal's dates (one per day), a check-in's Yes days on its chosen days, every
-Yes to an every-few-hours goal. The window is the last 8 weeks (a yearly
-goal: the last year, 2026-11-16, Ben: "a one year look back") **or since the
-goal started, whichever is shorter** (2026-11-16, Ben: so a new goal doesn't
-"start kind of automatically on a bad foot"); started = the day it was
-created, or its first entry if that's earlier (past dates logged after creating
-it). It ends today (yesterday for a check-in) and is cut into stretches of the
-goal's period counted back from there. Each stretch counts up to the goal, so a
-big stretch can't make up for a thin one. The oldest stretch, when the goal
-started part way into it, aims for its share of the goal, rounded (a check-in:
-by its chosen days in it), and counts in full if it reached more. Score =
-counted ÷ aimed for. Nothing to score yet while that's 0 (e.g. a check-in made
-today). The bar draws exactly what the percent counts (2026-11-17, Ben: the bars should
-"match the percent seen in the donut"): one group per stretch, as wide as its
+Yes to an every-few-hours goal. It's counted in **calendar periods**
+(2026-11-19, Ben: the bar should be "the number of weeks that have passed",
+this week a partial one "filled in on that weekly basis"): a week is Sunday to
+Saturday, 2 and 4 weeks are fixed runs of those weeks (counted from Sunday
+1970-01-04), a year is January to December. The current period runs to today
+(yesterday for a check-in), and the periods before it go back 8 weeks (a
+yearly goal: this year and last) **or to when the goal started, whichever is
+shorter** (2026-11-16, Ben: so a new goal doesn't "start kind of automatically
+on a bad foot"); started = the day it was created, or its first entry if that's
+earlier. Each period counts up to the goal, so a big one can't make up for a
+thin one. A period only partly counted (this one so far, or the one the goal
+started in) aims for its share of the goal by days (a check-in: by its chosen
+days), rounded, and counts in full if it reached more; one whose share rounds
+to 0 is left out. Score = counted ÷ aimed for. Nothing to score yet while
+that's 0. Example: 5 days a week, started Sat Nov 7, on Thu Nov 19: Nov 7
+(aims 1), Nov 8–14 (aims 5), Nov 15–18 so far (4 days, aims 3).
+
+The bar draws exactly what the percent counts (2026-11-17, Ben: the bars should
+"match the percent seen in the donut"): one group per period, as wide as its
 aim, with a segment per Yes/time aimed for, green for each reached (past 40
 segments in all, each group is one bar filled by reached ÷ aimed for). A
-check-in that aims for every chosen day shows its days instead (green Yes, red
-No, gray blank), which is the same count. Under the bar, a few words on the
-cadence: "10× a week", "5 days a week", "Every Sun, Mon", "2× a year"; tapping
-the bar still gives the full explanation.
+check-in that aims for every chosen day shows its days instead, still grouped
+by week (green Yes, red No, gray blank), which is the same count. Under the
+bar, a few words on the cadence: "10× a week", "5 days a week", "Every Sun,
+Mon", "2× a year"; tapping the bar still gives the full explanation. A
+check-in's History lists its days back 8 weeks or to when it started.
 
 ## Behavior
 

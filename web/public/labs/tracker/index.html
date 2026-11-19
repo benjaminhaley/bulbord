@@ -242,10 +242,7 @@
   var PERIODS = [[7, 'a week'], [14, 'every 2 weeks'], [28, 'every 4 weeks'], [365, 'a year']]
   var PERIOD_LABEL = { 7: 'a week', 14: 'every 2 weeks', 28: 'every 4 weeks', 365: 'a year' }
   var PERIOD_ONE = { 7: ['week', 'weeks'], 14: ['two-week stretch', 'two-week stretches'], 28: ['four-week stretch', 'four-week stretches'], 365: ['year', 'years'] }
-  // How far back the score looks: 8 weeks, or one whole period when that's
-  // longer (2026-11-16, Ben: a yearly goal has "a one year look back").
-  function windowDays(P) { return Math.max(WINDOW_DAYS, P) }
-  function windowLabel(P) { return P > WINDOW_DAYS ? 'year' : '8 weeks' }
+  var PERIOD_SPAN = { 7: 'Sunday to Saturday', 14: 'two weeks, Sunday to Saturday', 28: 'four weeks, Sunday to Saturday', 365: 'January to December' }
 
   // A small, quiet "remove this entry" (the row's only control).
   function removeButton(entry) {
@@ -307,88 +304,100 @@
     return first < created ? first : created
   }
 
+  // Calendar periods (2026-11-19, Ben: the bar should be the weeks that have
+  // passed, this week a partial one). A week is Sunday to Saturday; 2 and 4
+  // weeks are fixed runs of those weeks; a year is a calendar year.
+  function addDays(iso, n) { var d = parseIso(iso); d.setDate(d.getDate() + n); return isoOf(d) }
+  function dayNumber(iso) { var p = iso.split('-'); return Math.round(Date.UTC(+p[0], +p[1] - 1, +p[2]) / 86400000) }
+  function periodStart(iso, P) {
+    if (P === 365) return iso.slice(0, 4) + '-01-01'
+    var d = dayNumber(iso) - 3 // 1970-01-04 was a Sunday
+    return addDays(iso, -(((d % P) + P) % P))
+  }
+  function periodEnd(startIso, P) { return P === 365 ? startIso.slice(0, 4) + '-12-31' : addDays(startIso, P - 1) }
+
   // Every goal's score, the same way (2026-11-16, Ben): its goal is
-  // target_count in each target_period_days. The window is the last 8 weeks (a
-  // year for a yearly goal) or
-  // since the goal started, whichever is shorter, ending today (yesterday for a
-  // check-in, whose today isn't over), cut into stretches of the period counted
-  // back from that end. Each stretch counts up to its aim, so a big stretch
-  // can't make up for a thin one; the oldest stretch, when the goal started
-  // part way into it, aims for its share (and counts in full if it reached
-  // more). What counts: a plan's or progress goal's dates (one per day), a
-  // check-in's Yes days on its chosen days, every Yes to an every-few-hours goal.
+  // target_count in each target_period_days, counted in calendar periods
+  // (above): the current one, which runs to today (yesterday for a check-in,
+  // whose today isn't over), and the ones before it, back over the last 8 weeks
+  // (a yearly goal: this year and last) or to when the goal started, whichever
+  // is shorter. Each period counts up to its aim, so a big one can't make up
+  // for a thin one. A period only partly counted (this one so far, or the one
+  // the goal started in) aims for its share of the goal by days (a check-in:
+  // chosen days), rounded, and counts in full if it reached more. What counts:
+  // a plan's or progress goal's dates (one per day), a check-in's Yes days on
+  // its chosen days, every Yes to an every-few-hours goal.
   function scoreOf(goal) {
     var type = goal.type, P = goal.target_period_days || 7, N = goal.target_count || 1
-    var daily = type === 'checkin', r0 = daily ? 1 : 0
+    var daily = type === 'checkin'
     var eligible = function (iso) { return !daily || goal.weekdays.indexOf(parseIso(iso).getDay()) !== -1 }
-    var start = startedIso(goal), startAgo = -daysFromToday(start)
-    var W = windowDays(P)
-    var last = Math.min(r0 + W - 1, startAgo) // the oldest day counted, in days ago
-    if (last < r0) return null
-    var n = Math.ceil((last - r0 + 1) / P), hits = [], seen = {}, k, a
-    for (k = 0; k < n; k++) hits.push(0)
-    var perFull = 0
-    for (a = 0; a < P; a++) if (eligible(daysAgoIso(r0 + a))) perFull++
+    var countDays = function (from, to) { var c = 0; for (var d = from; d <= to; d = addDays(d, 1)) if (eligible(d)) c++; return c }
+    var start = startedIso(goal), end = daily ? daysAgoIso(1) : todayIso()
+    if (end < start) return null
+    var count = P === 365 ? 2 : Math.max(1, Math.round(WINDOW_DAYS / P))
+    var periods = [], k, ps = periodStart(end, P)
+    for (k = 0; k < count && periodEnd(ps, P) >= start; k++) {
+      var pe = periodEnd(ps, P), from = ps < start ? start : ps, to = pe > end ? end : pe
+      periods.unshift({ start: ps, from: from, to: to, full: countDays(ps, pe), days: countDays(from, to), hits: 0, partial: from !== ps || to !== pe })
+      ps = periodStart(addDays(ps, -1), P)
+    }
+    var first = periods[0].from, seen = {}, byDate = {}
     goal.entries.forEach(function (e) {
-      var ago = -daysFromToday(e.date)
-      if (ago < r0 || ago > last || !eligible(e.date)) return
+      byDate[e.date] = byDate[e.date] || e
+      if (e.date < first || e.date > end || !eligible(e.date)) return
       if ((type === 'checkin' || type === 'often') && e.outcome !== 'kept') return
       if (type !== 'often') { if (seen[e.date]) return; seen[e.date] = true }
-      hits[Math.floor((ago - r0) / P)]++
+      for (var i = periods.length - 1; i >= 0; i--) if (e.date >= periods[i].from) { periods[i].hits++; break }
     })
-    var done = 0, total = 0, stretches = []
-    for (k = 0; k < n; k++) {
-      var from = r0 + k * P, to = Math.min(from + P - 1, last), days = 0
-      for (a = from; a <= to; a++) if (eligible(daysAgoIso(a))) days++
-      var aim = Math.max(Math.round((N * days) / perFull), Math.min(hits[k], N))
-      var got = Math.min(hits[k], aim)
-      done += got
-      total += aim
-      stretches.push({ aim: aim, got: got, days: to - from + 1, chosen: days })
-    }
+    var done = 0, total = 0
+    periods.forEach(function (p) {
+      p.aim = Math.max(p.full ? Math.round((N * p.days) / p.full) : 0, Math.min(p.hits, N))
+      p.got = Math.min(p.hits, p.aim)
+      done += p.got
+      total += p.aim
+    })
+    periods = periods.filter(function (p) { return p.aim > 0 })
     if (!total) return null
 
     // The bar draws exactly what the percent counts (2026-11-17, Ben: the bars
-    // should "match the percent seen in the donut"): one segment per Yes/time
-    // aimed for, grouped by stretch, filled for each one reached. A check-in
+    // should "match the percent seen in the donut"): one group per period, a
+    // segment per Yes/time aimed for, filled for each one reached. A check-in
     // that aims for every chosen day draws its days instead (the same count,
     // and it shows which days were No).
-    var marks = []
-    var byDay = daily && stretches.every(function (s) { return s.aim === s.chosen })
-    if (byDay) {
-      var byDate = {}
-      goal.entries.forEach(function (e) { byDate[e.date] = byDate[e.date] || e })
-      for (a = last; a >= r0; a--) {
-        var iso = daysAgoIso(a)
-        if (eligible(iso)) marks.push(byDate[iso] ? byDate[iso].outcome || '' : '')
-      }
-    } else {
-      for (k = n - 1; k >= 0; k--) marks.push({ aim: stretches[k].aim, got: stretches[k].got })
-    }
+    var byDay = daily && periods.every(function (p) { return p.aim === p.days })
+    var marks = periods.map(function (p) {
+      if (!byDay) return { aim: p.aim, got: p.got }
+      var days = []
+      for (var d = p.from; d <= p.to; d = addDays(d, 1)) if (eligible(d)) days.push(byDate[d] ? byDate[d].outcome || '' : '')
+      return { days: days }
+    })
     var cadence = byDay ? (goal.weekdays.length === 7 ? 'Every day' : 'Every ' + goal.weekdays.slice().sort().map(function (d) { return WEEKDAYS[d] }).join(', '))
       : N + (daily ? (N === 1 ? ' day ' : ' days ') : '× ') + PERIOD_LABEL[P]
 
-    var unit = TYPES[type].unit, oldest = stretches[n - 1]
-    var started = startAgo <= r0 + W - 1
-    var detail = 'The goal is ' + N + ' ' + plural(N, unit) + ' ' + PERIOD_LABEL[P] + '. ' +
-      (started ? 'It counts from ' + fullDateLabel(start) + ', when this goal started, ' : 'It counts the last ' + windowLabel(P) + ', ') +
-      'to ' + (r0 ? 'yesterday' : 'today') +
-      (n > 1 ? ', as ' + n + ' ' + PERIOD_ONE[P][1] + ' counted back from then, each counting up to the goal' : '') +
-      (oldest.days < P ? (n > 1 ? '. The oldest is only ' : '. That’s only ') + oldest.days + (oldest.days === 1 ? ' day' : ' days') + ', so it aims for ' + oldest.aim : '') + '. ' +
+    var unit = TYPES[type].unit, PERIOD = PERIOD_ONE[P], last = periods[periods.length - 1]
+    var span = function (p) { return p.days + (daily ? (p.days === 1 ? ' chosen day' : ' chosen days') : (p.days === 1 ? ' day' : ' days')) }
+    var partials = periods.filter(function (p) { return p.partial && p.aim < N }).map(function (p) {
+      return (p === last && p.to === end && p.to !== periodEnd(p.start, P) ? 'This ' + PERIOD[0] + ' has had ' + span(p) + ' so far' : 'The ' + PERIOD[0] + ' it started in had ' + span(p) + ' from then') +
+        ', so it aims for ' + p.aim + '. '
+    })
+    var detail = 'The goal is ' + N + ' ' + plural(N, unit) + ' ' + PERIOD_LABEL[P] + ', counted by ' + PERIOD[0] + ' (' + PERIOD_SPAN[P] + '). ' +
+      (periods[0].from === start ? 'It counts from ' + fullDateLabel(start) + ', when this goal started, ' : 'It counts the last ' + periods.length + ' ' + plural(periods.length, PERIOD) + ', ') +
+      'through ' + (daily ? 'yesterday' : 'today') + ', each ' + PERIOD[0] + ' counting up to the goal. ' + partials.join('') +
       (daily ? 'Only Yes days count. ' : type === 'often' ? 'No answers don’t count. ' : '') +
       done + ' of ' + total + ', so ' + percent(done, total) + '%. ' +
-      (byDay ? 'Each mark is one day, oldest on the left: green Yes, red No, gray unanswered.'
-        : 'Each group is one ' + PERIOD_ONE[P][0] + ', oldest on the left, with a mark for each one it aims for, green when reached.')
+      (byDay ? 'Each group is one ' + PERIOD[0] + ', oldest on the left, with a mark for each day: green Yes, red No, gray unanswered.'
+        : 'Each group is one ' + PERIOD[0] + ', oldest on the left, with a mark for each one it aims for, green when reached.')
     return { value: percent(done, total), marks: marks, byDay: byDay, cadence: cadence, detail: detail }
   }
-  // A check-in's days to record in the last 8 weeks, newest first, each with
+  // A check-in's days to record in the last 8 weeks (since the goal started,
+  // if that's sooner), newest first, each with
   // its record (if any): its chosen weekdays.
   // Today isn't one of them until it's over.
   function recordDays(goal) {
     var byDate = {}
     goal.entries.forEach(function (e) { byDate[e.date] = byDate[e.date] || e })
-    var days = []
-    for (var ago = 1; ago <= WINDOW_DAYS; ago++) {
+    var days = [], since = -daysFromToday(startedIso(goal))
+    for (var ago = 1; ago <= Math.min(WINDOW_DAYS, since); ago++) {
       var iso = daysAgoIso(ago)
       if (goal.weekdays.indexOf(parseIso(iso).getDay()) !== -1) days.push({ date: iso, ago: ago, entry: byDate[iso] || null })
     }
@@ -834,8 +843,13 @@
   // bar filled by got ÷ aim (the green length still matches the percent).
   var MAX_SEGMENTS = 40
   function stretchMarks(stretches) {
-    var total = stretches.reduce(function (t, s) { return t + s.aim }, 0)
+    var total = stretches.reduce(function (t, s) { return t + (s.days ? 0 : s.aim) }, 0)
     return el('div', { class: 'stretches', 'aria-hidden': 'true' }, stretches.map(function (s) {
+      if (s.days) {
+        var week = el('div', { class: 'marks' }, s.days.map(function (c) { return el('i', { class: c }) }))
+        week.style.flexGrow = String(s.days.length)
+        return week
+      }
       var group = el('div', { class: 'marks' }, total <= MAX_SEGMENTS
         ? Array.apply(null, Array(s.aim)).map(function (_, i) { return el('i', { class: i < s.got ? 'on' : '' }) })
         : [el('i', { class: 'fill' }, [el('b', {})])])
@@ -847,8 +861,7 @@
   function scoreBar(score) {
     if (!score) return el('p', { class: 'empty', text: 'Nothing to score yet' })
     var bar = el('button', { class: 'score-bar', type: 'button', 'aria-expanded': String(scoreInfoOpen), 'aria-label': 'How the score is kept', onclick: function () { scoreInfoOpen = !scoreInfoOpen; render() } }, [
-      score.byDay ? el('div', { class: 'marks', 'aria-hidden': 'true' }, score.marks.map(function (c) { return el('i', { class: c }) }))
-        : stretchMarks(score.marks),
+      stretchMarks(score.marks),
       el('span', { class: 'cadence', text: score.cadence }),
     ])
     return el('div', {}, [bar, scoreInfoOpen ? el('p', { class: 'score-how', text: score.detail }) : null])
@@ -981,7 +994,7 @@
     return [
       el('div', { class: 'panel-title', text: 'Goal' }),
       el('div', { class: 'setting' }, [field.node]),
-      el('p', { class: 'setting-detail', text: 'The score counts ' + how + ' toward it over the last ' + windowLabel(goal.target_period_days) + ', or since the goal started if that’s sooner (the day it was created, or its first date if that’s earlier). Each ' + PERIOD_ONE[goal.target_period_days][0] + ' counts up to the goal.' }),
+      el('p', { class: 'setting-detail', text: 'The score counts ' + how + ' toward it by ' + PERIOD_ONE[goal.target_period_days][0] + ' (' + PERIOD_SPAN[goal.target_period_days] + '), over the last ' + (goal.target_period_days === 365 ? 'two years' : '8 weeks') + ', or since the goal started if that’s sooner (the day it was created, or its first date if that’s earlier). Each ' + PERIOD_ONE[goal.target_period_days][0] + ' counts up to the goal; this one so far aims for its share.' }),
     ]
   }
 
