@@ -202,7 +202,8 @@ All under `/labs/tracker` on the API, bearer token as for Bulbord.
   check-in needs `weekdays`), the old type's is cleared, the goal is kept
   (fitted to a check-in's days), and entries carry
   over (to a Yes / No type, a plain date becomes a Yes; to plan or progress, a
-  No is soft-deleted and a Yes becomes a plain date). `DELETE /items/:id` (soft delete).
+  No is soft-deleted and a Yes becomes a plain date; leaving plan, the upcoming
+  plan, dated after `today` (optional), is soft-deleted). `DELETE /items/:id` (soft delete).
 - `POST /items/:id/entries` `{date: "YYYY-MM-DD", note?, outcome?, today?}`
   (note ≤200 chars; `outcome` `'kept' | 'missed'`, check-in and every-few-hours only; `today`
   defaults to the server's UTC date). Rules per type as above.

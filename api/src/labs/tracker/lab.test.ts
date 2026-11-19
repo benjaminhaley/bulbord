@@ -182,6 +182,15 @@ describe.skipIf(!process.env.DATABASE_URL)('tracker lab', () => {
     expect((await call('PATCH', `/items/${goal.id}`, { stale_days: 4 })).statusCode).toBe(400)
   })
 
+  it('drops the upcoming plan when a plan goal changes type', async () => {
+    const goal = (await call('POST', '/items', { name: 'Friends', type: 'plan' })).json()
+    await call('POST', `/items/${goal.id}/entries`, { date: '2026-10-01', today: '2026-10-05' })
+    await call('POST', `/items/${goal.id}/entries`, { date: '2026-10-20', today: '2026-10-05' })
+    expect((await call('PATCH', `/items/${goal.id}`, { type: 'often', every_hours: 168, today: '2026-10-05' })).statusCode).toBe(200)
+    const read = (await call('GET', '/items')).json().data.find((g: { id: string }) => g.id === goal.id)
+    expect(read.entries).toMatchObject([{ date: '2026-10-01', outcome: 'kept' }])
+  })
+
   it("hides one member's goals from another", async () => {
     const mine = (await call('POST', '/items', { name: 'Mine', type: 'progress' })).json()
     expect((await call('POST', `/items/${mine.id}/entries`, { date: '2026-10-01' }, other)).statusCode).toBe(404)

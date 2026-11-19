@@ -44,7 +44,7 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 
 type Item = typeof trackerItems.$inferSelect
 type Entry = typeof trackerEntries.$inferSelect
-type ItemBody = { name?: unknown; description?: unknown; question?: unknown; ask_note?: unknown; ask_note_no?: unknown; type?: unknown; stale_days?: unknown; weekdays?: unknown; every_hours?: unknown; target_count?: unknown; target_period_days?: unknown }
+type ItemBody = { today?: unknown; name?: unknown; description?: unknown; question?: unknown; ask_note?: unknown; ask_note_no?: unknown; type?: unknown; stale_days?: unknown; weekdays?: unknown; every_hours?: unknown; target_count?: unknown; target_period_days?: unknown }
 
 // Thrown by the parsers below; the scope's error handler answers it.
 class HttpError extends Error {
@@ -242,7 +242,10 @@ async function trackerRoutes(app: FastifyInstance, ctx: LabContext) {
   // (given, or the defaults) and the old type's are cleared; its entries are
   // carried over: going to a type with Yes / No answers, a logged date becomes
   // a Yes; going to plan or progress, a No is soft-deleted (it would read as
-  // done) and a Yes becomes a plain logged date.
+  // done) and a Yes becomes a plain logged date. Leaving plan, its upcoming
+  // plan (dated after `today`) is soft-deleted, since every other type's entries
+  // are today or earlier (2026-11-19: a future date read as a Yes kept "Hang
+  // with a friend" green for weeks).
   app.patch<{ Params: { id: string }; Body: ItemBody }>('/items/:id', async (request) => {
     const db = await database()
     const body = request.body ?? {}
@@ -266,11 +269,15 @@ async function trackerRoutes(app: FastifyInstance, ctx: LabContext) {
     if (body.question !== undefined) changes.question = parseText(body.question, MAX_QUESTION, 'Question', false)
     if (body.ask_note !== undefined) changes.askNote = parseBool(body.ask_note, 'ask_note')
     if (body.ask_note_no !== undefined) changes.askNoteNo = parseBool(body.ask_note_no, 'ask_note_no')
-    if (Object.keys(body).length === 0) throw badRequest('Nothing to change')
+    if (Object.keys(body).filter((k) => k !== 'today').length === 0) throw badRequest('Nothing to change')
+    const today = body.today === undefined ? utcToday() : parseDate(body.today, 'today')
     const updated = await db.transaction(async (tx) => {
       const [row] = await tx.update(trackerItems).set({ ...changes, updatedAt: new Date() }).where(eq(trackerItems.id, item.id)).returning()
       const wasAnswers = takesAnswers(item), isAnswers = takesAnswers(row)
       const live = and(eq(trackerEntries.itemId, item.id), isNull(trackerEntries.deletedAt))
+      if (item.type === 'plan' && newType !== 'plan') {
+        await tx.update(trackerEntries).set({ deletedAt: new Date() }).where(and(live, gt(trackerEntries.date, today)))
+      }
       if (isAnswers && !wasAnswers) {
         await tx.update(trackerEntries).set({ outcome: 'kept', updatedAt: new Date() }).where(and(live, isNull(trackerEntries.outcome)))
       } else if (wasAnswers && !isAnswers) {

@@ -968,19 +968,21 @@
   // Switching keeps the goal (a check-in's fitted to its days) and the
   // history; it asks first when entries would change, since the server carries
   // them over (to Yes / No answers, a logged date is a Yes; back to dates, a No
-  // is removed).
+  // is removed; leaving plan, the upcoming plan is removed).
   var ANSWER_TYPES = { checkin: true, often: true }
   function asksSetting(goal) {
     var choices = el('div', { class: 'choices' }, [el('div', { class: 'panel-title', text: 'When it asks' })].concat(Object.keys(TYPES).map(function (key) {
       var radio = el('input', { type: 'radio', name: 'asks-' + goal.id, value: key, checked: key === goal.type, onchange: function () {
         var nos = goal.entries.filter(function (e) { return e.outcome === 'missed' }).length
+        var upcoming = goal.type === 'plan' ? nextEntry(goal) : null
         var warn = ANSWER_TYPES[goal.type] && !ANSWER_TYPES[key] && nos
-          ? 'Switching removes the ' + nos + ' No ' + (nos === 1 ? 'answer' : 'answers') + ' and keeps each Yes as a date. Switch?'
-          : !ANSWER_TYPES[goal.type] && ANSWER_TYPES[key] && goal.entries.length
-            ? 'Switching counts each logged date as a Yes. Switch?'
-            : null
-        if (warn && !confirm(warn)) { render(); return }
-        saveGoal(goal, key === 'checkin' ? { type: key, weekdays: ALL_DAYS } : { type: key })
+          ? 'Switching removes the ' + nos + ' No ' + (nos === 1 ? 'answer' : 'answers') + ' and keeps each Yes as a date.'
+          : !ANSWER_TYPES[goal.type] && ANSWER_TYPES[key] && pastEntries(goal).length
+            ? 'Switching counts each logged date as a Yes.'
+            : ''
+        if (upcoming && upcoming.date > todayIso()) warn += (warn ? ' ' : '') + 'The upcoming plan (' + fullDateLabel(upcoming.date) + ') is removed.'
+        if (warn && !confirm(warn + ' Switch?')) { render(); return }
+        saveGoal(goal, Object.assign({ type: key, today: todayIso() }, key === 'checkin' ? { weekdays: ALL_DAYS } : {}))
       } })
       return el('label', {}, [radio, el('span', {}, [TYPES[key].label, el('small', { text: TYPES[key].detail })])])
     })))
