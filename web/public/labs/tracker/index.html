@@ -192,6 +192,9 @@
   .history { list-style: none; margin: 0; padding: 0; }
   .history { margin-top: 4px; }
   .history li { display: flex; gap: 8px; align-items: flex-start; padding: 6px 0; }
+  .answers-in { list-style: none; margin: 0; padding: 0; }
+  .answers-in li { padding: 2px 0; font-size: 0.875rem; }
+  .history .none { display: block; font-size: 0.8125rem; color: var(--muted); }
   .history .body { flex: 1; min-width: 0; font-size: 0.9375rem; overflow-wrap: anywhere; }
   .add-past { margin-top: 6px; }
   .remove { flex: none; background: none; border: 0; padding: 4px; margin: -2px -4px -2px 0; color: #a0a0a6; cursor: pointer; display: inline-flex; }
@@ -422,6 +425,47 @@
       answer: function (outcome, note) { return addEntry(goal, { date: day.date, outcome: outcome, note: note }) },
     }
   }
+  // An every-few-hours goal's History: one row per period of its goal (a
+  // week, Sunday to Saturday, for "a week"), newest first, back to when it
+  // started, answered or not (2026-11-19, Ben: a week without an answer
+  // couldn't be filled in; it should read like the day-by-day goals). Each row
+  // lists its answers (time, note to tap, ✕) and Yes / No to add one, dated
+  // the period's last day (today for this one).
+  function periodHistory(goal) {
+    var P = goal.target_period_days || 7, today = todayIso(), start = startedIso(goal), rows = []
+    for (var ps = periodStart(today, P); periodEnd(ps, P) >= start; ps = periodStart(addDays(ps, -1), P)) {
+      rows.push(periodRow(goal, ps, periodEnd(ps, P), P, today))
+    }
+    return foldedHistory(rows.length, rows)
+  }
+  function periodRow(goal, ps, pe, P, today) {
+    var date = pe > today ? today : pe
+    var inside = goal.entries.filter(function (e) { return e.date >= ps && e.date <= pe })
+    return el('li', {}, [el('div', { class: 'body' }, [
+      el('div', { class: 'day-row' }, [
+        el('div', { class: 'when' }, [periodLabel(ps, pe, P), el('span', { text: periodRel(ps, P) })]),
+        answerButtons({ label: periodLabel(ps, pe, P), askNote: noteAsked(goal), answer: function (outcome, note) { return addEntry(goal, { date: date, outcome: outcome, note: note }) } }),
+      ]),
+      inside.length ? el('ul', { class: 'answers-in' }, inside.map(function (entry) {
+        var time = new Date(entry.at).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
+        return el('li', {}, [
+          el('div', { class: 'body' }, [shortDateLabel(entry.date) + ', ' + time + ': ' + (entry.outcome === 'kept' ? 'Yes' : 'No'), entryNote(entry)]),
+          removeButton(entry),
+        ])
+      })) : el('span', { class: 'none', text: 'No answer' }),
+    ])])
+  }
+  function periodLabel(ps, pe, P) {
+    if (P === 365) return ps.slice(0, 4)
+    var a = parseIso(ps), b = parseIso(pe), opts = { month: 'short', day: 'numeric' }
+    if (a.getFullYear() !== new Date().getFullYear()) opts.year = 'numeric'
+    return a.toLocaleDateString(undefined, opts) + ' – ' + (a.getMonth() === b.getMonth() ? b.getDate() : b.toLocaleDateString(undefined, opts))
+  }
+  function periodRel(ps, P) {
+    var n = P === 365 ? +todayIso().slice(0, 4) - +ps.slice(0, 4) : Math.round((dayNumber(periodStart(todayIso(), P)) - dayNumber(ps)) / P)
+    return n === 0 ? 'this ' + PERIOD_ONE[P][0] : n === 1 ? 'last ' + PERIOD_ONE[P][0] : n + ' ' + PERIOD_ONE[P][1] + ' ago'
+  }
+
   // Every day but one being asked about in the status box, newest first.
   function dayHistory(goal) {
     var days = recordDays(goal).slice(dayToRecord(goal) ? 1 : 0)
@@ -576,16 +620,7 @@
         }
       },
       body: function (goal) {
-        return [foldedHistory(goal.entries.length, goal.entries.map(function (entry) {
-          var time = new Date(entry.at).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
-          return el('li', {}, [
-            el('div', { class: 'body' }, [
-              fullDateLabel(entry.date) + ', ' + time + ': ' + (entry.outcome === 'kept' ? 'Yes' : 'No'),
-              entryNote(entry),
-            ]),
-            removeButton(entry),
-          ])
-        }))]
+        return [periodHistory(goal)]
       },
     },
   }

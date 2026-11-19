@@ -134,7 +134,11 @@ check-in's History lists its days back 8 weeks or to when it started.
     have a tap-to-edit date and note and a small ✕, and an "Add a past date"; a
     plan's upcoming one is at the top. A day-by-day goal lists every day with its
     Yes / No (tap the chosen one again to clear it) and note. Every few hours
-    lists each answer with its time and note.
+    lists one row per period of its goal (a week, Sunday to Saturday, for "a
+    week"), newest first, back to when it started, answered or not, each with
+    its answers (time, note, ✕) and Yes / No to add one dated that period's
+    last day (today for this one) (2026-11-19, Ben: a week without an answer
+    couldn't be filled in).
   - While green, a goal that can be answered more than once (every few hours;
     after some days, if not done today) still shows its question, untinted, to
     add another (2026-11-19, Ben: "I should be able to add an extra one"); its
