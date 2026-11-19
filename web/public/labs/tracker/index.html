@@ -425,12 +425,12 @@
       answer: function (outcome, note) { return addEntry(goal, { date: day.date, outcome: outcome, note: note }) },
     }
   }
-  // An every-few-hours goal's History: one row per period of its goal (a
+  // An every-few-hours or progress goal's History: one row per period of its goal (a
   // week, Sunday to Saturday, for "a week"), newest first, back to when it
   // started, answered or not (2026-11-19, Ben: a week without an answer
   // couldn't be filled in; it should read like the day-by-day goals). Each row
-  // lists its answers (time, note to tap, ✕) and Yes / No to add one, dated
-  // the period's last day (today for this one).
+  // lists its answers (time, note to tap, ✕) and Yes / No (progress: Yes) to
+  // add one, dated the period's last day (today for this one).
   function periodHistory(goal) {
     var P = goal.target_period_days || 7, today = todayIso(), start = startedIso(goal), rows = []
     for (var ps = periodStart(today, P); periodEnd(ps, P) >= start; ps = periodStart(addDays(ps, -1), P)) {
@@ -444,12 +444,12 @@
     return el('li', {}, [el('div', { class: 'body' }, [
       el('div', { class: 'day-row' }, [
         el('div', { class: 'when' }, [periodLabel(ps, pe, P), el('span', { text: periodRel(ps, P) })]),
-        answerButtons({ label: periodLabel(ps, pe, P), askNote: noteAsked(goal), answer: function (outcome, note) { return addEntry(goal, { date: date, outcome: outcome, note: note }) } }),
+        answerButtons({ yesOnly: goal.type === 'progress', label: periodLabel(ps, pe, P), askNote: noteAsked(goal), answer: function (outcome, note) { return addEntry(goal, { date: date, outcome: outcome, note: note }) } }),
       ]),
       inside.length ? el('ul', { class: 'answers-in' }, inside.map(function (entry) {
-        var time = new Date(entry.at).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
+        var time = goal.type === 'often' ? ', ' + new Date(entry.at).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }) : ''
         return el('li', {}, [
-          el('div', { class: 'body' }, [shortDateLabel(entry.date) + ', ' + time + ': ' + (entry.outcome === 'kept' ? 'Yes' : 'No'), entryNote(entry)]),
+          el('div', { class: 'body' }, [shortDateLabel(entry.date) + time + ': ' + (entry.outcome === 'missed' ? 'No' : 'Yes'), entryNote(entry)]),
           removeButton(entry),
         ])
       })) : el('span', { class: 'none', text: 'No answer' }),
@@ -558,14 +558,9 @@
           read: function () { return { stale_days: wholeNumber(input.value, 'Days', MAX_STALE_DAYS) } },
         }
       },
-      body: function (goal) {
-        return [historySection(pastEntries(goal), dateField({
-          value: '',
-          label: 'Add a past date',
-          max: daysAgoIso(1),
-          onPick: function (date) { return addEntry(goal, { date: date }) },
-        }))]
-      },
+      // Week by week, like every few hours (2026-11-19, Ben: Weekly house
+      // project should be "updated to the new format").
+      body: function (goal) { return [periodHistory(goal)] },
     },
     checkin: {
       label: 'Every day, or on set days',
