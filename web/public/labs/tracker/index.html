@@ -70,6 +70,7 @@
   /* Why it's red or green, and when that changes. */
   .status { display: flex; align-items: flex-start; gap: 8px; border-radius: 10px; padding: 10px 12px; background: var(--green-bg); }
   .status.due { background: var(--red-bg); }
+  .status.again { background: none; border: 1px solid var(--line); }
   .status > div { flex: 1; min-width: 0; }
   .status .title { font-size: 0.9375rem; font-weight: 500; color: var(--green); }
   .status.due .title { color: var(--red); }
@@ -501,6 +502,11 @@
           answer: function (outcome, note) { return addEntry(goal, { date: todayIso(), note: note }) },
         }
       },
+      // Done again today, before it's due (once a day).
+      again: function (goal) {
+        var last = pastEntries(goal)[0]
+        return last && last.date === todayIso() ? null : TYPES.progress.ask(goal)
+      },
       modeField: function (goal) {
         var input = el('input', { type: 'number', min: '1', max: String(MAX_STALE_DAYS), inputmode: 'numeric', value: String(goal && goal.stale_days ? goal.stale_days : DEFAULT_STALE_DAYS), 'aria-label': 'Days' })
         return {
@@ -559,6 +565,9 @@
           answer: function (outcome, note) { return addEntry(goal, { date: todayIso(), outcome: outcome, note: note }) },
         }
       },
+      // Answered as often as wanted (2026-11-19, Ben: "I should be able to add
+      // an extra one"), so it can always add another.
+      again: function (goal) { return TYPES.often.ask(goal) },
       modeField: function (goal) {
         var hours = el('input', { type: 'number', min: '1', max: String(MAX_EVERY_HOURS), inputmode: 'numeric', value: String(goal && goal.every_hours ? goal.every_hours : DEFAULT_EVERY_HOURS), 'aria-label': 'Hours' })
         return {
@@ -572,7 +581,7 @@
           return el('li', {}, [
             el('div', { class: 'body' }, [
               fullDateLabel(entry.date) + ', ' + time + ': ' + (entry.outcome === 'kept' ? 'Yes' : 'No'),
-              entry.note ? el('span', { class: 'day-note', text: entry.note }) : null,
+              entryNote(entry),
             ]),
             removeButton(entry),
           ])
@@ -677,14 +686,16 @@
   }
 
   // Red first, then green (upcoming plans soonest at the top), alphabetically.
+  // Red first, then green; within each, lowest score first (2026-11-19, Ben),
+  // a goal with nothing to score yet at the top of its group, then by name.
   function sortedGoals() {
     var ranked = goals.map(function (goal) {
-      var next = goal.type === 'plan' ? nextEntry(goal) : null
-      return { goal: goal, rank: isDue(goal) ? 0 : next ? 1 : 2, next: next ? next.date : '' }
+      var score = scoreOf(goal)
+      return { goal: goal, rank: isDue(goal) ? 0 : 1, score: score ? score.value : -1 }
     })
     ranked.sort(function (a, b) {
       if (a.rank !== b.rank) return a.rank - b.rank
-      if (a.next !== b.next) return a.next < b.next ? -1 : 1
+      if (a.score !== b.score) return a.score - b.score
       return byName(a.goal, b.goal)
     })
     return ranked.map(function (r) { return r.goal })
@@ -830,7 +841,7 @@
       noteField(goal.description, 'Add a description', function (text) { return saveGoal(goal, { description: text }) }, 500, 'description'),
       // Only a red goal asks anything; once answered it's green and the answer
       // is in History.
-      due ? statusBox(goal) : null,
+      due ? statusBox(goal) : type.again && type.again(goal) ? statusBox(goal, type.again(goal)) : null,
       scoreBar(score),
     ].concat(type.body(goal)).concat([settingsSection(goal)])
   }
@@ -1094,6 +1105,10 @@
   }
 
   // An existing entry's date and note, both tap-to-edit.
+  // A Yes / No answer's note in History, tap to add or edit (every type).
+  function entryNote(entry) {
+    return noteField(entry.note || '', 'Add a note', function (note) { return editEntry(entry, { note: note }) }, 200, 'day-note')
+  }
   function entryFields(entry, placeholder) {
     return el('div', {}, [
       dateField({ value: entry.date, onPick: function (date) { return editEntry(entry, { date: date }) } }),
@@ -1138,8 +1153,10 @@
 
   // The question a red goal's type asks (TYPES[type].ask), drawn the same way
   // for every type: the question, its answer control, and a line under it.
-  function statusBox(goal) {
-    var ask = TYPES[goal.type].ask(goal)
+  // A green goal that can be answered again (TYPES[type].again) gets the same
+  // question, untinted, so another one can be added any time.
+  function statusBox(goal, again) {
+    var ask = again || TYPES[goal.type].ask(goal)
     var question, control = null
     // Answering folds the card back to its one line (2026-11-13, Ben).
     function thenFold(record) { return function (a, b) { if (openId === goal.id) openId = null; return record(a, b) } }
@@ -1150,7 +1167,7 @@
         ? dateField({ value: '', label: 'Pick a date', pick: true, onPick: thenFold(ask.pick) })
         : answerButtons({ yesOnly: ask.answers === 'yes', askNote: noteAsked(goal), answer: thenFold(ask.answer) })
     }
-    return el('div', { class: 'status due' }, [
+    return el('div', { class: 'status' + (again ? ' again' : ' due') }, [
       el('div', { class: 'day-row' }, [el('div', { class: 'question' }, [question, ask.note ? el('span', { class: 'day-note', text: ask.note }) : null]), control]),
     ])
   }
@@ -1205,7 +1222,7 @@
       el('div', { class: 'when' }, [
         fullDateLabel(day.date),
         el('span', { text: relLabel(day.date) }),
-        day.entry && day.entry.note ? el('span', { class: 'day-note', text: day.entry.note }) : null,
+        day.entry ? entryNote(day.entry) : null,
       ]),
       answerButtons({ chosen: day.entry, label: fullDateLabel(day.date), askNote: noteAsked(goal), answer: function (outcome, note) { return addEntry(goal, { date: day.date, outcome: outcome, note: note }) } }),
     ])

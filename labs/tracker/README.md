@@ -135,6 +135,11 @@ check-in's History lists its days back 8 weeks or to when it started.
     plan's upcoming one is at the top. A day-by-day goal lists every day with its
     Yes / No (tap the chosen one again to clear it) and note. Every few hours
     lists each answer with its time and note.
+  - While green, a goal that can be answered more than once (every few hours;
+    after some days, if not done today) still shows its question, untinted, to
+    add another (2026-11-19, Ben: "I should be able to add an extra one"); its
+    `again(goal)` in `TYPES`. Notes on History's Yes / No answers can be added
+    or edited by tapping, on every type.
   - Settings, folded away behind a gear at the bottom (2026-11-10, Ben: the
     numbers "should be buried under a Settings gear"). Opened, it's a list of
     sub-menus, each row showing its current value with a chevron (2026-11-16,
@@ -171,8 +176,9 @@ question was simplified on one type and missed on the others:
 
 - Red and the score are derived on the page in the viewer's time zone, which
   sends its `today` with each new entry so the server's date rules match.
-- Order: everything red first, then upcoming plans (soonest at the top), then
-  other green goals, alphabetically. There's no intro text above the list.
+- Order (2026-11-19, Ben): red first, then green; within each, lowest score
+  first (nothing to score yet at the top of its group), then alphabetically.
+  There's no intro text above the list.
 - Dates in lists include the year when it isn't this one.
 
 ## API
