@@ -336,7 +336,9 @@
     var daily = type === 'checkin'
     var eligible = function (iso) { return !daily || goal.weekdays.indexOf(parseIso(iso).getDay()) !== -1 }
     var countDays = function (from, to) { var c = 0; for (var d = from; d <= to; d = addDays(d, 1)) if (eligible(d)) c++; return c }
-    var start = startedIso(goal), end = daily ? daysAgoIso(1) : todayIso()
+    // A check-in's today counts once it's answered (answering early, from History).
+    var answeredToday = daily && eligible(todayIso()) && goal.entries.some(function (e) { return e.date === todayIso() })
+    var start = startedIso(goal), end = daily && !answeredToday ? daysAgoIso(1) : todayIso()
     if (end < start) return null
     var count = P === 365 ? 2 : Math.max(1, Math.round(WINDOW_DAYS / P))
     var periods = [], k, ps = periodStart(end, P)
@@ -386,7 +388,7 @@
     })
     var detail = 'The goal is ' + N + ' ' + plural(N, unit) + ' ' + PERIOD_LABEL[P] + ', counted by ' + PERIOD[0] + ' (' + PERIOD_SPAN[P] + '). ' +
       (periods[0].from === start ? 'It counts from ' + fullDateLabel(start) + ', when this goal started, ' : 'It counts the last ' + periods.length + ' ' + plural(periods.length, PERIOD) + ', ') +
-      'through ' + (daily ? 'yesterday' : 'today') + ', each ' + PERIOD[0] + ' counting up to the goal. ' + partials.join('') +
+      'through ' + (end === todayIso() ? 'today' : 'yesterday') + ', each ' + PERIOD[0] + ' counting up to the goal. ' + partials.join('') +
       (daily ? 'Only Yes days count. ' : type === 'often' ? 'No answers don’t count. ' : '') +
       done + ' of ' + total + ', so ' + percent(done, total) + '%. ' +
       (byDay ? 'Each group is one ' + PERIOD[0] + ', oldest on the left, with a mark for each day: green Yes, red No, gray unanswered.'
@@ -396,7 +398,7 @@
   // A check-in's days to record in the last 8 weeks (since the goal started,
   // if that's sooner), newest first, each with
   // its record (if any): its chosen weekdays.
-  // Today isn't one of them until it's over.
+  // Today isn't one of them (History adds it, to answer early; see dayHistory).
   function recordDays(goal) {
     var byDate = {}
     goal.entries.forEach(function (e) { byDate[e.date] = byDate[e.date] || e })
@@ -467,8 +469,14 @@
   }
 
   // Every day but one being asked about in the status box, newest first.
+  // Today is at the top on a chosen day, to answer early (2026-11-19, Ben);
+  // it's never asked about or red, and counts once answered.
   function dayHistory(goal) {
     var days = recordDays(goal).slice(dayToRecord(goal) ? 1 : 0)
+    var today = todayIso()
+    if (goal.weekdays.indexOf(parseIso(today).getDay()) !== -1) {
+      days.unshift({ date: today, ago: 0, entry: goal.entries.filter(function (e) { return e.date === today })[0] || null })
+    }
     return [foldedHistory(days.length, days.map(function (d) { return el('li', {}, [el('div', { class: 'body' }, [dayRow(goal, d)])]) }))]
   }
   // "Sunday and Monday", or "day" when it's all seven.

@@ -32,8 +32,9 @@ Every goal is made of the same parts, and each is a sub-menu under Settings:
     Mondays; work on projects 5 days a week): each chosen weekday (`weekdays`)
     is answered Yes or No (stored kept / missed). Red until the most recent
     chosen day is answered, the only day it asks about (2026-11-09, Ben).
-    Today doesn't appear or count until it's over, and older blanks don't turn
-    it red (2026-11-08, Ben). One record per day: a new one replaces it, and
+    Today is never asked about and never turns it red; it's at the top of
+    History to answer early (2026-11-19, Ben), and counts in the score only
+    once answered. Older blanks don't turn it red (2026-11-08, Ben). One record per day: a new one replaces it, and
     tapping the chosen answer again clears it. The old "some days a week" type
     (`weekly`, 2026-11-09) is this on every day with a goal under 7; existing
     ones were converted 2026-11-16.
