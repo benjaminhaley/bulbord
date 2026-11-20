@@ -6,7 +6,10 @@ const imageUrlMock = vi.fn((key: string | null) => (key ? `/uploads/${key}` : nu
 
 vi.mock('./storage.js', () => ({ uploadImage: uploadImageMock, imageUrl: imageUrlMock }))
 
-describe('generatePlaceholderImage', () => {
+// The first test pays sharp's cold start (loading libvips and fontconfig for
+// the text render): ~150ms locally, but once over 5s on a busy CI runner
+// running the whole suite in parallel (2026-11-20, run 44735112626).
+describe('generatePlaceholderImage', { timeout: 30_000 }, () => {
   it('generates a real, correctly-sized image', async () => {
     const { generatePlaceholderImage } = await import('./placeholder.js')
     const buffer = await generatePlaceholderImage('Back to School Clothing Swap')
