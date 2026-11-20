@@ -20,14 +20,17 @@ fi
 
 ENV_ID=f4f06cfd-89cf-42c4-8978-e38809776236 # production
 REGISTRY=ghcr.io/benjaminhaley
-# service name -> service id -> image. The crons run the api image with their
-# own start command (set on the service in Railway).
+# service name -> service id -> image [optional]. The crons and the genie lab
+# run the api image with their own start command (set on the service in
+# Railway). An optional service's failed deploy is reported but doesn't fail
+# the run: a broken lab stays broken alone (labs/README.md).
 SERVICES=(
   "api c5671a73-c5cb-4995-b0c0-0340ab7b0ef9 bulbord-api"
   "event-sourcing-cron bb5f7274-bae5-4555-99fa-53722a9c7a43 bulbord-api"
   "camp-reminder-cron 6f966d64-2b3e-43c2-9925-01aead299f5b bulbord-api"
   "newsletter-cron 6c48e31b-849f-4bff-a662-9e5d99bcac7f bulbord-api"
   "web 24c4d855-a6ab-4ee6-872a-7d25c25ed78c bulbord-web"
+  "genie 0654c371-3def-407c-b62e-1a91c1d27ef1 bulbord-api optional"
 )
 
 gql() {
@@ -44,8 +47,10 @@ gql() {
 }
 
 declare -A DEPLOYMENTS
+declare -A OPTIONAL
 for row in "${SERVICES[@]}"; do
-  read -r name id image <<<"$row"
+  read -r name id image optional <<<"$row"
+  [ -n "${optional:-}" ] && OPTIONAL[$name]=1
   ref="$REGISTRY/$image:$IMAGE_TAG"
   gql "mutation { serviceInstanceUpdate(serviceId: \"$id\", environmentId: \"$ENV_ID\", input: { source: { image: \"$ref\" } }) }" >/dev/null
   dep=$(gql "mutation { serviceInstanceDeployV2(serviceId: \"$id\", environmentId: \"$ENV_ID\") }" |
@@ -64,9 +69,11 @@ for name in "${!DEPLOYMENTS[@]}"; do
       python3 -c 'import json,sys; print(json.load(sys.stdin)["data"]["deployment"]["status"])')
     case "$status" in
       SUCCESS|SLEEPING) echo "$name: $status"; break ;;
-      FAILED|CRASHED|REMOVED|SKIPPED) echo "$name: $status" >&2; failed=1; break ;;
+      FAILED|CRASHED|REMOVED|SKIPPED)
+        if [ -n "${OPTIONAL[$name]:-}" ]; then echo "::warning::$name (optional) deploy: $status" >&2; else echo "$name: $status" >&2; failed=1; fi
+        break ;;
     esac
-    if ((SECONDS > deadline)); then echo "$name: still $status after 10 min" >&2; failed=1; break; fi
+    if ((SECONDS > deadline)); then echo "$name: still $status after 10 min" >&2; [ -n "${OPTIONAL[$name]:-}" ] || failed=1; break; fi
     sleep 5
   done
 done

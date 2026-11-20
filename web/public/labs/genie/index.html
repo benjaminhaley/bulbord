@@ -1,0 +1,303 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="robots" content="noindex, nofollow" />
+<title>Genie</title>
+<!--
+  Genie lab (see labs/genie/README.md). Standalone: plain HTML/JS, no build
+  step, nothing from the app. It talks only to Genie's own service (a separate
+  Railway service, not Bulbord's API), sending the member's sign-in token so
+  Genie can check they're an approved member.
+
+  The page Genie writes runs in a sandboxed iframe with no same-origin access
+  (it can't read this page, the sign-in token, or anything of Bulbord's),
+  no popups or navigation, no microphone, and a Content-Security-Policy
+  limiting where it can load scripts from.
+-->
+<style>
+  :root {
+    --band: #17151c;
+    --band-ink: #f4f1fa;
+    --muted: #a9a3b6;
+    --accent: #f5b83d;
+    --live: #e5484d;
+    --chip: #2a2732;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; height: 100%; background: var(--band); color: var(--band-ink); font-family: Roboto, -apple-system, "Segoe UI", "Helvetica Neue", Arial, sans-serif; overflow: hidden; }
+  body { display: flex; flex-direction: column; height: 100dvh; }
+  #screen { flex: 1; min-height: 0; width: 100%; border: 0; display: block; background: #fff; }
+  #band {
+    display: flex; align-items: center; gap: 8px;
+    padding: 8px 12px calc(env(safe-area-inset-bottom, 0px) + 8px);
+    min-height: 64px;
+  }
+  #band a.back { color: var(--muted); text-decoration: none; font-size: 1.5rem; line-height: 1; padding: 8px 6px; }
+  #status { flex: 1; min-width: 0; font-size: 0.9375rem; line-height: 1.3; }
+  #status .main { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #status .sub { color: var(--muted); font-size: 0.8125rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #status .heard { font-style: italic; }
+  .btn {
+    flex: none; border: 0; border-radius: 999px; cursor: pointer;
+    background: var(--chip); color: var(--band-ink);
+    height: 48px; min-width: 48px; padding: 0 14px;
+    display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+    font: inherit; font-size: 0.9375rem;
+  }
+  .btn svg { width: 22px; height: 22px; fill: currentColor; }
+  #mic.on { background: var(--live); }
+  #mic.on .dot { animation: pulse 1.4s ease-in-out infinite; }
+  @keyframes pulse { 50% { opacity: 0.35; } }
+  @media (prefers-reduced-motion: reduce) { #mic.on .dot { animation: none; } }
+  #type-form { display: none; flex: 1; gap: 8px; }
+  #type-form input {
+    flex: 1; min-width: 0; height: 48px; border-radius: 999px; border: 0; padding: 0 16px;
+    background: var(--chip); color: var(--band-ink); font: inherit; font-size: 1rem;
+  }
+  #type-form input:focus { outline: 2px solid var(--accent); }
+  body.typing #type-form { display: flex; }
+  body.typing #status, body.typing #mic, body.typing #type-btn { display: none; }
+  .working .main { color: var(--accent); }
+</style>
+</head>
+<body>
+<iframe id="screen" title="Genie's screen" sandbox="allow-scripts" allow="autoplay; fullscreen" referrerpolicy="no-referrer"></iframe>
+<div id="band">
+  <a class="back" href="/labs" aria-label="Back to Labs">‹</a>
+  <div id="status" role="status" aria-live="polite"><div class="main">Connecting…</div><div class="sub"></div></div>
+  <form id="type-form" autocomplete="off">
+    <input id="type-input" maxlength="500" placeholder="Type a wish…" enterkeyhint="send" aria-label="Type a wish" />
+    <button class="btn" type="submit" aria-label="Send"><svg viewBox="0 0 24 24"><path d="M3 20.5v-17L22 12 3 20.5Zm2-3.1L16.9 12 5 6.6v4.1l6 1.3-6 1.3v4.1Z"/></svg></button>
+    <button class="btn" type="button" id="type-cancel" aria-label="Close">✕</button>
+  </form>
+  <button class="btn" id="type-btn" type="button" aria-label="Type instead"><svg viewBox="0 0 24 24"><path d="M4 19q-.8 0-1.4-.6T2 17V7q0-.8.6-1.4T4 5h16q.8 0 1.4.6T22 7v10q0 .8-.6 1.4T20 19H4Zm4-3h8v-2H8v2Zm-3-3h2v-2H5v2Zm3 0h2v-2H8v2Zm3 0h2v-2h-2v2Zm3 0h2v-2h-2v2Zm3 0h2v-2h-2v2ZM5 10h2V8H5v2Zm3 0h2V8H8v2Zm3 0h2V8h-2v2Zm3 0h2V8h-2v2Zm3 0h2V8h-2v2Z"/></svg></button>
+  <button class="btn" id="mic" type="button"><svg viewBox="0 0 24 24"><path class="dot" d="M12 14q-1.25 0-2.1-.9T9 11V5q0-1.25.9-2.1T12 2q1.25 0 2.1.9T15 5v6q0 1.25-.9 2.1T12 14Zm-1 7v-3.1q-2.6-.35-4.3-2.3T5 11h2q0 2.1 1.5 3.5T12 16q2 0 3.5-1.5T17 11h2q0 2.6-1.7 4.6T13 17.9V21h-2Z"/></svg><span id="mic-label">Listen</span></button>
+</div>
+<script>
+(function () {
+  var local = location.hostname === 'localhost' || location.hostname === '127.0.0.1'
+  var GENIE = local
+    ? 'http://' + location.hostname + ':' + (safeGet('genieApiPort') || '3002')
+    : 'https://genie-production-9a12f1ec.up.railway.app'
+  var token = safeGet('bulbord_session_token')
+
+  var screen = document.getElementById('screen')
+  var statusEl = document.getElementById('status')
+  var micBtn = document.getElementById('mic')
+  var micLabel = document.getElementById('mic-label')
+  var typeBtn = document.getElementById('type-btn')
+  var typeForm = document.getElementById('type-form')
+  var typeInput = document.getElementById('type-input')
+
+  var shownHtml = null
+  var working = null
+  var notice = null // {text, until}
+  var heard = '' // interim words while someone is talking
+  var listening = false // want the mic on
+  var signedOut = !token
+
+  function safeGet(key) { try { return localStorage.getItem(key) } catch (e) { return null } }
+  function safeSet(key, value) { try { value == null ? localStorage.removeItem(key) : localStorage.setItem(key, value) } catch (e) {} }
+
+  // The CSP goes first, so nothing the page itself contains can come before it.
+  var CSP = [
+    "default-src 'none'",
+    "script-src 'unsafe-inline' 'unsafe-eval' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://unpkg.com",
+    "style-src 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://unpkg.com https://fonts.googleapis.com",
+    'font-src data: https:',
+    'img-src data: blob: https:',
+    'media-src data: blob: https:',
+    'connect-src https:',
+    'worker-src blob:',
+    "form-action 'none'",
+    "base-uri 'none'"
+  ].join('; ')
+  function sandboxedDocument(html) {
+    var meta = '<meta http-equiv="Content-Security-Policy" content="' + CSP + '">'
+    var m = html.match(/^\s*<!doctype[^>]*>/i)
+    return m ? m[0] + meta + html.slice(m[0].length) : '<!doctype html>' + meta + html
+  }
+
+  var WELCOME = '<!doctype html><html><head><meta name="viewport" content="width=device-width, initial-scale=1"><title>Genie</title><style>' +
+    'html,body{margin:0;height:100%;font-family:Roboto,-apple-system,Segoe UI,Arial,sans-serif}' +
+    'body{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;padding:24px;box-sizing:border-box;text-align:center;' +
+    'background:radial-gradient(circle at 50% 35%,#3b2a6b,#140f24 70%);color:#f4f1fa}' +
+    'h1{margin:0;font-size:clamp(2.25rem,9vw,4rem);letter-spacing:.02em}p{margin:0;color:#c9c1dc;font-size:1.0625rem;max-width:28rem}' +
+    'ul{list-style:none;padding:0;margin:8px 0 0;display:grid;gap:8px}li{background:rgba(255,255,255,.08);border-radius:999px;padding:8px 16px;font-size:.9375rem}' +
+    '.lamp{font-size:4rem;animation:f 3s ease-in-out infinite}@keyframes f{50%{transform:translateY(-8px)}}' +
+    '</style></head><body><div class="lamp">🪔</div><h1>Genie is listening</h1><p>Say what you’d like to see. Everyone here sees the same screen.</p>' +
+    '<ul><li>“Let’s play a maze game”</li><li>“What’s the weather?”</li><li>“Draw an elephant juggling”</li><li>“Make it purple”</li></ul></body></html>'
+
+  function show(page) {
+    var html = page && page.html ? page.html : WELCOME
+    if (html === shownHtml) return
+    shownHtml = html
+    screen.srcdoc = sandboxedDocument(html)
+  }
+  screen.addEventListener('load', function () { try { screen.focus() } catch (e) {} })
+
+  // --- status band ---
+  function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c] }) }
+  function render() {
+    var main = '', sub = '', cls = ''
+    if (working) {
+      var secs = Math.max(0, Math.round((Date.now() - Date.parse(working.startedAt)) / 1000))
+      cls = 'working'
+      main = 'Working on “' + esc(working.requests.join(' / ')) + '”…'
+      sub = secs + 's' + (working.chars ? ' · ' + working.chars.toLocaleString() + ' characters written' : '')
+    } else if (notice && notice.until > Date.now()) {
+      main = esc(notice.text)
+    } else if (heard) {
+      main = '<span class="heard">' + esc(heard) + '</span>'
+    } else if (signedOut) {
+      main = 'Watching Genie'
+      sub = 'Sign in to make a wish'
+    } else if (listening) {
+      main = 'Listening…'
+      sub = 'Just say what you’d like to see'
+    } else {
+      main = 'Genie'
+      sub = recognitionAvailable() ? 'Tap Listen to talk, or type a wish' : 'Type a wish (this browser can’t listen)'
+    }
+    if (notice && notice.until > Date.now() && (working || heard)) sub = esc(notice.text)
+    statusEl.className = cls
+    statusEl.innerHTML = '<div class="main">' + main + '</div><div class="sub">' + sub + '</div>'
+    micBtn.classList.toggle('on', listening)
+    micLabel.textContent = signedOut ? 'Sign in' : listening ? 'On' : 'Listen'
+  }
+  function setNotice(text, ms) { notice = { text: text, until: Date.now() + (ms || 6000) }; render() }
+  setInterval(render, 1000)
+
+  function goSignIn() {
+    location.href = '/login?reason=' + encodeURIComponent('Sign in to talk to Genie') + '&next=' + encodeURIComponent('/labs')
+  }
+
+  // --- talking ---
+  function say(text, typed) {
+    if (signedOut) return goSignIn()
+    fetch(GENIE + '/say', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: 'Bearer ' + token },
+      body: JSON.stringify({ text: text, typed: !!typed })
+    }).then(function (res) {
+      return res.json().catch(function () { return {} }).then(function (body) {
+        if (res.status === 401) { signedOut = true; stopListening(); render(); return }
+        if (!res.ok) { setNotice((body.error && body.error.message) || 'Genie didn’t catch that.'); return }
+        if (body.data && body.data.request) setNotice('Got it: “' + body.data.request + '”', 4000)
+      })
+    }).catch(function () { setNotice('Can’t reach Genie right now.') })
+  }
+
+  typeBtn.addEventListener('click', function () {
+    if (signedOut) return goSignIn()
+    document.body.classList.add('typing')
+    typeInput.focus()
+  })
+  document.getElementById('type-cancel').addEventListener('click', function () { document.body.classList.remove('typing') })
+  typeForm.addEventListener('submit', function (e) {
+    e.preventDefault()
+    var text = typeInput.value.trim()
+    if (!text) return
+    typeInput.value = ''
+    document.body.classList.remove('typing')
+    say(text, true)
+  })
+
+  // --- listening (the browser's own speech recognition) ---
+  var Recognition = window.SpeechRecognition || window.webkitSpeechRecognition
+  var rec = null
+  var running = false
+  function recognitionAvailable() { return !!Recognition }
+
+  function startListening() {
+    if (!Recognition) { setNotice('This browser can’t listen. Type a wish instead.'); return }
+    listening = true
+    safeSet('genieListening', '1')
+    if (!rec) {
+      rec = new Recognition()
+      rec.continuous = true
+      rec.interimResults = true
+      rec.lang = 'en-US'
+      rec.onresult = function (e) {
+        var interim = ''
+        for (var i = e.resultIndex; i < e.results.length; i++) {
+          var r = e.results[i]
+          var text = r[0].transcript.trim()
+          if (r.isFinal) { if (text) say(text, false) } else interim += ' ' + text
+        }
+        heard = interim.trim()
+        render()
+      }
+      rec.onerror = function (e) {
+        if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
+          stopListening()
+          setNotice('Genie needs microphone permission to listen.', 8000)
+        }
+      }
+      rec.onend = function () {
+        running = false
+        heard = ''
+        // Browsers stop after a while; keep going while it's wanted.
+        if (listening) setTimeout(function () { if (listening && !running) begin() }, 300)
+        render()
+      }
+    }
+    begin()
+    render()
+  }
+  function begin() {
+    try { rec.start(); running = true } catch (e) { /* already started */ }
+  }
+  function stopListening() {
+    listening = false
+    safeSet('genieListening', null)
+    heard = ''
+    if (rec && running) { try { rec.stop() } catch (e) {} }
+    render()
+  }
+  micBtn.addEventListener('click', function () {
+    if (signedOut) return goSignIn()
+    listening ? stopListening() : startListening()
+  })
+  // Pause while the tab is hidden, pick up again when it's back.
+  document.addEventListener('visibilitychange', function () {
+    if (!rec) return
+    if (document.hidden) { if (running) try { rec.stop() } catch (e) {} }
+    else if (listening && !running) begin()
+  })
+
+  // --- the shared screen, pushed live ---
+  function handle(event) {
+    if (event.type === 'page') show(event.page)
+    else if (event.type === 'working') working = event.working
+    else if (event.type === 'notice') setNotice(event.message, 8000)
+    render()
+  }
+  function connect() {
+    if (window.EventSource) {
+      var es = new EventSource(GENIE + '/stream')
+      es.onmessage = function (e) { try { handle(JSON.parse(e.data)) } catch (err) {} }
+      es.onerror = function () { if (es.readyState === 2) setTimeout(connect, 5000) }
+    } else {
+      setInterval(poll, 4000)
+      poll()
+    }
+  }
+  function poll() {
+    fetch(GENIE + '/state').then(function (r) { return r.json() }).then(function (body) {
+      handle({ type: 'page', page: body.data.page })
+      handle({ type: 'working', working: body.data.working })
+    }).catch(function () {})
+  }
+
+  show(null)
+  render()
+  connect()
+  // Pick up listening where it was left (works once the mic is already allowed).
+  if (!signedOut && safeGet('genieListening') === '1') startListening()
+})()
+</script>
+</body>
+</html>

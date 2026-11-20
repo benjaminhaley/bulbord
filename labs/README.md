@@ -21,7 +21,8 @@ A lab called `<name>` has at most these parts, and nothing else:
 | Server code (optional) | `api/src/labs/<name>/` | Exports one `Lab` object. Mounted at `/labs/<name>/…` on the API. |
 | Data (optional) | Postgres schema `lab_<name>` | Reached only through the lab's own database login. |
 | Link | One row in `web/src/labs/LabsPage.tsx` | |
-| Registration | One entry in `LABS` in `api/src/labs/sandbox.ts` | Only for a lab with server code. |
+| Registration | One entry in `LABS` in `api/src/labs/sandbox.ts` | Only for a lab with server code that runs inside the API. |
+| Own service (instead) | A Railway service running `node dist/labs/<name>/server.js` from the api image, plus a row marked `optional` in `scripts/railway-deploy-images.sh` | For heavier or riskier labs (see below). It gets nothing through `LabContext`: it checks sign-ins via Bulbord's public `GET /auth/me` and uses its own `lab_<name>` login from an env var. See [Genie](genie/README.md). |
 
 ## The rules
 
@@ -92,3 +93,4 @@ data: `DROP SCHEMA lab_<name> CASCADE; DROP ROLE lab_<name>;`.
 
 - [Soccer Math](soccer-math/README.md): times-tables game, no server.
 - [Tracker](tracker/README.md): goals of three types, each red or green with an 8-week score, members only.
+- [Genie](genie/README.md): a shared screen that listens and rewrites itself; its own Railway service.

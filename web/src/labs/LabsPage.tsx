@@ -1,5 +1,5 @@
 import { IonBackButton, IonButtons, IonContent, IonHeader, IonIcon, IonItem, IonLabel, IonList, IonNote, IonPage, IonTitle, IonToolbar } from '@ionic/react'
-import { calendarNumberOutline, footballOutline } from 'ionicons/icons'
+import { calendarNumberOutline, footballOutline, sparklesOutline } from 'ionicons/icons'
 
 // The list of labs: independent experiments walled off from Bulbord (see
 // labs/README.md). Each row is a plain full-page `href` to the lab's own
@@ -31,6 +31,13 @@ export function LabsPage() {
             <IonLabel>
               <h2>Tracker</h2>
               <p>Your goals, each red when there's something to do today, with a score for the last 8 weeks.</p>
+            </IonLabel>
+          </IonItem>
+          <IonItem button href="/labs/genie/" lines="none">
+            <IonIcon slot="start" icon={sparklesOutline} />
+            <IonLabel>
+              <h2>Genie</h2>
+              <p>A shared screen that listens: say what you'd like to see, and it appears for everyone.</p>
             </IonLabel>
           </IonItem>
         </IonList>
