@@ -68,9 +68,13 @@ vi.mock('./candidate-checks.js', async () => {
   return { ...actual, runTextChecksWithRetry: runTextChecksWithRetryMock }
 })
 
+// Always a month from today: checkDateQuality (real, unmocked) rejects a past or
+// implausibly-far-future date, and a fixed date here went stale on 2026-11-23.
+const NEAR_FUTURE = new Date(Date.now() + 30 * 86_400_000).toISOString().slice(0, 10)
+
 const CANDIDATE = {
   title: 'Back to School Clothing Swap',
-  startDate: '2026-11-22', // a real near future date — checkDateQuality (real, unmocked) rejects a past or implausibly-far-future one
+  startDate: NEAR_FUTURE,
   allDay: true,
   sourceUrl: 'https://chipublib.bibliocommons.com/events/abc',
   status: 'pending' as const,
