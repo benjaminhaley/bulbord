@@ -48,8 +48,12 @@ built 2026-11-20.
   everything until recognition actually starts; the mic button pauses (back to
   the gate). Where recognition doesn't exist the gate says so. **Inside the
   iOS app it can't work**: the WebView has no speech recognition and the app
-  has no `NSMicrophoneUsageDescription`, so the gate offers a link to open in
-  Safari. Making it work in the app would need a native speech plugin, that
+  has no `NSMicrophoneUsageDescription`, so the gate offers an "Open in Safari"
+  button (`x-safari-https://…`). **The same goes for every other iPhone
+  browser** (Chrome, Firefox, Edge): they're embedded WebKit views that expose
+  `webkitSpeechRecognition` but never prompt or listen
+  ([WebKit bug 239816](https://bugs.webkit.org/show_bug.cgi?id=239816)), so
+  the page detects them by user agent and sends people to Safari too. Making it work in the app would need a native speech plugin, that
   Info.plist key and a new TestFlight build. The "type a wish" box (behind the
   gate, skips the Haiku gate) stays as a fallback.
 - `POST /say {text, typed?}` with the member's Bulbord token. The server checks

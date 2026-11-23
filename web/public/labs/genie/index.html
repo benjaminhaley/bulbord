@@ -376,12 +376,22 @@
   var Recognition = window.SpeechRecognition || window.webkitSpeechRecognition
   var gateKind = null
   var askFailed = false
+  var lastError = ''
   function inNativeApp() {
     var cap = window.Capacitor
-    if (cap && typeof cap.isNativePlatform === 'function' && cap.isNativePlatform()) return true
-    var ua = navigator.userAgent
-    return /iPhone|iPad|iPod/.test(ua) && !/Safari\//.test(ua)
+    return !!(cap && typeof cap.isNativePlatform === 'function' && cap.isNativePlatform())
   }
+  // On iPhone every browser but Safari (Chrome, Firefox, Edge, Google, the
+  // Bulbord app) is an embedded WebKit view: it exposes webkitSpeechRecognition
+  // but it never works and never shows a permission prompt
+  // (https://bugs.webkit.org/show_bug.cgi?id=239816). Safari's UA alone has
+  // "Version/… Safari/" with no CriOS/FxiOS/EdgiOS/GSA.
+  function iosNotSafari() {
+    var ua = navigator.userAgent
+    if (!/iPhone|iPad|iPod/.test(ua)) return false
+    return /CriOS|FxiOS|EdgiOS|OPiOS|GSA\//.test(ua) || !/Version\/[\d.]+.*Safari\//.test(ua)
+  }
+  var GENIE_URL = location.origin + '/labs/genie/'
   var BACK = '<a class="back" href="/labs" aria-label="Back to Labs">‹</a>'
   function setGate(kind) {
     gateKind = kind
@@ -391,15 +401,19 @@
     if (kind === 'signin') {
       text = 'Sign in to talk to Genie.'
       button = '<button class="btn go" data-act="signin">Sign in</button>'
-    } else if (kind === 'app') {
-      text = 'Genie can’t hear you inside the Bulbord app yet. Open it in Safari or Chrome instead.'
-      button = '<code>' + esc(location.origin + '/labs/genie/') + '</code><button class="btn go" data-act="copy">Copy link</button>'
+    } else if (kind === 'app' || kind === 'safari') {
+      text = kind === 'app'
+        ? 'Genie can’t hear you inside the Bulbord app yet. Open it in Safari instead.'
+        : 'On iPhone, only Safari lets a web page listen. Open Genie in Safari instead.'
+      // x-safari-https:// opens Safari from another app (iOS 17+).
+      button = '<a class="btn go" href="x-safari-' + esc(GENIE_URL) + '" style="text-decoration:none">Open in Safari</a>' +
+        '<code>' + esc(GENIE_URL) + '</code><button class="btn" data-act="copy">Copy link</button>'
     } else if (kind === 'unsupported') {
       text = 'This browser can’t listen. Open Genie in Chrome or Safari.'
     } else if (kind === 'ask' || kind === 'asking') {
       text = 'Genie works by listening. Let it use your microphone, then just say what you’d like to see.'
       button = '<button class="btn go" data-act="listen"' + (kind === 'asking' ? ' disabled' : '') + '>' + (kind === 'asking' ? 'Waiting for the microphone…' : 'Turn on the microphone') + '</button>'
-      if (askFailed) hint = 'Nothing popped up? Your browser may be blocking the microphone: allow it in the site settings (the icon next to the address, or Settings → Safari → Microphone on iPhone), then tap again.'
+      if (askFailed) hint = (lastError ? '(' + esc(lastError) + ') ' : '') + 'Nothing popped up? Your browser may be blocking the microphone: allow it in the site settings (the icon next to the address, or Settings → Safari → Microphone on iPhone), then tap again.'
     } else if (kind === 'denied') {
       text = 'The microphone is blocked for this site, and Genie can’t work without it.'
       hint = 'Allow it in the site settings (the icon next to the address, or Settings → Safari → Microphone on iPhone), then tap below.'
@@ -419,9 +433,8 @@
     if (what === 'signin') goSignIn()
     else if (what === 'listen') startListening()
     else if (what === 'copy') {
-      var url = location.origin + '/labs/genie/'
       var done = function () { act.textContent = 'Copied. Paste it in Safari' }
-      if (navigator.clipboard) navigator.clipboard.writeText(url).then(done, function () {})
+      if (navigator.clipboard) navigator.clipboard.writeText(GENIE_URL).then(done, function () {})
     }
   })
 
@@ -460,6 +473,7 @@
         render()
       }
       rec.onerror = function (e) {
+        lastError = e.error
         if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
           listening = false
           clearTimeout(askTimer)
@@ -571,7 +585,9 @@
 
   // Ask for the microphone right away: nothing works until it's on.
   if (signedOut) setGate('signin')
-  else if (!Recognition) setGate(inNativeApp() ? 'app' : 'unsupported')
+  else if (inNativeApp()) setGate('app')
+  else if (iosNotSafari()) setGate('safari')
+  else if (!Recognition) setGate('unsupported')
   else {
     setGate('ask')
     micPermission().then(function (state) {
