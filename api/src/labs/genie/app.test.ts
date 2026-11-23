@@ -11,6 +11,7 @@ const tokens: Record<string, { id: string } | 'pending'> = { good: { id: MEMBER 
 function fakeAgent(overrides: Partial<GenieAgent> = {}): GenieAgent {
   return {
     gate: vi.fn(async ({ phrase }) => ({ request: phrase.toLowerCase().startsWith('show') ? phrase : null })),
+    sketch: vi.fn(async () => null),
     makePage: vi.fn(async ({ requests }) => ({ html: `<!doctype html><html><title>${requests[0]}</title></html>`, title: requests[0] })),
     ...overrides,
   }
@@ -49,7 +50,7 @@ describe('genie', () => {
     await build()
     const res = await app!.inject({ method: 'GET', url: '/state' })
     expect(res.statusCode).toBe(200)
-    expect(res.json().data).toEqual({ page: null, working: null })
+    expect(res.json().data).toEqual({ page: null, draft: null, working: null })
   })
 
   it('only lets approved members talk', async () => {
@@ -119,6 +120,44 @@ describe('genie', () => {
     fail = true
     await say('good', { text: 'show a dog' })
     expect((await settled()).page.title).toBe('show a cat')
+  })
+
+  it('shows a quick sketch while the page is made, then the page', async () => {
+    let finish!: () => void
+    const agent = fakeAgent({
+      sketch: vi.fn(async () => ({ html: '<!doctype html><html>sketch</html>', title: 'sketch' })),
+      makePage: vi.fn(async ({ requests }) => {
+        await new Promise<void>((r) => (finish = r))
+        return { html: '<!doctype html><html>real</html>', title: requests[0] }
+      }),
+    })
+    await build(agent)
+    await say('good', { text: 'show a dragon', typed: true })
+    await vi.waitFor(async () => expect((await app!.inject({ method: 'GET', url: '/state' })).json().data.draft).toContain('sketch'))
+    finish()
+    const state = await settled()
+    expect(state.draft).toBeNull()
+    expect(state.page.html).toContain('real')
+  })
+
+  it('a new request stops the build in progress and starts again with both', async () => {
+    const calls: string[][] = []
+    const agent = fakeAgent({
+      makePage: vi.fn(async ({ requests }, _progress, signal) => {
+        calls.push(requests)
+        if (calls.length === 1) {
+          await new Promise((_r, reject) => signal.addEventListener('abort', () => reject(new Error('aborted'))))
+        }
+        return { html: '<!doctype html><html></html>', title: requests.join(' / ') }
+      }),
+    })
+    await build(agent)
+    await say('good', { text: 'show a castle', typed: true })
+    await vi.waitFor(() => expect(calls.length).toBe(1))
+    await say('good', { text: 'make it pink', typed: true })
+    const state = await settled()
+    expect(calls[1]).toEqual(['show a castle', 'make it pink'])
+    expect(state.page.title).toBe('show a castle / make it pink')
   })
 
   it('limits how many requests one member can make', async () => {

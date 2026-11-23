@@ -11,10 +11,14 @@
   Railway service, not Bulbord's API), sending the member's sign-in token so
   Genie can check they're an approved member.
 
-  The page Genie writes runs in a sandboxed iframe with no same-origin access
-  (it can't read this page, the sign-in token, or anything of Bulbord's),
-  no popups or navigation, no microphone, and a Content-Security-Policy
-  limiting where it can load scripts from.
+  Genie listens: nothing works until the microphone is on (the gate).
+
+  The page Genie writes is only ever a client-side page. It runs in a
+  sandboxed iframe with no same-origin access (it can't read this page, the
+  sign-in token, or anything of Bulbord's), no popups or navigation, no
+  microphone, and a Content-Security-Policy that blocks every server except
+  script CDNs and a few read-only data APIs. Its localStorage is a shim kept
+  in this browser only (see storageShim).
 -->
 <style>
   :root {
@@ -28,13 +32,25 @@
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html, body { margin: 0; height: 100%; background: var(--band); color: var(--band-ink); font-family: Roboto, -apple-system, "Segoe UI", "Helvetica Neue", Arial, sans-serif; overflow: hidden; }
   body { display: flex; flex-direction: column; height: 100dvh; }
-  #screen { flex: 1; min-height: 0; width: 100%; border: 0; display: block; background: #fff; }
+  #stage { position: relative; flex: 1; min-height: 0; }
+  #screen { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; display: block; background: #fff; }
+  #magic { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; display: none; }
+  #caption {
+    position: absolute; left: 16px; right: 16px; top: 50%; transform: translateY(-50%);
+    text-align: center; pointer-events: none; display: none; color: #fff;
+    text-shadow: 0 2px 12px rgba(0,0,0,.6); transition: top .5s ease, transform .5s ease, opacity .4s;
+  }
+  #caption .big { font-size: clamp(1.5rem, 7vw, 2.75rem); font-weight: 700; }
+  #caption .wish { margin-top: 8px; font-size: clamp(1rem, 4vw, 1.25rem); opacity: .85; font-style: italic; }
+  #caption.small { top: 12px; transform: none; }
+  #caption.small .big { display: inline-block; font-size: .875rem; font-weight: 500; background: rgba(20,15,36,.72); border-radius: 999px; padding: 6px 14px; animation: pulse 1.6s ease-in-out infinite; }
+  #caption.small .wish { display: none; }
   #band {
     display: flex; align-items: center; gap: 8px;
     padding: 8px 12px calc(env(safe-area-inset-bottom, 0px) + 8px);
     min-height: 64px;
   }
-  #band a.back { color: var(--muted); text-decoration: none; font-size: 1.5rem; line-height: 1; padding: 8px 6px; }
+  a.back { color: var(--muted); text-decoration: none; font-size: 1.5rem; line-height: 1; padding: 8px 6px; }
   #status { flex: 1; min-width: 0; font-size: 0.9375rem; line-height: 1.3; }
   #status .main { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   #status .sub { color: var(--muted); font-size: 0.8125rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -47,10 +63,9 @@
     font: inherit; font-size: 0.9375rem;
   }
   .btn svg { width: 22px; height: 22px; fill: currentColor; }
-  #mic.on { background: var(--live); }
-  #mic.on .dot { animation: pulse 1.4s ease-in-out infinite; }
+  #mic { background: var(--live); }
+  #mic .dot { animation: pulse 1.4s ease-in-out infinite; }
   @keyframes pulse { 50% { opacity: 0.35; } }
-  @media (prefers-reduced-motion: reduce) { #mic.on .dot { animation: none; } }
   #type-form { display: none; flex: 1; gap: 8px; }
   #type-form input {
     flex: 1; min-width: 0; height: 48px; border-radius: 999px; border: 0; padding: 0 16px;
@@ -60,10 +75,34 @@
   body.typing #type-form { display: flex; }
   body.typing #status, body.typing #mic, body.typing #type-btn { display: none; }
   .working .main { color: var(--accent); }
+
+  /* The gate: Genie listens, so nothing works until the mic is on. */
+  #gate {
+    position: fixed; inset: 0; z-index: 10; display: none;
+    flex-direction: column; align-items: center; justify-content: center; gap: 16px;
+    padding: 24px 16px calc(env(safe-area-inset-bottom, 0px) + 24px); text-align: center;
+    background: radial-gradient(circle at 50% 35%, #3b2a6b, #140f24 70%);
+  }
+  body.gated #gate { display: flex; }
+  #gate .back { position: absolute; top: calc(env(safe-area-inset-top, 0px) + 8px); left: 8px; }
+  #gate .lamp { font-size: 4rem; animation: float 3s ease-in-out infinite; }
+  @keyframes float { 50% { transform: translateY(-8px); } }
+  #gate h1 { margin: 0; font-size: clamp(1.75rem, 7vw, 2.5rem); }
+  #gate p { margin: 0; color: #c9c1dc; font-size: 1.0625rem; max-width: 26rem; line-height: 1.45; }
+  #gate p.hint { font-size: .9375rem; color: #a9a3b6; }
+  #gate .go { background: var(--accent); color: #1c1407; font-weight: 700; height: 56px; padding: 0 28px; font-size: 1.0625rem; }
+  #gate code { user-select: all; background: rgba(255,255,255,.08); border-radius: 8px; padding: 6px 10px; font-size: .875rem; word-break: break-all; }
+  @media (prefers-reduced-motion: reduce) {
+    #mic .dot, #gate .lamp, #caption.small .big { animation: none; }
+  }
 </style>
 </head>
-<body>
-<iframe id="screen" title="Genie's screen" sandbox="allow-scripts" allow="autoplay; fullscreen" referrerpolicy="no-referrer"></iframe>
+<body class="gated">
+<div id="stage">
+  <iframe id="screen" title="Genie's screen" sandbox="allow-scripts" allow="autoplay; fullscreen" referrerpolicy="no-referrer"></iframe>
+  <canvas id="magic" aria-hidden="true"></canvas>
+  <div id="caption" aria-hidden="true"><div class="big"></div><div class="wish"></div></div>
+</div>
 <div id="band">
   <a class="back" href="/labs" aria-label="Back to Labs">‹</a>
   <div id="status" role="status" aria-live="polite"><div class="main">Connecting…</div><div class="sub"></div></div>
@@ -73,8 +112,9 @@
     <button class="btn" type="button" id="type-cancel" aria-label="Close">✕</button>
   </form>
   <button class="btn" id="type-btn" type="button" aria-label="Type instead"><svg viewBox="0 0 24 24"><path d="M4 19q-.8 0-1.4-.6T2 17V7q0-.8.6-1.4T4 5h16q.8 0 1.4.6T22 7v10q0 .8-.6 1.4T20 19H4Zm4-3h8v-2H8v2Zm-3-3h2v-2H5v2Zm3 0h2v-2H8v2Zm3 0h2v-2h-2v2Zm3 0h2v-2h-2v2Zm3 0h2v-2h-2v2ZM5 10h2V8H5v2Zm3 0h2V8H8v2Zm3 0h2V8h-2v2Zm3 0h2V8h-2v2Zm3 0h2V8h-2v2Z"/></svg></button>
-  <button class="btn" id="mic" type="button"><svg viewBox="0 0 24 24"><path class="dot" d="M12 14q-1.25 0-2.1-.9T9 11V5q0-1.25.9-2.1T12 2q1.25 0 2.1.9T15 5v6q0 1.25-.9 2.1T12 14Zm-1 7v-3.1q-2.6-.35-4.3-2.3T5 11h2q0 2.1 1.5 3.5T12 16q2 0 3.5-1.5T17 11h2q0 2.6-1.7 4.6T13 17.9V21h-2Z"/></svg><span id="mic-label">Listen</span></button>
+  <button class="btn" id="mic" type="button" aria-label="Pause listening"><svg viewBox="0 0 24 24"><path class="dot" d="M12 14q-1.25 0-2.1-.9T9 11V5q0-1.25.9-2.1T12 2q1.25 0 2.1.9T15 5v6q0 1.25-.9 2.1T12 14Zm-1 7v-3.1q-2.6-.35-4.3-2.3T5 11h2q0 2.1 1.5 3.5T12 16q2 0 3.5-1.5T17 11h2q0 2.6-1.7 4.6T13 17.9V21h-2Z"/></svg></button>
 </div>
+<div id="gate" role="dialog" aria-modal="true" aria-labelledby="gate-title"></div>
 <script>
 (function () {
   var local = location.hostname === 'localhost' || location.hostname === '127.0.0.1'
@@ -86,22 +126,30 @@
   var screen = document.getElementById('screen')
   var statusEl = document.getElementById('status')
   var micBtn = document.getElementById('mic')
-  var micLabel = document.getElementById('mic-label')
   var typeBtn = document.getElementById('type-btn')
   var typeForm = document.getElementById('type-form')
   var typeInput = document.getElementById('type-input')
+  var gateEl = document.getElementById('gate')
 
+  var pageHtml = null // the saved shared page
+  var draftHtml = null // a quick sketch, shown until the page is ready
   var shownHtml = null
   var working = null
   var notice = null // {text, until}
   var heard = '' // interim words while someone is talking
   var listening = false // want the mic on
+  var running = false // the recognizer is actually on
   var signedOut = !token
 
   function safeGet(key) { try { return localStorage.getItem(key) } catch (e) { return null } }
   function safeSet(key, value) { try { value == null ? localStorage.removeItem(key) : localStorage.setItem(key, value) } catch (e) {} }
+  function pick(list) { return list[Math.floor(Math.random() * list.length)] }
+  function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c] }) }
 
-  // The CSP goes first, so nothing the page itself contains can come before it.
+  // --- the sandbox ---
+  // The CSP goes first, so nothing the page itself contains can come before
+  // it. connect-src is the only way a page could talk to a server; it's
+  // limited to read-only public data (the genie's prompt lists the same ones).
   var CSP = [
     "default-src 'none'",
     "script-src 'unsafe-inline' 'unsafe-eval' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://unpkg.com",
@@ -109,15 +157,40 @@
     'font-src data: https:',
     'img-src data: blob: https:',
     'media-src data: blob: https:',
-    'connect-src https:',
+    'connect-src https://api.open-meteo.com https://geocoding-api.open-meteo.com https://air-quality-api.open-meteo.com https://en.wikipedia.org',
     'worker-src blob:',
     "form-action 'none'",
     "base-uri 'none'"
   ].join('; ')
+
+  // The sandboxed page has no storage of its own (opaque origin), so it gets
+  // a stand-in: localStorage starts from what this browser saved for Genie
+  // pages and every change is posted back here to be saved. It only ever sees
+  // its own key, never anything else of this page's.
+  var STORE_KEY = 'genie_page_storage'
+  var STORE_MAX = 512 * 1024
+  function storageShim() {
+    var saved = safeGet(STORE_KEY) || '{}'
+    return '<script>(function(){' +
+      'var data;try{data=JSON.parse(' + JSON.stringify(saved).replace(/</g, '\\u003c') + ')||{}}catch(e){data={}}' +
+      'function make(persist){var s=persist?data:{};function sync(){if(persist)try{parent.postMessage({genieStorage:JSON.stringify(s)},"*")}catch(e){}}' +
+      'var has=function(k){return Object.prototype.hasOwnProperty.call(s,k)};' +
+      'return{getItem:function(k){k=String(k);return has(k)?s[k]:null},setItem:function(k,v){s[String(k)]=String(v);sync()},' +
+      'removeItem:function(k){delete s[String(k)];sync()},clear:function(){for(var k in s)delete s[k];sync()},' +
+      'key:function(i){var k=Object.keys(s);return i<k.length?k[i]:null},get length(){return Object.keys(s).length}}}' +
+      'try{Object.defineProperty(window,"localStorage",{value:make(true),configurable:true})}catch(e){}' +
+      'try{Object.defineProperty(window,"sessionStorage",{value:make(false),configurable:true})}catch(e){}' +
+      '})()<\/script>'
+  }
+  window.addEventListener('message', function (e) {
+    if (e.source !== screen.contentWindow || !e.data || typeof e.data.genieStorage !== 'string') return
+    if (e.data.genieStorage.length <= STORE_MAX) safeSet(STORE_KEY, e.data.genieStorage)
+  })
+
   function sandboxedDocument(html) {
-    var meta = '<meta http-equiv="Content-Security-Policy" content="' + CSP + '">'
+    var head = '<meta http-equiv="Content-Security-Policy" content="' + CSP + '">' + storageShim()
     var m = html.match(/^\s*<!doctype[^>]*>/i)
-    return m ? m[0] + meta + html.slice(m[0].length) : '<!doctype html>' + meta + html
+    return m ? m[0] + head + html.slice(m[0].length) : '<!doctype html>' + head + html
   }
 
   var WELCOME = '<!doctype html><html><head><meta name="viewport" content="width=device-width, initial-scale=1"><title>Genie</title><style>' +
@@ -130,42 +203,167 @@
     '</style></head><body><div class="lamp">🪔</div><h1>Genie is listening</h1><p>Say what you’d like to see. Everyone here sees the same screen.</p>' +
     '<ul><li>“Let’s play a maze game”</li><li>“What’s the weather?”</li><li>“Draw an elephant juggling”</li><li>“Make it purple”</li></ul></body></html>'
 
-  function show(page) {
-    var html = page && page.html ? page.html : WELCOME
+  function show() {
+    var html = draftHtml || pageHtml || WELCOME
     if (html === shownHtml) return
     shownHtml = html
     screen.srcdoc = sandboxedDocument(html)
   }
   screen.addEventListener('load', function () { try { screen.focus() } catch (e) {} })
 
+  // --- conjuring: the screen reacts the instant a wish is taken ---
+  // A different effect, palette and line each time, so it never feels canned.
+  // Phases: 'full' (smoke over the old screen) -> 'glimpse' (a sketch is up,
+  // a light shimmer keeps going) -> a poof when the real page lands.
+  var magic = (function () {
+    var canvas = document.getElementById('magic')
+    var caption = document.getElementById('caption')
+    var ctx = canvas.getContext('2d')
+    var reduced = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches
+    var MODES = {
+      smoke: ['Poof…', 'A puff of smoke…', 'Out of thin air…'],
+      sparkles: ['Sprinkling some magic…', 'Twinkle, twinkle…', 'Sparkling it up…'],
+      swirl: ['Swirling it up…', 'Round and round…', 'Stirring the cauldron…'],
+      ink: ['Inking it in…', 'Something’s taking shape…', 'Spilling the magic ink…'],
+      bubbles: ['Bubbling up…', 'Blowing a big idea…', 'Fizz, pop…'],
+      stardust: ['Gathering stardust…', 'Calling the stars…', 'Raining a little magic…']
+    }
+    var EXTRA = ['Conjuring…', 'Rubbing the lamp…', 'Your wish is heard…', 'Hmm, let me see…', 'Abracadabra…', 'On it…']
+    var phase = null, mode = null, hue = 0, parts = [], dim = 0, raf = 0, last = 0, w = 0, h = 0, dpr = 1, ending = 0
+
+    function size() {
+      dpr = Math.min(window.devicePixelRatio || 1, 2)
+      w = canvas.clientWidth; h = canvas.clientHeight
+      canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr)
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+    }
+    window.addEventListener('resize', function () { if (phase) size() })
+
+    function rnd(a, b) { return a + Math.random() * (b - a) }
+    function spawn(burst) {
+      var cx = w / 2, cy = h / 2, p
+      var hueJ = hue + rnd(-30, 30)
+      switch (mode) {
+        case 'smoke': p = { x: cx + rnd(-w * .35, w * .35), y: h + 20, vx: rnd(-15, 15), vy: rnd(-90, -40), r: rnd(20, 50), gr: rnd(20, 45), life: rnd(2.5, 4.5) }; break
+        case 'sparkles': p = { x: rnd(0, w), y: rnd(0, h), vx: 0, vy: rnd(-8, 8), r: rnd(3, 9), gr: 0, life: rnd(0.8, 1.8), spin: rnd(-3, 3) }; break
+        case 'swirl': var a = rnd(0, 6.283), d = Math.max(w, h) * rnd(.35, .6); p = { a: a, d: d, x: 0, y: 0, r: rnd(2, 6), gr: 0, life: rnd(1.8, 3), va: rnd(1.5, 3) * (Math.random() < .5 ? 1 : -1) }; break
+        case 'ink': p = { x: rnd(0, w), y: rnd(0, h), vx: 0, vy: 0, r: 2, gr: rnd(60, 160), life: rnd(1.4, 2.6) }; break
+        case 'bubbles': p = { x: rnd(0, w), y: h + 30, vx: rnd(-10, 10), vy: rnd(-120, -50), r: rnd(8, 30), gr: 0, life: rnd(2.5, 5), wob: rnd(0, 6) }; break
+        default: p = { x: rnd(0, w), y: -10, vx: rnd(-20, 20), vy: rnd(40, 120), r: rnd(1.5, 4), gr: 0, life: rnd(2, 4) }
+      }
+      if (burst) { p.x = cx; p.y = cy; var ba = rnd(0, 6.283), bs = rnd(150, 420); p.vx = Math.cos(ba) * bs; p.vy = Math.sin(ba) * bs; p.life = rnd(.5, 1.1); p.burst = true; p.r = rnd(3, 10) }
+      p.age = 0; p.hue = hueJ
+      parts.push(p)
+    }
+    function draw(p, t) {
+      var k = 1 - p.age / p.life
+      if (p.burst) { ctx.fillStyle = 'hsla(' + p.hue + ',90%,75%,' + k + ')'; ctx.beginPath(); ctx.arc(p.x, p.y, p.r * k + 1, 0, 6.283); ctx.fill(); return }
+      switch (mode) {
+        case 'smoke':
+          var g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.r)
+          g.addColorStop(0, 'hsla(' + p.hue + ',25%,82%,' + .35 * k + ')'); g.addColorStop(1, 'hsla(' + p.hue + ',25%,70%,0)')
+          ctx.fillStyle = g; ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, 6.283); ctx.fill(); break
+        case 'sparkles':
+          var s = p.r * Math.sin(Math.PI * p.age / p.life)
+          ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.age * p.spin)
+          ctx.fillStyle = 'hsla(' + p.hue + ',95%,72%,' + Math.min(1, k * 1.5) + ')'
+          ctx.beginPath(); ctx.moveTo(0, -s * 2); ctx.lineTo(s * .35, -s * .35); ctx.lineTo(s * 2, 0); ctx.lineTo(s * .35, s * .35); ctx.lineTo(0, s * 2); ctx.lineTo(-s * .35, s * .35); ctx.lineTo(-s * 2, 0); ctx.lineTo(-s * .35, -s * .35); ctx.fill(); ctx.restore(); break
+        case 'ink':
+          ctx.fillStyle = 'hsla(' + p.hue + ',70%,35%,' + .22 * k + ')'; ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, 6.283); ctx.fill(); break
+        case 'bubbles':
+          ctx.strokeStyle = 'hsla(' + (p.hue + p.age * 60) + ',90%,80%,' + .8 * k + ')'; ctx.lineWidth = 2
+          ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, 6.283); ctx.stroke(); break
+        default:
+          ctx.fillStyle = 'hsla(' + p.hue + ',95%,' + (60 + 30 * Math.sin(t * 8 + p.x)) + '%,' + k + ')'; ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, 6.283); ctx.fill()
+      }
+    }
+    function frame(t) {
+      var dt = Math.min(0.05, (t - (last || t)) / 1000); last = t
+      var targetDim = phase === 'full' ? .82 : 0
+      dim += (targetDim - dim) * Math.min(1, dt * 4)
+      var rate = ending ? 0 : phase === 'full' ? (reduced ? 6 : 45) : (reduced ? 1 : 8)
+      var n = rate * dt + (Math.random() < (rate * dt) % 1 ? 1 : 0)
+      for (var i = 0; i < Math.floor(n); i++) {
+        spawn(false)
+        var q = parts[parts.length - 1]
+        // While a sketch is up, keep the shimmer to the edges so it stays visible.
+        if (phase === 'glimpse' && !q.burst) { if (Math.random() < .5) q.x = Math.random() < .5 ? rnd(0, w * .12) : rnd(w * .88, w); else q.y = Math.random() < .5 ? rnd(0, h * .1) : rnd(h * .9, h) }
+      }
+      ctx.clearRect(0, 0, w, h)
+      if (dim > .01) { ctx.fillStyle = 'hsla(' + hue + ',45%,10%,' + dim + ')'; ctx.fillRect(0, 0, w, h) }
+      for (var j = parts.length - 1; j >= 0; j--) {
+        var p = parts[j]
+        p.age += dt
+        if (p.age >= p.life) { parts.splice(j, 1); continue }
+        if (mode === 'swirl' && !p.burst) { p.a += p.va * dt; p.d *= 1 - dt * .6; p.x = w / 2 + Math.cos(p.a) * p.d; p.y = h / 2 + Math.sin(p.a) * p.d }
+        else { p.x += (p.vx || 0) * dt; p.y += (p.vy || 0) * dt }
+        if (mode === 'bubbles' && !p.burst) p.x += Math.sin(p.age * 3 + p.wob) * 0.6
+        p.r += (p.gr || 0) * dt
+        draw(p, t / 1000)
+      }
+      if (ending && !parts.length && dim < .02) return stopNow()
+      raf = requestAnimationFrame(frame)
+    }
+    function stopNow() {
+      cancelAnimationFrame(raf); raf = 0
+      phase = null; ending = 0; parts = []; dim = 0
+      canvas.style.display = 'none'; caption.style.display = 'none'
+    }
+    function setCaption(big, wish) {
+      caption.querySelector('.big').textContent = big
+      caption.querySelector('.wish').textContent = wish ? '“' + wish + '”' : ''
+    }
+    return {
+      active: function () { return !!phase && !ending },
+      start: function (wish) {
+        if (phase && !ending) { setCaption(caption.querySelector('.big').textContent, wish); return }
+        var names = Object.keys(MODES)
+        mode = pick(names); hue = Math.floor(rnd(0, 360)); ending = 0
+        phase = 'full'; parts = []
+        canvas.style.display = 'block'; caption.style.display = 'block'; caption.className = ''
+        size()
+        setCaption(Math.random() < .3 ? pick(EXTRA) : pick(MODES[mode]), wish)
+        for (var i = 0; i < (reduced ? 5 : 30); i++) spawn(false)
+        if (!raf) { last = 0; raf = requestAnimationFrame(frame) }
+      },
+      glimpse: function () {
+        if (!phase || ending) return
+        phase = 'glimpse'
+        caption.className = 'small'
+        // Clear the smoke quickly so the sketch shows.
+        parts.forEach(function (p) { p.life = Math.min(p.life, p.age + 0.5) })
+        setCaption(pick(['Still conjuring…', 'Making it better…', 'More on the way…', 'Adding the details…']), '')
+        for (var i = 0; i < (reduced ? 0 : 40); i++) spawn(true)
+      },
+      finish: function (poof) {
+        if (!phase || ending) return
+        phase = 'done'; ending = 1
+        caption.style.display = 'none'
+        parts.forEach(function (p) { p.life = Math.min(p.life, p.age + 0.4) })
+        if (poof && !reduced) for (var i = 0; i < 60; i++) spawn(true)
+      }
+    }
+  })()
+
   // --- status band ---
-  function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c] }) }
   function render() {
     var main = '', sub = '', cls = ''
     if (working) {
       var secs = Math.max(0, Math.round((Date.now() - Date.parse(working.startedAt)) / 1000))
       cls = 'working'
-      main = 'Working on “' + esc(working.requests.join(' / ')) + '”…'
+      main = (draftHtml ? 'Still working on' : 'Conjuring') + ' “' + esc(working.requests.join(' / ')) + '”…'
       sub = secs + 's' + (working.chars ? ' · ' + working.chars.toLocaleString() + ' characters written' : '')
     } else if (notice && notice.until > Date.now()) {
       main = esc(notice.text)
     } else if (heard) {
       main = '<span class="heard">' + esc(heard) + '</span>'
-    } else if (signedOut) {
-      main = 'Watching Genie'
-      sub = 'Sign in to make a wish'
-    } else if (listening) {
+    } else {
       main = 'Listening…'
       sub = 'Just say what you’d like to see'
-    } else {
-      main = 'Genie'
-      sub = recognitionAvailable() ? 'Tap Listen to talk, or type a wish' : 'Type a wish (this browser can’t listen)'
     }
     if (notice && notice.until > Date.now() && (working || heard)) sub = esc(notice.text)
     statusEl.className = cls
     statusEl.innerHTML = '<div class="main">' + main + '</div><div class="sub">' + sub + '</div>'
-    micBtn.classList.toggle('on', listening)
-    micLabel.textContent = signedOut ? 'Sign in' : listening ? 'On' : 'Listen'
   }
   function setNotice(text, ms) { notice = { text: text, until: Date.now() + (ms || 6000) }; render() }
   setInterval(render, 1000)
@@ -174,24 +372,148 @@
     location.href = '/login?reason=' + encodeURIComponent('Sign in to talk to Genie') + '&next=' + encodeURIComponent('/labs')
   }
 
+  // --- the gate ---
+  var Recognition = window.SpeechRecognition || window.webkitSpeechRecognition
+  var gateKind = null
+  var askFailed = false
+  function inNativeApp() {
+    var cap = window.Capacitor
+    if (cap && typeof cap.isNativePlatform === 'function' && cap.isNativePlatform()) return true
+    var ua = navigator.userAgent
+    return /iPhone|iPad|iPod/.test(ua) && !/Safari\//.test(ua)
+  }
+  var BACK = '<a class="back" href="/labs" aria-label="Back to Labs">‹</a>'
+  function setGate(kind) {
+    gateKind = kind
+    document.body.classList.toggle('gated', !!kind)
+    if (!kind) { gateEl.innerHTML = ''; return }
+    var title = 'Genie listens', text = '', hint = '', button = ''
+    if (kind === 'signin') {
+      text = 'Sign in to talk to Genie.'
+      button = '<button class="btn go" data-act="signin">Sign in</button>'
+    } else if (kind === 'app') {
+      text = 'Genie can’t hear you inside the Bulbord app yet. Open it in Safari or Chrome instead.'
+      button = '<code>' + esc(location.origin + '/labs/genie/') + '</code><button class="btn go" data-act="copy">Copy link</button>'
+    } else if (kind === 'unsupported') {
+      text = 'This browser can’t listen. Open Genie in Chrome or Safari.'
+    } else if (kind === 'ask' || kind === 'asking') {
+      text = 'Genie works by listening. Let it use your microphone, then just say what you’d like to see.'
+      button = '<button class="btn go" data-act="listen"' + (kind === 'asking' ? ' disabled' : '') + '>' + (kind === 'asking' ? 'Waiting for the microphone…' : 'Turn on the microphone') + '</button>'
+      if (askFailed) hint = 'Nothing popped up? Your browser may be blocking the microphone: allow it in the site settings (the icon next to the address, or Settings → Safari → Microphone on iPhone), then tap again.'
+    } else if (kind === 'denied') {
+      text = 'The microphone is blocked for this site, and Genie can’t work without it.'
+      hint = 'Allow it in the site settings (the icon next to the address, or Settings → Safari → Microphone on iPhone), then tap below.'
+      button = '<button class="btn go" data-act="listen">Try again</button>'
+    } else if (kind === 'paused') {
+      title = 'Genie is paused'
+      text = 'Genie isn’t listening right now.'
+      button = '<button class="btn go" data-act="listen">Keep listening</button>'
+    }
+    gateEl.innerHTML = BACK + '<div class="lamp">🪔</div><h1 id="gate-title">' + title + '</h1><p>' + text + '</p>' +
+      (hint ? '<p class="hint">' + hint + '</p>' : '') + button
+  }
+  gateEl.addEventListener('click', function (e) {
+    var act = e.target.closest && e.target.closest('[data-act]')
+    if (!act) return
+    var what = act.getAttribute('data-act')
+    if (what === 'signin') goSignIn()
+    else if (what === 'listen') startListening()
+    else if (what === 'copy') {
+      var url = location.origin + '/labs/genie/'
+      var done = function () { act.textContent = 'Copied. Paste it in Safari' }
+      if (navigator.clipboard) navigator.clipboard.writeText(url).then(done, function () {})
+    }
+  })
+
+  function micPermission() {
+    if (!navigator.permissions || !navigator.permissions.query) return Promise.resolve('unknown')
+    return navigator.permissions.query({ name: 'microphone' }).then(function (s) { return s.state }, function () { return 'unknown' })
+  }
+
+  // --- listening (the browser's own speech recognition) ---
+  var rec = null
+  var askTimer = 0
+  function startListening() {
+    listening = true
+    if (gateKind) setGate('asking')
+    clearTimeout(askTimer)
+    askTimer = setTimeout(function () { if (gateKind === 'asking') { askFailed = true; setGate('ask') } }, 10000)
+    if (!rec) {
+      rec = new Recognition()
+      rec.continuous = true
+      rec.interimResults = true
+      rec.lang = 'en-US'
+      rec.onstart = function () {
+        running = true
+        clearTimeout(askTimer)
+        if (listening) setGate(null)
+        render()
+      }
+      rec.onresult = function (e) {
+        var interim = ''
+        for (var i = e.resultIndex; i < e.results.length; i++) {
+          var r = e.results[i]
+          var text = r[0].transcript.trim()
+          if (r.isFinal) { if (text) say(text, false) } else interim += ' ' + text
+        }
+        heard = interim.trim()
+        render()
+      }
+      rec.onerror = function (e) {
+        if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
+          listening = false
+          clearTimeout(askTimer)
+          micPermission().then(function (state) {
+            askFailed = true
+            setGate(state === 'denied' ? 'denied' : 'ask')
+          })
+        }
+      }
+      rec.onend = function () {
+        running = false
+        heard = ''
+        // Browsers stop after a while; keep going while it's wanted.
+        if (listening && !document.hidden) setTimeout(function () { if (listening && !running) begin() }, 300)
+        render()
+      }
+    }
+    begin()
+  }
+  function begin() {
+    try { rec.start() } catch (e) { /* already started */ }
+  }
+  function pause() {
+    listening = false
+    heard = ''
+    if (rec && running) { try { rec.stop() } catch (e) {} }
+    setGate('paused')
+  }
+  micBtn.addEventListener('click', pause)
+  // Pause while the tab is hidden, pick up again when it's back.
+  document.addEventListener('visibilitychange', function () {
+    if (!rec) return
+    if (document.hidden) { if (running) try { rec.stop() } catch (e) {} }
+    else if (listening && !running) begin()
+  })
+
   // --- talking ---
   function say(text, typed) {
     if (signedOut) return goSignIn()
+    if (typed) magic.start(text) // instant; a heard phrase waits for the gate
     fetch(GENIE + '/say', {
       method: 'POST',
       headers: { 'content-type': 'application/json', authorization: 'Bearer ' + token },
       body: JSON.stringify({ text: text, typed: !!typed })
     }).then(function (res) {
       return res.json().catch(function () { return {} }).then(function (body) {
-        if (res.status === 401) { signedOut = true; stopListening(); render(); return }
-        if (!res.ok) { setNotice((body.error && body.error.message) || 'Genie didn’t catch that.'); return }
-        if (body.data && body.data.request) setNotice('Got it: “' + body.data.request + '”', 4000)
+        if (res.status === 401) { signedOut = true; listening = false; setGate('signin'); return }
+        if (!res.ok) { if (!working) magic.finish(false); setNotice((body.error && body.error.message) || 'Genie didn’t catch that.'); return }
+        if (body.data && body.data.request) { magic.start(body.data.request); setNotice('Got it: “' + body.data.request + '”', 4000) }
       })
-    }).catch(function () { setNotice('Can’t reach Genie right now.') })
+    }).catch(function () { if (!working) magic.finish(false); setNotice('Can’t reach Genie right now.') })
   }
 
   typeBtn.addEventListener('click', function () {
-    if (signedOut) return goSignIn()
     document.body.classList.add('typing')
     typeInput.focus()
   })
@@ -205,74 +527,24 @@
     say(text, true)
   })
 
-  // --- listening (the browser's own speech recognition) ---
-  var Recognition = window.SpeechRecognition || window.webkitSpeechRecognition
-  var rec = null
-  var running = false
-  function recognitionAvailable() { return !!Recognition }
-
-  function startListening() {
-    if (!Recognition) { setNotice('This browser can’t listen. Type a wish instead.'); return }
-    listening = true
-    safeSet('genieListening', '1')
-    if (!rec) {
-      rec = new Recognition()
-      rec.continuous = true
-      rec.interimResults = true
-      rec.lang = 'en-US'
-      rec.onresult = function (e) {
-        var interim = ''
-        for (var i = e.resultIndex; i < e.results.length; i++) {
-          var r = e.results[i]
-          var text = r[0].transcript.trim()
-          if (r.isFinal) { if (text) say(text, false) } else interim += ' ' + text
-        }
-        heard = interim.trim()
-        render()
-      }
-      rec.onerror = function (e) {
-        if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
-          stopListening()
-          setNotice('Genie needs microphone permission to listen.', 8000)
-        }
-      }
-      rec.onend = function () {
-        running = false
-        heard = ''
-        // Browsers stop after a while; keep going while it's wanted.
-        if (listening) setTimeout(function () { if (listening && !running) begin() }, 300)
-        render()
-      }
-    }
-    begin()
-    render()
-  }
-  function begin() {
-    try { rec.start(); running = true } catch (e) { /* already started */ }
-  }
-  function stopListening() {
-    listening = false
-    safeSet('genieListening', null)
-    heard = ''
-    if (rec && running) { try { rec.stop() } catch (e) {} }
-    render()
-  }
-  micBtn.addEventListener('click', function () {
-    if (signedOut) return goSignIn()
-    listening ? stopListening() : startListening()
-  })
-  // Pause while the tab is hidden, pick up again when it's back.
-  document.addEventListener('visibilitychange', function () {
-    if (!rec) return
-    if (document.hidden) { if (running) try { rec.stop() } catch (e) {} }
-    else if (listening && !running) begin()
-  })
-
   // --- the shared screen, pushed live ---
   function handle(event) {
-    if (event.type === 'page') show(event.page)
-    else if (event.type === 'working') working = event.working
-    else if (event.type === 'notice') setNotice(event.message, 8000)
+    if (event.type === 'page') {
+      var html = event.page && event.page.html ? event.page.html : null
+      if (html !== pageHtml) {
+        pageHtml = html
+        if (magic.active()) { draftHtml = null; magic.finish(true) }
+      }
+    } else if (event.type === 'draft') {
+      draftHtml = event.html || null
+      if (draftHtml) { magic.start(working ? working.requests.join(' / ') : ''); magic.glimpse() }
+    } else if (event.type === 'working') {
+      var was = working
+      working = event.working
+      if (working && !was) magic.start(working.requests.join(' / '))
+      if (!working && was) magic.finish(false)
+    } else if (event.type === 'notice') setNotice(event.message, 8000)
+    show()
     render()
   }
   function connect() {
@@ -288,15 +560,32 @@
   function poll() {
     fetch(GENIE + '/state').then(function (r) { return r.json() }).then(function (body) {
       handle({ type: 'page', page: body.data.page })
+      handle({ type: 'draft', html: body.data.draft })
       handle({ type: 'working', working: body.data.working })
     }).catch(function () {})
   }
 
-  show(null)
+  show()
   render()
   connect()
-  // Pick up listening where it was left (works once the mic is already allowed).
-  if (!signedOut && safeGet('genieListening') === '1') startListening()
+
+  // Ask for the microphone right away: nothing works until it's on.
+  if (signedOut) setGate('signin')
+  else if (!Recognition) setGate(inNativeApp() ? 'app' : 'unsupported')
+  else {
+    setGate('ask')
+    micPermission().then(function (state) {
+      if (state === 'granted') return startListening()
+      if (state === 'denied') return setGate('denied')
+      // Some browsers show the permission prompt without a tap; try now.
+      if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+        navigator.mediaDevices.getUserMedia({ audio: true }).then(function (stream) {
+          stream.getTracks().forEach(function (t) { t.stop() })
+          startListening()
+        }, function () { /* needs a tap: the button is there */ })
+      }
+    })
+  }
 })()
 </script>
 </body>

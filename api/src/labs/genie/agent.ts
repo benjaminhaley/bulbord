@@ -1,13 +1,16 @@
 import Anthropic from '@anthropic-ai/sdk'
 
-// Genie's two Claude calls:
+// Genie's three Claude calls:
 // 1. The gate (fast, cheap): the mic hears everything, so every finished
 //    phrase is first judged "is someone asking Genie for something?", given the
 //    few phrases just before it (speech recognition splits a sentence at
 //    pauses), and if so, what the whole request is.
-// 2. The genie: rewrites the shared page for the request(s), as one complete
+// 2. The sketch (fast, cheap): a tiny first glimpse of the wish, on screen a
+//    few seconds after it's heard, while the genie builds the real thing.
+// 3. The genie: rewrites the shared page for the request(s), as one complete
 //    HTML document. The page runs in a sandboxed iframe (see the page's
-//    sandboxedDocument), so whatever it writes can't reach Bulbord.
+//    sandboxedDocument), so whatever it writes can't reach Bulbord or any
+//    server: it's only ever a client-side page.
 
 interface GateResult {
   request: string | null // the whole request, or null for chatter
@@ -20,18 +23,40 @@ export interface MadePage {
 
 export interface GenieAgent {
   gate(input: { phrase: string; recent: string[]; showing: string }): Promise<GateResult>
-  makePage(input: { requests: string[]; currentHtml: string | null }, onProgress: (chars: number) => void): Promise<MadePage | null>
+  sketch(input: { requests: string[]; showing: string }, signal: AbortSignal): Promise<MadePage | null>
+  makePage(input: { requests: string[]; currentHtml: string | null }, onProgress: (chars: number) => void, signal: AbortSignal): Promise<MadePage | null>
 }
 
 const GATE_MODEL = 'claude-haiku-5-5'
+const SKETCH_MODEL = 'claude-haiku-5-5'
 const GENIE_MODEL = 'claude-opus-5-5'
 const MAX_CURRENT_HTML = 200_000
+
+// Mirrors the page's CSP and storage shim (web/public/labs/genie/index.html).
+const SANDBOX_RULES = `The page runs in a locked-down sandbox. It is only ever a client-side page: there is no backend, and nothing it does can change anything on any server.
+- Inline scripts and styles work. External scripts, styles and fonts load only from https://cdnjs.cloudflare.com, https://cdn.jsdelivr.net and https://unpkg.com. Images may come from https:, data: or blob: URLs.
+- fetch() reaches only these read-only public data APIs: https://api.open-meteo.com, https://geocoding-api.open-meteo.com, https://air-quality-api.open-meteo.com and https://en.wikipedia.org (add origin=* to Wikipedia API calls). Everything else is blocked.
+- localStorage works and stays on the viewer's own device (each person watching has their own); use getItem/setItem/removeItem only, never property access. Good for high scores and settings. sessionStorage works for this visit only. No IndexedDB or cookies.
+- No popups, alerts, forms that submit, navigating away, microphone or camera.
+- Sound must start from a tap or key press (browsers block autoplay); speechSynthesis is fine after one.`
 
 const GATE_SYSTEM = `You listen to everything said near a shared screen called Genie, through a microphone that is always on. People ask Genie to show, play, draw, animate, look up, change or undo things on the screen, often without saying "Genie". Most of what you hear is NOT for Genie: people talking to each other, half sentences, filler, sounds from the screen itself (game noises, text being read aloud), or speech-recognition garbage.
 
 Given the newest phrase, the phrases heard just before it (oldest first, from the same microphone), and what the screen shows now, decide whether the newest phrase completes a request to Genie.
 - If it does, set "request" to the whole request in plain words, joining earlier fragments that belong to it and fixing obvious mis-hearings ("hackman" -> "Pac-Man"). A question someone clearly wants answered on the screen ("what's the weather") counts.
 - If it doesn't, or you're unsure, set "request" to null. Asking too often is worse than missing one: people can repeat themselves.`
+
+const SKETCH_SYSTEM = `You are the quick hands of Genie, a shared screen that people talk to. A slower, better genie is already building the full answer to the wish below; your job is the first glimpse, on screen within seconds, so it feels like Genie started conjuring the instant it heard.
+
+Answer with ONE small, complete HTML document (starting with <!doctype html>, with a short <title>) and nothing else. Keep it tiny (under 60 lines) and write it straight away, without planning: speed matters more than polish. It fills the whole viewport and works on a phone held upright.
+
+Make a charming, rough first take of the actual wish, not a loading screen: a simple SVG sketch of the picture, a game's title card with its hero drawn and moving, the answer to a question if you know it (with a "getting the details" hint for live data), a few words appearing in the style asked for. Vary your approach and style every time: surprise people. A little gentle animation is good.
+
+If the wish is a small change to what's already showing (a color, a speed, a tweak) rather than something new, answer exactly SKIP.
+
+${SANDBOX_RULES}
+
+Everyone here is a member of a school community, kids included: keep it family-friendly, and if the wish isn't, answer SKIP.`
 
 const GATE_SCHEMA = {
   type: 'object',
@@ -49,14 +74,12 @@ What to make:
 - A game: playable right away with touch and with keyboard, with a score, and short on-screen instructions. Make your own original characters and art in the genre asked for (a maze chase, a block-stacking puzzle, a platformer). Don't copy a real game's name, characters, art, sounds or levels.
 - A picture ("draw me an elephant juggling"): draw it yourself as detailed SVG or canvas art.
 - A video or animation: an animated SVG or canvas scene that plays on its own and loops.
-- A question ("what's the weather", "how far is the moon"): show the answer as a clear, good-looking display. For live data, fetch it from the page at runtime from a free public API that needs no key and allows any origin; for weather use Open-Meteo (https://api.open-meteo.com/v1/forecast), defaulting to Chicago's Lakeview neighborhood (latitude 41.94, longitude -87.645) and Fahrenheit. You may also use web search for facts you need while writing the page.
+- A question ("what's the weather", "how far is the moon"): show the answer as a clear, good-looking display. For live data, fetch it from the page at runtime from one of the allowed APIs below; for weather use Open-Meteo (https://api.open-meteo.com/v1/forecast), defaulting to Chicago's Lakeview neighborhood (latitude 41.94, longitude -87.645) and Fahrenheit. You may also use web search for facts you need while writing the page.
+- While you write, a quick rough sketch of this request may be on screen; ignore it and build the real thing from the page described below.
 - A change to what's showing ("make the ghosts faster", "now make it purple"): change the current page and keep everything else about it.
 - A request to start over or clear the screen: a calm, simple "Genie is listening" page.
 
-The page runs in a locked-down sandbox:
-- Inline scripts and styles work. External scripts, styles and fonts load only from https://cdnjs.cloudflare.com, https://cdn.jsdelivr.net and https://unpkg.com. fetch() works for public https APIs that allow any origin. Images may come from https:, data: or blob: URLs.
-- There is no localStorage, sessionStorage, IndexedDB or cookies (accessing them throws), no popups, no alerts, no forms that submit, no navigating away, and no microphone or camera. Keep all state in memory.
-- Sound must start from a tap or key press (browsers block autoplay); speechSynthesis is fine after one.
+${SANDBOX_RULES}
 
 Everyone here is a member of a school community, kids included: keep everything family-friendly, and if a request isn't, show a friendly page saying Genie can't make that.`
 
@@ -90,7 +113,31 @@ export function claudeAgent(client: Anthropic, options: { effort?: 'low' | 'medi
       }
     },
 
-    async makePage({ requests, currentHtml }, onProgress) {
+    async sketch({ requests, showing }, signal) {
+      const message = await client.messages.create(
+        {
+          model: SKETCH_MODEL,
+          max_tokens: 4000,
+          output_config: { effort: 'low' },
+          system: [{ type: 'text', text: SKETCH_SYSTEM, cache_control: { type: 'ephemeral' } }],
+          messages: [
+            {
+              role: 'user',
+              content: `Screen now shows: ${showing || 'the "Genie is listening" start page'}\nThe wish: ${requests.join(' / ')}`,
+            },
+          ],
+        },
+        { timeout: 60_000, maxRetries: 0, signal },
+      )
+      if (message.stop_reason !== 'end_turn') return null
+      const text = message.content
+        .filter((b) => b.type === 'text')
+        .map((b) => (b.type === 'text' ? b.text : ''))
+        .join('')
+      return extractPage(text)
+    },
+
+    async makePage({ requests, currentHtml }, onProgress, signal) {
       const current = currentHtml ? currentHtml.slice(0, MAX_CURRENT_HTML) : null
       const messages: Anthropic.Beta.BetaMessageParam[] = [
         {
@@ -119,7 +166,7 @@ export function claudeAgent(client: Anthropic, options: { effort?: 'low' | 'medi
             tools: [{ type: 'web_search_20260209', name: 'web_search', max_uses: 3 }],
             messages,
           },
-          { timeout: 10 * 60_000, maxRetries: 1 },
+          { timeout: 10 * 60_000, maxRetries: 1, signal },
         )
         stream.on('text', (delta) => {
           written += delta.length

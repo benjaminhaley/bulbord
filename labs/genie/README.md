@@ -27,22 +27,47 @@ built 2026-11-20.
   image-generation provider.
 - **Own Railway service** for isolation.
 
+## Decisions (Ben, 2026-11-23)
+
+- **Nothing works until the microphone is on.** The page opens on a gate that
+  asks for it straight away (and again after a pause or a refusal); only a
+  listening Genie shows the screen. Typing is a fallback once listening.
+- **What Genie makes is only ever a client-side page**: no backend, no server
+  it can change. Storage is the viewer's own device only.
+- **Fast and in phases**: the screen starts conjuring the instant a wish is
+  taken (a different effect, palette and line each time), a quick sketch shows
+  within seconds, and the real page replaces it when it's done.
+
 ## How it works
 
 - The page listens with the browser's own speech recognition
-  (`webkitSpeechRecognition`: Chrome, Edge, Safari; not Firefox, and not
-  inside the iOS app's WebView). Where it isn't available, there's a "type a
-  wish" box, which skips the gate. Listening stays on across reloads once
-  allowed, and pauses while the tab is hidden.
+  (`webkitSpeechRecognition`: Chrome, Edge, Safari; not Firefox). On load it
+  asks for the microphone at once (permission already granted → straight in;
+  otherwise `getUserMedia` to bring up the prompt, and a "Turn on the
+  microphone" button for browsers that need a tap). A full-screen gate covers
+  everything until recognition actually starts; the mic button pauses (back to
+  the gate). Where recognition doesn't exist the gate says so. **Inside the
+  iOS app it can't work**: the WebView has no speech recognition and the app
+  has no `NSMicrophoneUsageDescription`, so the gate offers a link to open in
+  Safari. Making it work in the app would need a native speech plugin, that
+  Info.plist key and a new TestFlight build. The "type a wish" box (behind the
+  gate, skips the Haiku gate) stays as a fallback.
 - `POST /say {text, typed?}` with the member's Bulbord token. The server checks
   the token by calling Bulbord's public `GET /auth/me` (it imports nothing
   from Bulbord) and accepts only approved members (cached 5 min).
-- Requests queue up; the genie makes one batch at a time: every request that
-  arrived while the last page was being made, oldest first, given the current
+- **Phases.** The moment a request is accepted the page starts a conjuring
+  effect over the screen (typed: instantly; heard: once the gate answers,
+  ~1s). The server then runs two calls side by side: a **sketch** (Claude
+  Haiku 5.5, low effort, a tiny first take: ~4-5s) pushed as a `draft`, and
+  the real page (Opus) which replaces it. The sketch answers `SKIP` for small
+  tweaks to what's showing ("make it purple"), so the current page stays
+  until the real change lands.
+- **A new request doesn't wait**: it aborts the build in progress and starts
+  again with every request so far, oldest first (at most 6), given the current
   page's HTML so "make it faster" changes what's there.
-- Everyone gets the page and progress ("Working on … 12s · 3,400 characters
-  written") pushed over server-sent events (`GET /stream`; `GET /state` for a
-  one-off read).
+- Everyone gets the page, the draft and progress ("Conjuring … 12s · 3,400
+  characters written") pushed over server-sent events (`GET /stream`;
+  `GET /state` for a one-off read).
 - Limits (in memory): 30 phrases a minute and 10 requests per 10 minutes per
   member, at most 6 queued, 60 new pages an hour for everyone.
 - Rough timings: weather ~25s, a drawing ~25s, a game ~1.5 min.
@@ -55,8 +80,19 @@ can't read the parent page, Bulbord's sign-in token or any storage (checked in
 a headless browser: both blocked), can't open popups, submit forms or navigate
 the top window, and gets no microphone or camera. The parent prepends a
 Content-Security-Policy so scripts load only inline or from
-cdnjs/jsdelivr/unpkg; `fetch` to public https APIs works (that's how the
-weather page gets live data from Open-Meteo).
+cdnjs/jsdelivr/unpkg, and `fetch` reaches only a few read-only data APIs
+(Open-Meteo's forecast/geocoding/air-quality and en.wikipedia.org); every
+other server is blocked, so a Genie page can't post anything anywhere. Images
+and fonts may still load from any https URL (reads only). The genie's prompt
+(`SANDBOX_RULES` in `agent.ts`) lists the same limits; change both together.
+
+**Storage** is a shim: the parent injects a `localStorage`/`sessionStorage`
+stand-in into the iframe ahead of the page's own code, seeded from the
+parent's `localStorage['genie_page_storage']` (≤512 KB). Changes come back by
+`postMessage` and are saved there, so a high score stays on that viewer's
+device and nothing goes to a server. The iframe never sees any other key.
+Checked in Chromium and WebKit: storage persists, `fetch` to another host is
+blocked.
 
 On the server side, Genie is a separate process with its own database login
 that can only use `lab_genie`, and its only way into Bulbord is the public
